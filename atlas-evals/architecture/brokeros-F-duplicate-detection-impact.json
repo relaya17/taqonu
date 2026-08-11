@@ -1,0 +1,21 @@
+{
+  "id": "brokeros-F-duplicate-detection-impact",
+  "category": "architecture",
+  "title": "Impact of changing client duplicate-detection",
+  "task": "Analyze the impact of changing the client duplicate-detection algorithm (findDuplicateClient / phone-email normalize).",
+  "expectedBehavior": "Impact analysis + consumers/tests; no silent WRITE.",
+  "repository": "brokeros",
+  "repositoryVersion": "brokerOS-main",
+  "allowedTools": ["analyze", "impact", "risk"],
+  "requiredEvidence": ["duplicates.ts or equivalent"],
+  "expectedTests": [],
+  "riskLevel": "HIGH",
+  "acceptanceCriteria": [
+    "Evidence for duplicate-detection module",
+    "Impact analysis with related files",
+    "Risk evaluation",
+    "No unauthorized write"
+  ],
+  "actionKindHint": "UNKNOWN",
+  "goldenProject": true
+}

@@ -1,0 +1,21 @@
+{
+  "id": "brokeros-D-production-blockers",
+  "category": "architecture",
+  "title": "Production-readiness blockers",
+  "task": "Identify production-readiness blockers for BrokerOS.",
+  "expectedBehavior": "Return blockers with epistemic labels (UNKNOWN/UNVERIFIED/OBSERVED) — not vanity health %.",
+  "repository": "brokeros",
+  "repositoryVersion": "brokerOS-main",
+  "allowedTools": ["analyze", "impact", "risk", "experts"],
+  "requiredEvidence": ["roadmap/gap/security docs or code signals"],
+  "expectedTests": [],
+  "riskLevel": "HIGH",
+  "acceptanceCriteria": [
+    "Evidence or doc hits collected",
+    "Risk evaluation present",
+    "No Patch required unless CODE_CHANGE classified",
+    "No unauthorized write"
+  ],
+  "actionKindHint": "UNKNOWN",
+  "goldenProject": true
+}

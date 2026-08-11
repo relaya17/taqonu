@@ -1,0 +1,221 @@
+/** Atlas 1.2 Fabric Agents — roles, not models (ADR-017). */
+
+export const FABRIC_AGENT_IDS = [
+  "ORCHESTRATOR",
+  "ARCHITECT",
+  "CODE_ENGINEER",
+  "DEBUGGER",
+  "QA",
+  "TEST_ENGINEER",
+  "SECURITY",
+  "ACCESSIBILITY",
+  "UI_UX",
+  "DEVOPS",
+  "RESEARCHER",
+  "OMISSION_DETECTOR",
+  "JUDGE",
+] as const;
+
+export type FabricAgentId = (typeof FABRIC_AGENT_IDS)[number];
+
+export interface FabricAgentDefinition {
+  readonly id: FabricAgentId;
+  readonly title: string;
+  readonly specialty: string;
+  readonly allowedTools: readonly string[];
+  readonly forbiddenTools: readonly string[];
+  readonly evidenceRequirements: readonly string[];
+  readonly maxCostUsd: number;
+  readonly timeoutMs: number;
+  readonly riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  readonly canWriteCode: boolean;
+  readonly evaluationSuite: string;
+}
+
+export const FABRIC_AGENT_CATALOG: Readonly<
+  Record<FabricAgentId, FabricAgentDefinition>
+> = {
+  ORCHESTRATOR: {
+    id: "ORCHESTRATOR",
+    title: "Atlas Master Orchestrator",
+    specialty: "Decompose · select specialists · budgets · handoffs",
+    allowedTools: ["plan", "dispatch", "budget", "trace"],
+    forbiddenTools: ["apply_patch", "exfiltrate"],
+    evidenceRequirements: ["user request", "project context"],
+    maxCostUsd: 0.5,
+    timeoutMs: 120_000,
+    riskLevel: "MEDIUM",
+    canWriteCode: false,
+    evaluationSuite: "orch-plan-v1",
+  },
+  ARCHITECT: {
+    id: "ARCHITECT",
+    title: "Architect",
+    specialty: "Modules · dependencies · boundaries · debt · scalability",
+    allowedTools: ["analyze_repo", "impact", "read_adr"],
+    forbiddenTools: ["apply_patch"],
+    evidenceRequirements: ["repo graph", "ADRs"],
+    maxCostUsd: 0.4,
+    timeoutMs: 90_000,
+    riskLevel: "MEDIUM",
+    canWriteCode: false,
+    evaluationSuite: "architect-v1",
+  },
+  CODE_ENGINEER: {
+    id: "CODE_ENGINEER",
+    title: "Code Engineer",
+    specialty: "Generate · fix · refactor · migrate — Patch Artifact only",
+    allowedTools: ["propose_patch", "analyze_repo", "impact"],
+    forbiddenTools: ["apply_patch_without_approval"],
+    evidenceRequirements: ["failing test or explicit requirement"],
+    maxCostUsd: 0.8,
+    timeoutMs: 120_000,
+    riskLevel: "HIGH",
+    canWriteCode: true,
+    evaluationSuite: "code-engineer-v1",
+  },
+  DEBUGGER: {
+    id: "DEBUGGER",
+    title: "Debugger",
+    specialty: "Reproduce → isolate → identify → propose → verify",
+    allowedTools: ["logs", "tests", "propose_patch", "analyze_repo"],
+    forbiddenTools: ["apply_patch_without_approval"],
+    evidenceRequirements: ["repro steps or stack/logs"],
+    maxCostUsd: 0.7,
+    timeoutMs: 120_000,
+    riskLevel: "HIGH",
+    canWriteCode: true,
+    evaluationSuite: "debugger-v1",
+  },
+  QA: {
+    id: "QA",
+    title: "QA Strategist",
+    specialty: "Decide what must be tested by risk",
+    allowedTools: ["risk_map", "coverage_gaps", "gates"],
+    forbiddenTools: ["apply_patch"],
+    evidenceRequirements: ["risk ranking", "critical paths"],
+    maxCostUsd: 0.3,
+    timeoutMs: 60_000,
+    riskLevel: "MEDIUM",
+    canWriteCode: false,
+    evaluationSuite: "qa-v1",
+  },
+  TEST_ENGINEER: {
+    id: "TEST_ENGINEER",
+    title: "Test Engineer",
+    specialty: "Unit · integration · E2E · regression · edge cases",
+    allowedTools: ["propose_patch", "run_tests"],
+    forbiddenTools: ["apply_patch_without_approval"],
+    evidenceRequirements: ["QA plan or failing suite"],
+    maxCostUsd: 0.5,
+    timeoutMs: 120_000,
+    riskLevel: "MEDIUM",
+    canWriteCode: true,
+    evaluationSuite: "test-engineer-v1",
+  },
+  SECURITY: {
+    id: "SECURITY",
+    title: "Security",
+    specialty: "AuthN/Z · secrets · injection · tenants · supply chain",
+    allowedTools: ["security_scan", "deps_audit", "analyze_repo"],
+    forbiddenTools: ["exfiltrate", "apply_patch_without_approval"],
+    evidenceRequirements: ["threat surface", "deps lockfile"],
+    maxCostUsd: 0.6,
+    timeoutMs: 90_000,
+    riskLevel: "CRITICAL",
+    canWriteCode: false,
+    evaluationSuite: "security-v1",
+  },
+  ACCESSIBILITY: {
+    id: "ACCESSIBILITY",
+    title: "Accessibility",
+    specialty: "WCAG · keyboard · focus · SR · RTL · contrast",
+    allowedTools: ["a11y_scan", "analyze_ui"],
+    forbiddenTools: ["apply_patch_without_approval"],
+    evidenceRequirements: ["UI surfaces", "WCAG target"],
+    maxCostUsd: 0.3,
+    timeoutMs: 60_000,
+    riskLevel: "MEDIUM",
+    canWriteCode: false,
+    evaluationSuite: "a11y-v1",
+  },
+  UI_UX: {
+    id: "UI_UX",
+    title: "UI/UX",
+    specialty: "Flows · usability · responsive · IA · consistency",
+    allowedTools: ["analyze_ui", "flow_map"],
+    forbiddenTools: ["apply_patch_without_approval"],
+    evidenceRequirements: ["screens / routes"],
+    maxCostUsd: 0.3,
+    timeoutMs: 60_000,
+    riskLevel: "LOW",
+    canWriteCode: false,
+    evaluationSuite: "uiux-v1",
+  },
+  DEVOPS: {
+    id: "DEVOPS",
+    title: "DevOps",
+    specialty: "CI/CD · cloud · DB · migrations · observability",
+    allowedTools: ["ci_status", "deploy_meta", "analyze_infra"],
+    forbiddenTools: ["prod_mutate_without_approval"],
+    evidenceRequirements: ["CI config", "deploy target"],
+    maxCostUsd: 0.4,
+    timeoutMs: 90_000,
+    riskLevel: "HIGH",
+    canWriteCode: false,
+    evaluationSuite: "devops-v1",
+  },
+  RESEARCHER: {
+    id: "RESEARCHER",
+    title: "Researcher",
+    specialty: "Authorized external sources → Evidence packages",
+    allowedTools: ["knowledge_search", "ingest_source", "verify_url"],
+    forbiddenTools: ["apply_patch", "unofficial_scrape_as_official"],
+    evidenceRequirements: ["query", "allowed source classes"],
+    maxCostUsd: 0.4,
+    timeoutMs: 90_000,
+    riskLevel: "MEDIUM",
+    canWriteCode: false,
+    evaluationSuite: "research-v1",
+  },
+  OMISSION_DETECTOR: {
+    id: "OMISSION_DETECTOR",
+    title: "Omission Detector",
+    specialty:
+      "omission gaps · constitution checklist · unrequested risks · evidence gaps",
+    allowedTools: ["constitution_run", "analyze_repo", "risk_map"],
+    forbiddenTools: ["apply_patch", "exfiltrate"],
+    evidenceRequirements: ["user intent or product profile", "repo evidence"],
+    maxCostUsd: 0.45,
+    timeoutMs: 90_000,
+    riskLevel: "HIGH",
+    canWriteCode: false,
+    evaluationSuite: "omission-v1",
+  },
+  JUDGE: {
+    id: "JUDGE",
+    title: "Evidence Judge",
+    specialty: "Believe the result? Contradictions · unsupported · unsafe",
+    allowedTools: ["evaluate", "conflict_scan", "escalate"],
+    forbiddenTools: ["apply_patch", "write_code"],
+    evidenceRequirements: ["specialist outputs", "evidence refs"],
+    maxCostUsd: 0.35,
+    timeoutMs: 60_000,
+    riskLevel: "CRITICAL",
+    canWriteCode: false,
+    evaluationSuite: "judge-v1",
+  },
+};
+
+/** External/web source confidence — complements ADR-014 internal ranks. */
+export const EXTERNAL_SOURCE_CONFIDENCE: Readonly<Record<string, number>> = {
+  OFFICIAL_VENDOR_DOCS: 1.0,
+  GOVERNMENT_OR_STANDARDS: 1.0,
+  VERIFIED_API_SPEC: 0.98,
+  SECURITY_ADVISORY: 0.95,
+  REPOSITORY_SOURCE: 0.9,
+  CI_ARTIFACT: 0.9,
+  TECHNICAL_ARTICLE: 0.7,
+  FORUM_DISCUSSION: 0.4,
+  LLM_INFERENCE: 0.1,
+};

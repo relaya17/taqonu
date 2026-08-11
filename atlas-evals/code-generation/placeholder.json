@@ -1,0 +1,15 @@
+{
+  "id": "placeholder-keep",
+  "category": "code-generation",
+  "title": "Placeholder — expand suite toward 100 tasks",
+  "task": "Placeholder task — skipped by runner when id starts with placeholder.",
+  "expectedBehavior": "N/A",
+  "repository": "none",
+  "repositoryVersion": "n/a",
+  "allowedTools": [],
+  "requiredEvidence": [],
+  "expectedTests": [],
+  "riskLevel": "LOW",
+  "acceptanceCriteria": ["Suite folder exists"],
+  "goldenProject": false
+}

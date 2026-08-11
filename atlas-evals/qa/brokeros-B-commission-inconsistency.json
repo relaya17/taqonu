@@ -1,0 +1,21 @@
+{
+  "id": "brokeros-B-commission-inconsistency",
+  "category": "qa",
+  "title": "Commission calculation inconsistency paths",
+  "task": "Find all paths where commission calculations can produce inconsistent results (Commission Waterfall v3).",
+  "expectedBehavior": "Investigation returns Evidence + Risk; may skip Patch if findings are analytical.",
+  "repository": "brokeros",
+  "repositoryVersion": "brokerOS-main",
+  "allowedTools": ["analyze", "impact", "risk", "experts"],
+  "requiredEvidence": ["commission/waterfall code paths"],
+  "expectedTests": [],
+  "riskLevel": "HIGH",
+  "acceptanceCriteria": [
+    "Evidence hits for commission/waterfall",
+    "Impact analysis present",
+    "Risk evaluation present",
+    "No unauthorized write"
+  ],
+  "actionKindHint": "UNKNOWN",
+  "goldenProject": true
+}

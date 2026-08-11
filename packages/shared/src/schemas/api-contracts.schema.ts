@@ -1,0 +1,50 @@
+/**
+ * Canonical v1 API surface — route inventory for Architecture v1.0.
+ * Handlers MUST import body/response schemas from sibling modules; no duplicates.
+ */
+export const API_V1_ROUTES = [
+  { method: "GET", path: "/api/v1/projects", mvp: true },
+  { method: "POST", path: "/api/v1/projects", mvp: true },
+  { method: "GET", path: "/api/v1/projects/:id", mvp: true },
+  { method: "GET", path: "/api/v1/projects/:id/state", mvp: true },
+  { method: "POST", path: "/api/v1/projects/:id/state/reconcile", mvp: true },
+  { method: "GET", path: "/api/v1/projects/:id/resume", mvp: true },
+  { method: "GET", path: "/api/v1/portfolio/overview", mvp: true },
+  { method: "GET", path: "/api/v1/portfolio/patterns", mvp: true },
+  { method: "GET", path: "/api/v1/memory", mvp: true },
+  { method: "POST", path: "/api/v1/memory", mvp: true },
+  { method: "GET", path: "/api/v1/decisions", mvp: true },
+  { method: "POST", path: "/api/v1/decisions", mvp: true },
+  { method: "GET", path: "/api/v1/evidence", mvp: true },
+  { method: "POST", path: "/api/v1/evidence", mvp: true },
+  { method: "GET", path: "/api/v1/graph/nodes", mvp: true },
+  { method: "GET", path: "/api/v1/graph/nodes/:id/impact", mvp: true },
+  { method: "GET", path: "/api/v1/github", mvp: true },
+  { method: "POST", path: "/api/v1/github/discover", mvp: true },
+  { method: "POST", path: "/api/v1/github/sync", mvp: true },
+  { method: "POST", path: "/api/v1/github/webhooks", mvp: true },
+  { method: "GET", path: "/api/v1/projects/:id/context-export", mvp: true },
+  { method: "POST", path: "/api/v1/projects/:id/cloud", mvp: true },
+  { method: "GET", path: "/api/v1/billing/plan", mvp: true },
+  { method: "POST", path: "/api/v1/billing/plan", mvp: true },
+  { method: "POST", path: "/api/v1/experts/review", mvp: true },
+  { method: "GET", path: "/api/v1/auth/me", mvp: true },
+  { method: "GET", path: "/api/v1/auth/session", mvp: true },
+  { method: "POST", path: "/api/v1/auth/register", mvp: true },
+  { method: "POST", path: "/api/v1/auth/login", mvp: true },
+  { method: "GET", path: "/api/v1/admin/overview", mvp: true },
+  { method: "POST", path: "/api/v1/feeds/supabase", mvp: true },
+  { method: "POST", path: "/api/v1/feeds/mongodb", mvp: true },
+  { method: "GET", path: "/api/v1/feeds/:projectId", mvp: true },
+  { method: "GET", path: "/api/v1/agent/runs", mvp: true },
+  { method: "POST", path: "/api/v1/agent/runs", mvp: true },
+  { method: "GET", path: "/api/v1/eval/suites", mvp: true },
+  { method: "POST", path: "/api/v1/eval/runs", mvp: true },
+  { method: "GET", path: "/api/v1/audit", mvp: true },
+  // Deferred — stubs only, not product MVP
+  { method: "GET", path: "/api/v1/integrations", mvp: false },
+  { method: "POST", path: "/api/v1/research", mvp: false },
+  { method: "GET", path: "/api/v1/knowledge", mvp: false },
+] as const;
+
+export type ApiV1Route = (typeof API_V1_ROUTES)[number];

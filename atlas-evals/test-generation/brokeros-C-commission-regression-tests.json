@@ -1,0 +1,20 @@
+{
+  "id": "brokeros-C-commission-regression-tests",
+  "category": "test-generation",
+  "title": "Missing regression tests for Commission Waterfall v3",
+  "task": "Generate missing regression tests for Commission Waterfall v3.",
+  "expectedBehavior": "Propose TEST_CHANGE Patch with checklist; await approval.",
+  "repository": "brokeros",
+  "repositoryVersion": "brokerOS-main",
+  "allowedTools": ["analyze", "patch", "experts"],
+  "requiredEvidence": ["existing commission tests or waterfall modules"],
+  "expectedTests": ["waterfall regression cases"],
+  "riskLevel": "MEDIUM",
+  "acceptanceCriteria": [
+    "Action kind TEST_CHANGE or CODE_CHANGE",
+    "Patch proposed or explicit gap documented",
+    "Awaiting approval before apply"
+  ],
+  "actionKindHint": "TEST_CHANGE",
+  "goldenProject": true
+}

@@ -1,0 +1,26 @@
+export const DOMAIN_EVENT_TYPES = [
+  "github.webhook.received",
+  "github.sync.completed",
+  "evidence.recorded",
+  "observation.recorded",
+  "claim.created",
+  "claim.staled",
+  "memory.created",
+  "memory.superseded",
+  "decision.created",
+  "decision.superseded",
+  "state.reconciled",
+  "graph.upserted",
+  "agent.run.started",
+  "agent.run.completed",
+  "authorization.denied",
+  "secret.detected",
+  "evaluation.completed",
+  "resolution.recorded",
+  "gate.evaluated",
+  "patch.proposed",
+  "patch.applied",
+  "provider.observation",
+] as const;
+
+export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

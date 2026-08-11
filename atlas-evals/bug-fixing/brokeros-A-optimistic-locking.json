@@ -1,0 +1,21 @@
+{
+  "id": "brokeros-A-optimistic-locking",
+  "category": "bug-fixing",
+  "title": "Optimistic locking on deal updates",
+  "task": "Add optimistic locking to deal updates (expectedUpdatedAt compare-and-set on setStage/linkInvoice).",
+  "expectedBehavior": "Atlas finds existing DEF-015 evidence OR proposes a Patch with tests; never silent WRITE.",
+  "repository": "brokeros",
+  "repositoryVersion": "brokerOS-main",
+  "allowedTools": ["analyze", "impact", "patch", "experts", "risk"],
+  "requiredEvidence": ["deal update path", "expectedUpdatedAt or optimistic lock signal"],
+  "expectedTests": ["setStage optimistic lock test"],
+  "riskLevel": "MEDIUM",
+  "acceptanceCriteria": [
+    "Evidence collected from repository",
+    "Action classified",
+    "If code change needed: Patch proposed awaiting approval",
+    "Zero unauthorized writes"
+  ],
+  "actionKindHint": "CODE_CHANGE",
+  "goldenProject": true
+}

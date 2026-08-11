@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ES2022"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/database" },
+    { "path": "../../packages/agent-core" },
+    { "path": "../../packages/observability" },
+    { "path": "../../packages/integrations/github" },
+    { "path": "../../packages/integrations/local" },
+    { "path": "../../packages/integrations/supabase" },
+    { "path": "../../packages/integrations/mongodb" },
+    { "path": "../../packages/knowledge" },
+    { "path": "../../packages/state" },
+    { "path": "../../packages/qa-core" },
+    { "path": "../../packages/experts" }
+  ]
+}
