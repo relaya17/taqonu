@@ -109,23 +109,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isRtl = locale === "he" || locale === "ar";
   const theme = useTheme();
-  /**
-   * Media-query layout must match SSR on the first client paint.
-   * `noSsr: true` alone still flips to mobile before/during hydrate and
-   * swaps permanent Drawer for a portaled temporary one → hydration mismatch.
-   */
-  const [mqReady, setMqReady] = useState(false);
-  const prefersMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const isMobile = mqReady && prefersMobile;
+  // Used only for behavior (close drawer on desktop), never to swap DOM trees.
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setMqReady(true);
-  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -335,46 +325,47 @@ export function AppShell({ children }: { children: ReactNode }) {
         {t("a11y.skipToContent")}
       </a>
 
-      {isMobile ? (
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={closeMobileNav}
-          anchor={isRtl ? "right" : "left"}
-          ModalProps={{ keepMounted: true }}
-          PaperProps={{
-            sx: drawerPaperSx,
-            "aria-label": t("nav.main"),
-            id: mobileNavId,
-          }}
-        >
-          <Stack direction="row" justifyContent="flex-end">
-            <IconButton
-              ref={closeButtonRef}
-              onClick={closeMobileNav}
-              aria-label={t("a11y.closeMenu")}
-              sx={{ color: "#F4F7F5" }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Stack>
-          {nav}
-        </Drawer>
-      ) : (
-        <Drawer
-          variant="permanent"
-          anchor={isRtl ? "right" : "left"}
-          open
-          sx={{
-            width: DRAWER_WIDTH,
-            flexShrink: 0,
-            [`& .MuiDrawer-paper`]: drawerPaperSx,
-          }}
-          PaperProps={{ "aria-label": t("nav.main"), component: "aside" }}
-        >
-          {nav}
-        </Drawer>
-      )}
+      {/* Always mount both drawers — CSS hides one. Avoids media-query hydration mismatches. */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={closeMobileNav}
+        anchor={isRtl ? "right" : "left"}
+        ModalProps={{ keepMounted: true }}
+        sx={{ display: { xs: "block", md: "none" } }}
+        PaperProps={{
+          sx: drawerPaperSx,
+          "aria-label": t("nav.main"),
+          id: mobileNavId,
+        }}
+      >
+        <Stack direction="row" justifyContent="flex-end">
+          <IconButton
+            ref={closeButtonRef}
+            onClick={closeMobileNav}
+            aria-label={t("a11y.closeMenu")}
+            sx={{ color: "#F4F7F5" }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+        {nav}
+      </Drawer>
+
+      <Drawer
+        variant="permanent"
+        anchor={isRtl ? "right" : "left"}
+        open
+        sx={{
+          display: { xs: "none", md: "block" },
+          width: DRAWER_WIDTH,
+          flexShrink: 0,
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
+        }}
+        PaperProps={{ "aria-label": t("nav.main"), component: "aside" }}
+      >
+        {nav}
+      </Drawer>
 
       <Box
         component="main"
@@ -392,33 +383,31 @@ export function AppShell({ children }: { children: ReactNode }) {
           outline: "none",
         }}
       >
-        {isMobile ? (
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={1}
-            sx={{ mb: 2, minWidth: 0 }}
-            component="header"
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ mb: 2, minWidth: 0, display: { xs: "flex", md: "none" } }}
+          component="header"
+        >
+          <IconButton
+            ref={menuButtonRef}
+            edge="start"
+            onClick={() => setMobileOpen(true)}
+            aria-label={t("a11y.openMenu")}
+            aria-expanded={mobileOpen}
+            aria-controls={mobileNavId}
           >
-            <IconButton
-              ref={menuButtonRef}
-              edge="start"
-              onClick={() => setMobileOpen(true)}
-              aria-label={t("a11y.openMenu")}
-              aria-expanded={mobileOpen}
-              aria-controls={mobileNavId}
-            >
-              <MenuIcon />
-            </IconButton>
-            <Typography
-              component="p"
-              fontWeight={700}
-              sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            >
-              {t("brand.name")}
-            </Typography>
-          </Stack>
-        ) : null}
+            <MenuIcon />
+          </IconButton>
+          <Typography
+            component="p"
+            fontWeight={700}
+            sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {t("brand.name")}
+          </Typography>
+        </Stack>
         {children}
       </Box>
     </Box>
