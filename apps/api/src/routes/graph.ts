@@ -2,18 +2,26 @@ import type { FastifyInstance } from "fastify";
 import {
   graphImpactQuerySchema,
   graphImpactResultSchema,
+  graphNodeSchema,
+  paginatedResponseSchema,
   uuidSchema,
 } from "@atlas/shared";
 import { z } from "zod";
 
+const emptyGraphNodesPage = paginatedResponseSchema(graphNodeSchema).extend({
+  note: z.string(),
+});
+
 export async function registerGraphRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/graph/nodes", async () => ({
-    items: [],
-    page: 1,
-    pageSize: 20,
-    total: 0,
-    note: "Graph upserts arrive from GitHub sync + memory/decision writes.",
-  }));
+  app.get("/api/v1/graph/nodes", async () =>
+    emptyGraphNodesPage.parse({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      note: "Graph upserts arrive from GitHub sync + memory/decision writes.",
+    }),
+  );
 
   app.get("/api/v1/graph/nodes/:id/impact", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);

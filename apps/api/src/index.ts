@@ -1,26 +1,29 @@
-import { AtlasError } from "@atlas/shared";
-import { loadServerEnv } from "@atlas/config";
-import { buildApp } from "./app.js";
+/**
+ * Vercel Fastify entrypoint.
+ *
+ * Turbo builds the full API into dist/ first. This shim loads that output so
+ * Vercel's post-build TypeScript pass does not re-typecheck the monorepo
+ * (including apps/web) under the API tsconfig.
+ *
+ * Local: `pnpm --filter @atlas/api dev` → src/server.ts
+ * Start: `pnpm --filter @atlas/api start` → dist/server.js
+ */
+import "fastify";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-async function main(): Promise<void> {
-  const env = loadServerEnv();
-  const app = await buildApp(env);
+const distServer = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "dist",
+  "server.js",
+);
 
-  await app.listen({ port: env.API_PORT, host: "0.0.0.0" });
-  app.atlasLogger.info("api_started", {
-    port: env.API_PORT,
-    product: env.APP_NAME,
-    codename: env.PRODUCT_CODENAME,
-  });
+if (!existsSync(distServer)) {
+  throw new Error(
+    `Missing ${distServer}. Run: pnpm exec turbo run build --filter=@atlas/api...`,
+  );
 }
 
-main().catch((error: unknown) => {
-  const message =
-    error instanceof AtlasError
-      ? `${error.code}: ${error.message}`
-      : error instanceof Error
-        ? error.message
-        : "unknown startup error";
-  console.error(JSON.stringify({ level: "error", message, service: "atlas-api" }));
-  process.exit(1);
-});
+await import(pathToFileURL(distServer).href);
