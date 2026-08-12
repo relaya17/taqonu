@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   Box,
   Drawer,
@@ -12,17 +12,16 @@ import {
   Stack,
   Typography,
   Button,
-  useMediaQuery,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 import { useTranslations, useLocale } from "next-intl";
-import { useTheme } from "@mui/material/styles";
 import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 
-const DRAWER_WIDTH = 248;
+/** Permanent sidebar — slightly narrower on tiny viewports so content still fits. */
+const DRAWER_WIDTH = { xs: 200, sm: 248 } as const;
 
 /** Primary nav — demo-critical surfaces only (contract/metrics live under Settings). */
 const NAV_KEYS = [
@@ -108,37 +107,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const locale = useLocale();
   const pathname = usePathname();
   const isRtl = locale === "he" || locale === "ar";
-  const theme = useTheme();
-  // Used only for behavior (close drawer on desktop), never to swap DOM trees.
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const mobileNavId = useId();
-  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!isMobile) {
-      setMobileOpen(false);
-    }
-  }, [isMobile]);
-
-  useEffect(() => {
-    if (mobileOpen) {
-      closeButtonRef.current?.focus();
-    }
-  }, [mobileOpen]);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  /** Narrow screens: sidebar stays available; hamburger toggles collapse. Default open. */
+  const [navOpen, setNavOpen] = useState(true);
+  const navId = useId();
 
   const meQuery = useQuery({
     queryKey: ["auth-session"],
     queryFn: async () => {
-      const session = await apiGet<AuthMe & { authenticated: boolean; user: AuthMe["user"] | null }>(
-        "/api/v1/auth/session",
-      );
+      const session = await apiGet<
+        AuthMe & { authenticated: boolean; user: AuthMe["user"] | null }
+      >("/api/v1/auth/session");
       if (!session.authenticated || !session.user) {
         throw new Error("Not signed in");
       }
@@ -158,11 +138,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.location.href = `/${locale}/auth/login`;
   };
 
-  const closeMobileNav = () => {
-    setMobileOpen(false);
-    queueMicrotask(() => menuButtonRef.current?.focus());
-  };
-
   const focusMain = (event?: MouseEvent<HTMLAnchorElement>) => {
     event?.preventDefault();
     const main = mainRef.current ?? document.getElementById("main-content");
@@ -177,7 +152,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           component={Link}
           href="/"
           variant="h5"
-          onClick={() => setMobileOpen(false)}
           sx={{
             fontFamily: '"Fraunces", "Frank Ruhl Libre", serif',
             letterSpacing: "-0.03em",
@@ -210,7 +184,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 href={href}
                 selected={selected}
                 aria-current={selected ? "page" : undefined}
-                onClick={() => setMobileOpen(false)}
                 sx={{
                   borderRadius: 2,
                   mb: 0.5,
@@ -223,7 +196,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   },
                 }}
               >
-                <ListItemText primary={t(`nav.${key}`)} />
+                <ListItemText
+                  primary={t(`nav.${key}`)}
+                  primaryTypographyProps={{ fontSize: { xs: 13, sm: 14 } }}
+                />
               </ListItemButton>
             );
           })}
@@ -273,7 +249,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Button>
         )}
 
-        <Stack direction="row" spacing={1} role="group" aria-label={t("nav.languages")}>
+        <Stack
+          direction="row"
+          spacing={1}
+          role="group"
+          aria-label={t("nav.languages")}
+        >
           {(["he", "en", "ar"] as const).map((code) => (
             <Button
               key={code}
@@ -297,13 +278,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   const drawerPaperSx = {
-    width: DRAWER_WIDTH,
     maxWidth: "100vw",
     border: 0,
     background:
       "linear-gradient(180deg, rgba(15,61,62,0.96) 0%, rgba(20,40,42,0.98) 100%)",
     color: "#F4F7F5",
-    px: 1.5,
     py: 2.5,
     display: "flex",
     flexDirection: "column" as const,
@@ -325,45 +304,58 @@ export function AppShell({ children }: { children: ReactNode }) {
         {t("a11y.skipToContent")}
       </a>
 
-      {/* Always mount both drawers — CSS hides one. Avoids media-query hydration mismatches. */}
       <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={closeMobileNav}
+        variant="permanent"
         anchor={isRtl ? "right" : "left"}
-        ModalProps={{ keepMounted: true }}
-        sx={{ display: { xs: "block", md: "none" } }}
+        open
+        sx={{
+          display: "block",
+          width: {
+            xs: navOpen ? DRAWER_WIDTH.xs : 0,
+            sm: navOpen ? DRAWER_WIDTH.sm : 0,
+            md: DRAWER_WIDTH.sm,
+          },
+          flexShrink: 0,
+          overflowX: "hidden",
+          transition: (theme) =>
+            theme.transitions.create("width", {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
+          [`& .MuiDrawer-paper`]: {
+            ...drawerPaperSx,
+            width: {
+              xs: navOpen ? DRAWER_WIDTH.xs : 0,
+              sm: navOpen ? DRAWER_WIDTH.sm : 0,
+              md: DRAWER_WIDTH.sm,
+            },
+            px: { xs: navOpen ? 1.5 : 0, md: 1.5 },
+            transition: (theme) =>
+              theme.transitions.create("width", {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.enteringScreen,
+              }),
+          },
+        }}
         PaperProps={{
-          sx: drawerPaperSx,
           "aria-label": t("nav.main"),
-          id: mobileNavId,
+          component: "aside",
+          id: navId,
         }}
       >
-        <Stack direction="row" justifyContent="flex-end">
+        <Stack
+          direction="row"
+          justifyContent="flex-end"
+          sx={{ display: { xs: "flex", md: "none" }, mb: 0.5 }}
+        >
           <IconButton
-            ref={closeButtonRef}
-            onClick={closeMobileNav}
+            onClick={() => setNavOpen(false)}
             aria-label={t("a11y.closeMenu")}
             sx={{ color: "#F4F7F5" }}
           >
             <CloseIcon />
           </IconButton>
         </Stack>
-        {nav}
-      </Drawer>
-
-      <Drawer
-        variant="permanent"
-        anchor={isRtl ? "right" : "left"}
-        open
-        sx={{
-          display: { xs: "none", md: "block" },
-          width: DRAWER_WIDTH,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: drawerPaperSx,
-        }}
-        PaperProps={{ "aria-label": t("nav.main"), component: "aside" }}
-      >
         {nav}
       </Drawer>
 
@@ -376,7 +368,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         sx={{
           flex: 1,
           minWidth: 0,
-          width: { xs: "100%", md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          width: {
+            xs: navOpen ? `calc(100% - ${DRAWER_WIDTH.xs}px)` : "100%",
+            sm: navOpen ? `calc(100% - ${DRAWER_WIDTH.sm}px)` : "100%",
+            md: `calc(100% - ${DRAWER_WIDTH.sm}px)`,
+          },
           maxWidth: "100%",
           overflowX: "clip",
           p: { xs: 2, sm: 3, md: 4 },
@@ -393,17 +389,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           <IconButton
             ref={menuButtonRef}
             edge="start"
-            onClick={() => setMobileOpen(true)}
-            aria-label={t("a11y.openMenu")}
-            aria-expanded={mobileOpen}
-            aria-controls={mobileNavId}
+            onClick={() => setNavOpen((open) => !open)}
+            aria-label={navOpen ? t("a11y.closeMenu") : t("a11y.openMenu")}
+            aria-expanded={navOpen}
+            aria-controls={navId}
           >
-            <MenuIcon />
+            {navOpen ? <CloseIcon /> : <MenuIcon />}
           </IconButton>
           <Typography
             component="p"
             fontWeight={700}
-            sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            sx={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
           >
             {t("brand.name")}
           </Typography>

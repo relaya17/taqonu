@@ -89,7 +89,7 @@ interface AuditSpineResult {
 
 export default function PartnersPage() {
   const t = useTranslations("partners");
-  const [tab, setTab] = useState<SourceTab>("local");
+  const [tab, setTab] = useState<SourceTab>("github");
   const [name, setName] = useState("Partner Repo");
   const [slug, setSlug] = useState("partner-repo");
   const [root, setRoot] = useState("");
@@ -412,9 +412,9 @@ export default function PartnersPage() {
         onChange={(_, v: SourceTab) => setTab(v)}
         sx={{ borderBottom: 1, borderColor: "divider" }}
       >
-        <Tab value="local" label={t("tabLocal")} />
         <Tab value="github" label={t("tabGithub")} />
         <Tab value="remote" label={t("tabRemote")} />
+        <Tab value="local" label={t("tabLocal")} />
       </Tabs>
 
       {tab !== "github" ? (

@@ -29,23 +29,29 @@ test.describe("A11y smoke (EN)", () => {
     await expect(main).toBeFocused();
   });
 
-  test("mobile menu control is named and expandable", async ({ page }) => {
+  test("narrow viewport shows sidebar and hamburger toggle", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/en");
     await expect(page.locator("main#main-content")).toBeVisible({
       timeout: 45_000,
     });
 
-    const openMenu = page.getByRole("button", { name: /open menu/i });
-    await expect(openMenu).toBeVisible({ timeout: 15_000 });
-    await expect(openMenu).toHaveAttribute("aria-expanded", "false");
-    await openMenu.click();
-    // Drawer modal aria-hides the page (incl. open button); assert the close control instead.
-    const closeMenu = page.getByRole("button", { name: /close menu/i });
-    await expect(closeMenu).toBeVisible({ timeout: 10_000 });
+    const sidebar = page.locator("aside");
+    await expect(sidebar).toBeVisible({ timeout: 15_000 });
     await expect(
-      page.getByRole("button", { name: /open menu/i, includeHidden: true }),
-    ).toHaveAttribute("aria-expanded", "true");
+      sidebar.getByRole("navigation", { name: /main navigation/i }),
+    ).toBeVisible();
+
+    const menuToggle = page.getByRole("button", { name: /close menu|open menu/i });
+    await expect(menuToggle).toBeVisible({ timeout: 15_000 });
+    await expect(menuToggle).toHaveAttribute("aria-expanded", "true");
+
+    await menuToggle.click();
+    await expect(
+      page.getByRole("button", { name: /open menu/i }),
+    ).toHaveAttribute("aria-expanded", "false");
   });
 
   test("primary surfaces avoid horizontal overflow on narrow viewports", async ({
