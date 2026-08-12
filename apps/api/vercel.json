@@ -4,8 +4,8 @@
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@atlas/api...",
   "functions": {
-    "src/index.ts": {
-      "excludeFiles": "{../../apps/web/**,../web/**,**/*.tsx,../../**/*.tsx}"
+    "index.js": {
+      "excludeFiles": "{../../apps/web/**,../web/**,**/*.tsx,**/*.ts,../../**/*.tsx,../../packages/**/src/**}"
     }
   }
 }
