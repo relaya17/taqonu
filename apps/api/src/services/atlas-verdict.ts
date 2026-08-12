@@ -149,7 +149,7 @@ export function buildAtlasVerdict(input: {
     0.55 + evidenceCoverage * 0.3 + (criticalBlockers === 0 ? 0.1 : 0),
   );
 
-  const blockerItems = [
+  const blockerItems: AtlasVerdict["blockerItems"] = [
     ...graph.nodes
       .filter((n) => n.status === "FAIL" || n.status === "BLOCKED")
       .map((n) => ({
@@ -164,7 +164,7 @@ export function buildAtlasVerdict(input: {
       title: s,
       severity: "HIGH" as const,
       epistemicState: "INFERRED" as const,
-      evidenceRefs: [] as string[],
+      evidenceRefs: [],
     })),
   ];
 
@@ -347,7 +347,7 @@ export function buildEvidenceReport(input: {
               "_Epistemic labels and evidence categories preserved — no silent merge. Not a substitute for live production verification._",
           };
 
-  const sections = [
+  const sections: EvidenceReport["sections"] = [
     {
       title: copy.sectionVerdict,
       body: verdict.plainLanguageSummary,
@@ -373,12 +373,12 @@ export function buildEvidenceReport(input: {
               `- [${severityLabel(locale, b.severity)}] ${b.title}`,
           )
           .join("\n") || copy.none,
-      evidenceRefs: [] as string[],
+      evidenceRefs: [],
     },
     {
       title: copy.sectionGov,
       body: copy.govBody,
-      evidenceRefs: [] as string[],
+      evidenceRefs: [],
     },
   ];
 
