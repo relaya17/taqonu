@@ -173,6 +173,35 @@ describe("reconcileProjectState", () => {
     ).toBe("FACT");
   });
 
+  it("marks DEPLOYMENT as OBSERVED when vercel feed is READY", () => {
+    const result = reconcileProjectState({
+      projectId: PROJECT_ID,
+      observations: [
+        {
+          connector: "vercel",
+          projectId: PROJECT_ID,
+          observedAt: "2026-08-12T12:00:00.000Z",
+          deployment: {
+            provider: "vercel",
+            summary: "Vercel/api: production · READY",
+            environment: "production",
+            status: "READY",
+            url: "https://api.example.vercel.app",
+            commitSha: "abc1234",
+          },
+        },
+      ],
+      evidence: [],
+      claims: [],
+      memories: [],
+      decisions: [],
+    });
+
+    expect(
+      result.snapshot.slices.find((s) => s.key === "DEPLOYMENT")?.epistemicState,
+    ).toBe("OBSERVED");
+  });
+
   it("retains CONFLICTED overall when claims conflict", () => {
     const claimA = {
       id: "33333333-3333-4333-8333-333333333333",

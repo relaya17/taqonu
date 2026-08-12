@@ -121,7 +121,8 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
     const params = z.object({ projectId: uuidSchema }).parse(request.params);
     return {
       items: osStore.getDbFeeds(params.projectId),
-      note: "Observation feeds for Current State DATABASE — distinct from Atlas persistence.",
+      deployment: osStore.getDeployFeeds(params.projectId),
+      note: "Observation feeds for Current State DATABASE + DEPLOYMENT — distinct from Atlas persistence.",
     };
   });
 }

@@ -415,6 +415,57 @@ function buildDatabaseSlice(
   };
 }
 
+function buildDeploymentSlice(
+  input: ReconciliationInput,
+  asOf: string,
+): SliceDraft {
+  const deployObs = input.observations.filter(
+    (item) => item.connector === "vercel" || item.connector === "render",
+  );
+  if (deployObs.length === 0) {
+    return buildEmptyConnectorSlice("DEPLOYMENT", asOf, "Deployment state");
+  }
+
+  const parts = deployObs.map((item) => {
+    const d = item.deployment;
+    if (!d) return `${item.connector}: observed`;
+    return `${d.provider}: ${d.environment} · ${d.status}${d.commitSha ? ` @ ${d.commitSha.slice(0, 7)}` : ""}`;
+  });
+
+  const anyReady = deployObs.some((item) => {
+    const status = item.deployment?.status?.toUpperCase() ?? "";
+    return status === "READY" || status === "LIVE";
+  });
+  const anyFailed = deployObs.some((item) => {
+    const status = item.deployment?.status?.toUpperCase() ?? "";
+    return status === "ERROR" || status === "BUILD_FAILED";
+  });
+
+  const epistemicState = anyFailed
+    ? "UNVERIFIED"
+    : anyReady
+      ? "OBSERVED"
+      : "UNKNOWN";
+
+  return {
+    key: "DEPLOYMENT",
+    summary: parts.join(" · "),
+    epistemicState,
+    confidence: anyReady ? 0.9 : anyFailed ? 0.5 : 0.4,
+    evidenceIds: evidenceFor(
+      input.evidence,
+      (item) =>
+        item.category === "DEPLOYMENT" ||
+        item.source.includes("vercel") ||
+        item.source.includes("render"),
+    ).map((item) => item.id),
+    claimIds: [],
+    asOf: deployObs[0]?.observedAt ?? asOf,
+    validUntil: null,
+    stale: false,
+  };
+}
+
 function buildEmptyConnectorSlice(
   key: ProjectStateSliceKey,
   asOf: string,
@@ -436,7 +487,7 @@ export function buildAllSlices(input: ReconciliationInput): SliceDraft[] {
     DEPENDENCIES: buildDependenciesSlice(input, asOf),
     DATABASE: buildDatabaseSlice(input, asOf),
     ENVIRONMENT: buildEmptyConnectorSlice("ENVIRONMENT", asOf, "Environment metadata"),
-    DEPLOYMENT: buildEmptyConnectorSlice("DEPLOYMENT", asOf, "Deployment state"),
+    DEPLOYMENT: buildDeploymentSlice(input, asOf),
     TESTS: buildTestsSlice(input, asOf),
     SECURITY: buildSecuritySlice(input, asOf),
     DECISIONS: buildDecisionsSlice(input, asOf),

@@ -9,7 +9,7 @@ import type {
 
 /** Connector-agnostic observation fed into reconciliation. */
 export interface ConnectorObservation {
-  readonly connector: "github" | "supabase" | "mongodb";
+  readonly connector: "github" | "supabase" | "mongodb" | "vercel" | "render";
   readonly projectId: string;
   readonly observedAt: string;
   readonly repository?: {
@@ -40,6 +40,14 @@ export interface ConnectorObservation {
     readonly objectNames: readonly string[];
     readonly rlsEnabled: boolean | null;
     readonly host: string | null;
+  };
+  readonly deployment?: {
+    readonly provider: "vercel" | "render";
+    readonly summary: string;
+    readonly environment: "production" | "preview" | "development";
+    readonly status: string;
+    readonly url: string | null;
+    readonly commitSha: string | null;
   };
 }
 

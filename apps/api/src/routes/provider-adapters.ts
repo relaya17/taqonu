@@ -48,13 +48,13 @@ export async function registerProviderAdapterRoutes(
       },
       {
         id: "vercel",
-        status: "mvp",
-        note: "POST /api/v1/providers/vercel/observe → DEPLOYMENT evidence",
+        status: "live",
+        note: "POST /api/v1/feeds/vercel → DEPLOYMENT evidence (+ /providers/vercel/observe)",
       },
       {
         id: "render",
-        status: "mvp",
-        note: "POST /api/v1/providers/render/observe → DEPLOYMENT evidence",
+        status: "live",
+        note: "POST /api/v1/feeds/render → DEPLOYMENT evidence (+ /providers/render/observe)",
       },
       {
         id: "supabase",

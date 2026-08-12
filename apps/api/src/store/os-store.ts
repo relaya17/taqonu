@@ -42,6 +42,18 @@ export interface DbFeedObservation {
   readonly host?: string | null;
 }
 
+export interface DeployFeedObservation {
+  readonly provider: "vercel" | "render";
+  readonly projectId: string;
+  readonly observedAt: string;
+  readonly summary: string;
+  readonly environment: "production" | "preview" | "development";
+  readonly status: string;
+  readonly url: string | null;
+  readonly commitSha: string | null;
+  readonly hostLabel: string;
+}
+
 /** Stored secrets — never returned raw via API. */
 export interface StoredGithubConnection {
   id: string;
@@ -91,6 +103,7 @@ interface PersistedShape {
   snapshots: Record<string, ProjectStateSnapshot>;
   github: Record<string, GitHubRepoObservation>;
   dbFeeds: Record<string, DbFeedObservation[]>;
+  deployFeeds: Record<string, DeployFeedObservation[]>;
   openTasks: Record<string, string[]>;
   events: Array<Record<string, unknown>>;
   githubConnection?: StoredGithubConnection | null;
@@ -195,6 +208,7 @@ function emptyShape(): PersistedShape {
     snapshots: {},
     github: {},
     dbFeeds: {},
+    deployFeeds: {},
     openTasks: {},
     events: [],
     githubConnection: null,
@@ -234,6 +248,7 @@ class OsStore {
   readonly observations = new Map<string, ConnectorObservation[]>();
   readonly github = new Map<string, GitHubRepoObservation>();
   readonly dbFeeds = new Map<string, DbFeedObservation[]>();
+  readonly deployFeeds = new Map<string, DeployFeedObservation[]>();
   readonly snapshots = new Map<string, ProjectStateSnapshot>();
   readonly openTasks = new Map<string, string[]>();
   events: Array<Record<string, unknown>> = [];
@@ -310,11 +325,20 @@ class OsStore {
     }
     for (const [k, v] of Object.entries(raw.github ?? {})) {
       this.github.set(k, v);
-      this.rebuildGithubObservation(k, v);
     }
     for (const [k, v] of Object.entries(raw.dbFeeds ?? {})) {
       this.dbFeeds.set(k, v);
-      this.rebuildDbObservations(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.deployFeeds ?? {})) {
+      this.deployFeeds.set(k, v);
+    }
+    const observationProjectIds = new Set([
+      ...this.github.keys(),
+      ...this.dbFeeds.keys(),
+      ...this.deployFeeds.keys(),
+    ]);
+    for (const projectId of observationProjectIds) {
+      this.rebuildObservations(projectId);
     }
     for (const [k, v] of Object.entries(raw.openTasks ?? {})) {
       this.openTasks.set(k, v);
@@ -369,6 +393,7 @@ class OsStore {
       snapshots: Object.fromEntries(this.snapshots),
       github: Object.fromEntries(this.github),
       dbFeeds: Object.fromEntries(this.dbFeeds),
+      deployFeeds: Object.fromEntries(this.deployFeeds),
       openTasks: Object.fromEntries(this.openTasks),
       events: this.events.slice(-500),
       githubConnection: this.githubConnection,
@@ -531,6 +556,7 @@ class OsStore {
     this.observations.clear();
     this.github.clear();
     this.dbFeeds.clear();
+    this.deployFeeds.clear();
     this.snapshots.clear();
     this.openTasks.clear();
     this.events = [];
@@ -709,7 +735,7 @@ class OsStore {
   ): void {
     this.ensureLoaded();
     this.github.set(projectId, observation);
-    this.rebuildGithubObservation(projectId, observation);
+    this.rebuildObservations(projectId);
     this.persist();
   }
 
@@ -720,67 +746,86 @@ class OsStore {
     );
     const next = [...existing, feed];
     this.dbFeeds.set(projectId, next);
-    this.rebuildDbObservations(projectId, next);
+    this.rebuildObservations(projectId);
     this.persist();
   }
 
-  private rebuildGithubObservation(
-    projectId: string,
-    observation: GitHubRepoObservation,
-  ): void {
-    const connectorObs: ConnectorObservation = {
-      connector: "github",
-      projectId,
-      observedAt: observation.observedAt,
-      repository: {
-        fullName: observation.fullName,
-        defaultBranch: observation.defaultBranch,
-        private: observation.private,
-        htmlUrl: observation.htmlUrl,
-        lastSyncedAt: observation.lastSyncedAt,
-      },
-      headSha: observation.headSha,
-      openPrCount: observation.openPrCount,
-      openIssueCount: observation.openIssueCount,
-      dependencyManifests: observation.dependencyManifests,
-      hasCiConfig: observation.hasCiConfig,
-      architectureDocPaths: observation.architectureDocPaths,
-      testSignals: {
-        hasTestDirectory: observation.hasTestDirectory,
-        recentCiStatus: observation.recentCiStatus,
-      },
-      securitySignals: {
-        hasDependabot: observation.hasDependabot,
-        hasCodeowners: observation.hasCodeowners,
-      },
-    };
-    const others = (this.observations.get(projectId) ?? []).filter(
-      (item) => item.connector !== "github",
+  setDeployFeed(projectId: string, feed: DeployFeedObservation): void {
+    this.ensureLoaded();
+    const existing = (this.deployFeeds.get(projectId) ?? []).filter(
+      (item) => item.provider !== feed.provider,
     );
-    this.observations.set(projectId, [...others, connectorObs]);
+    const next = [...existing, feed];
+    this.deployFeeds.set(projectId, next);
+    this.rebuildObservations(projectId);
+    this.persist();
   }
 
-  private rebuildDbObservations(
-    projectId: string,
-    feeds: readonly DbFeedObservation[],
-  ): void {
-    const nonDb = (this.observations.get(projectId) ?? []).filter(
-      (item) => item.connector === "github",
-    );
-    const dbObs: ConnectorObservation[] = feeds.map((feed) => ({
-      connector: feed.provider,
-      projectId,
-      observedAt: feed.observedAt,
-      database: {
-        provider: feed.provider,
-        summary: feed.summary,
-        objectCount: feed.tableOrCollectionCount,
-        objectNames: feed.names,
-        rlsEnabled: feed.rlsEnabled ?? null,
-        host: feed.host ?? null,
-      },
-    }));
-    this.observations.set(projectId, [...nonDb, ...dbObs]);
+  private rebuildObservations(projectId: string): void {
+    const items: ConnectorObservation[] = [];
+    const observation = this.github.get(projectId);
+    if (observation) {
+      items.push({
+        connector: "github",
+        projectId,
+        observedAt: observation.observedAt,
+        repository: {
+          fullName: observation.fullName,
+          defaultBranch: observation.defaultBranch,
+          private: observation.private,
+          htmlUrl: observation.htmlUrl,
+          lastSyncedAt: observation.lastSyncedAt,
+        },
+        headSha: observation.headSha,
+        openPrCount: observation.openPrCount,
+        openIssueCount: observation.openIssueCount,
+        dependencyManifests: observation.dependencyManifests,
+        hasCiConfig: observation.hasCiConfig,
+        architectureDocPaths: observation.architectureDocPaths,
+        testSignals: {
+          hasTestDirectory: observation.hasTestDirectory,
+          recentCiStatus: observation.recentCiStatus,
+        },
+        securitySignals: {
+          hasDependabot: observation.hasDependabot,
+          hasCodeowners: observation.hasCodeowners,
+        },
+      });
+    }
+
+    for (const feed of this.dbFeeds.get(projectId) ?? []) {
+      items.push({
+        connector: feed.provider,
+        projectId,
+        observedAt: feed.observedAt,
+        database: {
+          provider: feed.provider,
+          summary: feed.summary,
+          objectCount: feed.tableOrCollectionCount,
+          objectNames: feed.names,
+          rlsEnabled: feed.rlsEnabled ?? null,
+          host: feed.host ?? null,
+        },
+      });
+    }
+
+    for (const feed of this.deployFeeds.get(projectId) ?? []) {
+      items.push({
+        connector: feed.provider,
+        projectId,
+        observedAt: feed.observedAt,
+        deployment: {
+          provider: feed.provider,
+          summary: feed.summary,
+          environment: feed.environment,
+          status: feed.status,
+          url: feed.url,
+          commitSha: feed.commitSha,
+        },
+      });
+    }
+
+    this.observations.set(projectId, items);
   }
 
   getObservations(projectId: string): ConnectorObservation[] {
@@ -802,6 +847,11 @@ class OsStore {
   getDbFeeds(projectId: string): readonly DbFeedObservation[] {
     this.ensureLoaded();
     return this.dbFeeds.get(projectId) ?? [];
+  }
+
+  getDeployFeeds(projectId: string): readonly DeployFeedObservation[] {
+    this.ensureLoaded();
+    return this.deployFeeds.get(projectId) ?? [];
   }
 
   recordEvent(event: Record<string, unknown>): void {

@@ -15,6 +15,7 @@ import { registerConversationRoutes } from "./routes/conversation.js";
 import { registerEvalRoutes } from "./routes/eval.js";
 import { registerGithubRoutes } from "./routes/github.js";
 import { registerDbFeedRoutes } from "./routes/db-feeds.js";
+import { registerDeployFeedRoutes } from "./routes/deploy-feeds.js";
 import { registerKnowledgeRoutes } from "./routes/knowledge.js";
 import { registerResearchRoutes } from "./routes/research.js";
 import { registerAuditRoutes } from "./routes/audit.js";
@@ -95,6 +96,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerEvalCiGateRoutes(app);
   await registerGithubRoutes(app);
   await registerDbFeedRoutes(app);
+  await registerDeployFeedRoutes(app);
   // Deferred connectors / research — stubs only (Architecture v1.0 non-MVP)
   await registerKnowledgeRoutes(app);
   await registerResearchRoutes(app);

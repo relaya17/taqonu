@@ -300,7 +300,7 @@ export function detectObsMetricsExport(has: HasFn): DetectorEval {
 /** Deploy provider feed (Vercel/Render/Netlify observe → evidence). */
 export function detectDeployProviderFeed(has: HasFn): DetectorEval {
   return has(
-    /vercel\/observe|render\/observe|netlify|vercelObservation|renderObservation|DEPLOYMENT.*evidence|provider.*vercel|provider.*render/i,
+    /vercel\/observe|render\/observe|feeds\/vercel|feeds\/render|netlify|vercelObservation|renderObservation|DEPLOYMENT.*evidence|provider.*vercel|provider.*render/i,
   )
     ? {
         status: "PASS",

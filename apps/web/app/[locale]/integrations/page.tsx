@@ -79,6 +79,20 @@ interface DbFeedItem {
   host?: string | null;
 }
 
+interface DeployFeedItem {
+  provider: "vercel" | "render";
+  summary: string;
+  environment: string;
+  status: string;
+  observedAt: string;
+  url?: string | null;
+}
+
+interface FeedsResponse {
+  items: DbFeedItem[];
+  deployment: DeployFeedItem[];
+}
+
 export default function IntegrationsPage() {
   const t = useTranslations("integrations");
   const locale = useLocale();
@@ -93,6 +107,24 @@ export default function IntegrationsPage() {
   const [mongoHost, setMongoHost] = useState("");
   const [mongoDb, setMongoDb] = useState("");
   const [mongoCollections, setMongoCollections] = useState("");
+  const [vercelProjectName, setVercelProjectName] = useState("");
+  const [vercelUrl, setVercelUrl] = useState("");
+  const [vercelEnv, setVercelEnv] = useState<
+    "production" | "preview" | "development"
+  >("production");
+  const [vercelState, setVercelState] = useState<
+    "READY" | "ERROR" | "BUILDING" | "QUEUED" | "UNKNOWN"
+  >("READY");
+  const [vercelSha, setVercelSha] = useState("");
+  const [renderServiceName, setRenderServiceName] = useState("");
+  const [renderUrl, setRenderUrl] = useState("");
+  const [renderEnv, setRenderEnv] = useState<
+    "production" | "preview" | "development"
+  >("production");
+  const [renderStatus, setRenderStatus] = useState<
+    "live" | "build_failed" | "suspended" | "deploying" | "unknown"
+  >("live");
+  const [renderSha, setRenderSha] = useState("");
 
   const githubInstallStatus = searchParams.get("github_install");
   const githubInstallReason = searchParams.get("reason");
@@ -116,7 +148,7 @@ export default function IntegrationsPage() {
   const dbFeeds = useQuery({
     queryKey: ["db-feeds", feedProjectId],
     queryFn: () =>
-      apiGet<{ items: DbFeedItem[] }>(`/api/v1/feeds/${feedProjectId}`),
+      apiGet<FeedsResponse>(`/api/v1/feeds/${feedProjectId}`),
     enabled: feedProjectId.length > 0,
   });
 
@@ -205,6 +237,32 @@ export default function IntegrationsPage() {
         collections,
       });
     },
+    onSuccess: invalidate,
+  });
+
+  const postVercelFeed = useMutation({
+    mutationFn: () =>
+      apiPost("/api/v1/feeds/vercel", {
+        projectId: feedProjectId,
+        projectName: vercelProjectName.trim(),
+        deploymentUrl: vercelUrl.trim() || null,
+        environment: vercelEnv,
+        readyState: vercelState,
+        commitSha: vercelSha.trim() || null,
+      }),
+    onSuccess: invalidate,
+  });
+
+  const postRenderFeed = useMutation({
+    mutationFn: () =>
+      apiPost("/api/v1/feeds/render", {
+        projectId: feedProjectId,
+        serviceName: renderServiceName.trim(),
+        serviceUrl: renderUrl.trim() || null,
+        environment: renderEnv,
+        status: renderStatus,
+        commitSha: renderSha.trim() || null,
+      }),
     onSuccess: invalidate,
   });
 
@@ -657,6 +715,208 @@ export default function IntegrationsPage() {
             </Box>
           </Stack>
         ) : null}
+      </Box>
+
+      <Box
+        sx={{
+          borderTop: "1px solid rgba(20,32,34,0.12)",
+          pt: 3,
+        }}
+      >
+        <Typography fontWeight={650} sx={{ mb: 0.5 }}>
+          {t("deployFeedsTitle")}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t("deployFeedsHelp")}
+        </Typography>
+        {!feedProjectId ? (
+          <Alert severity="info">{t("deployFeedsNeedProject")}</Alert>
+        ) : (
+          <Stack spacing={3}>
+            {dbFeeds.data?.deployment && dbFeeds.data.deployment.length > 0 ? (
+              <Alert severity="info">
+                {dbFeeds.data.deployment
+                  .map(
+                    (item) =>
+                      `${item.provider}: ${item.summary} (${new Date(item.observedAt).toLocaleString()})`,
+                  )
+                  .join(" · ")}
+              </Alert>
+            ) : null}
+
+            <Box>
+              <Typography fontWeight={600} sx={{ mb: 1 }}>
+                {t("vercelFeedTitle")}
+              </Typography>
+              <Stack spacing={1.5}>
+                <TextField
+                  label={t("vercelProjectName")}
+                  value={vercelProjectName}
+                  onChange={(e) => setVercelProjectName(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label={t("vercelDeploymentUrl")}
+                  value={vercelUrl}
+                  onChange={(e) => setVercelUrl(e.target.value)}
+                  helperText={t("vercelDeploymentUrlHelp")}
+                  fullWidth
+                />
+                <TextField
+                  select
+                  label={t("deployEnvironment")}
+                  value={vercelEnv}
+                  onChange={(e) =>
+                    setVercelEnv(
+                      e.target.value as
+                        | "production"
+                        | "preview"
+                        | "development",
+                    )
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="production">production</MenuItem>
+                  <MenuItem value="preview">preview</MenuItem>
+                  <MenuItem value="development">development</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  label={t("vercelReadyState")}
+                  value={vercelState}
+                  onChange={(e) =>
+                    setVercelState(
+                      e.target.value as
+                        | "READY"
+                        | "ERROR"
+                        | "BUILDING"
+                        | "QUEUED"
+                        | "UNKNOWN",
+                    )
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="READY">READY</MenuItem>
+                  <MenuItem value="ERROR">ERROR</MenuItem>
+                  <MenuItem value="BUILDING">BUILDING</MenuItem>
+                  <MenuItem value="QUEUED">QUEUED</MenuItem>
+                  <MenuItem value="UNKNOWN">UNKNOWN</MenuItem>
+                </TextField>
+                <TextField
+                  label={t("deployCommitSha")}
+                  value={vercelSha}
+                  onChange={(e) => setVercelSha(e.target.value)}
+                  fullWidth
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => postVercelFeed.mutate()}
+                  disabled={
+                    postVercelFeed.isPending ||
+                    vercelProjectName.trim().length < 1
+                  }
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  {t("recordVercelFeed")}
+                </Button>
+                {postVercelFeed.isSuccess ? (
+                  <Alert severity="success">{t("deployFeedRecorded")}</Alert>
+                ) : null}
+                {postVercelFeed.isError ? (
+                  <Alert severity="error">
+                    {(postVercelFeed.error as Error).message}
+                  </Alert>
+                ) : null}
+              </Stack>
+            </Box>
+
+            <Box>
+              <Typography fontWeight={600} sx={{ mb: 1 }}>
+                {t("renderFeedTitle")}
+              </Typography>
+              <Stack spacing={1.5}>
+                <TextField
+                  label={t("renderServiceName")}
+                  value={renderServiceName}
+                  onChange={(e) => setRenderServiceName(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label={t("renderServiceUrl")}
+                  value={renderUrl}
+                  onChange={(e) => setRenderUrl(e.target.value)}
+                  helperText={t("renderServiceUrlHelp")}
+                  fullWidth
+                />
+                <TextField
+                  select
+                  label={t("deployEnvironment")}
+                  value={renderEnv}
+                  onChange={(e) =>
+                    setRenderEnv(
+                      e.target.value as
+                        | "production"
+                        | "preview"
+                        | "development",
+                    )
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="production">production</MenuItem>
+                  <MenuItem value="preview">preview</MenuItem>
+                  <MenuItem value="development">development</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  label={t("renderStatus")}
+                  value={renderStatus}
+                  onChange={(e) =>
+                    setRenderStatus(
+                      e.target.value as
+                        | "live"
+                        | "build_failed"
+                        | "suspended"
+                        | "deploying"
+                        | "unknown",
+                    )
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="live">live</MenuItem>
+                  <MenuItem value="build_failed">build_failed</MenuItem>
+                  <MenuItem value="suspended">suspended</MenuItem>
+                  <MenuItem value="deploying">deploying</MenuItem>
+                  <MenuItem value="unknown">unknown</MenuItem>
+                </TextField>
+                <TextField
+                  label={t("deployCommitSha")}
+                  value={renderSha}
+                  onChange={(e) => setRenderSha(e.target.value)}
+                  fullWidth
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => postRenderFeed.mutate()}
+                  disabled={
+                    postRenderFeed.isPending ||
+                    renderServiceName.trim().length < 1
+                  }
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  {t("recordRenderFeed")}
+                </Button>
+                {postRenderFeed.isSuccess ? (
+                  <Alert severity="success">{t("deployFeedRecorded")}</Alert>
+                ) : null}
+                {postRenderFeed.isError ? (
+                  <Alert severity="error">
+                    {(postRenderFeed.error as Error).message}
+                  </Alert>
+                ) : null}
+              </Stack>
+            </Box>
+          </Stack>
+        )}
       </Box>
     </Stack>
   );
