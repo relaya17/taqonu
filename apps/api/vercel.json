@@ -2,10 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "fastify",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@atlas/api...",
-  "functions": {
-    "index.js": {
-      "excludeFiles": "{../../apps/web/**,../web/**,**/*.tsx,**/*.ts,../../**/*.tsx,../../packages/**/src/**}"
-    }
-  }
+  "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@atlas/api..."
 }
