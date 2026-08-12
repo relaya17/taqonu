@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AtlasError } from "@atlas/shared";
-import { loadDotEnv } from "./load-dotenv.js";
+import { loadDotEnv, loadServerDotEnv } from "./load-dotenv.js";
 
 const emptyToUndefined = (value: unknown): unknown =>
   value === "" || value === undefined ? undefined : value;
@@ -94,7 +94,7 @@ export function loadServerEnv(
   options?: { readonly loadEnvFile?: boolean },
 ): ServerEnv {
   if (options?.loadEnvFile !== false && source === process.env) {
-    loadDotEnv();
+    loadServerDotEnv();
   }
 
   const result = serverEnvSchema.safeParse(source);
