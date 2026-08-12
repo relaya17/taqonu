@@ -12,6 +12,10 @@ export default [
       "**/.next/**",
       "**/node_modules/**",
       "**/coverage/**",
+      // Generated Vercel Node entry (esbuild bundle)
+      "apps/api/server.js",
+      "apps/api/.vercel-bundle-ok",
+      "apps/api/scripts/**",
     ],
   },
   eslint.configs.recommended,

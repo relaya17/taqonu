@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendMetricsLogLine,
   countMetricsLogLines,
@@ -10,6 +10,10 @@ import {
 } from "./metrics-log.js";
 
 describe("metrics-log", () => {
+  beforeEach(() => {
+    delete process.env.ATLAS_SKIP_METRICS_LOG;
+  });
+
   afterEach(() => {
     setMetricsLogPathForTests(null);
     delete process.env.ATLAS_SKIP_METRICS_LOG;

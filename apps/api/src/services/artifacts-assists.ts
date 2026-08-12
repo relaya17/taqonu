@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   ASSIST_CREDIT_COST,
   CREDIT_PACKS,
