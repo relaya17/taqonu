@@ -11,7 +11,7 @@ interface StoredUser {
   displayName: string | null;
   role: UserRole;
   locale: "he" | "en" | "ar";
-  provider: "email" | "google" | "github" | "local";
+  provider: "email" | "google" | "github" | "apple" | "local";
   passwordHash: string | null;
   salt: string | null;
   avatarUrl: string | null;
@@ -142,7 +142,7 @@ export function upsertOAuthUser(input: {
   id?: string;
   email: string;
   displayName?: string | null;
-  provider: "google" | "github";
+  provider: "google" | "github" | "apple";
   avatarUrl?: string | null;
   locale?: "he" | "en" | "ar";
   adminEmail?: string;
@@ -234,7 +234,7 @@ export function mirrorAuthUserLocally(input: {
   displayName?: string | null;
   role: UserRole;
   locale?: "he" | "en" | "ar";
-  provider?: "email" | "google" | "github" | "local";
+  provider?: "email" | "google" | "github" | "apple" | "local";
   avatarUrl?: string | null;
 }): AuthUser {
   const file = load();

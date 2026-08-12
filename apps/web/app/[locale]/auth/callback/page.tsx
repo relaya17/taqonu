@@ -27,8 +27,13 @@ export default function AuthCallbackPage() {
         if (!session?.user?.email) {
           throw new Error(t("oauthFailed"));
         }
+        const rawProvider = session.user.app_metadata?.provider;
         const provider =
-          session.user.app_metadata?.provider === "github" ? "github" : "google";
+          rawProvider === "github" ||
+          rawProvider === "apple" ||
+          rawProvider === "google"
+            ? rawProvider
+            : "google";
         await apiPost("/api/v1/auth/oauth/sync", {
           id: session.user.id,
           email: session.user.email,

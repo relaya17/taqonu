@@ -20,6 +20,7 @@ interface AuthProviders {
   emailPassword: boolean;
   google: boolean;
   github: boolean;
+  apple: boolean;
   cloudAuth: boolean;
 }
 
@@ -49,7 +50,7 @@ export default function LoginPage() {
     },
   });
 
-  const startOAuth = async (provider: "google" | "github") => {
+  const startOAuth = async (provider: "google" | "github" | "apple") => {
     setOauthError(null);
     const client = getSupabaseBrowserClient();
     if (!client) {
@@ -135,6 +136,14 @@ export default function LoginPage() {
           onClick={() => void startOAuth("google")}
         >
           {t("continueGoogle")}
+        </Button>
+        <Button
+          variant="outlined"
+          fullWidth
+          disabled={!providers.data?.apple}
+          onClick={() => void startOAuth("apple")}
+        >
+          {t("continueApple")}
         </Button>
         <Button
           variant="outlined"

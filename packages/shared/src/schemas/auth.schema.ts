@@ -9,7 +9,9 @@ export const authUserSchema = z.object({
   displayName: z.string().min(1).max(120).nullable(),
   role: userRoleSchema,
   locale: z.enum(["he", "en", "ar"]).default("he"),
-  provider: z.enum(["email", "google", "github", "local"]).default("local"),
+  provider: z
+    .enum(["email", "google", "github", "apple", "local"])
+    .default("local"),
   avatarUrl: z.string().url().nullable().optional(),
   createdAt: isoDateTimeSchema,
 });
@@ -30,6 +32,7 @@ export const authProvidersSchema = z.object({
   emailPassword: z.boolean(),
   google: z.boolean(),
   github: z.boolean(),
+  apple: z.boolean(),
   cloudAuth: z.boolean(),
   supabaseUrl: z.string().url().nullable(),
 });

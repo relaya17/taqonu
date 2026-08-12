@@ -8,7 +8,7 @@ import Link from "next/link";
 interface Overview {
   userCount: number;
   adminCount: number;
-  providers: { local: number; google: number; github: number };
+  providers: { local: number; google: number; github: number; apple: number };
   cloudAuth: boolean;
 }
 
@@ -48,12 +48,12 @@ export default function AdminHomePage() {
           <Typography>אדמינים: {data.adminCount}</Typography>
           <Typography>
             ספקים — מקומי: {data.providers.local} · Google: {data.providers.google} ·
-            GitHub: {data.providers.github}
+            Apple: {data.providers.apple} · GitHub: {data.providers.github}
           </Typography>
           <Alert severity={data.cloudAuth ? "success" : "info"}>
             {data.cloudAuth
-              ? "Supabase Cloud פעיל — OAuth Google/GitHub זמין"
-              : "מצב מקומי — אימייל/סיסמה פעיל; הפעילו Supabase ל-Google/GitHub"}
+              ? "Supabase Cloud פעיל — OAuth Google/Apple/GitHub זמין"
+              : "מצב מקומי — אימייל/סיסמה פעיל; הפעילו Supabase ל-Google/Apple/GitHub"}
           </Alert>
         </Stack>
       ) : null}

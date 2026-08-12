@@ -60,6 +60,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       emailPassword: true,
       google: cloud,
       github: cloud,
+      apple: cloud,
       cloudAuth: cloud,
       supabaseUrl: cloud ? app.atlasEnv.SUPABASE_URL : null,
     });
@@ -266,7 +267,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     const body = (request.body ?? {}) as {
       email?: string;
       displayName?: string | null;
-      provider?: "google" | "github";
+      provider?: "google" | "github" | "apple";
       avatarUrl?: string | null;
       id?: string;
       locale?: "he" | "en" | "ar";
@@ -278,8 +279,15 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     if (!body.email || !body.provider) {
       throw new AtlasError("VALIDATION_ERROR", "email and provider required");
     }
-    if (body.provider !== "google" && body.provider !== "github") {
-      throw new AtlasError("VALIDATION_ERROR", "provider must be google or github");
+    if (
+      body.provider !== "google" &&
+      body.provider !== "github" &&
+      body.provider !== "apple"
+    ) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "provider must be google, github, or apple",
+      );
     }
 
     // Prefer role already on the OAuth JWT when present (Auth source of truth).
@@ -374,6 +382,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           .length,
         google: users.filter((u) => u.provider === "google").length,
         github: users.filter((u) => u.provider === "github").length,
+        apple: users.filter((u) => u.provider === "apple").length,
       },
       cloudAuth,
       authMode: cloudAuth ? "supabase_auth_preferred" : "local_session_fallback",

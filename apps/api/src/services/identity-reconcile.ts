@@ -40,7 +40,7 @@ export interface AccessTokenClaims {
   readonly atlasRole: "user" | "admin" | null;
   readonly displayName: string | null;
   readonly avatarUrl: string | null;
-  readonly provider: "email" | "google" | "github" | "local" | null;
+  readonly provider: "email" | "google" | "github" | "apple" | "local" | null;
   readonly locale: "he" | "en" | "ar" | null;
   /** epoch ms */
   readonly expiresAt: number | null;
@@ -76,6 +76,7 @@ export function readAccessTokenClaims(accessToken: string): AccessTokenClaims | 
     const provider =
       providerRaw === "google" ||
       providerRaw === "github" ||
+      providerRaw === "apple" ||
       providerRaw === "email" ||
       providerRaw === "local"
         ? providerRaw

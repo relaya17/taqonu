@@ -19,6 +19,7 @@ import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 interface AuthProviders {
   google: boolean;
   github: boolean;
+  apple: boolean;
   cloudAuth: boolean;
 }
 
@@ -50,7 +51,7 @@ export default function RegisterPage() {
     },
   });
 
-  const startOAuth = async (provider: "google" | "github") => {
+  const startOAuth = async (provider: "google" | "github" | "apple") => {
     setOauthError(null);
     const client = getSupabaseBrowserClient();
     if (!client) {
@@ -145,6 +146,14 @@ export default function RegisterPage() {
           onClick={() => void startOAuth("google")}
         >
           {t("continueGoogle")}
+        </Button>
+        <Button
+          variant="outlined"
+          fullWidth
+          disabled={!providers.data?.apple}
+          onClick={() => void startOAuth("apple")}
+        >
+          {t("continueApple")}
         </Button>
         <Button
           variant="outlined"
