@@ -392,3 +392,19 @@ export async function completeWithFreeFallback(
   const echo = new ContextEchoProvider();
   return { provider: echo.name, text: await echo.complete(messages) };
 }
+
+/**
+ * Paid / explicit provider completion — no silent free fallback.
+ * Use when the user selected a credits-billed model so they get that model or a clear error.
+ */
+export async function completeStrict(
+  env: LlmEnv,
+  messages: readonly LlmMessage[],
+): Promise<{ provider: string; text: string }> {
+  const primary = createLlmProvider(env);
+  const text = await primary.complete(messages);
+  if (!text.trim()) {
+    throw new Error(`LLM provider ${primary.name} returned an empty response`);
+  }
+  return { provider: primary.name, text };
+}

@@ -93,7 +93,7 @@ export async function registerExpertRoutes(app: FastifyInstance): Promise<void> 
     const md: string[] = [
       `# ArletOS → Editor Brief`,
       ``,
-      `> Paste this into **Cursor / Claude Code / VS Code**.`,
+      `> Paste this into any editor or coding agent (Cursor, Claude, VS Code, Vercel, …).`,
       `> ArletOS is Engineering+QA intelligence — not a Visual Studio clone.`,
       ``,
       `## Request`,

@@ -7,6 +7,8 @@ import {
   knowledgeIngestRequestSchema,
   knowledgeSearchRequestSchema,
   lessonLearnedSchema,
+  VERIFIED_TECH_SOURCES,
+  TECH_SOURCE_DOMAINS,
 } from "@atlas/shared";
 import {
   dispatchAgentPlan,
@@ -307,6 +309,13 @@ export async function registerAgentFabricRoutes(
       note: "Corpus listing for ops — agents receive filtered packages only.",
     };
   });
+
+  app.get("/api/v1/knowledge/verified-sources", async () => ({
+    domains: TECH_SOURCE_DOMAINS,
+    items: VERIFIED_TECH_SOURCES,
+    note:
+      "Allow-list of official vendor docs, standards bodies, government cyber guidance, and university CS portals. Agents must cite these — no blogs or invented sources.",
+  }));
 
   app.get("/api/v1/knowledge/lessons", async () => ({
     items: listPortfolioLessons().map((l) => lessonLearnedSchema.parse(l)),

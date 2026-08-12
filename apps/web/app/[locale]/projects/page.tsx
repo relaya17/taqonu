@@ -255,6 +255,31 @@ export default function ProjectsPage() {
     },
   });
 
+  const importAndLink = useMutation({
+    mutationFn: (candidate: {
+      folderName: string;
+      absolutePath: string;
+    }) => {
+      const base = candidate.folderName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 56);
+      const slug = `${base || "local-project"}-${Date.now().toString(36).slice(-4)}`;
+      return apiPost("/api/v1/onboarding/import", {
+        source: "local",
+        name: candidate.folderName,
+        slug,
+        workspaceRoot: candidate.absolutePath,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["portfolio-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["portfolio-discovery"] });
+    },
+  });
+
   const uploadCloud = useMutation({
     mutationFn: (projectId: string) =>
       apiPost(`/api/v1/projects/${projectId}/cloud`, {}),
@@ -505,8 +530,13 @@ export default function ProjectsPage() {
                         <Button
                           size="small"
                           variant="outlined"
-                          disabled={refreshDiscovery.isPending}
-                          onClick={() => refreshDiscovery.mutate()}
+                          disabled={importAndLink.isPending}
+                          onClick={() =>
+                            importAndLink.mutate({
+                              folderName: candidate.folderName,
+                              absolutePath: candidate.absolutePath,
+                            })
+                          }
                         >
                           {t("importAndLink")}
                         </Button>

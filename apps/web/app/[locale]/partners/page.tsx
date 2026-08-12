@@ -100,6 +100,7 @@ export default function PartnersPage() {
   const [slug, setSlug] = useState("partner-repo");
   const [root, setRoot] = useState("");
   const [githubRepo, setGithubRepo] = useState("");
+  const [githubToken, setGithubToken] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
   const [syncCloud, setSyncCloud] = useState(false);
   const [spineProjectId, setSpineProjectId] = useState("");
@@ -132,6 +133,16 @@ export default function PartnersPage() {
     queryKey: ["projects"],
     queryFn: () => apiGet<{ items: ProjectItem[] }>("/api/v1/projects"),
     staleTime: 60_000,
+  });
+
+  const connections = useQuery({
+    queryKey: ["connections"],
+    queryFn: () =>
+      apiGet<{
+        github: { login: string | null; tokenConfigured: boolean } | null;
+        local: { reposRoot: string | null } | null;
+      }>("/api/v1/connections"),
+    staleTime: 30_000,
   });
 
   const caseStudy = useQuery({
@@ -173,6 +184,7 @@ export default function PartnersPage() {
           repo: githubRepo,
           name: name || undefined,
           slug: slug || undefined,
+          token: githubToken.trim() || undefined,
           syncEvidenceToCloud: syncCloud,
         });
       }
@@ -187,6 +199,7 @@ export default function PartnersPage() {
     onSuccess: (data) => {
       setSpineProjectId(data.project.id);
       void projects.refetch();
+      void connections.refetch();
     },
   });
 
@@ -446,23 +459,48 @@ export default function PartnersPage() {
       )}
 
       {tab === "local" ? (
-        <TextField
-          label={t("workspaceRoot")}
-          value={root}
-          onChange={(e) => setRoot(e.target.value)}
-          helperText={t("workspaceHelp")}
-          fullWidth
-        />
+        <>
+          <Alert severity="warning">{t("localCloudWarning")}</Alert>
+          <TextField
+            label={t("workspaceRoot")}
+            value={root}
+            onChange={(e) => setRoot(e.target.value)}
+            helperText={t("workspaceHelp")}
+            fullWidth
+          />
+        </>
       ) : null}
 
       {tab === "github" ? (
-        <TextField
-          label={t("githubRepo")}
-          value={githubRepo}
-          onChange={(e) => setGithubRepo(e.target.value)}
-          helperText={t("githubHelp")}
-          fullWidth
-        />
+        <>
+          <Alert severity="info">{t("githubPublicOk")}</Alert>
+          {connections.data?.github?.tokenConfigured ? (
+            <Alert severity="success">
+              {t("patConnected", {
+                login: connections.data.github.login ?? "GitHub",
+              })}
+            </Alert>
+          ) : (
+            <Alert severity="warning">{t("patMissing")}</Alert>
+          )}
+          <TextField
+            label={t("githubRepo")}
+            value={githubRepo}
+            onChange={(e) => setGithubRepo(e.target.value)}
+            helperText={t("githubHelp")}
+            fullWidth
+            placeholder="owner/repo"
+          />
+          <TextField
+            label={t("githubToken")}
+            type="password"
+            value={githubToken}
+            onChange={(e) => setGithubToken(e.target.value)}
+            helperText={t("githubTokenHelp")}
+            fullWidth
+            autoComplete="off"
+          />
+        </>
       ) : null}
 
       {tab === "remote" ? (

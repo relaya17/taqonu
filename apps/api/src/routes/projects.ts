@@ -272,7 +272,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       `# ArletOS Context Export — ${project.name}`,
       ``,
       `Product: ArletOS (Atlas Core)`,
-      `Exported for: Cursor / Claude Code (read-only context pack)`,
+      `Exported for: any editor or coding agent (read-only context pack)`,
       `Epistemic note: slices labeled FACT/CONFIRMED/INFERRED/PROPOSED/UNKNOWN/CONFLICTED — do not merge.`,
       ``,
       `## Project`,

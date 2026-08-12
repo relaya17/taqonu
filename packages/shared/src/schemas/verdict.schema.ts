@@ -102,6 +102,8 @@ export const importProjectSchema = z.discriminatedUnion("source", [
       .max(64)
       .regex(/^[a-z0-9-]+$/)
       .optional(),
+    /** Optional one-shot PAT (private repos / higher rate limits). */
+    token: z.string().min(8).max(500).optional(),
     reconcile: z.boolean().optional().default(true),
     syncEvidenceToCloud: z.boolean().optional().default(false),
   }),

@@ -9,6 +9,7 @@ import rtlPlugin from "stylis-plugin-rtl";
 import createCache from "@emotion/cache";
 import { CacheProvider } from "@emotion/react";
 import { createAtlasTheme } from "@/styles/theme";
+import { AiCompanionProvider } from "@/components/providers/AiCompanionProvider";
 
 export function AppProviders({
   locale,
@@ -48,7 +49,9 @@ export function AppProviders({
       <CacheProvider value={cache}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          <QueryClientProvider client={queryClient}>
+            <AiCompanionProvider>{children}</AiCompanionProvider>
+          </QueryClientProvider>
         </ThemeProvider>
       </CacheProvider>
     </AppRouterCacheProvider>

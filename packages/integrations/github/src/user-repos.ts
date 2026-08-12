@@ -22,16 +22,17 @@ export interface GitHubUserProfile {
 
 async function githubFetch(
   path: string,
-  token: string,
+  token?: string | null,
 ): Promise<Response> {
-  return fetch(`https://api.github.com${path}`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "ArletOS-Atlas",
-    },
-  });
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "ArletOS-Atlas",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return fetch(`https://api.github.com${path}`, { headers });
 }
 
 export async function verifyGithubToken(token: string): Promise<GitHubUserProfile> {
@@ -72,7 +73,7 @@ export function parseGithubRepoRef(input: string): { owner: string; repo: string
 }
 
 export async function fetchGithubRepo(
-  token: string,
+  token: string | null | undefined,
   owner: string,
   repo: string,
 ): Promise<GitHubApiRepo> {
@@ -81,7 +82,15 @@ export async function fetchGithubRepo(
     token,
   );
   if (!response.ok) {
-    throw new Error(`GitHub repo fetch failed (${response.status}) for ${owner}/${repo}`);
+    const hint =
+      response.status === 404 && !token
+        ? " — private repos need a PAT; public repos should work without one"
+        : response.status === 401 || response.status === 403
+          ? " — check PAT scopes (repo read) or rate limits"
+          : "";
+    throw new Error(
+      `GitHub repo fetch failed (${response.status}) for ${owner}/${repo}${hint}`,
+    );
   }
   return githubRepoSchema.parse(await response.json());
 }
@@ -103,7 +112,7 @@ export interface GitHubTreeResult {
  * Returns paths + blob/tree type only; file contents are never fetched or stored.
  */
 export async function fetchGithubRepoTree(
-  token: string,
+  token: string | null | undefined,
   owner: string,
   repo: string,
   ref: string,

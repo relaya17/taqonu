@@ -174,13 +174,40 @@ export default function DashboardPage() {
           {t("dashboard.pitch")}
         </Typography>
         <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-          <Button component={Link} href="/readiness" variant="contained" size="large">
-            {t("dashboard.ctaReadiness")}
+          <Button component={Link} href="/projects" variant="contained" size="large">
+            {t("dashboard.ctaProjects")}
+          </Button>
+          <Button component={Link} href="/agents" variant="outlined" size="large">
+            {t("dashboard.ctaAgents")}
           </Button>
           <Button component={Link} href="/partners" variant="outlined" size="large">
             {t("dashboard.ctaPartners")}
           </Button>
+          <Button component={Link} href="/readiness" variant="text" size="large">
+            {t("dashboard.ctaReadiness")}
+          </Button>
           <EpistemicChip state="INFERRED" />
+        </Stack>
+      </Box>
+
+      <Box>
+        <Typography fontWeight={700}>{t("dashboard.opsTitle")}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          {t("dashboard.opsHelp")}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
+          <Button component={Link} href="/patches" size="small" variant="outlined">
+            {t("dashboard.opsPatches")}
+          </Button>
+          <Button component={Link} href="/health" size="small" variant="outlined">
+            {t("dashboard.opsHealth")}
+          </Button>
+          <Button component={Link} href="/readiness" size="small" variant="outlined">
+            {t("dashboard.opsReadiness")}
+          </Button>
+          <Button component={Link} href="/qa" size="small" variant="outlined">
+            {t("dashboard.opsQa")}
+          </Button>
         </Stack>
       </Box>
 
@@ -323,9 +350,6 @@ export default function DashboardPage() {
                 {t("dashboard.downloadReport")}
               </Button>
             ) : null}
-            <Button component={Link} href="/proof" size="small" variant="text">
-              {t("dashboard.viewProof")}
-            </Button>
           </Stack>
 
           {showReport && report.data ? (

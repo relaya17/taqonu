@@ -1,6 +1,7 @@
 import {
   EXTERNAL_SOURCE_CONFIDENCE,
   knowledgeSearchResultSchema,
+  verifiedTechSourcesAsCorpusSeed,
   type KnowledgeSearchResult,
 } from "@atlas/shared";
 import { createHash } from "node:crypto";
@@ -30,8 +31,20 @@ function hashDoc(title: string, excerpt: string): string {
     .slice(0, 16);
 }
 
-/** Seed fabric corpus — used when no persisted file is present. */
+const TECH_SEED: CorpusDoc[] = verifiedTechSourcesAsCorpusSeed().map((s) => ({
+  id: s.id,
+  title: s.title,
+  sourceClass: s.sourceClass,
+  url: s.url,
+  excerpt: s.excerpt,
+  sourceUpdatedAt: "2026-08-12T00:00:00.000Z",
+  projectScoped: false,
+  contentHash: hashDoc(s.title, s.excerpt),
+}));
+
+/** Seed fabric corpus — verified tech allow-list + a few operational lessons. */
 const SEED_CORPUS: CorpusDoc[] = [
+  ...TECH_SEED,
   {
     id: "kf_github_rest",
     title: "GitHub REST API overview",
@@ -41,26 +54,6 @@ const SEED_CORPUS: CorpusDoc[] = [
     sourceUpdatedAt: "2026-08-01T00:00:00.000Z",
     projectScoped: false,
     contentHash: hashDoc("GitHub REST API overview", "Official GitHub REST API documentation."),
-  },
-  {
-    id: "kf_wcag22",
-    title: "WCAG 2.2",
-    sourceClass: "GOVERNMENT_OR_STANDARDS",
-    url: "https://www.w3.org/TR/WCAG22/",
-    excerpt: "Web Content Accessibility Guidelines 2.2.",
-    sourceUpdatedAt: "2023-10-05T00:00:00.000Z",
-    projectScoped: false,
-    contentHash: hashDoc("WCAG 2.2", "Web Content Accessibility Guidelines 2.2."),
-  },
-  {
-    id: "kf_owasp",
-    title: "OWASP ASVS",
-    sourceClass: "SECURITY_ADVISORY",
-    url: "https://owasp.org/www-project-application-security-verification-standard/",
-    excerpt: "Application Security Verification Standard.",
-    sourceUpdatedAt: "2024-01-01T00:00:00.000Z",
-    projectScoped: false,
-    contentHash: hashDoc("OWASP ASVS", "Application Security Verification Standard."),
   },
   {
     id: "kf_forum_stale",
@@ -164,8 +157,19 @@ export function hydrateKnowledgeCorpus(opts?: {
   const loaded = loadPersistedCorpus(path);
   if (loaded && loaded.documents.length > 0) {
     setKnowledgeCorpus(loaded.documents, "persisted");
+    // Merge newly added verified-tech seed docs that older corpus files lack.
+    let merged = false;
+    for (const seed of SEED_CORPUS) {
+      if (!CORPUS.some((d) => d.id === seed.id)) {
+        CORPUS.push({ ...seed });
+        merged = true;
+      }
+    }
+    if (merged) {
+      persistIfConfigured();
+    }
     lastLoadedPath = path;
-    return { source: "persisted", path: loaded.path, count: loaded.documents.length };
+    return { source: "persisted", path: loaded.path, count: CORPUS.length };
   }
   if (!hydrated) {
     resetKnowledgeCorpusToSeed();

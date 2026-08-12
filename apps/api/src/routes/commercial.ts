@@ -17,6 +17,7 @@ import {
   fetchGithubRepoTree,
   parseGithubRepoRef,
   slugFromFullName,
+  verifyGithubToken,
 } from "@atlas/integrations-github";
 import { tryPersistProjectToSupabase } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
@@ -238,13 +239,11 @@ export async function registerCommercialValidationRoutes(
 
     if (body.source === "github") {
       const connection = osStore.getGithubConnection();
-      if (!connection?.token || connection.status !== "CONNECTED") {
-        throw new AtlasError(
-          "UNAUTHORIZED",
-          "Connect GitHub first (Integrations → GitHub PAT), then import. Code stays on GitHub — Atlas only stores evidence.",
-          { statusCode: 401 },
-        );
-      }
+      const token =
+        body.token?.trim() ||
+        (connection?.token && connection.status === "CONNECTED"
+          ? connection.token
+          : null);
       let owner: string;
       let repoName: string;
       try {
@@ -255,7 +254,41 @@ export async function registerCommercialValidationRoutes(
           error instanceof Error ? error.message : "Invalid repo ref",
         );
       }
-      const repo = await fetchGithubRepo(connection.token, owner, repoName);
+
+      // Persist one-shot PAT when provided so later imports on this instance work.
+      if (body.token?.trim()) {
+        try {
+          const profile = await verifyGithubToken(body.token.trim());
+          const existing = osStore.getGithubConnection();
+          const now = new Date().toISOString();
+          osStore.setGithubConnection({
+            id: existing?.id ?? crypto.randomUUID(),
+            status: "CONNECTED",
+            login: profile.login,
+            displayLabel: profile.name ?? profile.login,
+            token: body.token.trim(),
+            scopesHint: "read:user + repo (from Partners import)",
+            connectedAt: existing?.connectedAt ?? now,
+            updatedAt: now,
+            lastError: null,
+          });
+        } catch {
+          // Still attempt the single-repo fetch with the provided token.
+        }
+      }
+
+      let repo;
+      try {
+        repo = await fetchGithubRepo(token, owner, repoName);
+      } catch (error) {
+        throw new AtlasError(
+          "UNAUTHORIZED",
+          error instanceof Error
+            ? error.message
+            : "GitHub fetch failed. For private repos paste a PAT here or connect one under Integrations.",
+          { statusCode: token ? 401 : 401 },
+        );
+      }
       const fullName = repo.full_name;
       const defaultBranch = repo.default_branch ?? "main";
       const slug = body.slug ?? slugFromFullName(fullName);
@@ -270,7 +303,7 @@ export async function registerCommercialValidationRoutes(
       let analysisNote: string | null = null;
       try {
         const tree = await fetchGithubRepoTree(
-          connection.token,
+          token,
           owner,
           repoName,
           defaultBranch,
@@ -478,7 +511,7 @@ async function importLocal(
   if (!existsSync(root)) {
     throw new AtlasError(
       "VALIDATION_ERROR",
-      `workspaceRoot not found: ${root}`,
+      `workspaceRoot not found on the API host: ${root}. Local import only works when the API runs on the same machine as that folder (pnpm dev). On Vercel use Partners → GitHub instead.`,
     );
   }
   if (osStore.getProjectBySlug(body.slug)) {

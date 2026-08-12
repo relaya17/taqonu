@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet } from "@/lib/api";
+import { useAiCompanion } from "@/components/providers/AiCompanionProvider";
 
 interface ProviderItem {
   id: string;
@@ -43,6 +44,7 @@ interface ProviderItem {
 export default function ModelsPage() {
   const t = useTranslations("models");
   const locale = useLocale();
+  const { providerId, setProviderId } = useAiCompanion();
   const [filter, setFilter] = useState<"all" | "agent" | "assist">("all");
   const [tierFilter, setTierFilter] = useState<
     "all" | "free" | "low" | "mid" | "high"
@@ -138,6 +140,9 @@ export default function ModelsPage() {
         </Typography>
         <Alert severity="info" sx={{ mt: 2 }}>
           {t("includedNote")}
+        </Alert>
+        <Alert severity="success" sx={{ mt: 1.5 }}>
+          {t("companionActive", { id: providerId })}
         </Alert>
         <Typography variant="body2" sx={{ mt: 1.5 }}>
           {t("credits", { balance: credits.data?.balance ?? 0 })}
@@ -236,12 +241,14 @@ export default function ModelsPage() {
                 </Typography>
                 {provider.kind !== "assist" ? (
                   <Button
-                    component={Link}
-                    href={`/agent?provider=${provider.id}`}
                     size="small"
+                    variant={providerId === provider.id ? "contained" : "outlined"}
                     sx={{ mt: 1 }}
+                    onClick={() => setProviderId(provider.id)}
                   >
-                    {t("useInAgent")}
+                    {providerId === provider.id
+                      ? t("companionSelected")
+                      : t("useEverywhere")}
                   </Button>
                 ) : (
                   <Button

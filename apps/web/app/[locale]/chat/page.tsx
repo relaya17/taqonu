@@ -16,6 +16,7 @@ import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import type { EpistemicState } from "@atlas/shared";
+import { useAiCompanion } from "@/components/providers/AiCompanionProvider";
 
 interface Project {
   id: string;
@@ -133,13 +134,15 @@ export default function ChatPage() {
     [projectsQuery.data],
   );
 
+  const { providerId: aiProviderId } = useAiCompanion();
+
   const mutation = useMutation({
     mutationFn: async (text: string) =>
       apiPost<ConversationResponse>("/api/v1/conversation/message", {
         message: text,
         projectId: projectId === PORTFOLIO ? null : projectId,
         threadId,
-        aiProviderId: "arletos-included",
+        aiProviderId,
         locale,
       }),
     onSuccess: (data, text) => {

@@ -5,6 +5,7 @@ import {
   buildPortfolioContextBlocks,
   classifyIntent,
   completeWithFreeFallback,
+  completeStrict,
   verifyAgentResponse,
   redactSecrets,
   detectSecrets,
@@ -79,12 +80,11 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       );
     }
 
-    if (catalog.billing === "credits" && catalog.creditCost > 0) {
+    const paidRun = catalog.billing === "credits" && catalog.creditCost > 0;
+    if (paidRun) {
       const { tier } = resolveTier(app.atlasEnv);
-      ensureCreditsInitialized(tier);
-      try {
-        chargeCredits(catalog.creditCost);
-      } catch {
+      const balance = ensureCreditsInitialized(tier);
+      if (catalog.creditCost > balance.balance) {
         throw new AtlasError(
           "QUOTA_EXCEEDED",
           `Not enough credits for ${catalog.titleEn} (${catalog.creditCost}). Buy a pack on Plan / Models.`,
@@ -219,10 +219,20 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         knowledge?.plainLanguage ?? null,
       );
     } else {
+      const evidenceBlock = [
+        "Cited evidence packages (use only these; never invent):",
+        ...evidenceRefs.map(
+          (r) =>
+            `- [${r.kind}] ${r.reference}${r.excerpt ? ` — ${r.excerpt}` : ""} (${r.epistemicState ?? "OBSERVED"})`,
+        ),
+      ].join("\n");
+
       const system = redactSecrets(
         [
           "You are the ArletOS Engineering + QA Intelligence OS agent.",
-          "Use only retrieved context. Label FACT vs INFERRED vs PROPOSED.",
+          "Use only retrieved context and cited verified sources. Label FACT vs INFERRED vs PROPOSED.",
+          "For languages (JS/TS/Python/Java/C++/C#/Go/Rust), UI, game engines, and cybersecurity: cite official docs from the evidence block (MDN, ECMA, python.org, Oracle, cppreference, Unity/Unreal/Godot, OWASP, NIST).",
+          "Never invent APIs, standards, or CVE details. If evidence is thin, say INSUFFICIENT_EVIDENCE.",
           "Never claim deployment/DB facts without labeled evidence.",
           "Never expose secrets.",
           "WRITE actions require eval gate + human APPROVE.",
@@ -231,21 +241,41 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
           "",
           expertBlock,
           "",
+          evidenceBlock,
+          "",
           context,
         ].join("\n"),
       );
 
-      const llm = await completeWithFreeFallback(
-        llmEnvOverride,
-        [
-          { role: "system", content: system },
-          { role: "user", content: redactSecrets(body.userRequest) },
-        ],
-      );
-      llmProvider = llm.provider;
-      answer = redactSecrets(
-        `${llm.text}\n\n— provider: ${llm.provider} · catalog: ${catalog.titleEn} (${catalog.billing === "included" ? "included" : `${catalog.creditCost} credits`})`,
-      );
+      try {
+        const llm = paidRun
+          ? await completeStrict(llmEnvOverride, [
+              { role: "system", content: system },
+              { role: "user", content: redactSecrets(body.userRequest) },
+            ])
+          : await completeWithFreeFallback(llmEnvOverride, [
+              { role: "system", content: system },
+              { role: "user", content: redactSecrets(body.userRequest) },
+            ]);
+        llmProvider = llm.provider;
+        answer = redactSecrets(
+          `${llm.text}\n\n— provider: ${llm.provider} · catalog: ${catalog.titleEn} (${catalog.billing === "included" ? "included" : `${catalog.creditCost} credits`})`,
+        );
+        if (paidRun) {
+          chargeCredits(catalog.creditCost);
+        }
+      } catch (error) {
+        if (paidRun) {
+          throw new AtlasError(
+            "INTEGRATION_ERROR",
+            error instanceof Error
+              ? `Paid companion failed: ${error.message}. Credits were not charged.`
+              : "Paid companion failed. Credits were not charged.",
+            { statusCode: 502 },
+          );
+        }
+        throw error;
+      }
     }
 
     if (writeBlocked) {

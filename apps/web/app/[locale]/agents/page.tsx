@@ -130,6 +130,24 @@ export default function AgentsPage() {
     queryFn: () => apiGet<{ items: Project[] }>("/api/v1/projects"),
   });
 
+  const verifiedSourcesQuery = useQuery({
+    queryKey: ["verified-tech-sources"],
+    queryFn: () =>
+      apiGet<{
+        domains: string[];
+        items: Array<{
+          id: string;
+          domain: string;
+          titleEn: string;
+          titleHe: string;
+          url: string;
+          kind: string;
+        }>;
+        note: string;
+      }>("/api/v1/knowledge/verified-sources"),
+    staleTime: 10 * 60_000,
+  });
+
   const items = agentsQuery.data?.items ?? [];
   const projects = useMemo(
     () => projectsQuery.data?.items ?? [],
@@ -243,6 +261,59 @@ export default function AgentsPage() {
           {" · "}
           <Link href="/experts">{t("seeExperts")}</Link>
         </Alert>
+        <Alert severity="success" sx={{ mt: 1.5 }}>
+          {t("verifiedKnowledgeNote")}
+        </Alert>
+        {verifiedSourcesQuery.data ? (
+          <Box sx={{ mt: 2 }}>
+            <Typography fontWeight={650}>{t("verifiedSourcesTitle")}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {t("verifiedSourcesHelp", {
+                count: verifiedSourcesQuery.data.items.length,
+              })}
+            </Typography>
+            <Stack
+              direction="row"
+              flexWrap="wrap"
+              useFlexGap
+              spacing={1}
+              sx={{ gap: 1, mt: 1.5 }}
+            >
+              {verifiedSourcesQuery.data.domains.map((domain) => (
+                <Chip
+                  key={domain}
+                  size="small"
+                  variant="outlined"
+                  label={t(`domain.${domain}`)}
+                />
+              ))}
+            </Stack>
+            <Stack spacing={0.75} sx={{ mt: 1.5, maxHeight: 220, overflow: "auto" }}>
+              {verifiedSourcesQuery.data.items.slice(0, 12).map((src) => (
+                <Typography key={src.id} variant="caption" component="div">
+                  <Box
+                    component="a"
+                    href={src.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ color: "primary.main" }}
+                  >
+                    {pickLocale(locale, src.titleEn, src.titleHe, src.titleEn)}
+                  </Box>
+                  {" · "}
+                  {src.domain}
+                </Typography>
+              ))}
+              {verifiedSourcesQuery.data.items.length > 12 ? (
+                <Typography variant="caption" color="text.secondary">
+                  {t("verifiedSourcesMore", {
+                    n: verifiedSourcesQuery.data.items.length - 12,
+                  })}
+                </Typography>
+              ) : null}
+            </Stack>
+          </Box>
+        ) : null}
       </Box>
 
       <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} sx={{ gap: 1 }}>

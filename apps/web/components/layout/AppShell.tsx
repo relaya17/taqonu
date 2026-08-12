@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Box,
   Drawer,
@@ -19,68 +19,79 @@ import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
+import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
 
-/** Permanent sidebar — slightly narrower on tiny viewports so content still fits. */
-const DRAWER_WIDTH = { xs: 200, sm: 248 } as const;
+const DRAWER_WIDTH = 248;
 
-/** Primary nav — demo-critical surfaces only (contract/metrics live under Settings). */
-const NAV_KEYS = [
-  "dashboard",
-  "projects",
-  "state",
-  "chat",
-  "agent",
-  "models",
-  "agents",
-  "patches",
-  "proof",
-  "readiness",
-  "health",
-  "partners",
-  "qa",
-  "experts",
-  "legalMedia",
-  "plan",
-  "memory",
-  "decisions",
-  "integrations",
-  "settings",
-] as const;
+type NavKey =
+  | "dashboard"
+  | "projects"
+  | "agents"
+  | "partners"
+  | "patches"
+  | "health"
+  | "readiness"
+  | "qa"
+  | "models"
+  | "experts"
+  | "memory"
+  | "decisions"
+  | "integrations"
+  | "plan"
+  | "legalMedia"
+  | "settings";
 
-const PATHS: Record<(typeof NAV_KEYS)[number], string> = {
+const PATHS: Record<NavKey, string> = {
   dashboard: "/",
   projects: "/projects",
-  state: "/state",
-  chat: "/chat",
-  agent: "/agent",
-  models: "/models",
   agents: "/agents",
-  patches: "/patches",
-  proof: "/proof",
-  readiness: "/readiness",
-  health: "/health",
   partners: "/partners",
+  patches: "/patches",
+  health: "/health",
+  readiness: "/readiness",
   qa: "/qa",
+  models: "/models",
   experts: "/experts",
-  legalMedia: "/legal-media",
-  plan: "/plan",
   memory: "/memory",
   decisions: "/decisions",
   integrations: "/integrations",
+  plan: "/plan",
+  legalMedia: "/legal-media",
   settings: "/settings",
 };
 
-function isNavSelected(
-  key: (typeof NAV_KEYS)[number],
-  pathname: string,
-): boolean {
-  if (key === "state") {
-    return (
-      pathname === "/state" ||
-      pathname.startsWith("/state/") ||
-      /\/projects\/[^/]+\/state$/.test(pathname)
-    );
-  }
+/** Slim primary nav — state/chat/agent/proof removed; QA+health under dashboard ops. */
+const NAV_GROUPS: readonly {
+  readonly id: string;
+  readonly labelKey?: "opsGroup" | "workspaceGroup";
+  readonly items: readonly NavKey[];
+}[] = [
+  {
+    id: "main",
+    items: ["dashboard", "projects", "agents", "partners"],
+  },
+  {
+    id: "ops",
+    labelKey: "opsGroup",
+    items: ["patches", "health", "readiness", "qa"],
+  },
+  {
+    id: "workspace",
+    labelKey: "workspaceGroup",
+    items: [
+      "models",
+      "experts",
+      "memory",
+      "decisions",
+      "integrations",
+      "plan",
+      "legalMedia",
+      "settings",
+    ],
+  },
+];
+
+function isNavSelected(key: NavKey, pathname: string): boolean {
   if (key === "projects" && /\/projects\/[^/]+\/state$/.test(pathname)) {
     return false;
   }
@@ -109,9 +120,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isRtl = locale === "he" || locale === "ar";
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
-  /** Narrow screens: sidebar stays available; hamburger toggles collapse. Default open. */
-  const [navOpen, setNavOpen] = useState(true);
+  /** Small screens: closed by default; hamburger opens overlay drawer. */
+  const [navOpen, setNavOpen] = useState(false);
   const navId = useId();
+  const anchor = isRtl ? "right" : "left";
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
 
   const meQuery = useQuery({
     queryKey: ["auth-session"],
@@ -145,12 +161,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     main?.scrollIntoView({ block: "start" });
   };
 
-  const nav = (
+  const nav = (opts: { mobile: boolean }) => (
     <>
       <Stack spacing={0.5} sx={{ px: 1.5, mb: 3 }}>
         <Typography
           component={Link}
           href="/"
+          onClick={opts.mobile ? () => setNavOpen(false) : undefined}
           variant="h5"
           sx={{
             fontFamily: '"Fraunces", "Frank Ruhl Libre", serif',
@@ -173,37 +190,60 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Stack>
 
       <Box component="nav" aria-label={t("nav.main")}>
-        <List dense disablePadding>
-          {NAV_KEYS.map((key) => {
-            const href = PATHS[key];
-            const selected = isNavSelected(key, pathname);
-            return (
-              <ListItemButton
-                key={key}
-                component={Link}
-                href={href}
-                selected={selected}
-                aria-current={selected ? "page" : undefined}
+        {NAV_GROUPS.map((group) => (
+          <Box key={group.id} sx={{ mb: group.labelKey ? 1.5 : 0.5 }}>
+            {group.labelKey ? (
+              <Typography
+                variant="caption"
                 sx={{
-                  borderRadius: 2,
-                  mb: 0.5,
-                  color: "inherit",
-                  "&.Mui-selected": {
-                    backgroundColor: "rgba(196, 92, 38, 0.28)",
-                  },
-                  "&:hover": {
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                  },
+                  display: "block",
+                  px: 1.5,
+                  pt: 1,
+                  pb: 0.5,
+                  opacity: 0.65,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  fontSize: 11,
                 }}
               >
-                <ListItemText
-                  primary={t(`nav.${key}`)}
-                  primaryTypographyProps={{ fontSize: { xs: 13, sm: 14 } }}
-                />
-              </ListItemButton>
-            );
-          })}
-        </List>
+                {t(`nav.${group.labelKey}`)}
+              </Typography>
+            ) : null}
+            <List dense disablePadding>
+              {group.items.map((key) => {
+                const href = PATHS[key];
+                const selected = isNavSelected(key, pathname);
+                return (
+                  <ListItemButton
+                    key={key}
+                    component={Link}
+                    href={href}
+                    selected={selected}
+                    aria-current={selected ? "page" : undefined}
+                    onClick={opts.mobile ? () => setNavOpen(false) : undefined}
+                    sx={{
+                      borderRadius: 2,
+                      mb: 0.5,
+                      pl: group.labelKey ? 2.5 : 1.5,
+                      color: "inherit",
+                      "&.Mui-selected": {
+                        backgroundColor: "rgba(196, 92, 38, 0.28)",
+                      },
+                      "&:hover": {
+                        backgroundColor: "rgba(255,255,255,0.08)",
+                      },
+                    }}
+                  >
+                    <ListItemText
+                      primary={t(`nav.${key}`)}
+                      primaryTypographyProps={{ fontSize: { xs: 13, sm: 14 } }}
+                    />
+                  </ListItemButton>
+                );
+              })}
+            </List>
+          </Box>
+        ))}
       </Box>
 
       <Stack spacing={1} sx={{ mt: "auto", px: 1, pt: 3 }}>
@@ -244,6 +284,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             size="small"
             variant="outlined"
             color="secondary"
+            onClick={opts.mobile ? () => setNavOpen(false) : undefined}
           >
             {t("auth.login")}
           </Button>
@@ -278,12 +319,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   const drawerPaperSx = {
+    width: DRAWER_WIDTH,
     maxWidth: "100vw",
     border: 0,
     background:
       "linear-gradient(180deg, rgba(15,61,62,0.96) 0%, rgba(20,40,42,0.98) 100%)",
     color: "#F4F7F5",
     py: 2.5,
+    px: 1.5,
     display: "flex",
     flexDirection: "column" as const,
     overflowX: "hidden" as const,
@@ -304,38 +347,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         {t("a11y.skipToContent")}
       </a>
 
+      {/* Mobile: overlay drawer opened by hamburger */}
       <Drawer
-        variant="permanent"
-        anchor={isRtl ? "right" : "left"}
-        open
+        variant="temporary"
+        anchor={anchor}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        ModalProps={{ keepMounted: true }}
         sx={{
-          display: "block",
-          width: {
-            xs: navOpen ? DRAWER_WIDTH.xs : 0,
-            sm: navOpen ? DRAWER_WIDTH.sm : 0,
-            md: DRAWER_WIDTH.sm,
-          },
-          flexShrink: 0,
-          overflowX: "hidden",
-          transition: (theme) =>
-            theme.transitions.create("width", {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.enteringScreen,
-            }),
-          [`& .MuiDrawer-paper`]: {
-            ...drawerPaperSx,
-            width: {
-              xs: navOpen ? DRAWER_WIDTH.xs : 0,
-              sm: navOpen ? DRAWER_WIDTH.sm : 0,
-              md: DRAWER_WIDTH.sm,
-            },
-            px: { xs: navOpen ? 1.5 : 0, md: 1.5 },
-            transition: (theme) =>
-              theme.transitions.create("width", {
-                easing: theme.transitions.easing.sharp,
-                duration: theme.transitions.duration.enteringScreen,
-              }),
-          },
+          display: { xs: "block", md: "none" },
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
         }}
         PaperProps={{
           "aria-label": t("nav.main"),
@@ -343,7 +364,35 @@ export function AppShell({ children }: { children: ReactNode }) {
           id: navId,
         }}
       >
-        {nav}
+        <Stack direction="row" justifyContent="flex-end" sx={{ px: 0.5, pt: 0.5 }}>
+          <IconButton
+            aria-label={t("a11y.closeMenu")}
+            onClick={() => setNavOpen(false)}
+            sx={{ color: "inherit" }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+        {nav({ mobile: true })}
+      </Drawer>
+
+      {/* Desktop: permanent sidebar */}
+      <Drawer
+        variant="permanent"
+        anchor={anchor}
+        open
+        sx={{
+          display: { xs: "none", md: "block" },
+          width: DRAWER_WIDTH,
+          flexShrink: 0,
+          [`& .MuiDrawer-paper`]: drawerPaperSx,
+        }}
+        PaperProps={{
+          "aria-label": t("nav.main"),
+          component: "aside",
+        }}
+      >
+        {nav({ mobile: false })}
       </Drawer>
 
       <Box
@@ -356,9 +405,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           flex: 1,
           minWidth: 0,
           width: {
-            xs: navOpen ? `calc(100% - ${DRAWER_WIDTH.xs}px)` : "100%",
-            sm: navOpen ? `calc(100% - ${DRAWER_WIDTH.sm}px)` : "100%",
-            md: `calc(100% - ${DRAWER_WIDTH.sm}px)`,
+            xs: "100%",
+            md: `calc(100% - ${DRAWER_WIDTH}px)`,
           },
           maxWidth: "100%",
           overflowX: "clip",
@@ -376,12 +424,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           <IconButton
             ref={menuButtonRef}
             edge="start"
-            onClick={() => setNavOpen((open) => !open)}
-            aria-label={navOpen ? t("a11y.closeMenu") : t("a11y.openMenu")}
+            onClick={() => setNavOpen(true)}
+            aria-label={t("a11y.openMenu")}
             aria-expanded={navOpen}
             aria-controls={navId}
           >
-            {navOpen ? <CloseIcon /> : <MenuIcon />}
+            <MenuIcon />
           </IconButton>
           <Typography
             component="p"
@@ -395,6 +443,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {t("brand.name")}
           </Typography>
         </Stack>
+        <AiCompanionBar />
         {children}
       </Box>
     </Box>

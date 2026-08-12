@@ -18,6 +18,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { useAiCompanion } from "@/components/providers/AiCompanionProvider";
+import { isCompanionProviderId } from "@/lib/ai-provider-preference";
 
 interface Project {
   id: string;
@@ -127,8 +129,8 @@ export default function AgentPage() {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState(PORTFOLIO);
   const [request, setRequest] = useState("");
-  const [aiProviderId, setAiProviderId] =
-    useState<(typeof AGENT_IDS)[number]>("arletos-included");
+  const { providerId: aiProviderId, setProviderId: setAiProviderId } =
+    useAiCompanion();
   const [engineeringMode, setEngineeringMode] =
     useState<(typeof ENG_MODES)[number]>("analyze");
   const [workspaceRoot, setWorkspaceRoot] = useState(
@@ -148,10 +150,10 @@ export default function AgentPage() {
 
   useEffect(() => {
     const fromUrl = searchParams.get("provider");
-    if (fromUrl && (AGENT_IDS as readonly string[]).includes(fromUrl)) {
-      setAiProviderId(fromUrl as (typeof AGENT_IDS)[number]);
+    if (fromUrl && isCompanionProviderId(fromUrl)) {
+      setAiProviderId(fromUrl);
     }
-  }, [searchParams]);
+  }, [searchParams, setAiProviderId]);
 
   const projects = useMemo(
     () => projectsQuery.data?.items ?? [],
@@ -261,9 +263,7 @@ export default function AgentPage() {
         select
         label={t("aiProvider")}
         value={aiProviderId}
-        onChange={(e) =>
-          setAiProviderId(e.target.value as (typeof AGENT_IDS)[number])
-        }
+        onChange={(e) => setAiProviderId(e.target.value)}
         fullWidth
         helperText={
           selected

@@ -5,6 +5,7 @@ import {
   buildPortfolioContextBlocks,
   classifyIntent,
   completeWithFreeFallback,
+  completeStrict,
   redactSecrets,
 } from "@atlas/agent-core";
 import { buildExpertSystemBlock, selectExperts } from "@atlas/experts";
@@ -122,12 +123,11 @@ export async function registerConversationRoutes(
       );
     }
 
-    if (catalog.billing === "credits" && catalog.creditCost > 0) {
+    const paidRun = catalog.billing === "credits" && catalog.creditCost > 0;
+    if (paidRun) {
       const { tier } = resolveTier(app.atlasEnv);
-      ensureCreditsInitialized(tier);
-      try {
-        chargeCredits(catalog.creditCost);
-      } catch {
+      const balance = ensureCreditsInitialized(tier);
+      if (catalog.creditCost > balance.balance) {
         throw new AtlasError(
           "QUOTA_EXCEEDED",
           `Not enough credits for ${catalog.titleEn} (${catalog.creditCost}). Buy a pack on Plan / Models.`,
@@ -213,8 +213,9 @@ export async function registerConversationRoutes(
         [
           "You are Atlas — ArletOS Engineering + QA Intelligence OS.",
           "Evidence discipline: cite packages; FACT vs INFERRED vs PROPOSED.",
+          "Language / UI / game / cyber answers must cite verified official sources when present (MDN, ECMA, TypeScript, Python.org, Oracle Java, cppreference, .NET, Go, Rust, Unity, Unreal, Godot, OWASP, NIST).",
+          "Never invent language semantics, CVEs, or standards. If evidence is thin, say INSUFFICIENT_EVIDENCE — do not hallucinate.",
           "Never claim deployment/DB facts without labeled evidence.",
-          "If evidence is thin, say INSUFFICIENT_EVIDENCE — do not hallucinate.",
           "Reply in the user's language (Hebrew, Arabic, or English).",
           "",
           expertBlock,
@@ -226,10 +227,32 @@ export async function registerConversationRoutes(
       );
 
       const llmEnv = llmEnvForProvider(selectedId, app.atlasEnv, catalog);
-      const llm = await completeWithFreeFallback(llmEnv, [
-        { role: "system", content: system },
-        { role: "user", content: redactSecrets(body.message) },
-      ]);
+      let llm: { provider: string; text: string };
+      try {
+        llm = paidRun
+          ? await completeStrict(llmEnv, [
+              { role: "system", content: system },
+              { role: "user", content: redactSecrets(body.message) },
+            ])
+          : await completeWithFreeFallback(llmEnv, [
+              { role: "system", content: system },
+              { role: "user", content: redactSecrets(body.message) },
+            ]);
+        if (paidRun) {
+          chargeCredits(catalog.creditCost);
+        }
+      } catch (error) {
+        if (paidRun) {
+          throw new AtlasError(
+            "INTEGRATION_ERROR",
+            error instanceof Error
+              ? `Paid companion failed: ${error.message}. Credits were not charged.`
+              : "Paid companion failed. Credits were not charged.",
+            { statusCode: 502 },
+          );
+        }
+        throw error;
+      }
       answer = redactSecrets(
         `${llm.text}\n\n— provider: ${llm.provider} · epistemic: ${epistemicLabel} · refs: ${evidenceRefs.length}`,
       );

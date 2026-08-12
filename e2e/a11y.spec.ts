@@ -29,7 +29,7 @@ test.describe("A11y smoke (EN)", () => {
     await expect(main).toBeFocused();
   });
 
-  test("narrow viewport shows sidebar and hamburger toggle", async ({
+  test("narrow viewport shows hamburger that opens sidebar", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -38,20 +38,20 @@ test.describe("A11y smoke (EN)", () => {
       timeout: 45_000,
     });
 
+    const openMenu = page.getByRole("button", { name: /open menu/i });
+    await expect(openMenu).toBeVisible({ timeout: 15_000 });
+    await expect(openMenu).toHaveAttribute("aria-expanded", "false");
+
+    await openMenu.click();
     const sidebar = page.locator("aside");
     await expect(sidebar).toBeVisible({ timeout: 15_000 });
     await expect(
       sidebar.getByRole("navigation", { name: /main navigation/i }),
     ).toBeVisible();
+    await expect(openMenu).toHaveAttribute("aria-expanded", "true");
 
-    const menuToggle = page.getByRole("button", { name: /close menu|open menu/i });
-    await expect(menuToggle).toBeVisible({ timeout: 15_000 });
-    await expect(menuToggle).toHaveAttribute("aria-expanded", "true");
-
-    await menuToggle.click();
-    await expect(
-      page.getByRole("button", { name: /open menu/i }),
-    ).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("button", { name: /close menu/i }).click();
+    await expect(openMenu).toHaveAttribute("aria-expanded", "false");
   });
 
   test("primary surfaces avoid horizontal overflow on narrow viewports", async ({
