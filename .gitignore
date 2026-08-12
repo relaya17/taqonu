@@ -1,7 +1,8 @@
 .atlas
 node_modules
 dist
-apps/api/server.js
+apps/api/vercel-bundle.js
+apps/api/vercel-bundle.cjs
 apps/api/.vercel-bundle-ok
 .next
 .turbo

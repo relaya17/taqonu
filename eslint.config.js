@@ -14,6 +14,8 @@ export default [
       "**/coverage/**",
       // Generated Vercel Node entry (esbuild bundle)
       "apps/api/server.js",
+      "apps/api/vercel-bundle.js",
+      "apps/api/vercel-bundle.cjs",
       "apps/api/.vercel-bundle-ok",
       "apps/api/scripts/**",
     ],
