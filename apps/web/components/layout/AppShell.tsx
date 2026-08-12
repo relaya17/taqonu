@@ -109,13 +109,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isRtl = locale === "he" || locale === "ar";
   const theme = useTheme();
-  // noSsr: avoid first-paint desktop shell (no menu button) before matchMedia runs.
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"), { noSsr: true });
+  /**
+   * Media-query layout must match SSR on the first client paint.
+   * `noSsr: true` alone still flips to mobile before/during hydrate and
+   * swaps permanent Drawer for a portaled temporary one → hydration mismatch.
+   */
+  const [mqReady, setMqReady] = useState(false);
+  const prefersMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isMobile = mqReady && prefersMobile;
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setMqReady(true);
+  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
