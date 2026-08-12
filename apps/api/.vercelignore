@@ -1,4 +1,4 @@
-# Keep Fastify NFT / Vercel TS away from sibling apps in this monorepo.
+# Sibling apps must not enter the deploy file graph.
 ../web
 ../web/**
 ../worker

@@ -1,6 +1,8 @@
 .atlas
 node_modules
 dist
+apps/api/server.js
+apps/api/.vercel-bundle-ok
 .next
 .turbo
 coverage
