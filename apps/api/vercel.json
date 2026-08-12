@@ -3,5 +3,5 @@
   "framework": null,
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@atlas/api... && pnpm --filter @atlas/api run bundle:vercel",
-  "outputDirectory": null
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }
