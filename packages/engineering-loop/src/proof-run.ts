@@ -63,19 +63,27 @@ export interface ResolvedGoldenWorkspace {
 }
 
 function findRepoRoot(from = process.cwd()): string {
-  let dir = from;
-  for (;;) {
-    if (
-      existsSync(resolve(dir, "pnpm-workspace.yaml")) ||
-      existsSync(resolve(dir, "atlas-evals"))
-    ) {
-      return dir;
+  const fromEnv = process.env.ATLAS_REPO_ROOT?.trim();
+  if (fromEnv) return resolve(fromEnv);
+
+  // On Vercel, never walk parents — NFT would include sibling apps (apps/web).
+  if (process.env.VERCEL) {
+    return from;
+  } else {
+    let dir = from;
+    for (;;) {
+      if (
+        existsSync(resolve(dir, "pnpm-workspace.yaml")) ||
+        existsSync(resolve(dir, "atlas-evals"))
+      ) {
+        return dir;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
     }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+    return from;
   }
-  return from;
 }
 
 /** In-repo fixture when BrokerOS path is missing on the machine. */

@@ -6,6 +6,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { MetricSample } from "@atlas/observability";
+import { findRepoRoot } from "./repo-root.js";
 
 let pathOverride: string | null = null;
 
@@ -25,17 +26,7 @@ export function resolveMetricsLogPath(): string {
     return join(dirname(resolve(storeEnv)), "metrics", "metrics.ndjson");
   }
 
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
-      return resolve(dir, ".atlas", "metrics", "metrics.ndjson");
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return resolve(process.cwd(), ".atlas", "metrics", "metrics.ndjson");
-    }
-    dir = parent;
-  }
+  return resolve(findRepoRoot(), ".atlas", "metrics", "metrics.ndjson");
 }
 
 /** Append one metric sample to durable NDJSON (never truncates). */

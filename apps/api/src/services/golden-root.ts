@@ -1,25 +1,8 @@
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import {
   inRepoGoldenFixtureRoot,
   resolveGoldenWorkspace,
 } from "@atlas/engineering-loop";
-
-function findRepoRoot(from = process.cwd()): string {
-  let dir = from;
-  for (;;) {
-    if (
-      existsSync(resolve(dir, "pnpm-workspace.yaml")) ||
-      existsSync(resolve(dir, "atlas-evals"))
-    ) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return from;
-}
+import { findRepoRoot } from "./repo-root.js";
 
 /**
  * Resolve BrokerOS / golden lab path — names are lab-only, not product locks.

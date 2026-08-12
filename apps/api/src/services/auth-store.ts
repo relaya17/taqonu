@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { AuthUser, UserRole } from "@atlas/shared";
 import { authUserSchema } from "@atlas/shared";
+import { findRepoRoot } from "./repo-root.js";
 
 interface StoredUser {
   id: string;
@@ -24,15 +25,7 @@ interface AuthFile {
 function authPath(): string {
   const fromEnv = process.env.ATLAS_AUTH_PATH;
   if (fromEnv) return fromEnv;
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
-      return resolve(dir, ".atlas", "users.json");
-    }
-    const parent = dirname(dir);
-    if (parent === dir) return resolve(process.cwd(), ".atlas", "users.json");
-    dir = parent;
-  }
+  return resolve(findRepoRoot(), ".atlas", "users.json");
 }
 
 function load(): AuthFile {

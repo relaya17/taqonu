@@ -16,16 +16,20 @@ export function resolveKnowledgeCorpusPath(override?: string): string {
   if (process.env.ATLAS_KNOWLEDGE_CORPUS_PATH?.trim()) {
     return resolve(process.env.ATLAS_KNOWLEDGE_CORPUS_PATH.trim());
   }
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
-      return resolve(dir, ".atlas", "knowledge", "corpus.json");
+  if (process.env.VERCEL) {
+    return resolve(process.cwd(), ".atlas", "knowledge", "corpus.json");
+  } else {
+    let dir = process.cwd();
+    for (;;) {
+      if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
+        return resolve(dir, ".atlas", "knowledge", "corpus.json");
+      }
+      const parent = dirname(dir);
+      if (parent === dir) {
+        return resolve(process.cwd(), ".atlas", "knowledge", "corpus.json");
+      }
+      dir = parent;
     }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return resolve(process.cwd(), ".atlas", "knowledge", "corpus.json");
-    }
-    dir = parent;
   }
 }
 

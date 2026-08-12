@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+import { findRepoRoot } from "../services/repo-root.js";
 import type {
   Claim,
   Decision,
@@ -177,17 +177,7 @@ function storePath(): string {
   if (fromEnv && fromEnv.length > 0) {
     return fromEnv;
   }
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
-      return resolve(dir, ".atlas", "store.json");
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return resolve(process.cwd(), ".atlas", "store.json");
-    }
-    dir = parent;
-  }
+  return resolve(findRepoRoot(), ".atlas", "store.json");
 }
 
 /** Load primary store, then `.bak`, so a torn write does not wipe state. */

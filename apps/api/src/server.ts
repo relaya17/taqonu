@@ -1,6 +1,6 @@
 import { AtlasError } from "@atlas/shared";
 import { loadServerEnv } from "@atlas/config";
-import { buildApp } from "./app.js";
+import { buildApp } from "./create-app.js";
 
 async function main(): Promise<void> {
   const env = loadServerEnv();

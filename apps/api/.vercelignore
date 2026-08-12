@@ -1,0 +1,7 @@
+# Keep Fastify NFT / Vercel TS away from sibling apps in this monorepo.
+../web
+../web/**
+../worker
+../worker/**
+**/*.tsx
+**/*.jsx

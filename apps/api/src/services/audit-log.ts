@@ -6,6 +6,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
+import { findRepoRoot } from "./repo-root.js";
 
 /** Genesis sentinel when the NDJSON chain has no prior line. */
 export const AUDIT_GENESIS_HASH = "GENESIS";
@@ -41,17 +42,7 @@ export function resolveAuditLogPath(): string {
     return join(dirname(resolve(storeEnv)), "audit", "audit.ndjson");
   }
 
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
-      return resolve(dir, ".atlas", "audit", "audit.ndjson");
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return resolve(process.cwd(), ".atlas", "audit", "audit.ndjson");
-    }
-    dir = parent;
-  }
+  return resolve(findRepoRoot(), ".atlas", "audit", "audit.ndjson");
 }
 
 function stableStringify(value: unknown): string {

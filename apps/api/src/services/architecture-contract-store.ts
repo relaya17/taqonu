@@ -3,20 +3,11 @@ import { architectureContractSchema } from "@atlas/shared";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { defaultArchitectureContract } from "@atlas/code-intelligence";
+import { findRepoRoot } from "./repo-root.js";
 
 function contractPath(projectId: string | null): string {
   const key = projectId ?? "default";
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
-      return resolve(dir, ".atlas", "contracts", `${key}.json`);
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return resolve(process.cwd(), ".atlas", "contracts", `${key}.json`);
-    }
-    dir = parent;
-  }
+  return resolve(findRepoRoot(), ".atlas", "contracts", `${key}.json`);
 }
 
 export function loadArchitectureContract(

@@ -1,9 +1,7 @@
 /**
- * Vercel Fastify entrypoint (preferred over src/*).
- *
- * Must stay plain JS with only static imports so @vercel/nft does not
- * expand into the monorepo (apps/web) and skip the broken per-file TS pass
- * on API/web sources. Turbo build must produce dist/server.js first.
+ * Vercel Fastify entry — static import of the esbuild bundle only.
+ * The bundle is built with process.env.VERCEL defined so parent-dir FS
+ * walks are eliminated and apps/web never enters the NFT/TS graph.
  */
 import "fastify";
-import "./dist/server.js";
+import "./dist/vercel-server.js";

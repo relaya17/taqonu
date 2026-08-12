@@ -21,15 +21,10 @@ import {
 } from "@atlas/shared";
 import { redactSecrets } from "@atlas/agent-core";
 import { osStore } from "../store/os-store.js";
+import { findRepoRoot } from "./repo-root.js";
 
 function atlasRoot(): string {
-  let dir = process.cwd();
-  for (;;) {
-    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return process.cwd();
-    dir = parent;
-  }
+  return findRepoRoot();
 }
 
 function inferKind(
