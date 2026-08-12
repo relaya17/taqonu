@@ -1,11 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import {
+  paginatedResponseSchema,
   portfolioDiscoveryLinkRequestSchema,
   portfolioDiscoveryRefreshRequestSchema,
   portfolioHealthReportSchema,
   portfolioOverviewSchema,
+  portfolioPatternSchema,
   type PortfolioHealthProjectItem,
 } from "@atlas/shared";
+import { z } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { runContinuousSystemAudit } from "@atlas/code-intelligence";
@@ -255,25 +258,31 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
 
     const items = [...stacks.entries()]
       .filter(([, ids]) => ids.length >= 2)
-      .map(([tech, projectIds]) => ({
-        id: crypto.randomUUID(),
-        kind: "SHARED_ARCHITECTURE" as const,
-        title: `Shared technology: ${tech}`,
-        summary: `${projectIds.length} projects use ${tech}. Consider extracting a shared package if duplication grows.`,
-        projectIds,
-        evidenceIds: [] as string[],
-        graphNodeIds: [] as string[],
-        epistemicState: "INFERRED" as const,
-        confidence: 0.6,
-        detectedAt: new Date().toISOString(),
-      }));
+      .map(([tech, projectIds]) =>
+        portfolioPatternSchema.parse({
+          id: crypto.randomUUID(),
+          kind: "SHARED_ARCHITECTURE",
+          title: `Shared technology: ${tech}`,
+          summary: `${projectIds.length} projects use ${tech}. Consider extracting a shared package if duplication grows.`,
+          projectIds,
+          epistemicState: "INFERRED",
+          confidence: 0.6,
+          detectedAt: new Date().toISOString(),
+        }),
+      );
 
-    return {
+    return portfolioPatternsPageSchema.parse({
       items,
       page: 1,
       pageSize: 20,
       total: items.length,
       epistemicState: items.length > 0 ? "INFERRED" : "UNKNOWN",
-    };
+    });
   });
 }
+
+const portfolioPatternsPageSchema = paginatedResponseSchema(
+  portfolioPatternSchema,
+).extend({
+  epistemicState: z.enum(["INFERRED", "UNKNOWN"]),
+});
