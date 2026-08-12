@@ -33,6 +33,10 @@ export default [
       "@typescript-eslint": tseslint,
     },
     rules: {
+      // TypeScript already checks undefined identifiers (NodeJS, DOM libs, etc.).
+      "no-undef": "off",
+      // Detector/secret regexes intentionally escape for readability.
+      "no-useless-escape": "off",
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -41,7 +45,7 @@ export default [
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-imports": [
         "error",
-        { prefer: "type-imports" },
+        { prefer: "type-imports", disallowTypeAnnotations: false },
       ],
     },
   },

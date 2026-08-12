@@ -2,7 +2,6 @@ import { z } from "zod";
 import { AUTHORITY_TIERS } from "../constants/tools.js";
 import {
   confidenceSchema,
-  epistemicStateSchema,
   isoDateTimeSchema,
   uuidSchema,
 } from "./common.schema.js";

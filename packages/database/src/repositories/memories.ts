@@ -57,7 +57,6 @@ export class MemoryRepository {
       // Non-fatal: the memory row itself is the source of truth; evidence
       // rows are supplementary provenance.
       if (evidenceError) {
-        // eslint-disable-next-line no-console
         console.warn("memory_evidence insert failed", evidenceError.message);
       }
     }

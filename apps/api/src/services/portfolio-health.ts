@@ -182,11 +182,11 @@ export function summarizeSystemHealthReport(
   };
 
   const issueSeeds: PortfolioIssueSeed[] = report.issues
-    .filter((i) => report.projectId)
-    .map((i) => ({
-      title: i.title,
-      category: i.category,
-      severity: i.severity,
+    .filter(() => Boolean(report.projectId))
+    .map((issue) => ({
+      title: issue.title,
+      category: issue.category,
+      severity: issue.severity,
       projectId: report.projectId!,
     }));
 

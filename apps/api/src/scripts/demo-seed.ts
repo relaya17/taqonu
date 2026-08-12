@@ -139,7 +139,6 @@ function main(): void {
     memoryId: memory.id,
   });
 
-  // eslint-disable-next-line no-console
   console.log(
     JSON.stringify(
       {

@@ -59,7 +59,7 @@ function kernelJudge(input: {
   if (input.request.trim().length < 12) {
     decision = "INSUFFICIENT_EVIDENCE";
     confidence = 0.3;
-  } else if (insuffSpecialists > 0 && input.request.trim().length < 12) {
+  } else if (insuffSpecialists > 0 && !sufficient) {
     decision = "INSUFFICIENT_EVIDENCE";
     confidence = 0.35;
   } else if (!sufficient || missing.length > 0) {

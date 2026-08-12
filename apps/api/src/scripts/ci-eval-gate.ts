@@ -8,6 +8,5 @@ process.env.ATLAS_SKIP_AUDIT_LOG ??= "1";
 process.env.ATLAS_SKIP_METRICS_LOG ??= "1";
 
 const result = evaluateCiGateForTests();
-// eslint-disable-next-line no-console
 console.log(JSON.stringify(result, null, 2));
 process.exit(result.exitCode);
