@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProviders } from "@/components/providers/AppProviders";
 import { AppShell } from "@/components/layout/AppShell";
 import { routing } from "@/i18n/routing";
@@ -61,6 +62,7 @@ export default async function LocaleLayout({
             </Suspense>
           </AppProviders>
         </NextIntlClientProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
