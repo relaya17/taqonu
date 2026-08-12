@@ -20,6 +20,10 @@ export async function registerHealthRoutes(app: FastifyInstance): Promise<void> 
     ),
   }));
 
+  app.get("/favicon.ico", async (_request, reply) =>
+    reply.code(204).send(),
+  );
+
   app.get("/health", async () => ({
     status: "ok",
     product: app.atlasEnv.APP_NAME,

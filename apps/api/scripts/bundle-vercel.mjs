@@ -7,9 +7,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outfile = join(root, "server.js");
 
 /**
- * Emit a single Node server entry for Vercel (framework: null / Other).
- * Avoids @vercel/fastify's EXPERIMENTAL_NODE_TYPESCRIPT_ERRORS pass that
- * typechecks NFT-pulled monorepo siblings (apps/web) under the API tsconfig.
+ * Fully self-contained Vercel Node entry (no node_modules externals).
+ * Externals + pnpm layout caused FUNCTION_INVOCATION_FAILED at import time.
  */
 await esbuild.build({
   absWorkingDir: root,
@@ -23,24 +22,19 @@ await esbuild.build({
   minify: true,
   treeShaking: true,
   legalComments: "none",
+  // Keep runtime env reads intact; only pin VERCEL for DCE of repo walks.
   define: {
     "process.env.VERCEL": '"1"',
   },
-  external: [
-    "fastify",
-    "@fastify/*",
-    "zod",
-    "dotenv",
-    "mongodb",
-    "sharp",
-    "pg",
-    "pg-native",
-  ],
+  // Native / optional bindings only — everything else must be inlined.
+  external: ["sharp", "pg-native", "@biomejs/biome", "fsevents"],
+  banner: {
+    js: 'import { createRequire as __vercelCreateRequire } from "node:module"; const require = __vercelCreateRequire(import.meta.url);',
+  },
   logLevel: "info",
 });
 
-// Fastify entry names must not remain — otherwise the Fastify preset wins.
-for (const stale of ["index.js", "index.mjs", "app.js", "src/app.ts"]) {
+for (const stale of ["index.js", "index.mjs", "app.js"]) {
   const p = join(root, stale);
   if (existsSync(p)) unlinkSync(p);
 }
@@ -51,4 +45,4 @@ writeFileSync(
   "utf8",
 );
 
-console.log(`Wrote ${outfile} (Node server entry for Vercel Other/null)`);
+console.log(`Wrote ${outfile} (fully bundled Node server for Vercel)`);
