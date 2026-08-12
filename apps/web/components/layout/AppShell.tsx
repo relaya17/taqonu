@@ -109,7 +109,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isRtl = locale === "he" || locale === "ar";
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  // noSsr: avoid first-paint desktop shell (no menu button) before matchMedia runs.
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"), { noSsr: true });
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);

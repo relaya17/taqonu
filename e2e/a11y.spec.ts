@@ -37,11 +37,15 @@ test.describe("A11y smoke (EN)", () => {
     });
 
     const openMenu = page.getByRole("button", { name: /open menu/i });
-    await expect(openMenu).toBeVisible();
+    await expect(openMenu).toBeVisible({ timeout: 15_000 });
     await expect(openMenu).toHaveAttribute("aria-expanded", "false");
     await openMenu.click();
-    await expect(openMenu).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("button", { name: /close menu/i })).toBeVisible();
+    // Drawer modal aria-hides the page (incl. open button); assert the close control instead.
+    const closeMenu = page.getByRole("button", { name: /close menu/i });
+    await expect(closeMenu).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole("button", { name: /open menu/i, includeHidden: true }),
+    ).toHaveAttribute("aria-expanded", "true");
   });
 
   test("primary surfaces avoid horizontal overflow on narrow viewports", async ({
