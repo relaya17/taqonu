@@ -88,6 +88,64 @@ export function analyzeRepository(root: string): RepoAnalysis {
   };
 }
 
+export interface RemoteTreeEntry {
+  readonly path: string;
+  readonly type: "blob" | "tree";
+}
+
+/**
+ * Same structural analysis as analyzeRepository (apps/packages/fileCount/graphHint),
+ * but computed from a remote file-tree listing (e.g. GitHub's Git Trees API) instead
+ * of walking a local filesystem. Lets hosted deployments produce real repo structure
+ * without needing disk access to the repo.
+ */
+export function analyzeRepoTreeEntries(
+  root: string,
+  entries: readonly RemoteTreeEntry[],
+): RepoAnalysis {
+  const kept = entries.filter(
+    (entry) => !entry.path.split("/").some((segment) => SKIP.has(segment)),
+  );
+
+  const topLevel = Array.from(
+    new Set(kept.map((entry) => entry.path.split("/")[0]).filter((v): v is string => Boolean(v))),
+  );
+
+  const appsSet = new Set<string>();
+  const packagesSet = new Set<string>();
+  for (const entry of kept) {
+    const parts = entry.path.split("/");
+    if (parts[0] === "apps" && parts.length >= 2 && parts[1]) appsSet.add(parts[1]);
+    if (parts[0] === "packages" && parts.length >= 2 && parts[1]) packagesSet.add(parts[1]);
+  }
+
+  const sampleFiles = kept
+    .filter((entry) => entry.type === "blob" && /\.(ts|tsx|js|jsx|json|md)$/i.test(entry.path))
+    .map((entry) => entry.path)
+    .slice(0, 80);
+
+  const apps = Array.from(appsSet);
+  const packages = Array.from(packagesSet);
+
+  return {
+    root,
+    apps,
+    packages,
+    topLevel,
+    fileCount: sampleFiles.length,
+    sampleFiles,
+    graphHint: [
+      "Repository",
+      apps.length ? `├── Apps (${apps.join(", ")})` : "├── Apps (none)",
+      packages.length
+        ? `├── Packages (${packages.slice(0, 12).join(", ")}${packages.length > 12 ? "…" : ""})`
+        : "├── Packages (none)",
+      "├── Tests / CI / Infra (scan deeper via impact)",
+      "└── Integrations",
+    ].join("\n"),
+  };
+}
+
 export function readTextFile(root: string, relPath: string): string | null {
   const full = join(root, relPath);
   if (!existsSync(full)) return null;

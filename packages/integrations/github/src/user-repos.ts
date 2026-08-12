@@ -86,6 +86,51 @@ export async function fetchGithubRepo(
   return githubRepoSchema.parse(await response.json());
 }
 
+export interface GitHubTreeEntry {
+  readonly path: string;
+  readonly type: "blob" | "tree";
+  readonly size?: number;
+}
+
+export interface GitHubTreeResult {
+  readonly entries: readonly GitHubTreeEntry[];
+  readonly truncated: boolean;
+}
+
+/**
+ * Real repository file listing via GitHub's Git Trees API (recursive) — no clone,
+ * no tarball, no local disk. Works from any serverless runtime with just HTTPS.
+ * Returns paths + blob/tree type only; file contents are never fetched or stored.
+ */
+export async function fetchGithubRepoTree(
+  token: string,
+  owner: string,
+  repo: string,
+  ref: string,
+): Promise<GitHubTreeResult> {
+  const response = await githubFetch(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    token,
+  );
+  if (!response.ok) {
+    throw new Error(
+      `GitHub tree fetch failed (${response.status}) for ${owner}/${repo}@${ref}`,
+    );
+  }
+  const json = (await response.json()) as {
+    tree: Array<{ path: string; type: string; size?: number }>;
+    truncated?: boolean;
+  };
+  const entries: GitHubTreeEntry[] = json.tree
+    .filter((item) => item.type === "blob" || item.type === "tree")
+    .map((item) => ({
+      path: item.path,
+      type: item.type as "blob" | "tree",
+      ...(item.size != null ? { size: item.size } : {}),
+    }));
+  return { entries, truncated: Boolean(json.truncated) };
+}
+
 export async function listGithubReposForToken(
   token: string,
 ): Promise<readonly GitHubApiRepo[]> {

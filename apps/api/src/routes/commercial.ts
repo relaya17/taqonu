@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   fetchGithubRepo,
+  fetchGithubRepoTree,
   parseGithubRepoRef,
   slugFromFullName,
 } from "@atlas/integrations-github";
@@ -25,7 +26,7 @@ import {
   collectCaseStudyMetrics,
 } from "../services/atlas-verdict.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
-import { analyzeRepository } from "@atlas/code-intelligence";
+import { analyzeRepoTreeEntries, analyzeRepository } from "@atlas/code-intelligence";
 import { discoverGitHubPortfolio } from "../services/portfolio-discovery.js";
 import { resolveWorkspaceRoot } from "../services/golden-root.js";
 import { assertCloudSlotAvailable } from "../services/plan-quota.js";
@@ -256,20 +257,47 @@ export async function registerCommercialValidationRoutes(
       }
       const repo = await fetchGithubRepo(connection.token, owner, repoName);
       const fullName = repo.full_name;
+      const defaultBranch = repo.default_branch ?? "main";
       const slug = body.slug ?? slugFromFullName(fullName);
       if (osStore.getProjectBySlug(slug) && !body.slug) {
         // allow update via discover
       }
+
+      // Real repo structure via GitHub's Git Trees API — no clone, no tarball,
+      // no local disk. If this fails (empty repo, huge tree, etc.) we still
+      // complete the import with metadata only, same as before.
+      let analysis: ReturnType<typeof analyzeRepoTreeEntries> | null = null;
+      let analysisNote: string | null = null;
+      try {
+        const tree = await fetchGithubRepoTree(
+          connection.token,
+          owner,
+          repoName,
+          defaultBranch,
+        );
+        analysis = analyzeRepoTreeEntries(fullName, tree.entries);
+        if (tree.truncated) {
+          analysisNote = "GitHub truncated the tree listing (very large repo) — structure below is partial.";
+        }
+      } catch (error) {
+        analysisNote = error instanceof Error ? error.message : "Tree analysis failed";
+      }
+
+      const techStack = [
+        ...(repo.language ? [repo.language] : []),
+        ...(analysis?.packages.slice(0, 6) ?? []),
+      ];
+
       const result = discoverGitHubPortfolio({
         repositories: [
           {
             fullName,
-            defaultBranch: repo.default_branch ?? "main",
+            defaultBranch,
             private: repo.private,
             htmlUrl: repo.html_url,
             name: body.name ?? repo.name,
             description: repo.description ?? undefined,
-            techStack: repo.language ? [repo.language] : undefined,
+            techStack: techStack.length > 0 ? techStack : undefined,
           },
         ],
         reconcile: body.reconcile ?? true,
@@ -297,19 +325,27 @@ export async function registerCommercialValidationRoutes(
         remote: {
           fullName,
           htmlUrl: repo.html_url,
-          defaultBranch: repo.default_branch ?? "main",
+          defaultBranch,
           private: repo.private,
         },
-        analysis: null,
+        analysis: analysis
+          ? {
+              fileCount: analysis.fileCount,
+              apps: analysis.apps,
+              packages: analysis.packages,
+              graphHint: analysis.graphHint,
+            }
+          : null,
+        analysisNote,
         workspaceRoot: null,
         verdict,
         ...cloud,
         storageNote:
-          "Source code remains on GitHub. Atlas stored evidence/observations only.",
+          "Repo structure read directly from GitHub's API (file tree only, no file contents fetched or stored). Full source remains on GitHub.",
         next: [
           "GET /api/v1/projects/:id/verdict",
           "GET /api/v1/projects/:id/report",
-          "Optional: clone locally and pass workspaceRoot for deeper code intel",
+          "Optional: clone locally and pass workspaceRoot for file-content-level code intel",
         ],
         note: "Imported from GitHub — validate findings with the champion.",
       });

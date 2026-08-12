@@ -343,19 +343,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           id: navId,
         }}
       >
-        <Stack
-          direction="row"
-          justifyContent="flex-end"
-          sx={{ display: { xs: "flex", md: "none" }, mb: 0.5 }}
-        >
-          <IconButton
-            onClick={() => setNavOpen(false)}
-            aria-label={t("a11y.closeMenu")}
-            sx={{ color: "#F4F7F5" }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </Stack>
         {nav}
       </Drawer>
 

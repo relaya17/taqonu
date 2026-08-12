@@ -33,7 +33,13 @@ interface ImportResult {
   source: string;
   project: { id: string; name: string; slug: string };
   workspaceRoot: string | null;
-  analysis: { fileCount: number } | null;
+  analysis: {
+    fileCount: number;
+    apps?: string[];
+    packages?: string[];
+    graphHint?: string;
+  } | null;
+  analysisNote?: string | null;
   verdict: {
     status: string;
     productionReadiness: number;
@@ -504,8 +510,19 @@ export default function PartnersPage() {
             {connect.data.analysis
               ? ` · files ${connect.data.analysis.fileCount}`
               : ""}
+            {connect.data.analysis?.apps?.length
+              ? ` · apps ${connect.data.analysis.apps.join(", ")}`
+              : ""}
+            {connect.data.analysis?.packages?.length
+              ? ` · packages ${connect.data.analysis.packages.slice(0, 6).join(", ")}`
+              : ""}
             {connect.data.cloudSynced ? " · cloud evidence synced" : ""}
           </Box>
+          {connect.data.analysisNote ? (
+            <Box sx={{ mt: 1 }} color="text.secondary">
+              {connect.data.analysisNote}
+            </Box>
+          ) : null}
           <Button
             size="small"
             sx={{ mt: 1, mr: 1 }}
