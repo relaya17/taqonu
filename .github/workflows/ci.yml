@@ -19,8 +19,9 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Typecheck packages
-        run: pnpm --filter @atlas/shared --filter @atlas/config --filter @atlas/agent-core --filter @atlas/knowledge --filter @atlas/integrations-github --filter @atlas/observability --filter @atlas/code-intelligence build
+      - name: Build packages + API
+        # Turbo ^build ordering; do not rely on checked-in tsbuildinfo (dist is gitignored).
+        run: pnpm exec turbo run build --filter=@atlas/api...
       - name: Unit tests
         run: pnpm test:unit
       - name: Lint

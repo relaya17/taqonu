@@ -29,6 +29,8 @@ export function authorityWeight(tier: AuthorityTier): number {
       return 0.4;
     case "TIER_4":
       return 0.15;
+    default:
+      return 0.15;
   }
 }
 
