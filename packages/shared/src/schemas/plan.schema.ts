@@ -22,6 +22,15 @@ export const planAxesSchema = z.object({
   }),
 });
 
+export const subscriptionStatusSchema = z.enum([
+  "active",
+  "canceled",
+  "past_due",
+  "trialing",
+  "incomplete",
+  "none",
+]);
+
 export const accountPlanSchema = z.object({
   tier: planTierSchema,
   cloudProjectLimit: z.number().int().positive(),
@@ -29,13 +38,27 @@ export const accountPlanSchema = z.object({
   remainingCloudSlots: z.number().int().min(0),
   cloudConfigured: z.boolean(),
   ownerId: uuidSchema,
-  source: z.enum(["env", "store", "default"]),
+  source: z.enum(["env", "store", "tenant", "default"]),
   updatedAt: isoDateTimeSchema,
+  subscriptionStatus: subscriptionStatusSchema.optional(),
+  stripeCustomerId: z.string().nullable().optional(),
   axes: planAxesSchema,
 });
 
 export const setPlanSchema = z.object({
   tier: planTierSchema,
+});
+
+/** Usage slice returned by GET /billing/usage (same tenant state as plan). */
+export const accountUsageSchema = z.object({
+  ownerId: uuidSchema,
+  tier: planTierSchema,
+  cloudProjectLimit: z.number().int().positive(),
+  cloudProjectCount: z.number().int().min(0),
+  remainingCloudSlots: z.number().int().min(0),
+  subscriptionStatus: subscriptionStatusSchema.optional(),
+  axes: planAxesSchema,
+  updatedAt: isoDateTimeSchema,
 });
 
 export const cloudUploadResultSchema = z.object({
@@ -46,5 +69,7 @@ export const cloudUploadResultSchema = z.object({
 });
 
 export type AccountPlan = z.infer<typeof accountPlanSchema>;
+export type AccountUsage = z.infer<typeof accountUsageSchema>;
 export type SetPlan = z.infer<typeof setPlanSchema>;
 export type CloudUploadResult = z.infer<typeof cloudUploadResultSchema>;
+export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;

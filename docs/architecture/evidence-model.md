@@ -55,3 +55,17 @@ Map forward carefully:
 | PROPOSED | ASSUMED / UNVERIFIED (context) |
 | UNKNOWN | UNKNOWN |
 | CONFLICTED | CONTRADICTED |
+
+## Evidence categories — never silently merge
+
+Engineering evidence is typed by **Current State slice keys**:
+
+`CODE | GIT | ARCHITECTURE | DEPENDENCIES | DATABASE | ENVIRONMENT | DEPLOYMENT | TESTS | SECURITY | DECISIONS | TASKS | RISKS`
+
+Hard rules:
+
+1. Every evidence record carries a required `category` (Zod enum).
+2. Aggregations (`GET /evidence`, Current State rollup, Verdict evidence inventory) expose **`evidenceByCategory` / `byCategory`** with **all** categories present — empty buckets stay empty; they are not dropped or fused.
+3. Distinct categories must never collapse into one undifferentiated blob (e.g. do not report “12 evidence items” as if CODE + GIT + SECURITY were the same kind of fact).
+4. Epistemic discipline is orthogonal: empty / thin evidence → `INSUFFICIENT_EVIDENCE`, not invented FACT.
+5. Inferring a typed category from provenance (sourceType / metadata) on legacy rows is allowed; **re-labeling GIT as CODE to “simplify” a rollup is not**.

@@ -35,20 +35,51 @@ Each task JSON:
 ## Golden Project
 
 **BrokerOS** (`C:\Users\User\Desktop\game\brokerOS-main` by default via `ATLAS_GOLDEN_PROJECT_ROOT`).
+If that path is missing, Atlas uses the in-repo fixture `fixtures/golden-brokeros`.
 
 Tasks A–F live under `bug-fixing/`, `qa/`, `test-generation/`, `architecture/`.
 
 ## Run
 
 ```bash
-# API
+# One-command golden Proof 1.1 (gates A–F → evidence report)
+# Uses ATLAS_GOLDEN_PROJECT_ROOT, else brokerOS-main, else fixtures/golden-brokeros
+pnpm proof:run
+
+# API (with `pnpm dev` API on :4000)
+POST /api/v1/proof/run
+{}
+GET  /api/v1/proof/status
+
+# Or suite-only
 POST /api/v1/benchmarks/run
-{ "workspaceRoot": "<brokerOS path>" }
+{ "workspaceRoot": "<brokerOS or fixture path>" }
 
 # Regression vs previous suite
 POST /api/v1/benchmarks/regression
 { "previousSuiteId": "...", "currentSuiteId": "..." }
 ```
+
+UI: `/he/proof` → **Run Proof 1.1 (gates A–F)**.
+
+### Golden root resolution
+
+1. `workspaceRoot` body / `ATLAS_GOLDEN_PROJECT_ROOT`
+2. Sibling `brokerOS-main` (lab path)
+3. In-repo `fixtures/golden-brokeros` (always available)
+
+### Gates A–F checklist
+
+| Gate | Task id |
+| --- | --- |
+| A | `brokeros-A-optimistic-locking` |
+| B | `brokeros-B-commission-inconsistency` |
+| C | `brokeros-C-commission-regression-tests` |
+| D | `brokeros-D-production-blockers` |
+| E | `brokeros-E-approved-bugfix` |
+| F | `brokeros-F-duplicate-detection-impact` |
+
+Pass requires all gates PASS and **zero unauthorized writes**.
 
 ## Success metric (product)
 

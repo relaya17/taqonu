@@ -61,10 +61,24 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
     components: {
       MuiCssBaseline: {
         styleOverrides: {
+          html: {
+            maxWidth: "100%",
+            overflowX: "clip",
+          },
           body: {
             backgroundImage:
               "radial-gradient(circle at 12% 10%, rgba(196, 92, 38, 0.12), transparent 36%), radial-gradient(circle at 88% 0%, rgba(15, 61, 62, 0.16), transparent 42%), linear-gradient(180deg, #E8EEF0 0%, #D9E4E6 100%)",
             minHeight: "100vh",
+            maxWidth: "100%",
+            overflowX: "clip",
+          },
+          "img, svg, video, canvas": {
+            maxWidth: "100%",
+            height: "auto",
+          },
+          "pre, code, table": {
+            maxWidth: "100%",
+            overflowX: "auto",
           },
           ":focus-visible": {
             outline: "3px solid #C45C26",
@@ -84,15 +98,18 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
             textDecoration: "none",
             fontWeight: 600,
           },
-          ".skip-link:focus": {
+          ".skip-link:focus, .skip-link:focus-visible": {
             transform: "translateY(0)",
           },
           "@media (prefers-reduced-motion: reduce)": {
-            "*": {
+            "*, *::before, *::after": {
               animationDuration: "0.01ms !important",
               animationIterationCount: "1 !important",
               transitionDuration: "0.01ms !important",
               scrollBehavior: "auto !important",
+            },
+            ".skip-link": {
+              transition: "none",
             },
           },
         },
@@ -107,6 +124,10 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
         },
       },
       MuiIconButton: {
+        defaultProps: {
+          // Encourage callers to set aria-label; size keeps 44px touch target.
+          size: "medium",
+        },
         styleOverrides: {
           root: {
             minWidth: 44,
@@ -118,6 +139,16 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
         styleOverrides: {
           root: {
             minHeight: 44,
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            "&:focus-visible": {
+              outline: "3px solid #C45C26",
+              outlineOffset: 2,
+            },
           },
         },
       },

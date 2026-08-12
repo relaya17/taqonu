@@ -64,12 +64,33 @@ interface AgentRunResponse {
       | "STALE"
       | "UNKNOWN"
       | "CONFLICTED"
+      | "INSUFFICIENT_EVIDENCE"
       | null;
   };
   intent: { kind: string; requiresApproval: boolean };
   learnedMemoryId?: string | null;
   patchId?: string | null;
   engineeringMode?: string;
+  epistemicLabel?: string;
+  evidenceRefs?: Array<{
+    id: string;
+    kind: string;
+    reference: string;
+    excerpt?: string;
+    epistemicState?: string;
+  }>;
+  memoryContext?: {
+    items: Array<{
+      id: string;
+      statement: string;
+      epistemicState: string;
+      evidence: Array<{ id: string; reference: string; excerpt?: string }>;
+    }>;
+    note: string;
+    truncated: boolean;
+    budget: number;
+  };
+  knowledgePlainLanguage?: string | null;
 }
 
 const PORTFOLIO = "__portfolio__";
@@ -223,14 +244,16 @@ export default function AgentPage() {
   };
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 860 }}>
+    <Stack spacing={3} sx={{ maxWidth: 860, width: "100%", minWidth: 0 }}>
       <Box>
-        <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
+        <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.4rem" }, wordBreak: "break-word" }}>
           {t("title")}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           {t("providerPickerHint")}{" "}
           <Link href="/models">{t("seeAllModels")}</Link>
+          {" · "}
+          <Link href="/chat">{t("openChat")}</Link>
         </Typography>
       </Box>
 
@@ -241,6 +264,7 @@ export default function AgentPage() {
         onChange={(e) =>
           setAiProviderId(e.target.value as (typeof AGENT_IDS)[number])
         }
+        fullWidth
         helperText={
           selected
             ? `${locale === "en" ? selected.bestForEn : selected.bestForHe} · ${
@@ -285,6 +309,7 @@ export default function AgentPage() {
           setEngineeringMode(e.target.value as (typeof ENG_MODES)[number])
         }
         helperText={t("engineeringModeHelp")}
+        fullWidth
       >
         {ENG_MODES.map((m) => (
           <MenuItem key={m} value={m}>
@@ -299,6 +324,7 @@ export default function AgentPage() {
         onChange={(e) => setWorkspaceRoot(e.target.value)}
         helperText={t("workspaceHelp")}
         fullWidth
+        inputProps={{ spellCheck: false }}
       />
 
       <TextField
@@ -306,7 +332,8 @@ export default function AgentPage() {
         label={t("projectLabel")}
         value={projectId}
         onChange={(event) => setProjectId(event.target.value)}
-        sx={{ maxWidth: 360 }}
+        fullWidth
+        sx={{ maxWidth: 480 }}
         helperText={projects.length === 0 ? t("noProjects") : undefined}
       >
         <MenuItem value={PORTFOLIO}>{t("portfolio")}</MenuItem>
@@ -318,6 +345,7 @@ export default function AgentPage() {
       </TextField>
 
       <TextField
+        label={t("request")}
         multiline
         minRows={3}
         value={request}
@@ -326,7 +354,11 @@ export default function AgentPage() {
         fullWidth
       />
 
-      <Stack direction="row" spacing={1.5}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.5}
+        alignItems={{ xs: "stretch", sm: "center" }}
+      >
         <Button
           variant="outlined"
           onClick={() => mutation.mutate()}
@@ -352,19 +384,79 @@ export default function AgentPage() {
           sx={{
             borderTop: "1px solid rgba(20,32,34,0.14)",
             pt: 2.5,
+            minWidth: 0,
           }}
         >
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-            <EpistemicChip state={result.run.epistemicState ?? "PROPOSED"} />
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
+            <EpistemicChip
+              state={
+                (result.epistemicLabel as AgentRunResponse["run"]["epistemicState"]) ??
+                result.run.epistemicState ??
+                "PROPOSED"
+              }
+            />
             <Typography variant="body2" color="text.secondary">
               {result.run.mode} · {result.run.status} · {result.intent.kind}
             </Typography>
           </Stack>
-          <Typography sx={{ whiteSpace: "pre-wrap", mb: 2 }}>
+          {(result.epistemicLabel === "INSUFFICIENT_EVIDENCE" ||
+            result.run.epistemicState === "INSUFFICIENT_EVIDENCE") && (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              {t("insufficientEvidence")}
+            </Alert>
+          )}
+          <Typography sx={{ whiteSpace: "pre-wrap", mb: 2, wordBreak: "break-word" }}>
             {result.run.answer}
           </Typography>
           <Typography variant="overline">{t("evidence")}</Typography>
-          <Typography variant="body2">{t("contextUsed")}</Typography>
+          {result.evidenceRefs && result.evidenceRefs.length > 0 ? (
+            <Stack spacing={0.75} sx={{ mb: 1.5 }}>
+              {result.evidenceRefs.map((ref) => (
+                <Typography
+                  key={`${ref.kind}-${ref.id}`}
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  [{ref.kind}] {ref.reference}
+                  {ref.epistemicState ? ` · ${ref.epistemicState}` : ""}
+                </Typography>
+              ))}
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="warning.main" sx={{ mb: 1.5 }}>
+              {t("noEvidenceRefs")}
+            </Typography>
+          )}
+          {result.memoryContext ? (
+            <Box sx={{ mb: 1.5 }}>
+              <Typography variant="overline">{t("memoryContext")}</Typography>
+              <Typography variant="caption" display="block" color="text.secondary">
+                {result.memoryContext.note}
+                {result.memoryContext.truncated
+                  ? ` · ${t("memoryTruncated", { n: result.memoryContext.budget })}`
+                  : ""}
+              </Typography>
+              {result.memoryContext.items.slice(0, 6).map((item) => (
+                <Stack
+                  key={item.id}
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  sx={{ mt: 0.75 }}
+                >
+                  <EpistemicChip
+                    state={
+                      (item.epistemicState as AgentRunResponse["run"]["epistemicState"]) ??
+                      "INFERRED"
+                    }
+                  />
+                  <Typography variant="body2">{item.statement}</Typography>
+                </Stack>
+              ))}
+            </Box>
+          ) : (
+            <Typography variant="body2">{t("contextUsed")}</Typography>
+          )}
           {result.learnedMemoryId ? (
             <Alert severity="success" sx={{ mt: 1.5 }}>
               {t("learnedMemory")}

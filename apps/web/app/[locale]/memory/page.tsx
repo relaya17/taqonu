@@ -5,6 +5,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   MenuItem,
   Stack,
   TextField,
@@ -15,25 +16,90 @@ import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
 
+type EpistemicState =
+  | "FACT"
+  | "CONFIRMED"
+  | "OBSERVED"
+  | "INFERRED"
+  | "PROPOSED"
+  | "ASSUMED"
+  | "UNVERIFIED"
+  | "UNKNOWN"
+  | "CONFLICTED";
+
 interface Memory {
   id: string;
   type: string;
   statement: string;
   status: string;
-  epistemicState:
-    | "FACT"
-    | "CONFIRMED"
-    | "INFERRED"
-    | "PROPOSED"
-    | "UNKNOWN"
-    | "CONFLICTED";
+  epistemicState: EpistemicState;
   createdAt: string;
   priority: string;
+  projectId: string | null;
+  cloudSynced?: boolean;
 }
 
 interface Project {
   id: string;
   name: string;
+}
+
+const PENDING_STATES = new Set<EpistemicState>([
+  "PROPOSED",
+  "INFERRED",
+  "UNVERIFIED",
+  "ASSUMED",
+]);
+
+function MemoryRow({
+  item,
+  onApprove,
+  approving,
+}: {
+  item: Memory;
+  onApprove?: (item: Memory) => void;
+  approving: boolean;
+}) {
+  const t = useTranslations("memory");
+  return (
+    <Box
+      sx={{
+        py: 2,
+        borderBottom: "1px solid rgba(20,32,34,0.12)",
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        justifyContent="space-between"
+        flexWrap="wrap"
+        useFlexGap
+        sx={{ mb: 0.5 }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <EpistemicChip state={item.epistemicState} />
+          <Typography variant="body2" color="text.secondary">
+            {item.type} · {item.priority}
+          </Typography>
+          {item.cloudSynced ? (
+            <Chip size="small" variant="outlined" label={t("cloudSynced")} />
+          ) : null}
+        </Stack>
+        {onApprove ? (
+          <Button
+            size="small"
+            variant="contained"
+            disabled={approving}
+            onClick={() => onApprove(item)}
+          >
+            {t("approve")}
+          </Button>
+        ) : null}
+      </Stack>
+      <Typography fontWeight={650}>{item.statement}</Typography>
+    </Box>
+  );
 }
 
 export default function MemoryPage() {
@@ -53,6 +119,11 @@ export default function MemoryPage() {
     queryFn: () => apiGet<{ items: Memory[] }>("/api/v1/memory"),
   });
 
+  const pendingQuery = useQuery({
+    queryKey: ["memory-pending"],
+    queryFn: () => apiGet<{ items: Memory[] }>("/api/v1/memory/pending"),
+  });
+
   const create = useMutation({
     mutationFn: () =>
       apiPost<Memory>("/api/v1/memory", {
@@ -70,14 +141,31 @@ export default function MemoryPage() {
     onSuccess: async () => {
       setStatement("");
       await queryClient.invalidateQueries({ queryKey: ["memory"] });
+      await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
+    },
+  });
+
+  const approve = useMutation({
+    mutationFn: (item: Memory) =>
+      apiPost<Memory>(`/api/v1/memory/${item.id}/approve`, {
+        projectId: item.projectId,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["memory"] });
+      await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
     },
   });
 
   const items = memoryQuery.data?.items ?? [];
+  const pendingItems = pendingQuery.data?.items ?? [];
+  const pendingIds = new Set(pendingItems.map((p) => p.id));
+  const confirmedItems = items.filter(
+    (item) => !pendingIds.has(item.id) && !PENDING_STATES.has(item.epistemicState),
+  );
   const projects = projectsQuery.data?.items ?? [];
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 820 }}>
+    <Stack spacing={4} sx={{ maxWidth: 820 }}>
       <Box>
         <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
           {t("title")}
@@ -138,29 +226,48 @@ export default function MemoryPage() {
         ) : null}
       </Stack>
 
-      <Stack spacing={0}>
-        {items.length === 0 ? (
-          <Typography color="text.secondary">{t("empty")}</Typography>
-        ) : (
-          items.map((item) => (
-            <Box
-              key={item.id}
-              sx={{
-                py: 2,
-                borderBottom: "1px solid rgba(20,32,34,0.12)",
-              }}
-            >
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                <EpistemicChip state={item.epistemicState} />
-                <Typography variant="body2" color="text.secondary">
-                  {item.type} · {item.priority}
-                </Typography>
-              </Stack>
-              <Typography fontWeight={650}>{item.statement}</Typography>
-            </Box>
-          ))
-        )}
-      </Stack>
+      <Box>
+        <Typography fontWeight={650} sx={{ mb: 0.5 }}>
+          {t("pendingTitle")} {pendingItems.length > 0 ? `(${pendingItems.length})` : ""}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          {t("pendingHelp")}
+        </Typography>
+        {approve.isError ? (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {(approve.error as Error).message}
+          </Alert>
+        ) : null}
+        <Stack spacing={0}>
+          {pendingItems.length === 0 ? (
+            <Typography color="text.secondary">{t("pendingEmpty")}</Typography>
+          ) : (
+            pendingItems.map((item) => (
+              <MemoryRow
+                key={item.id}
+                item={item}
+                approving={approve.isPending}
+                onApprove={(m) => approve.mutate(m)}
+              />
+            ))
+          )}
+        </Stack>
+      </Box>
+
+      <Box>
+        <Typography fontWeight={650} sx={{ mb: 0.5 }}>
+          {t("confirmedTitle")}
+        </Typography>
+        <Stack spacing={0}>
+          {confirmedItems.length === 0 ? (
+            <Typography color="text.secondary">{t("empty")}</Typography>
+          ) : (
+            confirmedItems.map((item) => (
+              <MemoryRow key={item.id} item={item} approving={false} />
+            ))
+          )}
+        </Stack>
+      </Box>
     </Stack>
   );
 }

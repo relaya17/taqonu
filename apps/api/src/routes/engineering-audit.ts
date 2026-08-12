@@ -8,7 +8,6 @@ import {
 } from "@atlas/shared";
 import {
   defaultArchitectureContract,
-  draftAutoRemediations,
   listConstitutionChecklist,
   runContinuousSystemAudit,
   runEngineeringConstitution,
@@ -25,11 +24,26 @@ import {
 } from "../services/architecture-contract-store.js";
 import { architectureContractSchema } from "@atlas/shared";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { getRequestUser } from "./auth.js";
+import {
+  autoApplyLowRemediations,
+  persistAutoRemediationDrafts,
+  shouldAutoApplyLow,
+  summarizeDrafts,
+} from "../services/remediation-pipeline.js";
 
 const reports: Array<ReturnType<typeof systemHealthReportSchema.parse>> = [];
 const constitutionReports: Array<
   ReturnType<typeof constitutionReportSchema.parse>
 > = [];
+
+/** Allow partner audit-spine (and other orchestrators) to surface reports on /health. */
+export function recordSystemHealthReport(
+  report: ReturnType<typeof systemHealthReportSchema.parse>,
+): void {
+  reports.push(report);
+  if (reports.length > 50) reports.shift();
+}
 
 function resolveWorkspace(
   app: FastifyInstance,
@@ -47,6 +61,39 @@ function resolveWorkspace(
     app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ||
     defaultGoldenRoot()
   );
+}
+
+function runRemediationLoop(input: {
+  readonly app: FastifyInstance;
+  readonly request: Parameters<typeof getRequestUser>[1];
+  readonly projectId: string | null;
+  readonly issues: Parameters<typeof persistAutoRemediationDrafts>[0]["issues"];
+  readonly workspaceRoot: string;
+  readonly autoApplyLow?: boolean | undefined;
+}) {
+  const drafts = persistAutoRemediationDrafts({
+    projectId: input.projectId,
+    issues: input.issues,
+    workspaceRoot: input.workspaceRoot,
+  });
+  const user = getRequestUser(input.app, input.request);
+  const doAuto = shouldAutoApplyLow({
+    envFlag: Boolean(input.app.atlasEnv.ATLAS_AUTO_APPLY_LOW),
+    requestFlag: Boolean(input.autoApplyLow),
+    user,
+  });
+  const autoApply = doAuto && user
+    ? autoApplyLowRemediations({
+        drafts,
+        user,
+        bodyWorkspaceRoot: input.workspaceRoot,
+      })
+    : [];
+  return {
+    drafts: summarizeDrafts(drafts),
+    autoApply,
+    autoApplyEnabled: doAuto,
+  };
 }
 
 export async function registerEngineeringAuditRoutes(
@@ -132,12 +179,25 @@ export async function registerEngineeringAuditRoutes(
     constitutionReports.push(parsed);
     if (constitutionReports.length > 50) constitutionReports.shift();
 
+    const remediation = runRemediationLoop({
+      app,
+      request,
+      projectId: parsed.projectId,
+      issues: parsed.issues,
+      workspaceRoot: resolve(workspaceRoot),
+      ...(body.autoApplyLow !== undefined
+        ? { autoApplyLow: body.autoApplyLow }
+        : {}),
+    });
+
     osStore.recordEvent({
       type: "constitution.run",
       id: parsed.id,
       overall: parsed.overallScore,
       omissions: parsed.omissions.length,
       failed: parsed.results.filter((r) => r.status === "FAIL").length,
+      autoRemediationDrafts: remediation.drafts.length,
+      autoApply: remediation.autoApply.length,
       at: parsed.createdAt,
     });
     appendDomainEvent({
@@ -149,10 +209,16 @@ export async function registerEngineeringAuditRoutes(
         reportId: parsed.id,
         overallScore: parsed.overallScore,
         omissions: parsed.omissions.length,
+        autoRemediationDrafts: remediation.drafts.length,
       },
     });
 
-    return reply.status(201).send(parsed);
+    return reply.status(201).send({
+      ...parsed,
+      autoRemediationDrafts: remediation.drafts,
+      autoApply: remediation.autoApply,
+      autoApplyEnabled: remediation.autoApplyEnabled,
+    });
   });
 
   app.post("/api/v1/audit-engine/run", async (request, reply) => {
@@ -189,26 +255,16 @@ export async function registerEngineeringAuditRoutes(
     reports.push(parsed);
     if (reports.length > 50) reports.shift();
 
-    const drafts = draftAutoRemediations({
+    const remediation = runRemediationLoop({
+      app,
+      request,
       projectId: parsed.projectId,
       issues: parsed.issues,
       workspaceRoot: resolve(workspaceRoot),
+      ...(body.autoApplyLow !== undefined
+        ? { autoApplyLow: body.autoApplyLow }
+        : {}),
     });
-    for (const d of drafts) {
-      osStore.upsertPatch(d.patch);
-      appendDomainEvent({
-        type: "patch.proposed",
-        projectId: d.patch.projectId,
-        epistemicState: "PROPOSED",
-        payload: {
-          kind: "auto-remediation",
-          patchId: d.patch.id,
-          issueId: d.issueId,
-          remediationPolicy: d.remediationPolicy,
-          title: d.title,
-        },
-      });
-    }
 
     osStore.recordEvent({
       type: "audit-engine.run",
@@ -217,7 +273,8 @@ export async function registerEngineeringAuditRoutes(
       critical: parsed.criticalIssues,
       drift: parsed.driftFindings.length,
       constitution: parsed.constitution?.overallScore ?? null,
-      autoRemediationDrafts: drafts.length,
+      autoRemediationDrafts: remediation.drafts.length,
+      autoApply: remediation.autoApply.length,
       at: parsed.createdAt,
     });
     appendDomainEvent({
@@ -230,20 +287,15 @@ export async function registerEngineeringAuditRoutes(
         overallScore: parsed.overallScore,
         criticalIssues: parsed.criticalIssues,
         constitutionScore: parsed.constitution?.overallScore ?? null,
-        autoRemediationDrafts: drafts.length,
+        autoRemediationDrafts: remediation.drafts.length,
       },
     });
 
     return reply.status(201).send({
       ...parsed,
-      autoRemediationDrafts: drafts.map((d) => ({
-        issueId: d.issueId,
-        patchId: d.patch.id,
-        title: d.title,
-        note: d.note,
-        remediationPolicy: d.remediationPolicy,
-        status: d.patch.status,
-      })),
+      autoRemediationDrafts: remediation.drafts,
+      autoApply: remediation.autoApply,
+      autoApplyEnabled: remediation.autoApplyEnabled,
     });
   });
 }

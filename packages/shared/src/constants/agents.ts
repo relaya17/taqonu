@@ -13,15 +13,33 @@ export const FABRIC_AGENT_IDS = [
   "DEVOPS",
   "RESEARCHER",
   "OMISSION_DETECTOR",
+  "LEGAL_MEDIA_COMMS",
   "JUDGE",
 ] as const;
 
 export type FabricAgentId = (typeof FABRIC_AGENT_IDS)[number];
 
+export const FABRIC_AGENT_CATEGORIES = [
+  "orchestration",
+  "engineering",
+  "quality",
+  "security",
+  "design",
+  "ops",
+  "research",
+  "governance",
+  "legal",
+] as const;
+
+export type FabricAgentCategory = (typeof FABRIC_AGENT_CATEGORIES)[number];
+
 export interface FabricAgentDefinition {
   readonly id: FabricAgentId;
   readonly title: string;
+  readonly titleHe: string;
+  readonly titleAr: string;
   readonly specialty: string;
+  readonly category: FabricAgentCategory;
   readonly allowedTools: readonly string[];
   readonly forbiddenTools: readonly string[];
   readonly evidenceRequirements: readonly string[];
@@ -30,6 +48,16 @@ export interface FabricAgentDefinition {
   readonly riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   readonly canWriteCode: boolean;
   readonly evaluationSuite: string;
+  /** Marketplace-style cost hint (not a Cursor-style model picker). */
+  readonly costHintEn: string;
+  readonly costHintHe: string;
+  readonly costHintAr: string;
+  readonly strengthsEn: readonly string[];
+  readonly strengthsHe: readonly string[];
+  readonly strengthsAr: readonly string[];
+  readonly weaknessesEn: readonly string[];
+  readonly weaknessesHe: readonly string[];
+  readonly weaknessesAr: readonly string[];
 }
 
 export const FABRIC_AGENT_CATALOG: Readonly<
@@ -38,7 +66,10 @@ export const FABRIC_AGENT_CATALOG: Readonly<
   ORCHESTRATOR: {
     id: "ORCHESTRATOR",
     title: "Atlas Master Orchestrator",
+    titleHe: "אורקסטרטור ראשי",
+    titleAr: "المنسّق الرئيسي",
     specialty: "Decompose · select specialists · budgets · handoffs",
+    category: "orchestration",
     allowedTools: ["plan", "dispatch", "budget", "trace"],
     forbiddenTools: ["apply_patch", "exfiltrate"],
     evidenceRequirements: ["user request", "project context"],
@@ -47,11 +78,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "MEDIUM",
     canWriteCode: false,
     evaluationSuite: "orch-plan-v1",
+    costHintEn: "Low — planning overhead only",
+    costHintHe: "נמוך — תכנון בלבד",
+    costHintAr: "منخفض — تخطيط فقط",
+    strengthsEn: [
+      "Routes by task fit, not “best LLM”",
+      "Enforces budgets and isolation",
+      "Typed Evidence Bus handoffs",
+    ],
+    strengthsHe: [
+      "מנתב לפי התאמת משימה, לא “המודל הכי טוב”",
+      "אוכף תקציבים ובידוד",
+      "העברות Evidence Bus מטופסות",
+    ],
+    strengthsAr: [
+      "يوجّه حسب ملاءمة المهمة وليس “أفضل نموذج”",
+      "يفرض الميزانيات والعزل",
+      "تسليمات Evidence Bus مُنمَّطة",
+    ],
+    weaknessesEn: [
+      "Does not write code",
+      "Quality depends on specialist coverage",
+      "Thin prompts yield thin plans",
+    ],
+    weaknessesHe: [
+      "לא כותב קוד",
+      "האיכות תלויה בכיסוי המומחים",
+      "בקשות דלות → תוכניות דלות",
+    ],
+    weaknessesAr: [
+      "لا يكتب شيفرة",
+      "الجودة تعتمد على تغطية المتخصصين",
+      "طلبات ضعيفة → خطط ضعيفة",
+    ],
   },
   ARCHITECT: {
     id: "ARCHITECT",
     title: "Architect",
+    titleHe: "אדריכל מערכת",
+    titleAr: "مهندس معمارية",
     specialty: "Modules · dependencies · boundaries · debt · scalability",
+    category: "engineering",
     allowedTools: ["analyze_repo", "impact", "read_adr"],
     forbiddenTools: ["apply_patch"],
     evidenceRequirements: ["repo graph", "ADRs"],
@@ -60,11 +127,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "MEDIUM",
     canWriteCode: false,
     evaluationSuite: "architect-v1",
+    costHintEn: "Mid — graph + ADR reads",
+    costHintHe: "בינוני — גרף + ADR",
+    costHintAr: "متوسط — رسم بياني + ADR",
+    strengthsEn: [
+      "Boundary and debt analysis",
+      "ADR-aware recommendations",
+      "Read-only — safe by default",
+    ],
+    strengthsHe: [
+      "ניתוח גבולות וחוב טכני",
+      "המלצות מודעות ל־ADR",
+      "קריאה בלבד — בטוח כברירת מחדל",
+    ],
+    strengthsAr: [
+      "تحليل الحدود والدين التقني",
+      "توصيات واعية بـ ADR",
+      "قراءة فقط — آمن افتراضيًا",
+    ],
+    weaknessesEn: [
+      "Cannot apply patches",
+      "Needs repo graph evidence",
+      "Won’t invent undocumented prod behavior",
+    ],
+    weaknessesHe: [
+      "לא מחיל תיקונים",
+      "דורש ראיות גרף מאגר",
+      "לא ממציא התנהגות prod לא מתועדת",
+    ],
+    weaknessesAr: [
+      "لا يطبّق تصحيحات",
+      "يحتاج أدلة رسم المستودع",
+      "لا يخترع سلوك إنتاج غير موثّق",
+    ],
   },
   CODE_ENGINEER: {
     id: "CODE_ENGINEER",
     title: "Code Engineer",
+    titleHe: "מהנדס קוד",
+    titleAr: "مهندس شيفرة",
     specialty: "Generate · fix · refactor · migrate — Patch Artifact only",
+    category: "engineering",
     allowedTools: ["propose_patch", "analyze_repo", "impact"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["failing test or explicit requirement"],
@@ -73,11 +176,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "HIGH",
     canWriteCode: true,
     evaluationSuite: "code-engineer-v1",
+    costHintEn: "Higher — patch proposals",
+    costHintHe: "גבוה יותר — הצעות תיקון",
+    costHintAr: "أعلى — مقترحات تصحيح",
+    strengthsEn: [
+      "Produces gated Patch Artifacts",
+      "Tied to failing tests or explicit reqs",
+      "Impact-aware proposals",
+    ],
+    strengthsHe: [
+      "מפיק Patch Artifacts תחת שער",
+      "קשור לבדיקות כושלות או דרישה מפורשת",
+      "הצעות מודעות להשפעה",
+    ],
+    strengthsAr: [
+      "ينتج Patch Artifacts تحت بوابة موافقة",
+      "مرتبط باختبارات فاشلة أو مطلب صريح",
+      "مقترحات واعية بالأثر",
+    ],
+    weaknessesEn: [
+      "WRITE stays approval-gated",
+      "Refuses without evidence",
+      "Not a free-form chat coder",
+    ],
+    weaknessesHe: [
+      "WRITE נשאר תחת אישור",
+      "מסרב בלי ראיות",
+      "לא צ׳אט קוד חופשי",
+    ],
+    weaknessesAr: [
+      "الكتابة تبقى تحت موافقة",
+      "يرفض بلا أدلة",
+      "ليس مبرمج دردشة حرّة",
+    ],
   },
   DEBUGGER: {
     id: "DEBUGGER",
     title: "Debugger",
+    titleHe: "מאתר באגים",
+    titleAr: "مصحّح أخطاء",
     specialty: "Reproduce → isolate → identify → propose → verify",
+    category: "engineering",
     allowedTools: ["logs", "tests", "propose_patch", "analyze_repo"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["repro steps or stack/logs"],
@@ -86,11 +225,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "HIGH",
     canWriteCode: true,
     evaluationSuite: "debugger-v1",
+    costHintEn: "Higher — repro + patch loop",
+    costHintHe: "גבוה יותר — שחזור + תיקון",
+    costHintAr: "أعلى — إعادة إنتاج + تصحيح",
+    strengthsEn: [
+      "Structured reproduce→verify loop",
+      "Uses logs and failing tests as evidence",
+      "Patch proposals stay gated",
+    ],
+    strengthsHe: [
+      "לולאת שחזור→אימות מובנית",
+      "משתמש בלוגים ובדיקות כושלות כראיות",
+      "הצעות תיקון נשארות תחת שער",
+    ],
+    strengthsAr: [
+      "حلقة إعادة إنتاج→تحقق منظمة",
+      "يستخدم السجلات والاختبارات الفاشلة كأدلة",
+      "مقترحات التصحيح تبقى تحت بوابة",
+    ],
+    weaknessesEn: [
+      "Needs repro or stack evidence",
+      "Can escalate when evidence is thin",
+      "Not for greenfield feature design",
+    ],
+    weaknessesHe: [
+      "דורש שחזור או stack",
+      "יכול להסלים כשהראיות דלות",
+      "לא לעיצוב פיצ׳ר מאפס",
+    ],
+    weaknessesAr: [
+      "يحتاج إعادة إنتاج أو مكدس",
+      "قد يصعّد عند ضعف الأدلة",
+      "ليس لتصميم ميزة من الصفر",
+    ],
   },
   QA: {
     id: "QA",
     title: "QA Strategist",
+    titleHe: "אסטרטג QA",
+    titleAr: "استراتيجي ضمان جودة",
     specialty: "Decide what must be tested by risk",
+    category: "quality",
     allowedTools: ["risk_map", "coverage_gaps", "gates"],
     forbiddenTools: ["apply_patch"],
     evidenceRequirements: ["risk ranking", "critical paths"],
@@ -99,11 +274,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "MEDIUM",
     canWriteCode: false,
     evaluationSuite: "qa-v1",
+    costHintEn: "Low — risk strategy",
+    costHintHe: "נמוך — אסטרטגיית סיכון",
+    costHintAr: "منخفض — استراتيجية مخاطر",
+    strengthsEn: [
+      "Risk-based test planning",
+      "Critical-path focus",
+      "Feeds Test Engineer cleanly",
+    ],
+    strengthsHe: [
+      "תכנון בדיקות לפי סיכון",
+      "מיקוד בנתיבים קריטיים",
+      "מזין את מהנדס הבדיקות בבירור",
+    ],
+    strengthsAr: [
+      "تخطيط اختبارات حسب المخاطر",
+      "تركيز على المسارات الحرجة",
+      "يغذّي مهندس الاختبار بوضوح",
+    ],
+    weaknessesEn: [
+      "Does not author tests itself",
+      "Needs risk/critical-path evidence",
+      "Won’t claim untested paths are ready",
+    ],
+    weaknessesHe: [
+      "לא כותב בדיקות בעצמו",
+      "דורש ראיות סיכון/נתיבים",
+      "לא יטען שנתיבים לא נבדקו מוכנים",
+    ],
+    weaknessesAr: [
+      "لا يكتب الاختبارات بنفسه",
+      "يحتاج أدلة مخاطر/مسارات",
+      "لن يدّعي جاهزية مسارات غير مختبرة",
+    ],
   },
   TEST_ENGINEER: {
     id: "TEST_ENGINEER",
     title: "Test Engineer",
+    titleHe: "מהנדס בדיקות",
+    titleAr: "مهندس اختبارات",
     specialty: "Unit · integration · E2E · regression · edge cases",
+    category: "quality",
     allowedTools: ["propose_patch", "run_tests"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["QA plan or failing suite"],
@@ -112,11 +323,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "MEDIUM",
     canWriteCode: true,
     evaluationSuite: "test-engineer-v1",
+    costHintEn: "Mid — test authoring",
+    costHintHe: "בינוני — כתיבת בדיקות",
+    costHintAr: "متوسط — تأليف اختبارات",
+    strengthsEn: [
+      "Authors unit/integration/E2E patches",
+      "Regression and edge-case focus",
+      "Runs under QA plan evidence",
+    ],
+    strengthsHe: [
+      "כותב תיקוני unit/integration/E2E",
+      "מיקוד ברגרסיה ומקרי קצה",
+      "רץ תחת ראיות תוכנית QA",
+    ],
+    strengthsAr: [
+      "يؤلّف تصحيحات unit/integration/E2E",
+      "تركيز على الانحدار والحالات الحدّية",
+      "يعمل تحت أدلة خطة QA",
+    ],
+    weaknessesEn: [
+      "Needs QA plan or failing suite",
+      "Apply stays gated",
+      "Not a substitute for product risk ranking",
+    ],
+    weaknessesHe: [
+      "דורש תוכנית QA או suite כושל",
+      "החלה נשארת תחת שער",
+      "לא מחליף דירוג סיכון מוצרי",
+    ],
+    weaknessesAr: [
+      "يحتاج خطة QA أو جناح فاشل",
+      "التطبيق يبقى تحت بوابة",
+      "ليس بديلاً عن ترتيب مخاطر المنتج",
+    ],
   },
   SECURITY: {
     id: "SECURITY",
     title: "Security",
+    titleHe: "אבטחה",
+    titleAr: "أمن",
     specialty: "AuthN/Z · secrets · injection · tenants · supply chain",
+    category: "security",
     allowedTools: ["security_scan", "deps_audit", "analyze_repo"],
     forbiddenTools: ["exfiltrate", "apply_patch_without_approval"],
     evidenceRequirements: ["threat surface", "deps lockfile"],
@@ -125,11 +372,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "CRITICAL",
     canWriteCode: false,
     evaluationSuite: "security-v1",
+    costHintEn: "Mid-high — threat + deps",
+    costHintHe: "בינוני-גבוה — איום + תלויות",
+    costHintAr: "متوسط-عالٍ — تهديد + تبعيات",
+    strengthsEn: [
+      "AuthZ, secrets, injection focus",
+      "Tenant and supply-chain awareness",
+      "Never asserts “secure” without evidence",
+    ],
+    strengthsHe: [
+      "מיקוד AuthZ, סודות, injection",
+      "מודעות ל־tenant ושרשרת אספקה",
+      "לא טוען “מאובטח” בלי ראיות",
+    ],
+    strengthsAr: [
+      "تركيز على AuthZ والأسرار والحقن",
+      "وعي بالمستأجرين وسلسلة التوريد",
+      "لا يدّعي “آمن” بلا أدلة",
+    ],
+    weaknessesEn: [
+      "Read/propose posture — not auto-fix",
+      "Needs threat surface evidence",
+      "Escalates thin claims to Judge",
+    ],
+    weaknessesHe: [
+      "קריאה/הצעה — לא תיקון אוטומטי",
+      "דורש ראיות משטח איום",
+      "מסלים טענות דלות לשופט",
+    ],
+    weaknessesAr: [
+      "قراءة/اقتراح — لا إصلاح تلقائي",
+      "يحتاج أدلة سطح التهديد",
+      "يصعّد الادعاءات الضعيفة إلى القاضي",
+    ],
   },
   ACCESSIBILITY: {
     id: "ACCESSIBILITY",
     title: "Accessibility",
+    titleHe: "נגישות",
+    titleAr: "إتاحة",
     specialty: "WCAG · keyboard · focus · SR · RTL · contrast",
+    category: "design",
     allowedTools: ["a11y_scan", "analyze_ui"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["UI surfaces", "WCAG target"],
@@ -138,11 +421,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "MEDIUM",
     canWriteCode: false,
     evaluationSuite: "a11y-v1",
+    costHintEn: "Low — UI a11y scan",
+    costHintHe: "נמוך — סריקת נגישות",
+    costHintAr: "منخفض — فحص إتاحة",
+    strengthsEn: [
+      "WCAG + RTL (he/ar) first-class",
+      "Keyboard and focus order",
+      "Treats a11y as defects, not polish",
+    ],
+    strengthsHe: [
+      "WCAG + RTL (עב/ער) כמחלקה ראשונה",
+      "מקלדת וסדר פוקוס",
+      "מתייחס לנגישות כפגם, לא כליטוש",
+    ],
+    strengthsAr: [
+      "WCAG + RTL (عب/عر) أولوية أولى",
+      "لوحة مفاتيح وترتيب تركيز",
+      "يعامل الإتاحة كعيب وليس لمسة نهائية",
+    ],
+    weaknessesEn: [
+      "Needs UI surfaces / screens",
+      "Does not auto-apply fixes",
+      "Desktop-only keyboard is insufficient",
+    ],
+    weaknessesHe: [
+      "דורש משטחי UI / מסכים",
+      "לא מחיל תיקונים אוטומטית",
+      "מקלדת דסקטופ בלבד אינה מספיקה",
+    ],
+    weaknessesAr: [
+      "يحتاج أسطح واجهة / شاشات",
+      "لا يطبّق إصلاحات تلقائيًا",
+      "لوحة مفاتيح سطح المكتب وحدها غير كافية",
+    ],
   },
   UI_UX: {
     id: "UI_UX",
     title: "UI/UX",
+    titleHe: "ממשק וחוויה",
+    titleAr: "واجهة وتجربة",
     specialty: "Flows · usability · responsive · IA · consistency",
+    category: "design",
     allowedTools: ["analyze_ui", "flow_map"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["screens / routes"],
@@ -151,11 +470,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "LOW",
     canWriteCode: false,
     evaluationSuite: "uiux-v1",
+    costHintEn: "Low — flow critique",
+    costHintHe: "נמוך — ביקורת זרימות",
+    costHintAr: "منخفض — نقد التدفقات",
+    strengthsEn: [
+      "One-job-per-screen discipline",
+      "Empty/error/mobile states",
+      "Concrete actionable findings",
+    ],
+    strengthsHe: [
+      "משמעת משימה-אחת-למסך",
+      "מצבי ריק/שגיאה/מובייל",
+      "ממצאים קונקרטיים לביצוע",
+    ],
+    strengthsAr: [
+      "انضباط مهمة واحدة لكل شاشة",
+      "حالات فارغة/خطأ/جوال",
+      "نتائج ملموسة قابلة للتنفيذ",
+    ],
+    weaknessesEn: [
+      "Not a visual design/Figma tool",
+      "Needs screens or flow description",
+      "Won’t confuse polish with usability",
+    ],
+    weaknessesHe: [
+      "לא כלי עיצוב חזותי/Figma",
+      "דורש מסכים או תיאור זרימה",
+      "לא מבלבל ליטוש עם שימושיות",
+    ],
+    weaknessesAr: [
+      "ليس أداة تصميم بصري/Figma",
+      "يحتاج شاشات أو وصف تدفق",
+      "لا يخلط اللمعان بالاستخدامية",
+    ],
   },
   DEVOPS: {
     id: "DEVOPS",
     title: "DevOps",
+    titleHe: "DevOps",
+    titleAr: "ديف أوبس",
     specialty: "CI/CD · cloud · DB · migrations · observability",
+    category: "ops",
     allowedTools: ["ci_status", "deploy_meta", "analyze_infra"],
     forbiddenTools: ["prod_mutate_without_approval"],
     evidenceRequirements: ["CI config", "deploy target"],
@@ -164,11 +519,47 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "HIGH",
     canWriteCode: false,
     evaluationSuite: "devops-v1",
+    costHintEn: "Mid — CI/deploy meta",
+    costHintHe: "בינוני — מטא CI/פריסה",
+    costHintAr: "متوسط — بيانات CI/نشر",
+    strengthsEn: [
+      "CI gates and rollback mindset",
+      "Env separation (local/staging/prod)",
+      "Observability and migration safety",
+    ],
+    strengthsHe: [
+      "שערי CI וחשיבת rollback",
+      "הפרדת סביבות (מקומי/staging/prod)",
+      "תצפיתיות ובטיחות מיגרציות",
+    ],
+    strengthsAr: [
+      "بوابات CI وعقلية التراجع",
+      "فصل البيئات (محلي/staging/إنتاج)",
+      "قابلية المراقبة وأمان الترحيل",
+    ],
+    weaknessesEn: [
+      "No destructive prod experiments",
+      "Needs CI/deploy evidence",
+      "Green CI ≠ production readiness",
+    ],
+    weaknessesHe: [
+      "בלי ניסויים הרסניים בפרוד",
+      "דורש ראיות CI/פריסה",
+      "CI ירוק ≠ מוכנות לייצור",
+    ],
+    weaknessesAr: [
+      "بلا تجارب تدميرية في الإنتاج",
+      "يحتاج أدلة CI/نشر",
+      "CI أخضر ≠ جاهزية إنتاج",
+    ],
   },
   RESEARCHER: {
     id: "RESEARCHER",
     title: "Researcher",
+    titleHe: "חוקר",
+    titleAr: "باحث",
     specialty: "Authorized external sources → Evidence packages",
+    category: "research",
     allowedTools: ["knowledge_search", "ingest_source", "verify_url"],
     forbiddenTools: ["apply_patch", "unofficial_scrape_as_official"],
     evidenceRequirements: ["query", "allowed source classes"],
@@ -177,12 +568,48 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "MEDIUM",
     canWriteCode: false,
     evaluationSuite: "research-v1",
+    costHintEn: "Mid — authorized retrieval",
+    costHintHe: "בינוני — שליפה מורשית",
+    costHintAr: "متوسط — استرجاع مصرّح",
+    strengthsEn: [
+      "Authority + freshness filtered retrieval",
+      "Packages evidence for specialists",
+      "Refuses unofficial scrape-as-official",
+    ],
+    strengthsHe: [
+      "שליפה מסוננת לפי סמכות ורעננות",
+      "אורז ראיות למומחים",
+      "מסרב לגרד לא רשמי כרשמי",
+    ],
+    strengthsAr: [
+      "استرجاع مُصفّى حسب السلطة والحداثة",
+      "يحزّم أدلة للمتخصصين",
+      "يرفض الكشط غير الرسمي كرسمي",
+    ],
+    weaknessesEn: [
+      "Does not invent citations",
+      "Needs allowed source classes",
+      "Empty corpus → INSUFFICIENT_EVIDENCE",
+    ],
+    weaknessesHe: [
+      "לא ממציא ציטוטים",
+      "דורש מחלקות מקורות מורשות",
+      "קורפוס ריק → INSUFFICIENT_EVIDENCE",
+    ],
+    weaknessesAr: [
+      "لا يخترع استشهادات",
+      "يحتاج فئات مصادر مسموحة",
+      "مدونة فارغة → INSUFFICIENT_EVIDENCE",
+    ],
   },
   OMISSION_DETECTOR: {
     id: "OMISSION_DETECTOR",
     title: "Omission Detector",
+    titleHe: "גלאי השמטות",
+    titleAr: "كاشف الإغفالات",
     specialty:
       "omission gaps · constitution checklist · unrequested risks · evidence gaps",
+    category: "governance",
     allowedTools: ["constitution_run", "analyze_repo", "risk_map"],
     forbiddenTools: ["apply_patch", "exfiltrate"],
     evidenceRequirements: ["user intent or product profile", "repo evidence"],
@@ -191,11 +618,105 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "HIGH",
     canWriteCode: false,
     evaluationSuite: "omission-v1",
+    costHintEn: "Mid — constitution gaps",
+    costHintHe: "בינוני — פערים בחוקה",
+    costHintAr: "متوسط — فجوات الدستور",
+    strengthsEn: [
+      "Finds gaps nobody requested",
+      "Constitution checklist overlay",
+      "Never confuses “not asked” with “not required”",
+    ],
+    strengthsHe: [
+      "מוצא פערים שאף אחד לא ביקש",
+      "שכבת צ׳ק־ליסט חוקה",
+      "לא מבלבל “לא ביקשו” עם “לא נדרש”",
+    ],
+    strengthsAr: [
+      "يجد فجوات لم يطلبها أحد",
+      "طبقة قائمة فحص الدستور",
+      "لا يخلط “لم يُطلب” مع “غير مطلوب”",
+    ],
+    weaknessesEn: [
+      "Hypotheses need Judge/evidence",
+      "Needs intent + repo evidence",
+      "Does not auto-remediate",
+    ],
+    weaknessesHe: [
+      "היפותזות דורשות שופט/ראיות",
+      "דורש כוונה + ראיות מאגר",
+      "לא מתקן אוטומטית",
+    ],
+    weaknessesAr: [
+      "الفرضيات تحتاج قاضيًا/أدلة",
+      "يحتاج نية + أدلة المستودع",
+      "لا يعالج تلقائيًا",
+    ],
+  },
+  LEGAL_MEDIA_COMMS: {
+    id: "LEGAL_MEDIA_COMMS",
+    title: "Legal Media & Communications",
+    titleHe: "משפט מדיה ותקשורת",
+    titleAr: "قانون الإعلام والاتصالات",
+    specialty:
+      "Counsel-prep readiness for media/comms apps (IL + world) — not a licensed attorney",
+    category: "legal",
+    allowedTools: [
+      "legal_media_review",
+      "cite_verified_sources",
+      "knowledge_search",
+    ],
+    forbiddenTools: ["apply_patch", "write_code", "give_legal_advice"],
+    evidenceRequirements: [
+      "repo legal surfaces",
+      "verified gov/university cites only",
+      "explicit not-a-lawyer disclaimer",
+    ],
+    maxCostUsd: 0.4,
+    timeoutMs: 90_000,
+    riskLevel: "HIGH",
+    canWriteCode: false,
+    evaluationSuite: "legal-media-v1",
+    costHintEn: "Mid — readiness for counsel (not legal fees)",
+    costHintHe: "בינוני — מוכנות לעו״ד (לא שכר טרחה)",
+    costHintAr: "متوسط — جاهزية للمحامي (ليس أتعاباً)",
+    strengthsEn: [
+      "Flags privacy/UGC/ads/copyright gaps for a lawyer",
+      "Cites only allow-listed gov/university sources",
+      "Always returns NOT LEGAL ADVICE + lawyerReadiness",
+    ],
+    strengthsHe: [
+      "מסמן פערים בפרטיות/UGC/פרסום/זכויות יוצרים לעו״ד",
+      "מצטט רק מקורות ממשלתיים/אוניברסיטאיים מאושרים",
+      "תמיד מחזיר אין ייעוץ משפטי + מוכנות לעו״ד",
+    ],
+    strengthsAr: [
+      "يؤشر فجوات خصوصية/محتوى/إعلان/حقوق للمَحامي",
+      "يستشهد فقط بمصادر حكومية/جامعية مسموحة",
+      "يعيد دائماً ليس استشارة قانونية + جاهزية للمحامي",
+    ],
+    weaknessesEn: [
+      "Cannot practice law or bind any jurisdiction",
+      "Heuristics miss nuanced case law",
+      "Requires human attorney for opinions",
+    ],
+    weaknessesHe: [
+      "לא עוסק בעריכת דין ולא מחייב אף שיפוט",
+      "היוריסטיקות מפספסות פסיקה עדינה",
+      "דורש עורך דין אנושי לחוות דעת",
+    ],
+    weaknessesAr: [
+      "لا يمارس المحاماة ولا يُلزم أي ولاية",
+      "الاستدلالات تفوّت السوابق الدقيقة",
+      "يتطلب محامياً بشرياً للرأي",
+    ],
   },
   JUDGE: {
     id: "JUDGE",
     title: "Evidence Judge",
+    titleHe: "שופט ראיות",
+    titleAr: "قاضي الأدلة",
     specialty: "Believe the result? Contradictions · unsupported · unsafe",
+    category: "governance",
     allowedTools: ["evaluate", "conflict_scan", "escalate"],
     forbiddenTools: ["apply_patch", "write_code"],
     evidenceRequirements: ["specialist outputs", "evidence refs"],
@@ -204,18 +725,38 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     riskLevel: "CRITICAL",
     canWriteCode: false,
     evaluationSuite: "judge-v1",
+    costHintEn: "Low-mid — belief check",
+    costHintHe: "נמוך-בינוני — בדיקת אמון",
+    costHintAr: "منخفض-متوسط — فحص الثقة",
+    strengthsEn: [
+      "APPROVE / REJECT / MORE_EVIDENCE / ESCALATE",
+      "Contradiction and unsupported-claim scan",
+      "Never writes code",
+    ],
+    strengthsHe: [
+      "אישור / דחייה / עוד ראיות / הסלמה",
+      "סריקת סתירות וטענות לא נתמכות",
+      "לעולם לא כותב קוד",
+    ],
+    strengthsAr: [
+      "موافقة / رفض / مزيد أدلة / تصعيد",
+      "فحص التناقضات والادعاءات غير المدعومة",
+      "لا يكتب شيفرة أبدًا",
+    ],
+    weaknessesEn: [
+      "Depends on specialist outputs",
+      "Cannot fix what it rejects",
+      "Conservative on thin evidence",
+    ],
+    weaknessesHe: [
+      "תלוי בפלטי מומחים",
+      "לא מתקן את מה שהוא דוחה",
+      "שמרני על ראיות דלות",
+    ],
+    weaknessesAr: [
+      "يعتمد على مخرجات المتخصصين",
+      "لا يصلح ما يرفضه",
+      "محافظ عند ضعف الأدلة",
+    ],
   },
-};
-
-/** External/web source confidence — complements ADR-014 internal ranks. */
-export const EXTERNAL_SOURCE_CONFIDENCE: Readonly<Record<string, number>> = {
-  OFFICIAL_VENDOR_DOCS: 1.0,
-  GOVERNMENT_OR_STANDARDS: 1.0,
-  VERIFIED_API_SPEC: 0.98,
-  SECURITY_ADVISORY: 0.95,
-  REPOSITORY_SOURCE: 0.9,
-  CI_ARTIFACT: 0.9,
-  TECHNICAL_ARTICLE: 0.7,
-  FORUM_DISCUSSION: 0.4,
-  LLM_INFERENCE: 0.1,
 };

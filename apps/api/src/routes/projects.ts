@@ -14,9 +14,9 @@ import { osStore } from "../store/os-store.js";
 import {
   assertCloudSlotAvailable,
   getAccountPlan,
-  resolveOwnerId,
 } from "../services/plan-quota.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { resolveCloudIdentity } from "../services/cloud-identity.js";
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
@@ -115,8 +115,9 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     let cloudProjectId: string | null = null;
     let cloudSyncedAt: string | null = null;
     if (body.syncToCloud) {
-      await assertCloudSlotAvailable(app.atlasEnv);
-      const ownerId = resolveOwnerId(app.atlasEnv);
+      const identity = await resolveCloudIdentity(app, request);
+      if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+      await assertCloudSlotAvailable(app.atlasEnv, identity);
       const cloud = await tryPersistProjectToSupabase(
         {
           SUPABASE_URL: app.atlasEnv.SUPABASE_URL,
@@ -124,8 +125,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           SUPABASE_SERVICE_ROLE_KEY: app.atlasEnv.SUPABASE_SERVICE_ROLE_KEY,
         },
         body,
-        ownerId,
-        { requireSuccess: true },
+        identity.ownerId,
+        { requireSuccess: true, userAccessToken: identity.userAccessToken },
       );
       if (cloud) {
         cloudProjectId = cloud.id;
@@ -164,8 +165,9 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       };
     }
 
-    await assertCloudSlotAvailable(app.atlasEnv);
-    const ownerId = resolveOwnerId(app.atlasEnv);
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+    await assertCloudSlotAvailable(app.atlasEnv, identity);
     const now = new Date().toISOString();
     const cloud = await tryPersistProjectToSupabase(
       {
@@ -179,8 +181,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         description: project.description ?? undefined,
         techStack: project.techStack,
       },
-      ownerId,
-      { requireSuccess: true },
+      identity.ownerId,
+      { requireSuccess: true, userAccessToken: identity.userAccessToken },
     );
 
     if (!cloud) {
@@ -192,7 +194,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       syncedAt: now,
     });
 
-    const plan = await getAccountPlan(app.atlasEnv);
+    const plan = await getAccountPlan(app.atlasEnv, identity);
     return reply.status(201).send({
       projectId: project.id,
       cloudProjectId: cloud.id,

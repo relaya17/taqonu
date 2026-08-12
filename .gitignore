@@ -13,6 +13,9 @@ coverage
 .supabase
 playwright-report
 test-results
+atlas-evals/results
 *.pem
 .vscode/*
 !.vscode/extensions.json
+_tmp_*
+*.tsbuildinfo

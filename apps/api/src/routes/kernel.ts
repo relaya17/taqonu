@@ -23,11 +23,15 @@ import {
   runSelfImprovement,
 } from "@atlas/agent-core";
 import {
-  ingestKnowledgeDocument,
   listKnowledgeCorpus,
-  searchKnowledgeFabric,
   hydrateKnowledgeCorpus,
+  getKnowledgeCorpusSource,
+  getKnowledgeCorpusPersistPath,
 } from "@atlas/knowledge";
+import {
+  ingestKnowledgeClosedLoop,
+  searchKnowledgeClosedLoop,
+} from "../services/hybrid-rag.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 import { z } from "zod";
@@ -137,10 +141,11 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(result);
   });
 
-  /** P4 Knowledge Fabric */
+  /** P4 Knowledge Fabric — closed-loop hybrid RAG (pgvector when live, else local). */
   app.post("/api/v1/kernel/knowledge/search", async (request) => {
+    hydrateKnowledgeCorpus({ enablePersist: true });
     const body = knowledgeSearchRequestSchema.parse(request.body);
-    return searchKnowledgeFabric({
+    return searchKnowledgeClosedLoop(app.atlasEnv, {
       query: body.query,
       maxResults: body.maxResults,
       minAuthority: body.minAuthority,
@@ -149,26 +154,42 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/kernel/knowledge/ingest", async (request, reply) => {
+    hydrateKnowledgeCorpus({ enablePersist: true });
     const body = knowledgeIngestRequestSchema.parse(request.body);
-    const doc = ingestKnowledgeDocument({
-      title: body.title,
-      excerpt: body.excerpt,
-      sourceClass: body.sourceClass,
-      ...(body.url !== undefined ? { url: body.url } : {}),
-      ...(body.sourceUpdatedAt !== undefined
-        ? { sourceUpdatedAt: body.sourceUpdatedAt }
-        : {}),
-      ...(body.projectScoped != null
-        ? { projectScoped: body.projectScoped }
-        : {}),
+    const { document: doc, corpus, pgvector } = await ingestKnowledgeClosedLoop(
+      app.atlasEnv,
+      {
+        title: body.title,
+        excerpt: body.excerpt,
+        sourceClass: body.sourceClass,
+        ...(body.url !== undefined ? { url: body.url } : {}),
+        ...(body.sourceUpdatedAt !== undefined
+          ? { sourceUpdatedAt: body.sourceUpdatedAt }
+          : {}),
+        ...(body.projectScoped != null
+          ? { projectScoped: body.projectScoped }
+          : {}),
+      },
+    );
+    return reply.status(201).send({
+      document: doc,
+      corpus,
+      pgvector,
+      note: pgvector
+        ? "Dual-wrote file corpus + pgvector."
+        : "File corpus only (pgvector offline).",
     });
-    return reply.status(201).send({ document: doc });
   });
 
-  app.get("/api/v1/kernel/knowledge/corpus", async () => ({
-    items: listKnowledgeCorpus(),
-    note: "Corpus listing for ops — agents receive filtered packages only.",
-  }));
+  app.get("/api/v1/kernel/knowledge/corpus", async () => {
+    hydrateKnowledgeCorpus({ enablePersist: true });
+    return {
+      items: listKnowledgeCorpus(),
+      corpus: getKnowledgeCorpusSource(),
+      path: getKnowledgeCorpusPersistPath(),
+      note: "Corpus listing for ops — agents receive filtered packages only.",
+    };
+  });
 
   /** P8 Evaluation */
   app.post("/api/v1/kernel/eval/run", async (request, reply) => {

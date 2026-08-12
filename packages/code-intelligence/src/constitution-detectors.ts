@@ -243,3 +243,416 @@ export function detectCfgEnvValidation(has: HasFn): DetectorEval {
         notes: "No env schema validation signal",
       };
 }
+
+/** Footer contact / copyright — only meaningful for public-facing products. */
+export function detectFooterContactCopyright(has: HasFn): DetectorEval {
+  return has(
+    /copyright|©|\ball rights reserved\b|contact@|mailto:|footer.*(contact|about|help)|ContactUs|support@/i,
+  )
+    ? {
+        status: "PASS",
+        evidenceRefs: ["footer-contact"],
+        notes: "Footer contact/copyright signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["footer-contact"],
+        notes: "No footer contact/copyright signal for public profile",
+      };
+}
+
+/** SARIF / Semgrep / CodeQL scanner wired into CI or security feed. */
+export function detectSecScannerSarif(has: HasFn, fileHas: FileHasFn): DetectorEval {
+  const ci =
+    has(/sarif|semgrep|codeql|trivy|gitleaks|snyk|npm audit|pnpm audit/i) ||
+    fileHas(/\.sarif$|semgrep|codeql|trivy|gitleaks/i);
+  if (ci) {
+    return {
+      status: "PASS",
+      evidenceRefs: ["sec-scanner"],
+      notes: "Scanner / SARIF / audit signal in CI or repo",
+    };
+  }
+  return {
+    status: "WARN",
+    evidenceRefs: ["sec-scanner"],
+    notes: "No Semgrep/CodeQL/SARIF/audit scanner signal",
+  };
+}
+
+/** Metrics export — Prometheus, OpenMetrics, or /metrics route. */
+export function detectObsMetricsExport(has: HasFn): DetectorEval {
+  return has(
+    /\/metrics|prometheus|OpenMetrics|toPrometheusText|InMemoryMetrics|statsd|datadog\.metrics/i,
+  )
+    ? {
+        status: "PASS",
+        evidenceRefs: ["obs-metrics"],
+        notes: "Metrics / Prometheus export signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["obs-metrics"],
+        notes: "No /metrics or Prometheus export signal",
+      };
+}
+
+/** Deploy provider feed (Vercel/Render/Netlify observe → evidence). */
+export function detectDeployProviderFeed(has: HasFn): DetectorEval {
+  return has(
+    /vercel\/observe|render\/observe|netlify|vercelObservation|renderObservation|DEPLOYMENT.*evidence|provider.*vercel|provider.*render/i,
+  )
+    ? {
+        status: "PASS",
+        evidenceRefs: ["deploy-feed"],
+        notes: "Deploy provider observe→evidence feed signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["deploy-feed"],
+        notes: "No Vercel/Render deploy→evidence feed signal",
+      };
+}
+
+/** Rate limit / throttle — broader than single token. */
+export function detectSecRateLimit(has: HasFn): DetectorEval {
+  return has(
+    /rateLimit|rate-limit|ratelimit|throttle|@fastify\/rate-limit|express-rate-limit|bottleneck|token.?bucket|leaky.?bucket/i,
+  )
+    ? {
+        status: "PASS",
+        evidenceRefs: ["rate-limit"],
+        notes: "Rate limit / throttle signal",
+      }
+    : {
+        status: "FAIL",
+        evidenceRefs: ["rate-limit"],
+        notes: "No rate limiting signal",
+      };
+}
+
+/** Viewport meta / overflow guards for responsive layouts. */
+export function detectRespViewportOverflow(has: HasFn): DetectorEval {
+  return has(
+    /viewport|overflow-x|overflowX|max-w-|maxWidth|container-fluid|clamp\(|dvh|svh|safe-area/i,
+  )
+    ? {
+        status: "PASS",
+        evidenceRefs: ["resp-overflow"],
+        notes: "Viewport / overflow / fluid-width signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["resp-overflow"],
+        notes: "No viewport/overflow responsive guard signal",
+      };
+}
+
+/** Shared UI primitives / component library (not one-off controls). */
+export function detectUiSharedPrimitives(has: HasFn, fileHas: FileHasFn): DetectorEval {
+  const pkg = fileHas(/components\/ui\/|packages\/ui|design-system|ui-kit/i);
+  const usage = has(
+    /from ['\"]@\/components\/ui|from ['\"]@atlas\/ui|Button\s*from|TextField|MuiButton|shared.*(Button|Input)/i,
+  );
+  if (pkg || usage) {
+    return {
+      status: "PASS",
+      evidenceRefs: ["ui-primitives"],
+      notes: "Shared UI primitives / component library signal",
+    };
+  }
+  return {
+    status: "WARN",
+    evidenceRefs: ["ui-primitives"],
+    notes: "No shared Button/Input/component-library signal",
+  };
+}
+
+/** Error toasts + destructive confirmation patterns. */
+export function detectUxErrorConfirm(has: HasFn): DetectorEval {
+  const err = has(/toast\.error|Snackbar|Alert\b|errorMessage|ErrorBoundary|onError/i);
+  const confirm = has(
+    /ConfirmDialog|window\.confirm|destructive|are you sure|confirmDelete|AlertDialog/i,
+  );
+  if (err && confirm) {
+    return {
+      status: "PASS",
+      evidenceRefs: ["ux-error-confirm"],
+      notes: "Error feedback + destructive-confirm signals",
+    };
+  }
+  if (err || confirm) {
+    return {
+      status: "WARN",
+      evidenceRefs: ["ux-error-confirm"],
+      notes: "Only one of error-feedback / destructive-confirm — add both",
+    };
+  }
+  return {
+    status: "WARN",
+    evidenceRefs: ["ux-error-confirm"],
+    notes: "No error toast / destructive confirm patterns",
+  };
+}
+
+/** Cache-Control / CDN / revalidate signals. */
+export function detectPerfCaching(has: HasFn): DetectorEval {
+  return has(
+    /Cache-Control|cdn\.|cloudflare|revalidate|stale-while-revalidate|s-maxage|unstable_cache|cache:\s*['\"]force-cache/i,
+  )
+    ? {
+        status: "PASS",
+        evidenceRefs: ["perf-cache"],
+        notes: "Caching / CDN / revalidate signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["perf-cache"],
+        notes: "No Cache-Control/CDN/revalidate signal",
+      };
+}
+
+/** DB indexes and/or backup/restore documentation. */
+export function detectDbIndexesBackup(has: HasFn, fileHas: FileHasFn): DetectorEval {
+  const indexes = has(
+    /\bcreateIndex\b|\.index\(|CREATE INDEX|@@index|addIndex|gin\(|btree/i,
+  );
+  const backup =
+    has(/backup|restore|pg_dump|point.?in.?time|PITR|retention.?policy/i) ||
+    fileHas(/backup|restore|runbook/i);
+  if (indexes && backup) {
+    return {
+      status: "PASS",
+      evidenceRefs: ["db-index-backup"],
+      notes: "Index + backup/restore signals",
+    };
+  }
+  if (indexes || backup) {
+    return {
+      status: "WARN",
+      evidenceRefs: ["db-index-backup"],
+      notes: indexes
+        ? "Indexes present — document backup/restore"
+        : "Backup/restore notes without clear index signals",
+    };
+  }
+  return {
+    status: "WARN",
+    evidenceRefs: ["db-index-backup"],
+    notes: "No index or backup/restore signal",
+  };
+}
+
+/** External API failure modes: timeouts, vendor errors, deprecation notes. */
+export function detectExtApiFailureModes(has: HasFn): DetectorEval {
+  const vendor = has(
+    /stripe|openai|github\.com\/|googleapis|twilio|sendgrid|webhook|fetch\(/i,
+  );
+  if (!vendor) {
+    return {
+      status: "UNKNOWN",
+      evidenceRefs: ["ext-failure"],
+      notes: "No clear external API client usage in sample",
+    };
+  }
+  const failure = has(
+    /catch\s*\(|onError|timeout|AbortSignal|429|rate.?limit|deprecated|apiVersion|API_VERSION|retry/i,
+  );
+  if (failure) {
+    return {
+      status: "PASS",
+      evidenceRefs: ["ext-failure"],
+      notes: "External call failure/timeout/version handling signal",
+    };
+  }
+  return {
+    status: "WARN",
+    evidenceRefs: ["ext-failure"],
+    notes: "External APIs without evident timeout/error/deprecation handling",
+  };
+}
+
+/** Console/TODO hygiene — flag debug logs; never treat empty TODO purge as a win. */
+export function detectHygConsoleTodo(has: HasFn): DetectorEval {
+  const hasConsole = has(/console\.(log|debug|info|warn)\(/);
+  const hasTodo = has(/\bTODO\b|\bFIXME\b|\bHACK\b|\bXXX\b/);
+  if (hasConsole && hasTodo) {
+    return {
+      status: "WARN",
+      evidenceRefs: ["hyg-console-todo"],
+      notes: "console.* and TODO/FIXME present — triage, don’t fake-clean",
+    };
+  }
+  if (hasConsole) {
+    return {
+      status: "WARN",
+      evidenceRefs: ["hyg-console-todo"],
+      notes: "console.* logging in source — prefer structured logger",
+    };
+  }
+  return {
+    status: "PASS",
+    evidenceRefs: ["hyg-console-todo"],
+    notes: hasTodo
+      ? "TODOs present (ok if tracked) — no console.* flood signal"
+      : "No console.* / TODO flood signal in sample",
+  };
+}
+
+/** Locale routes / message wiring — not only a language dropdown. */
+export function detectI18nLocaleRoutes(has: HasFn, fileHas: FileHasFn): DetectorEval {
+  const routes =
+    fileHas(/\[locale\]|messages\/(he|en|ar)\.json|locales\//i) ||
+    has(/next-intl|useTranslations|createSharedPathnamesNavigation|localePrefix/i);
+  const dropdownOnly =
+    has(/LanguageSelect|language.?dropdown|setLanguage/i) && !routes;
+  if (routes) {
+    return {
+      status: "PASS",
+      evidenceRefs: ["i18n-routes"],
+      notes: "Locale routes / message catalogs wired",
+    };
+  }
+  if (dropdownOnly) {
+    return {
+      status: "FAIL",
+      evidenceRefs: ["i18n-routes"],
+      notes: "Language dropdown without locale catalogs/routes",
+    };
+  }
+  return {
+    status: "WARN",
+    evidenceRefs: ["i18n-routes"],
+    notes: "No locale-route / catalog wiring signal",
+  };
+}
+
+/** Retention / deletion / export privacy controls. */
+export function detectLegalRetentionDeletion(has: HasFn, fileHas: FileHasFn): DetectorEval {
+  return has(
+    /data retention|right to be forgotten|delete.?account|erasure|data export|GDPR|CCPA|retention.?policy|soft.?delete/i,
+  ) || fileHas(/privacy|retention|gdpr|data-deletion/i)
+    ? {
+        status: "PASS",
+        evidenceRefs: ["legal-retention"],
+        notes: "Retention/deletion/export privacy signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["legal-retention"],
+        notes: "No retention/deletion/export signal for public product",
+      };
+}
+
+/** Breadcrumbs / secondary wayfinding beyond primary nav. */
+export function detectNavBreadcrumbs(has: HasFn): DetectorEval {
+  return has(/breadcrumb|Breadcrumbs|aria-label=['\"]breadcrumb/i)
+    ? {
+        status: "PASS",
+        evidenceRefs: ["nav-breadcrumbs"],
+        notes: "Breadcrumb wayfinding signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["nav-breadcrumbs"],
+        notes: "No breadcrumb / secondary navigation signal",
+      };
+}
+
+/** Dependency license / audit signals (not “newest = best”). */
+export function detectDepsLicenseAudit(has: HasFn, fileHas: FileHasFn): DetectorEval {
+  return has(/license|npm audit|pnpm audit|osv-scanner|snyk|dependabot|license-checker/i) ||
+    fileHas(/LICENSE|dependabot|renovate|audit/i)
+    ? {
+        status: "PASS",
+        evidenceRefs: ["deps-license"],
+        notes: "License / dependency-audit signal",
+      }
+    : {
+        status: "WARN",
+        evidenceRefs: ["deps-license"],
+        notes: "No license file or dependency-audit signal",
+      };
+}
+
+/**
+ * Keys with dedicated heuristic detectors (runner may also implement admin_* inline).
+ * Used by tests to assert 23-domain coverage MVP wiring.
+ */
+export const CONSTITUTION_DETECTOR_KEYS = [
+  "arch_no_frontend_db",
+  "arch_structure",
+  "arch_shared_types",
+  "sec_auth_present",
+  "sec_no_hardcoded_secrets",
+  "sec_env_example",
+  "sec_cors_or_headers",
+  "sec_rate_limit",
+  "nav_primary",
+  "nav_error_states",
+  "nav_breadcrumbs",
+  "footer_legal",
+  "footer_contact_copyright",
+  "a11y_signals",
+  "a11y_rtl",
+  "a11y_keyboard_focus",
+  "a11y_reduced_motion",
+  "resp_breakpoints",
+  "resp_viewport_overflow",
+  "ui_theme",
+  "ui_shared_primitives",
+  "ux_empty_loading",
+  "ux_error_confirm",
+  "perf_code_split",
+  "perf_caching",
+  "db_migrations",
+  "db_schema",
+  "db_indexes_backup",
+  "api_validation",
+  "api_errors",
+  "api_pagination",
+  "test_suite",
+  "test_e2e_or_api",
+  "test_critical_path",
+  "deps_lockfile",
+  "deps_no_floating",
+  "deps_license_audit",
+  "cfg_env",
+  "cfg_feature_flags",
+  "cfg_secret_manager",
+  "cfg_env_validation",
+  "deploy_ci",
+  "deploy_health",
+  "deploy_rollback",
+  "obs_logging",
+  "obs_correlation_ids",
+  "obs_tracing",
+  "rel_timeout_retry",
+  "rel_idempotency",
+  "rel_circuit_breaker",
+  "rel_graceful_shutdown",
+  "ext_webhook_verify",
+  "ext_api_failure_modes",
+  "docs_readme",
+  "docs_adr",
+  "hyg_any",
+  "hyg_console_todo",
+  "i18n_messages",
+  "i18n_locale_routes",
+  "legal_privacy",
+  "legal_retention_deletion",
+  "ai_write_gate",
+  "ai_evidence",
+  "ai_prompt_injection",
+  "ai_egress_redaction",
+  "admin_necessity",
+  "admin_server_authz",
+  "admin_overbuild",
+  "sec_csrf_xss",
+  "sec_tenant_isolation",
+  "sec_scanner_sarif",
+  "obs_metrics_export",
+  "deploy_provider_feed",
+] as const;
+
+export type ConstitutionDetectorKey = (typeof CONSTITUTION_DETECTOR_KEYS)[number];

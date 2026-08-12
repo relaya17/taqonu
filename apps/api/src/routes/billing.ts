@@ -2,7 +2,12 @@ import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { setPlanSchema, purchaseCreditsSchema, CREDIT_PACKS } from "@atlas/shared";
-import { getAccountPlan, resolveTier } from "../services/plan-quota.js";
+import {
+  getAccountPlan,
+  getAccountUsage,
+  resolveTier,
+  setTenantPlanTier,
+} from "../services/plan-quota.js";
 import {
   ensureCreditsInitialized,
   purchaseCreditPack,
@@ -11,10 +16,13 @@ import { osStore } from "../store/os-store.js";
 import {
   createStripeCheckoutSession,
   fulfillStripeCheckoutSession,
+  fulfillStripeSubscriptionEvent,
   verifyStripeWebhookSignature,
   type StripeCheckoutKind,
 } from "../services/stripe.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import { getRequestUser } from "./auth.js";
 
 /**
  * Stripe freemium (ADR-011 / ADR-013):
@@ -24,28 +32,35 @@ import { requireSignedInForWrite } from "../middleware/auth-guards.js";
  *   (Price IDs; otherwise dynamic price_data amounts are used)
  * - Optional: STRIPE_SUCCESS_URL | STRIPE_CANCEL_URL (default: WEB_ORIGIN/settings/billing?…)
  * Without secrets, staging path stays: POST /billing/credits/purchase and stub checkout/webhook.
+ *
+ * Tenant MVP: checkout/webhook keyed by owner_id (session user → tenantSubscriptions in osStore).
  */
 export async function registerBillingRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
 
-  app.get("/api/v1/billing/plan", async () => {
-    return getAccountPlan(app.atlasEnv);
+  app.get("/api/v1/billing/plan", async (request) => {
+    const identity = await resolveCloudIdentity(app, request);
+    return getAccountPlan(app.atlasEnv, identity);
+  });
+
+  app.get("/api/v1/billing/usage", async (request) => {
+    const identity = await resolveCloudIdentity(app, request);
+    return getAccountUsage(app.atlasEnv, identity);
   });
 
   app.post("/api/v1/billing/plan", async (request) => {
     requireSignedInForWrite(app, request);
     const body = setPlanSchema.parse(request.body);
-    osStore.setPlan({
-      tier: body.tier,
-      updatedAt: new Date().toISOString(),
-    });
-    const { tier } = resolveTier(app.atlasEnv);
+    const identity = await resolveCloudIdentity(app, request);
+    setTenantPlanTier(app.atlasEnv, body.tier, identity.ownerId);
+    const { tier } = resolveTier(app.atlasEnv, identity.ownerId);
     ensureCreditsInitialized(tier);
-    return getAccountPlan(app.atlasEnv);
+    return getAccountPlan(app.atlasEnv, identity);
   });
 
-  app.get("/api/v1/billing/credits", async () => {
-    const { tier } = resolveTier(app.atlasEnv);
+  app.get("/api/v1/billing/credits", async (request) => {
+    const identity = await resolveCloudIdentity(app, request);
+    const { tier } = resolveTier(app.atlasEnv, identity.ownerId);
     return ensureCreditsInitialized(tier);
   });
 
@@ -87,6 +102,8 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
         : { pack: "starter" as const };
     const body = stripeCheckoutBodySchema.parse(rawBody);
     const stripeSecret = process.env.STRIPE_SECRET_KEY;
+    const identity = await resolveCloudIdentity(app, request);
+    const user = getRequestUser(app, request);
 
     if (!stripeSecret) {
       return reply.status(200).send({
@@ -94,6 +111,7 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
         provider: "stripe",
         pack: body.pack ?? null,
         tier: body.tier ?? null,
+        ownerId: identity.ownerId,
         credits: body.pack ? CREDIT_PACKS[body.pack].credits : null,
         checkoutUrl: null,
         message:
@@ -116,6 +134,8 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
       secretKey: stripeSecret,
       webOrigin: app.atlasEnv.WEB_ORIGIN,
       checkout,
+      ownerId: identity.ownerId,
+      customerEmail: user?.email ?? null,
     });
 
     return reply.status(200).send({
@@ -123,6 +143,7 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
       provider: "stripe",
       pack: body.pack ?? null,
       tier: body.tier ?? null,
+      ownerId: identity.ownerId,
       credits: body.pack ? CREDIT_PACKS[body.pack].credits : null,
       sessionId: session.sessionId,
       checkoutUrl: session.checkoutUrl,
@@ -172,29 +193,64 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
         typeof request.body === "object" && request.body
           ? (request.body as {
               type?: string;
-              data?: { object?: { id?: string; metadata?: Record<string, string> } };
+              data?: {
+                object?: {
+                  id?: string;
+                  client_reference_id?: string | null;
+                  customer?: string | { id?: string } | null;
+                  subscription?: string | { id?: string } | null;
+                  status?: string;
+                  metadata?: Record<string, string>;
+                };
+              };
             })
           : {};
 
-      if (event.type !== "checkout.session.completed") {
-        app.atlasLogger.info("stripe_webhook_ignored", { type: event.type ?? null });
-        return reply.status(200).send({ received: true, handled: false });
+      const object = event.data?.object ?? {};
+
+      if (event.type === "checkout.session.completed") {
+        const fulfillment = fulfillStripeCheckoutSession(object);
+        app.atlasLogger.info("stripe_webhook_fulfilled", {
+          type: event.type,
+          sessionId: fulfillment.sessionId ?? null,
+          ownerId: fulfillment.ownerId ?? null,
+          pack: fulfillment.pack ?? null,
+          tier: fulfillment.tier ?? null,
+          duplicate: fulfillment.duplicate ?? false,
+          handled: fulfillment.handled,
+        });
+        return reply.status(200).send({
+          received: true,
+          mode: "live",
+          ...fulfillment,
+        });
       }
 
-      const fulfillment = fulfillStripeCheckoutSession(event.data?.object ?? {});
-      app.atlasLogger.info("stripe_webhook_fulfilled", {
-        sessionId: fulfillment.sessionId ?? null,
-        pack: fulfillment.pack ?? null,
-        tier: fulfillment.tier ?? null,
-        duplicate: fulfillment.duplicate ?? false,
-        handled: fulfillment.handled,
-      });
+      if (
+        event.type === "customer.subscription.updated" ||
+        event.type === "customer.subscription.deleted"
+      ) {
+        const fulfillment = fulfillStripeSubscriptionEvent({
+          type: event.type,
+          subscription: object,
+        });
+        app.atlasLogger.info("stripe_webhook_subscription", {
+          type: event.type,
+          subscriptionId: fulfillment.subscriptionId ?? null,
+          ownerId: fulfillment.ownerId ?? null,
+          tier: fulfillment.tier ?? null,
+          duplicate: fulfillment.duplicate ?? false,
+          handled: fulfillment.handled,
+        });
+        return reply.status(200).send({
+          received: true,
+          mode: "live",
+          ...fulfillment,
+        });
+      }
 
-      return reply.status(200).send({
-        received: true,
-        mode: "live",
-        ...fulfillment,
-      });
+      app.atlasLogger.info("stripe_webhook_ignored", { type: event.type ?? null });
+      return reply.status(200).send({ received: true, handled: false });
     },
   );
 }

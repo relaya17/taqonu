@@ -5,13 +5,17 @@ import {
   Alert,
   Box,
   Button,
+  FormControlLabel,
+  MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { useLocale, useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { API_URL, apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface ConnectionsResponse {
   github: {
@@ -30,22 +34,99 @@ interface ConnectionsResponse {
   } | null;
 }
 
+interface GithubAppInstallation {
+  installationId: string;
+  projectId: string | null;
+  accountLogin: string | null;
+  accountType: string | null;
+  targetType: string | null;
+  repositorySelection: string | null;
+  setupAction: string | null;
+  suspendedAt: string | null;
+  installedAt: string;
+  updatedAt: string;
+}
+
+interface GithubAppStatus {
+  provider: string;
+  installation: "not_configured" | "configured" | "webhook_ready" | "active";
+  installationStates: Record<string, string>;
+  appIdConfigured: boolean;
+  privateKeyConfigured: boolean;
+  webhookSecretConfigured: boolean;
+  appSlug: string | null;
+  setupUrl: string | null;
+  setupUrlNote: string | null;
+  /** Backend path that signs state + redirects to GitHub's install page. */
+  installUrl: string | null;
+  installations: GithubAppInstallation[];
+  lastWebhookAt: string | null;
+  lastSyncAt: string | null;
+  mvpNote: string;
+}
+
+interface ProjectRow {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface DbFeedItem {
+  provider: "supabase" | "mongodb";
+  summary: string;
+  tableOrCollectionCount: number;
+  observedAt: string;
+  host?: string | null;
+}
+
 export default function IntegrationsPage() {
   const t = useTranslations("integrations");
+  const locale = useLocale();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [reposRoot, setReposRoot] = useState("");
+  const [feedProjectId, setFeedProjectId] = useState("");
+  const [supabaseHost, setSupabaseHost] = useState("");
+  const [supabaseTables, setSupabaseTables] = useState("");
+  const [supabaseRls, setSupabaseRls] = useState(true);
+  const [mongoHost, setMongoHost] = useState("");
+  const [mongoDb, setMongoDb] = useState("");
+  const [mongoCollections, setMongoCollections] = useState("");
+
+  const githubInstallStatus = searchParams.get("github_install");
+  const githubInstallReason = searchParams.get("reason");
+  const githubInstallationId = searchParams.get("installation_id");
 
   const connections = useQuery({
     queryKey: ["connections"],
     queryFn: () => apiGet<ConnectionsResponse>("/api/v1/connections"),
   });
 
+  const githubApp = useQuery({
+    queryKey: ["github-app"],
+    queryFn: () => apiGet<GithubAppStatus>("/api/v1/github"),
+  });
+
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => apiGet<{ items: ProjectRow[] }>("/api/v1/projects"),
+  });
+
+  const dbFeeds = useQuery({
+    queryKey: ["db-feeds", feedProjectId],
+    queryFn: () =>
+      apiGet<{ items: DbFeedItem[] }>(`/api/v1/feeds/${feedProjectId}`),
+    enabled: feedProjectId.length > 0,
+  });
+
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ["connections"] });
     await queryClient.invalidateQueries({ queryKey: ["integrations"] });
+    await queryClient.invalidateQueries({ queryKey: ["github-app"] });
     await queryClient.invalidateQueries({ queryKey: ["projects"] });
     await queryClient.invalidateQueries({ queryKey: ["portfolio-overview"] });
+    await queryClient.invalidateQueries({ queryKey: ["db-feeds"] });
   };
 
   const connectGithub = useMutation({
@@ -95,11 +176,61 @@ export default function IntegrationsPage() {
     onSuccess: invalidate,
   });
 
+  const postSupabaseFeed = useMutation({
+    mutationFn: () => {
+      const tables = supabaseTables
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return apiPost("/api/v1/feeds/supabase", {
+        projectId: feedProjectId,
+        hostLabel: supabaseHost.trim(),
+        tables,
+        rlsEnabled: supabaseRls,
+      });
+    },
+    onSuccess: invalidate,
+  });
+
+  const postMongoFeed = useMutation({
+    mutationFn: () => {
+      const collections = mongoCollections
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return apiPost("/api/v1/feeds/mongodb", {
+        projectId: feedProjectId,
+        hostLabel: mongoHost.trim(),
+        databaseName: mongoDb.trim(),
+        collections,
+      });
+    },
+    onSuccess: invalidate,
+  });
+
+  const refreshDiscovery = useMutation({
+    mutationFn: () =>
+      apiPost<{
+        local: { linked: number } | null;
+        githubToken: { imported: number } | null;
+        githubApp: { imported: number } | null;
+        status: { summary: { unlinkedCount: number } };
+      }>("/api/v1/portfolio/discovery/refresh", {
+        reconcile: true,
+        linkLocalRoots: true,
+      }),
+    onSuccess: invalidate,
+  });
+
   const github = connections.data?.github;
   const local = connections.data?.local;
   const githubConnected = github?.status === "CONNECTED";
   const localConnected =
     local?.status === "CONNECTED" || local?.status === "ERROR";
+  const app = githubApp.data;
+  const installationLabel = app
+    ? t(`appState_${app.installation}` as "appState_not_configured")
+    : t("appLoading");
 
   return (
     <Stack spacing={4} sx={{ maxWidth: 760 }}>
@@ -185,6 +316,125 @@ export default function IntegrationsPage() {
             ) : null}
           </Stack>
         )}
+
+        <Box sx={{ mt: 3 }}>
+          <Typography fontWeight={650} sx={{ mb: 0.5 }}>
+            {t("appTitle")}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            {t("appHelp")}
+          </Typography>
+          {githubInstallStatus === "success" ? (
+            <Alert severity="success" sx={{ mb: 1.5 }}>
+              {t("appInstallSuccess", { installationId: githubInstallationId ?? "—" })}
+            </Alert>
+          ) : githubInstallStatus === "pending" ? (
+            <Alert severity="info" sx={{ mb: 1.5 }}>
+              {t("appInstallPending")}
+            </Alert>
+          ) : githubInstallStatus === "error" ? (
+            <Alert severity="error" sx={{ mb: 1.5 }}>
+              {t("appInstallError", { reason: githubInstallReason ?? "unknown" })}
+            </Alert>
+          ) : null}
+          {githubApp.isError ? (
+            <Alert severity="warning">{t("appLoadError")}</Alert>
+          ) : (
+            <Stack spacing={1}>
+              <Typography variant="body2">
+                {t("appInstallation")}: {installationLabel}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("appLastWebhook")}:{" "}
+                {app?.lastWebhookAt
+                  ? new Date(app.lastWebhookAt).toLocaleString()
+                  : t("appNever")}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("appLastSync")}:{" "}
+                {app?.lastSyncAt
+                  ? new Date(app.lastSyncAt).toLocaleString()
+                  : t("appNever")}
+              </Typography>
+              {app?.installUrl ? (
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  component="a"
+                  href={`${API_URL}${app.installUrl}?locale=${locale}`}
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  {t("appConnectButton")}
+                </Button>
+              ) : app?.setupUrlNote ? (
+                <Typography variant="body2" color="text.secondary">
+                  {app.setupUrlNote}
+                </Typography>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  {t("appNoSetupUrl")}
+                </Typography>
+              )}
+              {app?.installations && app.installations.length > 0 ? (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" fontWeight={650}>
+                    {t("appInstallationsTitle")}
+                  </Typography>
+                  <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                    {app.installations.map((installation) => (
+                      <Typography
+                        key={installation.installationId}
+                        variant="body2"
+                        color="text.secondary"
+                      >
+                        {t("appInstallationRow", {
+                          login: installation.accountLogin ?? "—",
+                          selection: installation.repositorySelection ?? "—",
+                          installedAt: new Date(
+                            installation.installedAt,
+                          ).toLocaleString(),
+                        })}
+                        {installation.suspendedAt ? ` · ${t("appInstallationSuspended")}` : ""}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
+            </Stack>
+          )}
+        </Box>
+      </Box>
+
+      <Box>
+        <Typography fontWeight={650} sx={{ mb: 0.5 }}>
+          {t("discoveryRefresh")}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          {t("discoveryRefreshHelp")}
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => refreshDiscovery.mutate()}
+          disabled={refreshDiscovery.isPending}
+          sx={{ alignSelf: "flex-start" }}
+        >
+          {t("discoveryRefresh")}
+        </Button>
+        {refreshDiscovery.isSuccess ? (
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            {t("discoveryRefreshResult", {
+              localLinked: refreshDiscovery.data.local?.linked ?? 0,
+              ghImported: refreshDiscovery.data.githubToken?.imported ?? 0,
+              appImported: refreshDiscovery.data.githubApp?.imported ?? 0,
+              unlinked: refreshDiscovery.data.status.summary.unlinkedCount,
+            })}
+          </Typography>
+        ) : null}
+        {refreshDiscovery.isError ? (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            {(refreshDiscovery.error as Error).message}
+          </Alert>
+        ) : null}
       </Box>
 
       <Box>
@@ -257,6 +507,156 @@ export default function IntegrationsPage() {
             ) : null}
           </Stack>
         )}
+      </Box>
+
+      <Box
+        sx={{
+          borderTop: "1px solid rgba(20,32,34,0.12)",
+          pt: 3,
+        }}
+      >
+        <Typography fontWeight={650} sx={{ mb: 0.5 }}>
+          {t("dbFeedsTitle")}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t("dbFeedsHelp")}
+        </Typography>
+        <TextField
+          select
+          label={t("dbFeedsProject")}
+          value={feedProjectId}
+          onChange={(event) => setFeedProjectId(event.target.value)}
+          fullWidth
+          sx={{ mb: 2 }}
+          helperText={t("dbFeedsProjectHelp")}
+        >
+          <MenuItem value="">
+            <em>{t("dbFeedsPickProject")}</em>
+          </MenuItem>
+          {(projects.data?.items ?? []).map((project) => (
+            <MenuItem key={project.id} value={project.id}>
+              {project.name}
+            </MenuItem>
+          ))}
+        </TextField>
+
+        {feedProjectId ? (
+          <Stack spacing={3}>
+            {dbFeeds.data?.items && dbFeeds.data.items.length > 0 ? (
+              <Alert severity="info">
+                {dbFeeds.data.items
+                  .map(
+                    (item) =>
+                      `${item.provider}: ${item.summary} (${new Date(item.observedAt).toLocaleString()})`,
+                  )
+                  .join(" · ")}
+              </Alert>
+            ) : null}
+
+            <Box>
+              <Typography fontWeight={600} sx={{ mb: 1 }}>
+                {t("supabaseFeedTitle")}
+              </Typography>
+              <Stack spacing={1.5}>
+                <TextField
+                  label={t("supabaseHost")}
+                  value={supabaseHost}
+                  onChange={(e) => setSupabaseHost(e.target.value)}
+                  helperText={t("supabaseHostHelp")}
+                  fullWidth
+                />
+                <TextField
+                  label={t("supabaseTables")}
+                  value={supabaseTables}
+                  onChange={(e) => setSupabaseTables(e.target.value)}
+                  helperText={t("supabaseTablesHelp")}
+                  multiline
+                  minRows={2}
+                  fullWidth
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={supabaseRls}
+                      onChange={(_, checked) => setSupabaseRls(checked)}
+                    />
+                  }
+                  label={t("supabaseRls")}
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => postSupabaseFeed.mutate()}
+                  disabled={
+                    postSupabaseFeed.isPending ||
+                    supabaseHost.trim().length < 2 ||
+                    supabaseTables.trim().length < 1
+                  }
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  {t("recordSupabaseFeed")}
+                </Button>
+                {postSupabaseFeed.isSuccess ? (
+                  <Alert severity="success">{t("feedRecorded")}</Alert>
+                ) : null}
+                {postSupabaseFeed.isError ? (
+                  <Alert severity="error">
+                    {(postSupabaseFeed.error as Error).message}
+                  </Alert>
+                ) : null}
+              </Stack>
+            </Box>
+
+            <Box>
+              <Typography fontWeight={600} sx={{ mb: 1 }}>
+                {t("mongoFeedTitle")}
+              </Typography>
+              <Stack spacing={1.5}>
+                <TextField
+                  label={t("mongoHost")}
+                  value={mongoHost}
+                  onChange={(e) => setMongoHost(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label={t("mongoDatabase")}
+                  value={mongoDb}
+                  onChange={(e) => setMongoDb(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label={t("mongoCollections")}
+                  value={mongoCollections}
+                  onChange={(e) => setMongoCollections(e.target.value)}
+                  helperText={t("mongoCollectionsHelp")}
+                  multiline
+                  minRows={2}
+                  fullWidth
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => postMongoFeed.mutate()}
+                  disabled={
+                    postMongoFeed.isPending ||
+                    mongoHost.trim().length < 2 ||
+                    mongoDb.trim().length < 1 ||
+                    mongoCollections.trim().length < 1
+                  }
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  {t("recordMongoFeed")}
+                </Button>
+                {postMongoFeed.isSuccess ? (
+                  <Alert severity="success">{t("feedRecorded")}</Alert>
+                ) : null}
+                {postMongoFeed.isError ? (
+                  <Alert severity="error">
+                    {(postMongoFeed.error as Error).message}
+                  </Alert>
+                ) : null}
+              </Stack>
+            </Box>
+          </Stack>
+        ) : null}
       </Box>
     </Stack>
   );

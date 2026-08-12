@@ -1,21 +1,47 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { CreateQaRun, QaFinding, QaReport, QaRun } from "@atlas/shared";
+import type {
+  CreateQaRun,
+  QaFinding,
+  QaPortfolioPattern,
+  QaRegressionRule,
+  QaReport,
+  QaRun,
+} from "@atlas/shared";
 import { qaFindingSchema, qaRunSchema } from "@atlas/shared";
 import { planQaRun } from "./planner/plan.js";
-import { detectPortfolioPatterns } from "./portfolio/patterns.js";
+import {
+  accumulatePortfolioPatterns,
+  extractPatternSeedsFromFindings,
+  formatPatternLessonsForContext,
+  patternIdFromKey,
+  retrieveRelevantPortfolioPatterns,
+} from "./portfolio/patterns.js";
 
 export interface OrchestrateQaInput {
   readonly request: CreateQaRun;
   readonly resolvedProjectIds: readonly string[];
   readonly changedPaths?: readonly string[] | undefined;
   readonly workspaceRoots?: Readonly<Record<string, string>> | undefined;
-  /** Stable LEARN keys (not UUIDs) suppressed on subsequent runs. */
+  /** Explicit LEARN keys suppressed on subsequent runs (not auto-emitted). */
   readonly priorLearnedPatternKeys?: readonly string[] | undefined;
+  /** Portfolio-scoped patterns from prior runs (cross-project LEARN memory). */
+  readonly priorPortfolioPatterns?: readonly QaPortfolioPattern[] | undefined;
+  /** Max prior patterns to inject into this run's context. */
+  readonly patternContextBudget?: number | undefined;
 }
 
 export type OrchestrateQaResult = QaReport & {
+  /** Active explicit LEARN set used for suppression this run. */
   readonly learnedPatternKeys: readonly string[];
+  /** Pattern keys emitted as OPEN findings this run (not auto-learned). */
+  readonly emittedPatternKeys: readonly string[];
+  /** Durable patterns from this run (1+ projects) for portfolio persist. */
+  readonly durablePatterns: readonly QaPortfolioPattern[];
+  /** Prior portfolio lessons retrieved into this run (budgeted). */
+  readonly contextPatterns: readonly QaPortfolioPattern[];
+  /** Compact INFERRED lessons for memoryContext / agent handoff. */
+  readonly patternLessons: readonly string[];
 };
 
 function listTopFiles(root: string, max = 80): string[] {
@@ -59,9 +85,14 @@ function executeStaticDomain(input: {
   workspaceRoot: string | undefined;
   now: string;
   suppressedPatternKeys: ReadonlySet<string>;
-}): { findings: QaFinding[]; patternKeys: string[] } {
+}): {
+  findings: QaFinding[];
+  patternKeys: string[];
+  regressionRules: QaRegressionRule[];
+} {
   const findings: QaFinding[] = [];
   const patternKeys: string[] = [];
+  const regressionRules: QaRegressionRule[] = [];
   const root = input.workspaceRoot;
 
   const pushOpen = (opts: {
@@ -74,7 +105,21 @@ function executeStaticDomain(input: {
     evidenceIds: string[];
     riskClass: string | null;
   }) => {
-    if (input.suppressedPatternKeys.has(opts.patternKey)) return;
+    if (input.suppressedPatternKeys.has(opts.patternKey)) {
+      regressionRules.push({
+        id: patternIdFromKey(`regression:${opts.patternKey}`),
+        projectId: input.projectId,
+        patternKey: opts.patternKey,
+        title: opts.title,
+        originFindingId: null,
+        preventingTestIds: [],
+        timesSeen: 1,
+        projectIdsSeen: [input.projectId],
+        lastSeenAt: input.now,
+        createdAt: input.now,
+      });
+      return;
+    }
     patternKeys.push(opts.patternKey);
     findings.push(
       qaFindingSchema.parse({
@@ -93,7 +138,7 @@ function executeStaticDomain(input: {
         rootCause: opts.rootCause,
         recommendedFix: opts.recommendedFix,
         relatedHistoricalFindingIds: [],
-        portfolioPatternId: crypto.randomUUID(),
+        portfolioPatternId: patternIdFromKey(opts.patternKey),
         createdAt: input.now,
         updatedAt: input.now,
       }),
@@ -124,7 +169,7 @@ function executeStaticDomain(input: {
         updatedAt: input.now,
       }),
     );
-    return { findings, patternKeys };
+    return { findings, patternKeys, regressionRules };
   }
 
   const files = listTopFiles(root);
@@ -277,7 +322,7 @@ function executeStaticDomain(input: {
     );
   }
 
-  return { findings, patternKeys };
+  return { findings, patternKeys, regressionRules };
 }
 
 /**
@@ -302,8 +347,24 @@ export function orchestrateQaAnalyze(
 
   const runId = crypto.randomUUID();
   const findings: QaFinding[] = [];
-  const learnedKeys: string[] = [];
+  const emittedKeys: string[] = [];
+  const regressionRulesTriggered: QaRegressionRule[] = [];
   const suppressed = new Set(input.priorLearnedPatternKeys ?? []);
+  const explicitLearned = [...suppressed];
+  const priorPatterns = input.priorPortfolioPatterns ?? [];
+  const primaryProjectId = input.resolvedProjectIds[0] ?? null;
+  const contextPatterns = retrieveRelevantPortfolioPatterns({
+    patterns: priorPatterns,
+    projectId: primaryProjectId,
+    budget: input.patternContextBudget ?? 8,
+    ...(input.request.userRequest !== undefined
+      ? { query: input.request.userRequest }
+      : {}),
+    crossProjectOnly: true,
+  });
+  const priorByKey = new Map(
+    priorPatterns.map((p) => [p.patternKey, p] as const),
+  );
 
   for (const projectId of input.resolvedProjectIds) {
     const workspaceRoot = input.workspaceRoots?.[projectId];
@@ -317,38 +378,46 @@ export function orchestrateQaAnalyze(
         suppressedPatternKeys: suppressed,
       });
       findings.push(...result.findings);
-      learnedKeys.push(...result.patternKeys);
+      emittedKeys.push(...result.patternKeys);
+      regressionRulesTriggered.push(...result.regressionRules);
     }
   }
 
-  const seeds = findings
-    .filter(
-      (f) => f.projectId && f.status === "OPEN" && f.epistemicState === "OBSERVED",
-    )
-    .map((f) => {
-      const match = /\[pattern:([^\]]+)\]/.exec(f.summary);
-      return {
-        patternKey: match?.[1] ?? `domain:${f.domain}:open`,
-        title: f.title,
-        summary: f.summary,
-        severity: f.severity,
-        domain: f.domain,
-        projectId: f.projectId!,
-        findingId: f.id,
-      };
-    });
+  // Link OPEN findings to prior portfolio lessons (evidence ids only — no invented patterns).
+  for (let i = 0; i < findings.length; i++) {
+    const f = findings[i]!;
+    const match = /\[pattern:([^\]]+)\]/.exec(f.summary);
+    const prior = match?.[1] ? priorByKey.get(match[1]) : undefined;
+    if (!prior || prior.projectIds.length < 2) continue;
+    findings[i] = {
+      ...f,
+      portfolioPatternId: prior.id,
+      relatedHistoricalFindingIds: [
+        ...new Set([
+          ...f.relatedHistoricalFindingIds,
+          ...prior.findingIds.slice(0, 8),
+        ]),
+      ].slice(0, 12),
+    };
+  }
 
-  const portfolioPatterns =
+  const seeds = extractPatternSeedsFromFindings(findings);
+  const accumulated = accumulatePortfolioPatterns(priorPatterns, seeds, now);
+  // Report surface: cross-project after merge (includes prior + this run).
+  const portfolioPatterns = accumulated.crossProject.filter((p) =>
+    seeds.some((s) => s.patternKey === p.patternKey) ||
     input.request.scope === "ENTIRE_PORTFOLIO" ||
-    input.request.profile === "PORTFOLIO"
-      ? detectPortfolioPatterns(seeds, now)
-      : [];
+    input.request.profile === "PORTFOLIO",
+  );
 
   const learnedPatternIds = [
-    ...portfolioPatterns.map((p) => p.id),
-    ...findings
-      .map((f) => f.portfolioPatternId)
-      .filter((x): x is string => Boolean(x)),
+    ...new Set([
+      ...explicitLearned.map((k) => patternIdFromKey(k)),
+      ...accumulated.merged.map((p) => p.id),
+      ...findings
+        .map((f) => f.portfolioPatternId)
+        .filter((x): x is string => Boolean(x)),
+    ]),
   ];
 
   const openFindings = findings.filter((f) => f.status === "OPEN");
@@ -361,6 +430,11 @@ export function orchestrateQaAnalyze(
 
   const observed = findings.filter((f) => f.epistemicState === "OBSERVED").length;
   const unknown = findings.filter((f) => f.epistemicState === "UNKNOWN").length;
+  const patternLessons = formatPatternLessonsForContext(contextPatterns);
+  const topRiskTitles = [
+    ...patternLessons.slice(0, 3),
+    ...plan.riskHints.map((h) => `${h.riskClass}: ${h.reason}`),
+  ].slice(0, 8);
 
   const run: QaRun = qaRunSchema.parse({
     id: runId,
@@ -377,12 +451,10 @@ export function orchestrateQaAnalyze(
       securityReadinessPercent: null,
       productionReadinessPercent: null,
       evidenceSignalCount: observed,
-      inferredSignalCount: unknown,
+      inferredSignalCount: unknown + contextPatterns.length,
     },
     severityCounts,
-    topRiskTitles: plan.riskHints
-      .map((h) => `${h.riskClass}: ${h.reason}`)
-      .slice(0, 5),
+    topRiskTitles,
     findingIds: findings.map((f) => f.id),
     learnedPatternIds,
     writeGateLocked: true,
@@ -395,8 +467,12 @@ export function orchestrateQaAnalyze(
     run,
     findings,
     portfolioPatterns,
-    regressionRulesTriggered: [],
-    learnedPatternKeys: [...new Set([...suppressed, ...learnedKeys])],
+    regressionRulesTriggered,
+    learnedPatternKeys: explicitLearned,
+    emittedPatternKeys: [...new Set(emittedKeys)],
+    durablePatterns: accumulated.durableFromRun,
+    contextPatterns,
+    patternLessons,
   };
 }
 

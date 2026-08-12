@@ -39,6 +39,15 @@ export function geniusRoute(request: string): GeniusRoute {
   if (/deploy|ci|cd|docker|vercel|migrat|backup|observ/.test(q)) {
     add("DEVOPS", "DevOps / infra");
   }
+  if (
+    /legal|lawyer|counsel|משפט|עו״ד|עורך\s*דין|media\s*law|תקשורת|מדיה|defamation|שידור|broadcast|gdpr|פרטיות\s*חוק|محام|قانون/.test(
+      q,
+    )
+  ) {
+    add("LEGAL_MEDIA_COMMS", "Legal media/comms counsel-prep (not a lawyer)");
+    add("RESEARCHER", "Verified gov/university sources only");
+    add("JUDGE", "Legal claims need belief gate");
+  }
   if (/research|docs|standard|api spec|advisory|how does/.test(q)) {
     add("RESEARCHER", "External research package");
   }

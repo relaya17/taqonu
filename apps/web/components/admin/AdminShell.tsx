@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -15,6 +15,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import CloseIcon from "@mui/icons-material/Close";
 import { useTheme } from "@mui/material/styles";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,6 +37,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   const nav = (
     <Box component="nav" aria-label="ניווט אדמין">
@@ -83,13 +88,48 @@ export function AdminShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", flexDirection: "row-reverse" }}>
-      <a href="#admin-main" className="skip-link">
+    <Box
+      sx={{
+        display: "flex",
+        minHeight: "100vh",
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "clip",
+        flexDirection: "row-reverse",
+      }}
+    >
+      <a
+        href="#admin-main"
+        className="skip-link"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.getElementById("admin-main");
+          main?.focus();
+          main?.scrollIntoView({ block: "start" });
+        }}
+      >
         דלג לתוכן
       </a>
       {isMobile ? (
-        <Drawer open={open} onClose={() => setOpen(false)} anchor="right">
-          <Box sx={{ width: WIDTH, py: 2 }}>{nav}</Box>
+        <Drawer
+          open={open}
+          onClose={() => setOpen(false)}
+          anchor="right"
+          ModalProps={{ keepMounted: true }}
+          PaperProps={{ "aria-label": "ניווט אדמין", id: "admin-nav" }}
+        >
+          <Stack direction="row" justifyContent="flex-end" sx={{ px: 1, pt: 1 }}>
+            <IconButton
+              aria-label="סגור תפריט"
+              onClick={() => setOpen(false)}
+              sx={{ color: "inherit" }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+          <Box sx={{ width: WIDTH, py: 1, maxWidth: "100vw", overflowX: "hidden" }}>
+            {nav}
+          </Box>
         </Drawer>
       ) : (
         <Drawer
@@ -97,13 +137,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
           anchor="right"
           sx={{
             width: WIDTH,
+            flexShrink: 0,
             [`& .MuiDrawer-paper`]: {
               width: WIDTH,
+              maxWidth: "100vw",
               border: 0,
               background: "linear-gradient(180deg, #0F3D3E 0%, #14282A 100%)",
               color: "#F4F7F5",
+              overflowX: "hidden",
             },
           }}
+          PaperProps={{ "aria-label": "ניווט אדמין", component: "aside" }}
         >
           <Box sx={{ py: 2 }}>{nav}</Box>
         </Drawer>
@@ -112,14 +156,25 @@ export function AdminShell({ children }: { children: ReactNode }) {
         component="main"
         id="admin-main"
         tabIndex={-1}
+        aria-label="תוכן ראשי"
         sx={{
           flex: 1,
+          minWidth: 0,
+          maxWidth: "100%",
+          overflowX: "clip",
           p: { xs: 2, md: 4 },
           width: { xs: "100%", md: `calc(100% - ${WIDTH}px)` },
+          outline: "none",
         }}
       >
         {isMobile ? (
-          <IconButton aria-label="פתח תפריט" onClick={() => setOpen(true)} sx={{ mb: 2 }}>
+          <IconButton
+            aria-label="פתח תפריט"
+            aria-expanded={open}
+            aria-controls="admin-nav"
+            onClick={() => setOpen(true)}
+            sx={{ mb: 2 }}
+          >
             <MenuIcon />
           </IconButton>
         ) : null}

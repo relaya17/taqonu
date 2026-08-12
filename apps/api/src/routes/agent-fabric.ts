@@ -18,20 +18,35 @@ import {
   getKnowledgeCorpusPersistPath,
   getKnowledgeCorpusSource,
   hydrateKnowledgeCorpus,
-  ingestKnowledgeDocument,
   listKnowledgeCorpus,
   listPortfolioLessons,
-  searchKnowledgeFabric,
 } from "@atlas/knowledge";
-import {
-  cosineSimilarity,
-  getDefaultEmbeddingProvider,
-  safeEmbed,
-} from "@atlas/embeddings";
 import { osStore } from "../store/os-store.js";
-import { appendDomainEvent } from "../services/memory-pipeline.js";
+import {
+  appendDomainEvent,
+  buildMemoryContext,
+  type MemoryContextPayload,
+} from "../services/memory-pipeline.js";
+import {
+  ingestKnowledgeClosedLoop,
+  searchKnowledgeClosedLoop,
+} from "../services/hybrid-rag.js";
 import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+
+const AGENT_MEMORY_BUDGET = 12;
+
+function toPublicMemoryContext(
+  ctx: ReturnType<typeof buildMemoryContext>,
+): MemoryContextPayload {
+  return {
+    items: ctx.items,
+    budget: ctx.budget,
+    truncated: ctx.truncated,
+    epistemicState: ctx.epistemicState,
+    note: ctx.note,
+  };
+}
 
 function ensureKnowledgeCorpusHydrated(): void {
   hydrateKnowledgeCorpus({ enablePersist: true });
@@ -62,27 +77,80 @@ export async function registerAgentFabricRoutes(
   app.post("/api/v1/agents/plan", async (request) => {
     const body = agentPlanRequestSchema.parse(request.body);
     const started = Date.now();
+    const memoryContext = toPublicMemoryContext(
+      buildMemoryContext({
+        projectId: body.projectId ?? null,
+        query: body.request,
+        budget: AGENT_MEMORY_BUDGET,
+      }),
+    );
+    atlasMetrics.record(
+      "retrieval_hit_rate",
+      memoryContext.items.length > 0 ? 1 : 0,
+      { surface: "memory", kind: "agents.plan" },
+    );
     const plan = planAgentWork({
       request: body.request,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
+      ...(body.agentIds !== undefined ? { agentIds: body.agentIds } : {}),
       maxAgents: body.maxAgents,
       budgetUsd: body.budgetUsd,
     });
     atlasMetrics.record("agent_run_duration", Date.now() - started, {
       kind: "plan",
     });
+    const at = new Date().toISOString();
+    osStore.appendAudit({
+      type: "agents.plan",
+      planId: plan.id,
+      projectId: body.projectId ?? null,
+      steps: plan.steps.length,
+      at,
+    });
     appendDomainEvent({
       type: "observation.recorded",
       projectId: body.projectId ?? null,
-      epistemicState: "INFERRED",
-      payload: { kind: "agents.plan", planId: plan.id, steps: plan.steps.length },
+      epistemicState: memoryContext.epistemicState,
+      payload: {
+        kind: "agents.plan",
+        planId: plan.id,
+        steps: plan.steps.length,
+        memoryContext: {
+          budget: memoryContext.budget,
+          truncated: memoryContext.truncated,
+          epistemicState: memoryContext.epistemicState,
+          note: memoryContext.note,
+          items: memoryContext.items.map((m) => ({
+            id: m.id,
+            type: m.type,
+            epistemicState: m.epistemicState,
+            statement: m.statement,
+            evidence: m.evidence,
+          })),
+        },
+      },
     });
-    return plan;
+    return {
+      ...plan,
+      memoryContext,
+    };
   });
 
   app.post("/api/v1/agents/dispatch", async (request, reply) => {
     const body = agentDispatchRequestSchema.parse(request.body);
     const started = Date.now();
+    const memoryContext = toPublicMemoryContext(
+      buildMemoryContext({
+        projectId: body.projectId ?? null,
+        query: body.request,
+        budget: AGENT_MEMORY_BUDGET,
+      }),
+    );
+    atlasMetrics.record(
+      "retrieval_hit_rate",
+      memoryContext.items.length > 0 ? 1 : 0,
+      { surface: "memory", kind: "agents.dispatch" },
+    );
     const result = dispatchAgentPlan({
       request: body.request,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
@@ -107,18 +175,44 @@ export async function registerAgentFabricRoutes(
       judge: result.judge?.decision ?? null,
       at: result.createdAt,
     });
+    osStore.appendAudit({
+      type: "agents.dispatch",
+      id: result.id,
+      traceId: result.traceId,
+      projectId: body.projectId ?? null,
+      judge: result.judge?.decision ?? null,
+      runs: result.runs.length,
+      failed,
+      at: result.createdAt,
+    });
     appendDomainEvent({
       type: "evaluation.completed",
       projectId: body.projectId ?? null,
-      epistemicState: "INFERRED",
+      epistemicState: memoryContext.epistemicState,
       payload: {
         kind: "agents.dispatch",
         id: result.id,
         judge: result.judge?.decision ?? null,
         runs: result.runs.length,
+        memoryContext: {
+          budget: memoryContext.budget,
+          truncated: memoryContext.truncated,
+          epistemicState: memoryContext.epistemicState,
+          note: memoryContext.note,
+          items: memoryContext.items.map((m) => ({
+            id: m.id,
+            type: m.type,
+            epistemicState: m.epistemicState,
+            statement: m.statement,
+            evidence: m.evidence,
+          })),
+        },
       },
     });
-    return reply.status(201).send(result);
+    return reply.status(201).send({
+      ...result,
+      memoryContext,
+    });
   });
 
   app.post("/api/v1/judge/evaluate", async (request) => {
@@ -132,29 +226,20 @@ export async function registerAgentFabricRoutes(
   app.post("/api/v1/knowledge/search", async (request) => {
     ensureKnowledgeCorpusHydrated();
     const body = knowledgeSearchRequestSchema.parse(request.body);
-    const corpus = listKnowledgeCorpus();
-    const provider = getDefaultEmbeddingProvider();
-    const texts = [body.query, ...corpus.map((d) => `${d.title}\n${d.excerpt}`)];
-    const vectors = await safeEmbed(provider, texts);
-    const queryVec = vectors[0] ?? [];
-    const vectorScores: Record<string, number> = {};
-    corpus.forEach((doc, i) => {
-      const cached = doc.embedding;
-      const docVec =
-        cached && cached.length > 0 ? cached : (vectors[i + 1] ?? []);
-      vectorScores[doc.id] = cosineSimilarity(queryVec, docVec);
-    });
-    const result = searchKnowledgeFabric({
+    const result = await searchKnowledgeClosedLoop(app.atlasEnv, {
       query: body.query,
       maxResults: body.maxResults,
       minAuthority: body.minAuthority,
       allowStale: body.allowStale,
-      vectorScores,
     });
     atlasMetrics.record(
       "retrieval_hit_rate",
       result.hits.length > 0 ? 1 : 0,
-      { surface: "knowledge", corpus: getKnowledgeCorpusSource() },
+      {
+        surface: "knowledge",
+        corpus: getKnowledgeCorpusSource(),
+        backend: result.retrievalBackend ?? "local",
+      },
     );
     const withCite = result.hits.filter(
       (h) => Boolean(h.url) || Boolean(h.contentHash),
@@ -171,23 +256,21 @@ export async function registerAgentFabricRoutes(
     requireSignedInForWrite(app, request);
     ensureKnowledgeCorpusHydrated();
     const body = knowledgeIngestRequestSchema.parse(request.body);
-    const provider = getDefaultEmbeddingProvider();
-    const [embedding] = await safeEmbed(provider, [
-      `${body.title}\n${body.excerpt}`,
-    ]);
-    const doc = ingestKnowledgeDocument({
-      title: body.title,
-      excerpt: body.excerpt,
-      sourceClass: body.sourceClass,
-      ...(body.url !== undefined ? { url: body.url } : {}),
-      ...(body.sourceUpdatedAt !== undefined
-        ? { sourceUpdatedAt: body.sourceUpdatedAt }
-        : {}),
-      ...(body.projectScoped != null
-        ? { projectScoped: body.projectScoped }
-        : {}),
-      ...(embedding ? { embedding: [...embedding] } : {}),
-    });
+    const { document: doc, corpus, pgvector } = await ingestKnowledgeClosedLoop(
+      app.atlasEnv,
+      {
+        title: body.title,
+        excerpt: body.excerpt,
+        sourceClass: body.sourceClass,
+        ...(body.url !== undefined ? { url: body.url } : {}),
+        ...(body.sourceUpdatedAt !== undefined
+          ? { sourceUpdatedAt: body.sourceUpdatedAt }
+          : {}),
+        ...(body.projectScoped != null
+          ? { projectScoped: body.projectScoped }
+          : {}),
+      },
+    );
     osStore.setMeta(
       "knowledge.corpusPath",
       getKnowledgeCorpusPersistPath() ??
@@ -201,14 +284,28 @@ export async function registerAgentFabricRoutes(
         kind: "knowledge.ingest",
         id: doc.id,
         contentHash: doc.contentHash,
-        corpus: getKnowledgeCorpusSource(),
+        corpus,
+        pgvector,
       },
     });
     return reply.status(201).send({
       document: doc,
-      corpus: getKnowledgeCorpusSource(),
-      note: "Persisted to local .atlas/knowledge/corpus.json when writable.",
+      corpus,
+      pgvector,
+      note: pgvector
+        ? "Dual-wrote file corpus + pgvector knowledge_chunks."
+        : "Persisted to local .atlas/knowledge/corpus.json (pgvector offline — set live SUPABASE_* / DATABASE_URL).",
     });
+  });
+
+  app.get("/api/v1/knowledge/corpus", async () => {
+    ensureKnowledgeCorpusHydrated();
+    return {
+      items: listKnowledgeCorpus(),
+      corpus: getKnowledgeCorpusSource(),
+      path: getKnowledgeCorpusPersistPath(),
+      note: "Corpus listing for ops — agents receive filtered packages only.",
+    };
   });
 
   app.get("/api/v1/knowledge/lessons", async () => ({

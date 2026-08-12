@@ -1,5 +1,5 @@
 import {
-  evidenceRecordSchema,
+  parseEvidenceRecord,
   type EvidenceRecord,
   type ProjectStateSnapshot,
 } from "@atlas/shared";
@@ -25,7 +25,7 @@ export function ingestGitHubSync(
   const drafts = observationToEvidenceDrafts(observation);
   const now = new Date().toISOString();
   const evidence = drafts.map((draft) =>
-    evidenceRecordSchema.parse({
+    parseEvidenceRecord({
       id: crypto.randomUUID(),
       ownerId: OWNER_ID,
       projectId,
@@ -39,6 +39,7 @@ export function ingestGitHubSync(
       createdAt: now,
       confidence: draft.confidence,
       epistemicState: draft.epistemicState,
+      category: draft.category,
       metadata: draft.metadata,
     }),
   );

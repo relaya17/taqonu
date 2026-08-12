@@ -184,6 +184,11 @@ export const runContinuousAuditRequestSchema = z.object({
   workspaceRoot: z.string().max(1000).optional(),
   intent: z.string().max(4000).optional(),
   includeConstitution: z.boolean().default(true),
+  /**
+   * When true (and signed-in WRITE), LOW AUTO_FIX drafts may auto-apply.
+   * Also enabled by ATLAS_AUTO_APPLY_LOW. HIGH/CRITICAL never auto-apply.
+   */
+  autoApplyLow: z.boolean().optional(),
 });
 
 export type EngineeringIssue = z.infer<typeof engineeringIssueSchema>;

@@ -26,14 +26,21 @@ import {
 } from "../services/artifacts-assists.js";
 import { resolveTier } from "../services/plan-quota.js";
 import { persistArletosAgentMemory } from "../services/arletos-agent-memory.js";
+import { buildMemoryContext } from "../services/memory-pipeline.js";
 import { proposePatch } from "@atlas/code-intelligence";
 import {
   ENGINEERING_MODE_META,
   patchArtifactSchema,
   type EngineeringAgentMode,
 } from "@atlas/shared";
+import { searchKnowledgeClosedLoop } from "../services/hybrid-rag.js";
+import {
+  collectEvidenceRefs,
+  insufficientEvidenceAnswer,
+  resolveConversationEpistemic,
+} from "../services/conversation-evidence.js";
 
-const runs: Array<ReturnType<typeof agentRunSchema.parse>> = [];
+const AGENT_MEMORY_BUDGET = 12;
 
 function toMvpMode(mode: AgentMode): MvpAgentMode {
   if ((MVP_AGENT_MODES as readonly string[]).includes(mode)) {
@@ -43,12 +50,16 @@ function toMvpMode(mode: AgentMode): MvpAgentMode {
 }
 
 export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/agent/runs", async () => ({
-    items: runs,
-    page: 1,
-    pageSize: 20,
-    total: runs.length,
-  }));
+  app.get("/api/v1/agent/runs", async () => {
+    osStore.ensureLoaded();
+    const items = [...osStore.listAgentRuns()];
+    return {
+      items,
+      page: 1,
+      pageSize: 20,
+      total: items.length,
+    };
+  });
 
   app.post("/api/v1/agent/runs", async (request, reply) => {
     osStore.ensureLoaded();
@@ -144,12 +155,43 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     const decisions = projectId
       ? [...osStore.getDecisions(projectId), ...osStore.getDecisions("global")]
       : [...osStore.getDecisions("global")];
-    const memories = projectId
-      ? [...osStore.getMemories(projectId), ...osStore.getMemories("global")]
-      : projects.flatMap((p) => osStore.getMemories(p.id)).concat(osStore.getMemories("global"));
+    const memoryContextResult = buildMemoryContext({
+      projectId,
+      query: body.userRequest,
+      budget: AGENT_MEMORY_BUDGET,
+    });
+    const { memories, ...memoryContext } = memoryContextResult;
     const evidence = projectId
       ? osStore.getEvidence(projectId)
       : projects.flatMap((p) => osStore.getEvidence(p.id));
+
+    let knowledge: Awaited<ReturnType<typeof searchKnowledgeClosedLoop>> | null =
+      null;
+    try {
+      knowledge = await searchKnowledgeClosedLoop(app.atlasEnv, {
+        query: body.userRequest,
+        maxResults: 8,
+      });
+    } catch {
+      knowledge = null;
+    }
+
+    const evidenceRefs = collectEvidenceRefs({
+      memories,
+      evidenceRecords: evidence,
+      knowledge,
+      decisions: decisions.map((d) => ({
+        id: d.id,
+        title: d.decision,
+        statement: d.decision,
+      })),
+      hasSnapshot: Boolean(snapshot),
+      snapshotLabel: snapshot
+        ? `snapshot:${projectId ?? "portfolio"}`
+        : null,
+      projectCount: projects.length,
+    });
+    const epistemicLabel = resolveConversationEpistemic(evidenceRefs);
 
     const blocks = buildPortfolioContextBlocks({
       projects,
@@ -163,30 +205,48 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     const experts = selectExperts(body.userRequest);
     const expertBlock = buildExpertSystemBlock(experts);
 
-    const system = redactSecrets([
-      "You are the ArletOS Engineering + QA Intelligence OS agent.",
-      "Use only retrieved context. Label FACT vs INFERRED vs PROPOSED.",
-      "Never claim deployment/DB facts without labeled evidence.",
-      "Never expose secrets.",
-      "WRITE actions require eval gate + human APPROVE.",
-      "Reply in the user's language (Hebrew, Arabic, or English).",
-      "For coding handoff: produce a concise editor brief with steps and constraints.",
-      "",
-      expertBlock,
-      "",
-      context,
-    ].join("\n"));
+    let answer: string;
+    let llmProvider = "none";
 
-    const llm = await completeWithFreeFallback(
-      llmEnvOverride,
-      [
-        { role: "system", content: system },
-        { role: "user", content: redactSecrets(body.userRequest) },
-      ],
-    );
-    let answer = redactSecrets(
-      `${llm.text}\n\n— provider: ${llm.provider} · catalog: ${catalog.titleEn} (${catalog.billing === "included" ? "included" : `${catalog.creditCost} credits`})`,
-    );
+    if (epistemicLabel === "INSUFFICIENT_EVIDENCE") {
+      const localeHint = /[\u0590-\u05FF]/.test(body.userRequest)
+        ? "he"
+        : /[\u0600-\u06FF]/.test(body.userRequest)
+          ? "ar"
+          : "en";
+      answer = insufficientEvidenceAnswer(
+        localeHint,
+        knowledge?.plainLanguage ?? null,
+      );
+    } else {
+      const system = redactSecrets(
+        [
+          "You are the ArletOS Engineering + QA Intelligence OS agent.",
+          "Use only retrieved context. Label FACT vs INFERRED vs PROPOSED.",
+          "Never claim deployment/DB facts without labeled evidence.",
+          "Never expose secrets.",
+          "WRITE actions require eval gate + human APPROVE.",
+          "Reply in the user's language (Hebrew, Arabic, or English).",
+          "For coding handoff: produce a concise editor brief with steps and constraints.",
+          "",
+          expertBlock,
+          "",
+          context,
+        ].join("\n"),
+      );
+
+      const llm = await completeWithFreeFallback(
+        llmEnvOverride,
+        [
+          { role: "system", content: system },
+          { role: "user", content: redactSecrets(body.userRequest) },
+        ],
+      );
+      llmProvider = llm.provider;
+      answer = redactSecrets(
+        `${llm.text}\n\n— provider: ${llm.provider} · catalog: ${catalog.titleEn} (${catalog.billing === "included" ? "included" : `${catalog.creditCost} credits`})`,
+      );
+    }
 
     if (writeBlocked) {
       answer = [
@@ -202,7 +262,11 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       body.proposePatch === true ||
       Boolean(ENGINEERING_MODE_META[engMode]?.proposesPatch);
 
-    if (shouldPropose && body.workspaceRoot) {
+    if (
+      epistemicLabel !== "INSUFFICIENT_EVIDENCE" &&
+      shouldPropose &&
+      body.workspaceRoot
+    ) {
       try {
         const proposal = proposePatch({
           workspaceRoot: body.workspaceRoot,
@@ -293,7 +357,9 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       answer: [
         answer,
         "",
-        `Provider: ${llm.provider}`,
+        `Provider: ${llmProvider}`,
+        `Epistemic: ${epistemicLabel}`,
+        `Evidence refs: ${evidenceRefs.length}`,
         `Engineering mode: ${engMode}`,
         `Experts: ${experts.primary}${experts.supporting.length ? ` + ${experts.supporting.join(", ")}` : ""}`,
         `Scope: ${projectId ? "project" : "portfolio"}`,
@@ -302,19 +368,21 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
           ? "Self-check: passed."
           : `Self-check: ${verification.failures.join("; ")}`,
       ].join("\n"),
-      epistemicState: "PROPOSED",
+      epistemicState: epistemicLabel,
       startedAt: now,
       completedAt: now,
       createdBy: "user",
     });
 
-    runs.push(run);
+    osStore.addAgentRun(run);
     osStore.recordEvent({
       type: "agent.run.completed",
       runId: run.id,
       mode: run.mode,
       intent: intent.kind,
       experts: [experts.primary, ...experts.supporting],
+      epistemicLabel,
+      evidenceRefCount: evidenceRefs.length,
       occurredAt: now,
     });
     osStore.appendAudit({
@@ -323,11 +391,19 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       mode: run.mode,
       provider: selectedId,
       patchId,
+      epistemicLabel,
+      evidenceRefCount: evidenceRefs.length,
+      projectId,
+      status: run.status,
       at: now,
     });
 
     let learnedMemoryId: string | null = null;
-    if (selectedId === "arletos-included" && run.answer) {
+    if (
+      selectedId === "arletos-included" &&
+      run.answer &&
+      epistemicLabel !== "INSUFFICIENT_EVIDENCE"
+    ) {
       const learned = persistArletosAgentMemory({
         projectId,
         userRequest: body.userRequest,
@@ -343,6 +419,10 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       learnedMemoryId,
       patchId,
       engineeringMode: engMode,
+      memoryContext,
+      evidenceRefs,
+      epistemicLabel,
+      knowledgePlainLanguage: knowledge?.plainLanguage ?? null,
       catalog: {
         id: catalog.id,
         titleEn: catalog.titleEn,

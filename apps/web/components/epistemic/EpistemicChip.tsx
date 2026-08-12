@@ -25,6 +25,7 @@ const COLORS: Record<
 
 export function EpistemicChip({ state }: { state: EpistemicState }) {
   const t = useTranslations("epistemic");
+  const tA11y = useTranslations("a11y");
   let label: string = state;
   try {
     label = t(state);
@@ -36,6 +37,7 @@ export function EpistemicChip({ state }: { state: EpistemicState }) {
       size="small"
       color={COLORS[state] ?? "default"}
       label={label}
+      aria-label={tA11y("epistemic", { state: label })}
       sx={{ fontWeight: 600 }}
     />
   );

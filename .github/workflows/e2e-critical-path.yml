@@ -50,11 +50,22 @@ jobs:
           NODE_ENV: production
           PORT: 4000
           NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+          # Dummy webhook secret — enables signature-rejection E2E without external secrets
+          GITHUB_WEBHOOK_SECRET: e2e-github-webhook-test-secret
 
       - name: Critical-path smoke
-        run: pnpm test:e2e
+        run: pnpm test:e2e:critical
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_API_URL: http://127.0.0.1:4000
+          CI: true
+
+      - name: Product surfaces + security + a11y suites
+        run: pnpm test:e2e:product && pnpm test:e2e:security && pnpm test:e2e:a11y
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_API_URL: http://127.0.0.1:4000
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
           CI: true
 
       - uses: actions/upload-artifact@v4

@@ -18,6 +18,14 @@ import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 
+interface StyleLane {
+  id: string;
+  titleEn: string;
+  titleHe: string;
+  titleAr: string;
+  focus: string;
+}
+
 interface ExpertItem {
   id: string;
   titleHe: string;
@@ -25,6 +33,15 @@ interface ExpertItem {
   titleAr: string;
   focus: string;
   checklist: string[];
+  domain?: string;
+  requiredEvidence?: string[];
+  forbiddenAssumptions?: string[];
+  evaluationCriteria?: string[];
+  fabricAgentIds?: string[];
+  styleLanes?: StyleLane[];
+  budgetHintEn?: string;
+  budgetHintHe?: string;
+  budgetHintAr?: string;
 }
 
 interface Project {
@@ -67,6 +84,18 @@ function expertTitle(expert: ExpertItem, locale: string): string {
   return expert.titleEn;
 }
 
+function laneTitle(lane: StyleLane, locale: string): string {
+  if (locale === "he") return lane.titleHe;
+  if (locale === "ar") return lane.titleAr;
+  return lane.titleEn;
+}
+
+function budgetOf(expert: ExpertItem, locale: string): string {
+  if (locale === "he") return expert.budgetHintHe ?? "";
+  if (locale === "ar") return expert.budgetHintAr ?? "";
+  return expert.budgetHintEn ?? "";
+}
+
 export default function ExpertsPage() {
   const t = useTranslations("experts");
   const locale = useLocale();
@@ -74,6 +103,7 @@ export default function ExpertsPage() {
   const expertFromUrl = searchParams.get("expert");
 
   const [selectedExpert, setSelectedExpert] = useState<string>("UI_UX");
+  const [styleLaneId, setStyleLaneId] = useState<string>("");
   const [projectId, setProjectId] = useState("");
   const [request, setRequest] = useState("");
   const [review, setReview] = useState<ExpertReview | null>(null);
@@ -101,17 +131,27 @@ export default function ExpertsPage() {
     if (items.some((item) => item.id === expertFromUrl)) {
       setSelectedExpert(expertFromUrl);
       setReview(null);
+      setStyleLaneId("");
     }
   }, [expertFromUrl, items]);
 
   const active = items.find((item) => item.id === selectedExpert) ?? items[0];
+  const styleLanes = active?.styleLanes ?? [];
+
+  const composedRequest = useMemo(() => {
+    const base = request.trim();
+    if (!styleLaneId || !active) return base;
+    const lane = styleLanes.find((l) => l.id === styleLaneId);
+    if (!lane) return base;
+    return `[${laneTitle(lane, locale)} · ${lane.focus}]\n${base}`;
+  }, [request, styleLaneId, active, styleLanes, locale]);
 
   const reviewMutation = useMutation({
     mutationFn: () =>
       apiPost<ExpertReview>("/api/v1/experts/review", {
         expertId: selectedExpert,
         projectId: projectId || null,
-        userRequest: request.trim(),
+        userRequest: composedRequest,
       }),
     onSuccess: (data) => {
       setReview(data);
@@ -122,7 +162,7 @@ export default function ExpertsPage() {
   const briefMutation = useMutation({
     mutationFn: () =>
       apiPost<EditorBrief>("/api/v1/editor/brief", {
-        userRequest: request.trim(),
+        userRequest: composedRequest,
         projectId: projectId || null,
         experts: [selectedExpert],
         includeState: true,
@@ -141,6 +181,8 @@ export default function ExpertsPage() {
     setCopied(true);
   };
 
+  const primaryFabric = active?.fabricAgentIds?.[0];
+
   return (
     <Stack spacing={3} sx={{ maxWidth: 920 }}>
       <Box>
@@ -151,7 +193,8 @@ export default function ExpertsPage() {
           {t("subtitle")}
         </Typography>
         <Alert severity="info" sx={{ mt: 2 }}>
-          {t("consultHelp")}
+          {t("consultHelp")}{" "}
+          <Link href="/agents">{t("openAgents")}</Link>
         </Alert>
       </Box>
 
@@ -180,13 +223,111 @@ export default function ExpertsPage() {
       </Stack>
 
       {active ? (
-        <Box sx={{ py: 1, borderBottom: "1px solid rgba(20,32,34,0.12)" }}>
-          <Typography fontWeight={700}>
-            {expertTitle(active, locale)} · {active.titleEn}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {active.focus}
-          </Typography>
+        <Box
+          sx={{
+            py: 1.5,
+            borderBottom: "1px solid rgba(20,32,34,0.12)",
+            display: "grid",
+            gap: 1.5,
+            gridTemplateColumns: { xs: "1fr", md: "1.4fr 1fr" },
+          }}
+        >
+          <Box>
+            <Typography fontWeight={700}>
+              {expertTitle(active, locale)} · {active.titleEn}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {active.focus}
+            </Typography>
+            {budgetOf(active, locale) ? (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                {t("budget")}: {budgetOf(active, locale)}
+              </Typography>
+            ) : null}
+            <Typography variant="overline" sx={{ display: "block", mt: 1.5 }}>
+              {t("evidencePolicy")}
+            </Typography>
+            <Typography variant="body2">
+              {(active.requiredEvidence ?? []).join(" · ") || "—"}
+            </Typography>
+            <Typography variant="overline" sx={{ display: "block", mt: 1 }}>
+              {t("forbiddenAssumptions")}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {(active.forbiddenAssumptions ?? []).join(" · ") || "—"}
+            </Typography>
+            <Typography variant="overline" sx={{ display: "block", mt: 1 }}>
+              {t("checklist")}
+            </Typography>
+            <Typography variant="body2">
+              {active.checklist.slice(0, 6).join(" · ")}
+              {active.checklist.length > 6 ? "…" : ""}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="overline">{t("fabricRoles")}</Typography>
+            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.75} sx={{ mt: 0.5, gap: 0.75 }}>
+              {(active.fabricAgentIds ?? []).map((id) => (
+                <Chip
+                  key={id}
+                  size="small"
+                  clickable
+                  component={Link}
+                  href={`/agents?agent=${id}`}
+                  label={id}
+                  variant="outlined"
+                />
+              ))}
+            </Stack>
+            {primaryFabric ? (
+              <Button
+                component={Link}
+                href={`/agents?agent=${primaryFabric}`}
+                size="small"
+                sx={{ mt: 1.5 }}
+              >
+                {t("planDispatch")}
+              </Button>
+            ) : null}
+          </Box>
+        </Box>
+      ) : null}
+
+      {styleLanes.length > 0 ? (
+        <Box>
+          <Typography variant="overline">{t("styleLanes")}</Typography>
+          <Stack
+            direction="row"
+            flexWrap="wrap"
+            useFlexGap
+            spacing={1}
+            sx={{ mt: 0.75, gap: 1 }}
+          >
+            {styleLanes.map((lane) => {
+              const selected = styleLaneId === lane.id;
+              return (
+                <Chip
+                  key={lane.id}
+                  clickable
+                  color={selected ? "secondary" : "default"}
+                  variant={selected ? "filled" : "outlined"}
+                  label={laneTitle(lane, locale)}
+                  onClick={() =>
+                    setStyleLaneId((prev) => (prev === lane.id ? "" : lane.id))
+                  }
+                />
+              );
+            })}
+          </Stack>
+          {styleLaneId ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {styleLanes.find((l) => l.id === styleLaneId)?.focus}
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {t("styleLanesHelp")}
+            </Typography>
+          )}
         </Box>
       ) : null}
 

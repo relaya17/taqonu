@@ -21,14 +21,30 @@ import {
   detectApiPagination,
   detectCfgEnvValidation,
   detectCfgSecretManager,
+  detectDbIndexesBackup,
   detectDeployHealth,
+  detectDeployProviderFeed,
   detectDeployRollback,
+  detectDepsLicenseAudit,
+  detectExtApiFailureModes,
+  detectFooterContactCopyright,
+  detectHygConsoleTodo,
+  detectI18nLocaleRoutes,
+  detectLegalRetentionDeletion,
+  detectNavBreadcrumbs,
   detectObsCorrelationIds,
+  detectObsMetricsExport,
   detectObsTracing,
+  detectPerfCaching,
   detectRelCircuitBreaker,
   detectRelGracefulShutdown,
   detectRelTimeoutRetry,
+  detectRespViewportOverflow,
+  detectSecRateLimit,
+  detectSecScannerSarif,
   detectTestCriticalPath,
+  detectUiSharedPrimitives,
+  detectUxErrorConfirm,
 } from "./constitution-detectors.js";
 import { looksLikeEmbeddedSecret } from "./secret-heuristics.js";
 
@@ -316,17 +332,7 @@ function runDetector(key: string, s: Signals): DetectorResult {
             notes: "No CORS/security header signal",
           };
     case "sec_rate_limit":
-      return s.has(/rateLimit|rate-limit|ratelimit|throttle/i)
-        ? {
-            status: "PASS",
-            evidenceRefs: ["rate-limit"],
-            notes: "Rate limit signal found",
-          }
-        : {
-            status: "FAIL",
-            evidenceRefs: ["rate-limit"],
-            notes: "No rate limiting signal",
-          };
+      return detectSecRateLimit(s.has);
     case "nav_primary":
       return s.has(/AppShell|Navbar|Sidebar|navigation|navItems/i) ||
         s.fileHas(/layout\.tsx|AppShell/)
@@ -877,6 +883,36 @@ function runDetector(key: string, s: Signals): DetectorResult {
       return detectRelGracefulShutdown(s.has);
     case "cfg_env_validation":
       return detectCfgEnvValidation(s.has);
+    case "nav_breadcrumbs":
+      return detectNavBreadcrumbs(s.has);
+    case "footer_contact_copyright":
+      return detectFooterContactCopyright(s.has);
+    case "resp_viewport_overflow":
+      return detectRespViewportOverflow(s.has);
+    case "ui_shared_primitives":
+      return detectUiSharedPrimitives(s.has, s.fileHas);
+    case "ux_error_confirm":
+      return detectUxErrorConfirm(s.has);
+    case "perf_caching":
+      return detectPerfCaching(s.has);
+    case "db_indexes_backup":
+      return detectDbIndexesBackup(s.has, s.fileHas);
+    case "ext_api_failure_modes":
+      return detectExtApiFailureModes(s.has);
+    case "deps_license_audit":
+      return detectDepsLicenseAudit(s.has, s.fileHas);
+    case "hyg_console_todo":
+      return detectHygConsoleTodo(s.has);
+    case "i18n_locale_routes":
+      return detectI18nLocaleRoutes(s.has, s.fileHas);
+    case "legal_retention_deletion":
+      return detectLegalRetentionDeletion(s.has, s.fileHas);
+    case "sec_scanner_sarif":
+      return detectSecScannerSarif(s.has, s.fileHas);
+    case "obs_metrics_export":
+      return detectObsMetricsExport(s.has);
+    case "deploy_provider_feed":
+      return detectDeployProviderFeed(s.has);
     default:
       return {
         status: "UNKNOWN",

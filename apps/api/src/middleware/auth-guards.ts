@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AtlasError, type AuthUser } from "@atlas/shared";
-import { getRequestUser } from "../routes/auth.js";
+import { getRequestUser } from "../services/resolve-identity.js";
 
-/** Session cookie → user. Throws 401 if missing. */
+/** Session cookie / Auth JWT → user. Throws 401 if missing. */
 export function requireUser(
   app: FastifyInstance,
   request: FastifyRequest,
@@ -30,9 +30,10 @@ export function requireAdmin(
 
 /**
  * WRITE / mutation gates: signed-in user required.
- * Local session cookie is the source of truth for API mutations.
- * Supabase RLS additionally isolates cloud rows when migrations are applied
- * and clients use user JWTs (service-role dual-write still bypasses RLS).
+ * Identity + roles: live Supabase Auth JWT preferred (`resolveRequestIdentity`);
+ * local `atlas_session` is offline/dev fallback. Supabase RLS additionally
+ * isolates cloud rows when clients use user JWTs (service-role dual-write
+ * still bypasses RLS).
  */
 export function requireSignedInForWrite(
   app: FastifyInstance,

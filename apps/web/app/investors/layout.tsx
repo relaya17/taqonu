@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { InvestorsProviders } from "@/components/investors/InvestorsProviders";
 
 export const metadata = {
-  title: "ArletOS — Atlas for investors",
+  title: "ArletOS — Atlas · Marketing & investors",
   description:
-    "Engineering + Adaptive QA Intelligence OS. Portfolio truth, expert lenses, evidence-gated AI.",
+    "The Engineering Truth Layer for AI-native teams. Evidence Graph, Release Verdict, Design Partners.",
 };
 
 export default function InvestorsLayout({ children }: { children: ReactNode }) {

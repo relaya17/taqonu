@@ -1,6 +1,8 @@
 # Case Study Template
 
-**Status:** Draft until Design Partner signs off on publication.
+**Status:** Draft until Design Partner signs off on publication.  
+**Fill-in worksheet:** [`docs/case-studies/_partner-fill-in.md`](../case-studies/_partner-fill-in.md)  
+**Lab format only (not a customer):** [`docs/case-studies/001-brokeros.md`](../case-studies/001-brokeros.md) · `GET /api/v1/case-studies/brokeros-001`
 
 ## Title
 

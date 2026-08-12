@@ -22,6 +22,15 @@ export async function registerExpertRoutes(app: FastifyInstance): Promise<void> 
       titleAr: expert.titleAr,
       focus: expert.focus,
       checklist: expert.checklist,
+      domain: expert.domain,
+      requiredEvidence: expert.requiredEvidence,
+      forbiddenAssumptions: expert.forbiddenAssumptions,
+      evaluationCriteria: expert.evaluationCriteria,
+      fabricAgentIds: expert.fabricAgentIds,
+      styleLanes: expert.styleLanes ?? [],
+      budgetHintEn: expert.budgetHintEn,
+      budgetHintHe: expert.budgetHintHe,
+      budgetHintAr: expert.budgetHintAr,
     })),
   }));
 

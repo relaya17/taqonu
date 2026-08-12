@@ -26,6 +26,10 @@ const serverEnvSchema = baseEnvSchema.extend({
   GITHUB_APP_ID: optionalString,
   GITHUB_PRIVATE_KEY: optionalString,
   GITHUB_WEBHOOK_SECRET: optionalString,
+  /** Public app slug for https://github.com/apps/{slug}/installations/new */
+  GITHUB_APP_SLUG: optionalString,
+  /** Fallback display name used to derive slug when GITHUB_APP_SLUG is unset */
+  GITHUB_APP_NAME: optionalString,
   /** freemium — ADR-011 */
   ATLAS_PLAN: z.preprocess(emptyToUndefined, z.enum(["free", "pro"]).optional()),
   ATLAS_CLOUD_PROJECT_LIMIT: z.preprocess(
@@ -41,6 +45,18 @@ const serverEnvSchema = baseEnvSchema.extend({
   ATLAS_GOLDEN_PROJECT_ROOT: optionalString,
   ATLAS_GOLDEN_PROJECT_SLUG: optionalString,
   ATLAS_EVALS_ROOT: optionalString,
+  /**
+   * When true, LOW AUTO_FIX remediation drafts may auto-approve+apply after
+   * detect — still requires a signed-in WRITE session. HIGH/CRITICAL never.
+   */
+  ATLAS_AUTO_APPLY_LOW: z.preprocess((v) => {
+    if (v === "" || v === undefined) return undefined;
+    if (typeof v === "boolean") return v;
+    const s = String(v).toLowerCase();
+    if (s === "1" || s === "true" || s === "yes") return true;
+    if (s === "0" || s === "false" || s === "no") return false;
+    return undefined;
+  }, z.boolean().optional()),
 
   OPENAI_API_KEY: optionalString,
   OPENAI_BASE_URL: optionalUrl,

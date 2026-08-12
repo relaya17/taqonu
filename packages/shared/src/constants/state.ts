@@ -15,3 +15,11 @@ export const PROJECT_STATE_SLICES = [
 ] as const;
 
 export type ProjectStateSliceKey = (typeof PROJECT_STATE_SLICES)[number];
+
+/**
+ * Evidence categories = Current State slices.
+ * Never silently merge CODE/GIT/SECURITY/… into one undifferentiated blob.
+ */
+export const EVIDENCE_CATEGORIES = PROJECT_STATE_SLICES;
+
+export type EvidenceCategory = (typeof EVIDENCE_CATEGORIES)[number];

@@ -1,6 +1,9 @@
 import { assertNoSecrets } from "@atlas/agent-core";
 import { createHash } from "node:crypto";
 
+/** Default local-hash width — must match knowledge_chunks.embedding vector(64). */
+export const LOCAL_EMBEDDING_DIMS = 64 as const;
+
 export interface EmbeddingProvider {
   readonly name: string;
   embed(texts: readonly string[]): Promise<readonly number[][]>;
@@ -20,7 +23,7 @@ export async function safeEmbed(
 /** Deterministic local embedding — hybrid RAG without paid APIs. */
 export class LocalHashEmbeddingProvider implements EmbeddingProvider {
   readonly name = "local-hash";
-  constructor(private readonly dims = 64) {}
+  constructor(private readonly dims: number = LOCAL_EMBEDDING_DIMS) {}
 
   async embed(texts: readonly string[]): Promise<readonly number[][]> {
     return texts.map((text) => {

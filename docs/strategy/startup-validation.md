@@ -83,7 +83,10 @@ Target outcomes to capture:
 | E | (open) |
 
 Playbook: `docs/strategy/design-partner-playbook.md`  
-Case study template: `docs/strategy/case-study-template.md`
+1-week audit runbook: `docs/strategy/design-partner-audit-runbook.md`  
+Execution checklist: `docs/strategy/design-partner-execution-checklist.md`  
+Partner tracker (empty slots): `docs/strategy/design-partner-tracker.md`  
+Case study template: `docs/strategy/case-study-template.md` · fill-in `docs/case-studies/_partner-fill-in.md`
 
 ---
 

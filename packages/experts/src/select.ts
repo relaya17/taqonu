@@ -41,6 +41,19 @@ const RULES: Array<{
     pattern: /product|roadmap|mvp|scope|מוצר|نطاق|أولوية/i,
   },
   {
+    expert: "CONTENT",
+    pattern: /copy|microcopy|tone|wording|תוכן|קופי|نص|محتوى|cta/i,
+  },
+  {
+    expert: "LEGAL_MEDIA",
+    pattern:
+      /legal|lawyer|counsel|משפט|עו״ד|עורך\s*דין|محام|قانون|media\s*law|תקשורת|מדיה|privacy\s*law|defamation|שיימינג|שידור|broadcast|ugc|gdpr|פרטיות/i,
+  },
+  {
+    expert: "MOTION",
+    pattern: /motion|animation|transition|תנועה|אנימצ|حركة|انيم/i,
+  },
+  {
     expert: "ENGINEERING",
     pattern: /architect|api|schema|refactor|הנדס|كود|architecture/i,
   },

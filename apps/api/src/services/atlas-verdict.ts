@@ -1,6 +1,7 @@
 import {
   atlasVerdictSchema,
   evidenceReportSchema,
+  groupEvidenceByCategory,
   type AtlasVerdict,
   type EvidenceReport,
 } from "@atlas/shared";
@@ -292,6 +293,11 @@ export function buildEvidenceReport(input: {
   const project = osStore.getProject(input.projectId)!;
   const evidence = osStore.getEvidence(input.projectId);
   const now = new Date().toISOString();
+  const byCategory = groupEvidenceByCategory(evidence);
+  const categoryInventory = byCategory
+    .filter((bucket) => bucket.items.length > 0)
+    .map((bucket) => `${bucket.category}: ${bucket.items.length}`)
+    .join(" · ");
 
   const copy =
     locale === "he"
@@ -303,12 +309,12 @@ export function buildEvidenceReport(input: {
           sectionEvidence: "מלאי ראיות",
           sectionBlockers: "חסמים",
           sectionGov: "ממשל כתיבה",
-          evidenceBody: `${evidence.length} רשומות ראיה. כיסוי ${Math.round(verdict.evidenceCoverage * 100)}%.`,
+          evidenceBody: `${evidence.length} רשומות ראיה${categoryInventory ? ` (${categoryInventory})` : ""}. כיסוי ${Math.round(verdict.evidenceCoverage * 100)}%. קטגוריות לא ממוזגות.`,
           none: "אין.",
           govBody: `תיקונים מוצעים ${verdict.patchesProposed} · אושרו/הוחלו ${verdict.patchesAccepted}. כתיבה נשארת מותנית באישור.`,
           evidencePrefix: "ראיות:",
           footer:
-            "_תוויות אפיסטמיות נשמרות. אינו תחליף לאימות ייצור חי._",
+            "_תוויות אפיסטמיות וקטגוריות ראיות נשמרות — ללא מיזוג שקט. אינו תחליף לאימות ייצור חי._",
         }
       : locale === "ar"
         ? {
@@ -319,11 +325,11 @@ export function buildEvidenceReport(input: {
             sectionEvidence: "جرد الأدلة",
             sectionBlockers: "الحواجز",
             sectionGov: "حوكمة الكتابة",
-            evidenceBody: `${evidence.length} سجل(ات) أدلة. التغطية ${Math.round(verdict.evidenceCoverage * 100)}%.`,
+            evidenceBody: `${evidence.length} سجل(ات) أدلة${categoryInventory ? ` (${categoryInventory})` : ""}. التغطية ${Math.round(verdict.evidenceCoverage * 100)}%. الفئات غير مدمجة.`,
             none: "لا شيء.",
             govBody: `رقع مقترحة ${verdict.patchesProposed} · مقبولة/مطبّقة ${verdict.patchesAccepted}. الكتابة تبقى مشروطة بالموافقة.`,
             evidencePrefix: "أدلة:",
-            footer: "_تُحفظ التصنيفات المعرفية. ليس بديلاً عن تحقق الإنتاج الحي._",
+            footer: "_تُحفظ التصنيفات المعرفية وفئات الأدلة — بلا دمج صامت. ليس بديلاً عن تحقق الإنتاج الحي._",
           }
         : {
             reportTitle: `Atlas Evidence Report — ${project.name}`,
@@ -333,12 +339,12 @@ export function buildEvidenceReport(input: {
             sectionEvidence: "Evidence inventory",
             sectionBlockers: "Blockers",
             sectionGov: "Governance",
-            evidenceBody: `${evidence.length} evidence record(s). Coverage ${Math.round(verdict.evidenceCoverage * 100)}%.`,
+            evidenceBody: `${evidence.length} evidence record(s)${categoryInventory ? ` (${categoryInventory})` : ""}. Coverage ${Math.round(verdict.evidenceCoverage * 100)}%. Categories never silently merged.`,
             none: "None.",
             govBody: `Patches proposed ${verdict.patchesProposed} · accepted/applied ${verdict.patchesAccepted}. WRITE remains approval-gated.`,
             evidencePrefix: "Evidence:",
             footer:
-              "_Epistemic labels preserved. Not a substitute for live production verification._",
+              "_Epistemic labels and evidence categories preserved — no silent merge. Not a substitute for live production verification._",
           };
 
   const sections = [
@@ -350,7 +356,13 @@ export function buildEvidenceReport(input: {
     {
       title: copy.sectionEvidence,
       body: copy.evidenceBody,
-      evidenceRefs: evidence.slice(0, 12).map((e) => e.source),
+      evidenceRefs: byCategory
+        .filter((bucket) => bucket.items.length > 0)
+        .flatMap((bucket) =>
+          bucket.items
+            .slice(0, 3)
+            .map((e) => `${bucket.category}:${e.source}`),
+        ),
     },
     {
       title: copy.sectionBlockers,

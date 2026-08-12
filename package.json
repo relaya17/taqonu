@@ -10,15 +10,22 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "playwright test",
+    "test:e2e:critical": "playwright test e2e/critical-path.spec.ts",
+    "test:e2e:product": "playwright test e2e/product-surfaces.spec.ts",
+    "test:e2e:security": "playwright test e2e/security.spec.ts",
+    "test:e2e:a11y": "playwright test e2e/a11y.spec.ts",
     "test:unit": "vitest run",
+    "proof:run": "pnpm --filter @atlas/engineering-loop proof:run",
+    "demo:seed": "pnpm --filter @atlas/api exec tsx src/scripts/demo-seed.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "clean": "turbo run clean && rimraf node_modules"
+    "clean": "turbo run clean && rimraf node_modules",
+    "turbo": "turbo"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",

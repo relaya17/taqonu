@@ -11,6 +11,7 @@ export const providerAdapterIds = [
   "github",
   "local",
   "vercel",
+  "render",
   "supabase",
   "mongodb",
   "ci",

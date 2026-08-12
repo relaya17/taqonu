@@ -18,6 +18,20 @@ export class ProjectRepository {
     return (data ?? []).map((row) => mapProject(row));
   }
 
+  async listByOwner(ownerId: string): Promise<readonly Project[]> {
+    const { data, error } = await this.client
+      .from("projects")
+      .select("*")
+      .eq("owner_id", ownerId)
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []).map((row) => mapProject(row));
+  }
+
   async countByOwner(ownerId: string): Promise<number> {
     const { count, error } = await this.client
       .from("projects")

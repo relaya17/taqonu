@@ -15,7 +15,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rimraf dist",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run",
+    "proof:run": "tsx src/cli-proof.ts"
   },
   "dependencies": {
     "@atlas/code-intelligence": "workspace:*",
@@ -23,6 +25,8 @@
     "@atlas/shared": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.8.2"
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
   }
 }

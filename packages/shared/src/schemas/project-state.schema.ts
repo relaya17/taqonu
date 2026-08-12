@@ -6,6 +6,10 @@ import {
   isoDateTimeSchema,
   uuidSchema,
 } from "./common.schema.js";
+import {
+  evidenceByCategoryBucketSchema,
+  evidenceRecordSchema,
+} from "./evidence.schema.js";
 
 export const projectStateSliceKeySchema = z.enum(PROJECT_STATE_SLICES);
 
@@ -43,6 +47,14 @@ export const projectStateSnapshotSchema = z.object({
   sourceConnectors: z.array(z.string().min(1)).default(["github"]),
 });
 
+/** GET Current State rollup — snapshot + evidence referenced by slices. */
+export const projectCurrentStateResponseSchema =
+  projectStateSnapshotSchema.extend({
+    evidence: z.array(evidenceRecordSchema).default([]),
+    /** Category buckets always present — never collapse CODE/GIT/SECURITY/… */
+    evidenceByCategory: z.array(evidenceByCategoryBucketSchema).default([]),
+  });
+
 export const reconcileProjectStateRequestSchema = z.object({
   reason: z.string().max(500).optional(),
 });
@@ -50,3 +62,6 @@ export const reconcileProjectStateRequestSchema = z.object({
 export type ProjectStateSlice = z.infer<typeof projectStateSliceSchema>;
 export type ProjectStateSnapshot = z.infer<typeof projectStateSnapshotSchema>;
 export type StateConflict = z.infer<typeof stateConflictSchema>;
+export type ProjectCurrentStateResponse = z.infer<
+  typeof projectCurrentStateResponseSchema
+>;

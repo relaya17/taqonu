@@ -1,5 +1,7 @@
 /** AI model catalog — only ArletOS Agent is free; market models are low/mid/high credits. */
 
+import { AI_PROVIDER_AR } from "./ai-provider-ar.js";
+
 export const AI_PRICE_TIERS = ["free", "low", "mid", "high"] as const;
 export type AiPriceTier = (typeof AI_PRICE_TIERS)[number];
 
@@ -71,6 +73,10 @@ export interface AiProviderDefinition {
   readonly weaknessesHe: readonly string[];
   readonly bestForEn: string;
   readonly bestForHe: string;
+  /** Optional Arabic — filled via AI_PROVIDER_AR overlay when listing. */
+  readonly strengthsAr?: readonly string[];
+  readonly weaknessesAr?: readonly string[];
+  readonly bestForAr?: string;
 }
 
 export const AI_PROVIDER_CATALOG: Readonly<
@@ -603,5 +609,14 @@ export const AGENT_PROVIDER_IDS = AI_PROVIDER_IDS.filter(
 ) as readonly AiProviderId[];
 
 export function listAiProviders(): readonly AiProviderDefinition[] {
-  return AI_PROVIDER_IDS.map((id) => AI_PROVIDER_CATALOG[id]);
+  return AI_PROVIDER_IDS.map((id) => {
+    const base = AI_PROVIDER_CATALOG[id];
+    const ar = AI_PROVIDER_AR[id];
+    return {
+      ...base,
+      strengthsAr: ar.strengths,
+      weaknessesAr: ar.weaknesses,
+      bestForAr: ar.bestFor,
+    };
+  });
 }

@@ -5,6 +5,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Chip,
   LinearProgress,
   MenuItem,
@@ -418,15 +419,24 @@ export default function SystemHealthPage() {
             {t("issues")}
           </Typography>
           <Stack spacing={1} sx={{ mt: 1 }}>
-            {report.issues.slice(0, 25).map((i) => (
-              <Box
+            {report.issues.slice(0, 25).map((i) => {
+              const isOpen = expanded === i.id;
+              return (
+              <ButtonBase
                 key={i.id}
+                focusRipple
+                onClick={() => setExpanded(isOpen ? null : i.id)}
+                aria-expanded={isOpen}
+                aria-controls={`issue-detail-${i.id}`}
                 sx={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "start",
                   py: 1.5,
+                  borderRadius: 1,
                   borderBottom: "1px solid rgba(20,32,34,0.1)",
-                  cursor: "pointer",
+                  color: "inherit",
                 }}
-                onClick={() => setExpanded(expanded === i.id ? null : i.id)}
               >
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                   <Chip size="small" color={sevColor(i.severity)} label={sevLabel(i.severity)} />
@@ -449,8 +459,8 @@ export default function SystemHealthPage() {
                 <Typography variant="body2" fontWeight={600} sx={{ mt: 1, lineHeight: 1.45 }}>
                   {i.title}
                 </Typography>
-                {expanded === i.id ? (
-                  <Box sx={{ mt: 1 }}>
+                {isOpen ? (
+                  <Box id={`issue-detail-${i.id}`} sx={{ mt: 1 }}>
                     <Typography variant="body2">
                       <strong>{t("rootCause")}:</strong> {i.rootCause}
                     </Typography>
@@ -465,8 +475,9 @@ export default function SystemHealthPage() {
                     </Typography>
                   </Box>
                 ) : null}
-              </Box>
-            ))}
+              </ButtonBase>
+              );
+            })}
           </Stack>
 
           <Box sx={{ mt: 3 }}>

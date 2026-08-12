@@ -1,13 +1,89 @@
 import type { FastifyInstance } from "fastify";
-import { portfolioOverviewSchema } from "@atlas/shared";
+import {
+  portfolioDiscoveryLinkRequestSchema,
+  portfolioDiscoveryRefreshRequestSchema,
+  portfolioHealthReportSchema,
+  portfolioOverviewSchema,
+  type PortfolioHealthProjectItem,
+} from "@atlas/shared";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { runContinuousSystemAudit } from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
 import { loadArchitectureContract } from "../services/architecture-contract-store.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
+import {
+  PORTFOLIO_HEALTH_META_KEY,
+  rollupPortfolioHealth,
+  skippedPortfolioItem,
+  summarizeSystemHealthReport,
+  type PortfolioIssueSeed,
+} from "../services/portfolio-health.js";
+import {
+  buildPortfolioDiscoveryStatus,
+  linkDiscoveredWorkspaceRoot,
+  refreshPortfolioDiscovery,
+} from "../services/portfolio-discovery.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+
+function loadPersistedPortfolioHealth() {
+  osStore.ensureLoaded();
+  const raw = osStore.getMeta(PORTFOLIO_HEALTH_META_KEY);
+  if (!raw) return null;
+  try {
+    return portfolioHealthReportSchema.parse(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function persistPortfolioHealth(
+  report: ReturnType<typeof portfolioHealthReportSchema.parse>,
+): void {
+  osStore.setMeta(PORTFOLIO_HEALTH_META_KEY, JSON.stringify(report));
+}
 
 export async function registerPortfolioRoutes(app: FastifyInstance): Promise<void> {
+  /** Portfolio discovery status: sources, unlinked projects, local candidates. */
+  app.get("/api/v1/portfolio/discovery", async () => {
+    return buildPortfolioDiscoveryStatus({
+      githubAppConfigured: Boolean(
+        app.atlasEnv.GITHUB_APP_ID && app.atlasEnv.GITHUB_PRIVATE_KEY,
+      ),
+    });
+  });
+
+  /**
+   * Refresh discovery from connected local root + GitHub PAT + App installations.
+   * Stays within configured roots / GitHub permissions.
+   */
+  app.post("/api/v1/portfolio/discovery/refresh", async (request, reply) => {
+    const body = portfolioDiscoveryRefreshRequestSchema.parse(request.body ?? {});
+    const result = await refreshPortfolioDiscovery({
+      body,
+      githubAppId: app.atlasEnv.GITHUB_APP_ID,
+      githubPrivateKey: app.atlasEnv.GITHUB_PRIVATE_KEY,
+    });
+    app.atlasLogger.info("portfolio_discovery_refresh", {
+      localScanned: result.local?.scanned ?? 0,
+      localLinked: result.local?.linked ?? 0,
+      githubImported: result.githubToken?.imported ?? 0,
+      appImported: result.githubApp?.imported ?? 0,
+      appInstallations: result.githubApp?.installations ?? 0,
+      appErrors: result.githubApp?.errors.length ?? 0,
+      unlinked: result.status.summary.unlinkedCount,
+    });
+    return reply.status(200).send(result);
+  });
+
+  /** Link a discovered local path to a registered project (under configured root). */
+  app.post("/api/v1/portfolio/discovery/link", async (request, reply) => {
+    requireSignedInForWrite(app, request);
+    const body = portfolioDiscoveryLinkRequestSchema.parse(request.body);
+    const result = linkDiscoveredWorkspaceRoot(body);
+    return reply.status(200).send(result);
+  });
+
   app.get("/api/v1/portfolio/overview", async () => {
     osStore.ensureLoaded();
     const now = new Date().toISOString();
@@ -37,9 +113,50 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     });
   });
 
+  /** Last persisted cross-portfolio health snapshot (if any). */
+  app.get("/api/v1/portfolio/health", async (_request, reply) => {
+    const snap = loadPersistedPortfolioHealth();
+    if (!snap) {
+      return reply.status(200).send({
+        projectCount: 0,
+        audited: 0,
+        skipped: 0,
+        averageScore: null,
+        criticalTotal: 0,
+        aggregate: {
+          averageScore: null,
+          worstOfScore: null,
+          criticalTotal: 0,
+          highTotal: 0,
+          constitutionWorst: null,
+          constitutionAverage: null,
+          openBlockers: 0,
+          worstDimensions: [],
+          sharedPatterns: [],
+          portfolioVerdict: "UNKNOWN",
+          verdictSpread: {
+            READY: 0,
+            CONDITIONAL: 0,
+            BLOCKED: 0,
+            UNKNOWN: 0,
+          },
+          constitutionPassRate: null,
+          missingWorkspaceRoot: 0,
+        },
+        items: [],
+        epistemicState: "UNKNOWN",
+        asOf: new Date().toISOString(),
+        note: "No portfolio health snapshot yet — POST /api/v1/portfolio/health to run",
+        persisted: false,
+      });
+    }
+    return reply.status(200).send({ ...snap, persisted: true });
+  });
+
   /**
    * Cross-project health: prefer per-project workspaceRoot (explicit permission),
-   * else golden root only for the golden slug.
+   * else golden root only for the golden slug. Rolls up System Health /
+   * Constitution / Verdict-hint signals with worst-of + shared patterns.
    */
   app.post("/api/v1/portfolio/health", async (_request, reply) => {
     osStore.ensureLoaded();
@@ -47,17 +164,9 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     const golden =
       app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT || defaultGoldenRoot();
     const goldenSlug = app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros";
-    const items: Array<{
-      projectId: string;
-      slug: string;
-      name: string;
-      workspaceRoot: string | null;
-      overallScore: number | null;
-      criticalIssues: number;
-      constitutionScore: number | null;
-      epistemicState: string;
-      notes: string;
-    }> = [];
+
+    const items: PortfolioHealthProjectItem[] = [];
+    const issueSeeds: PortfolioIssueSeed[] = [];
 
     for (const project of projects) {
       const stored = osStore.getWorkspaceRoot(project.id);
@@ -68,19 +177,17 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
           : null);
 
       if (!root || !existsSync(resolve(root))) {
-        items.push({
-          projectId: project.id,
-          slug: project.slug,
-          name: project.name,
-          workspaceRoot: stored ?? null,
-          overallScore: null,
-          criticalIssues: 0,
-          constitutionScore: null,
-          epistemicState: "UNKNOWN",
-          notes: stored
-            ? "workspaceRoot missing on disk"
-            : "No explicit workspaceRoot — set PUT /projects/:id/workspace-root",
-        });
+        items.push(
+          skippedPortfolioItem({
+            projectId: project.id,
+            slug: project.slug,
+            name: project.name,
+            workspaceRoot: stored ?? null,
+            notes: stored
+              ? "workspaceRoot missing on disk"
+              : "No explicit workspaceRoot — set PUT /projects/:id/workspace-root",
+          }),
+        );
         continue;
       }
       try {
@@ -91,52 +198,48 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
           contract: loadArchitectureContract(project.id),
           includeConstitution: true,
         });
-        items.push({
-          projectId: project.id,
+        const { item, issueSeeds: seeds } = summarizeSystemHealthReport(report, {
           slug: project.slug,
           name: project.name,
           workspaceRoot: root,
-          overallScore: report.overallScore,
-          criticalIssues: report.criticalIssues,
-          constitutionScore: report.constitution?.overallScore ?? null,
-          epistemicState: "OBSERVED",
-          notes: `drift ${report.driftFindings.length} · issues ${report.issues.length}`,
         });
+        items.push(item);
+        issueSeeds.push(...seeds);
       } catch (error) {
-        items.push({
-          projectId: project.id,
-          slug: project.slug,
-          name: project.name,
-          workspaceRoot: root,
-          overallScore: null,
-          criticalIssues: 0,
-          constitutionScore: null,
-          epistemicState: "UNKNOWN",
-          notes: error instanceof Error ? error.message : "audit failed",
-        });
+        items.push(
+          skippedPortfolioItem({
+            projectId: project.id,
+            slug: project.slug,
+            name: project.name,
+            workspaceRoot: root,
+            notes: error instanceof Error ? error.message : "audit failed",
+          }),
+        );
       }
     }
 
-    const scored = items.filter((i) => i.overallScore != null);
-    const avg =
-      scored.length === 0
-        ? null
-        : Math.round(
-            scored.reduce((a, b) => a + (b.overallScore ?? 0), 0) /
-              scored.length,
-          );
-
-    return reply.status(200).send({
-      projectCount: projects.length,
-      audited: scored.length,
-      skipped: items.length - scored.length,
-      averageScore: avg,
-      criticalTotal: items.reduce((a, b) => a + b.criticalIssues, 0),
+    const rolled = rollupPortfolioHealth({
       items,
-      epistemicState: scored.length > 0 ? "OBSERVED" : "UNKNOWN",
+      issueSeeds,
+      projectCount: projects.length,
       asOf: new Date().toISOString(),
-      note: "Audits only run on explicitly linked folders (or golden lab project)",
+      note: "Cross-portfolio rollup: worst-of score, constitution, blockers, shared drift/issue patterns. Audits only on linked folders (or golden lab).",
+      persisted: true,
     });
+
+    persistPortfolioHealth(rolled);
+    osStore.recordEvent({
+      type: "portfolio.health",
+      audited: rolled.audited,
+      skipped: rolled.skipped,
+      worstOf: rolled.aggregate.worstOfScore,
+      critical: rolled.criticalTotal,
+      verdict: rolled.aggregate.portfolioVerdict,
+      sharedPatterns: rolled.aggregate.sharedPatterns.length,
+      at: rolled.asOf,
+    });
+
+    return reply.status(200).send(rolled);
   });
 
   app.get("/api/v1/portfolio/patterns", async () => {

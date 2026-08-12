@@ -64,6 +64,9 @@ export default function RegisterPage() {
     if (error) setOauthError(error.message);
   };
 
+  const canSubmit =
+    !register.isPending && Boolean(email) && password.length >= 8;
+
   return (
     <Stack
       spacing={3}
@@ -71,54 +74,65 @@ export default function RegisterPage() {
         maxWidth: 440,
         mx: "auto",
         width: "100%",
+        minWidth: 0,
         py: { xs: 2, md: 6 },
       }}
     >
       <Box>
-        <Typography variant="h1">{t("registerTitle")}</Typography>
+        <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" } }}>
+          {t("registerTitle")}
+        </Typography>
         <Typography color="text.secondary" sx={{ mt: 1 }}>
           {t("registerSubtitle")}
         </Typography>
       </Box>
 
-      <TextField
-        label={t("displayName")}
-        value={displayName}
-        onChange={(e) => setDisplayName(e.target.value)}
-        fullWidth
-        autoComplete="name"
-      />
-      <TextField
-        label={t("email")}
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        fullWidth
-        required
-      />
-      <TextField
-        label={t("password")}
-        type="password"
-        autoComplete="new-password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        helperText={t("passwordHint")}
-        fullWidth
-        required
-      />
-
-      <Button
-        variant="contained"
-        fullWidth
-        disabled={register.isPending || !email || password.length < 8}
-        onClick={() => register.mutate()}
+      <Box
+        component="form"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) register.mutate();
+        }}
       >
-        {t("register")}
-      </Button>
+        <Stack spacing={2}>
+          <TextField
+            label={t("displayName")}
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            fullWidth
+            autoComplete="name"
+          />
+          <TextField
+            label={t("email")}
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            fullWidth
+            required
+          />
+          <TextField
+            label={t("password")}
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            helperText={t("passwordHint")}
+            fullWidth
+            required
+          />
+
+          <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>
+            {t("register")}
+          </Button>
+        </Stack>
+      </Box>
 
       {register.isError ? (
-        <Alert severity="error">{(register.error as Error).message}</Alert>
+        <Alert severity="error" role="alert">
+          {(register.error as Error).message}
+        </Alert>
       ) : null}
 
       <Divider>{t("or")}</Divider>
@@ -140,7 +154,11 @@ export default function RegisterPage() {
         >
           {t("continueGithub")}
         </Button>
-        {oauthError ? <Alert severity="error">{oauthError}</Alert> : null}
+        {oauthError ? (
+          <Alert severity="error" role="alert">
+            {oauthError}
+          </Alert>
+        ) : null}
       </Stack>
 
       <Typography variant="body2">

@@ -11,7 +11,7 @@ import {
   artifactSchema,
   assistRunSchema,
   creditsBalanceSchema,
-  evidenceRecordSchema,
+  parseEvidenceRecord,
   type Artifact,
   type AssistRun,
   type CreateArtifact,
@@ -131,7 +131,7 @@ export function createArtifactFromUpload(
   const now = new Date().toISOString();
   const evidenceId = crypto.randomUUID();
   const projectKey = input.projectId ?? "global";
-  const evidence = evidenceRecordSchema.parse({
+  const evidence = parseEvidenceRecord({
     id: evidenceId,
     ownerId: STUB_OWNER_ID,
     projectId: input.projectId ?? null,
@@ -145,6 +145,7 @@ export function createArtifactFromUpload(
     createdAt: now,
     confidence: 1,
     epistemicState: "FACT",
+    category: "CODE",
     metadata: {
       mimeType: input.mimeType,
       kind,

@@ -83,7 +83,7 @@ export type AuthCapability = z.infer<typeof authCapabilitySchema>;
 export type AuthSessionDetail = z.infer<typeof authSessionDetailSchema>;
 export type AuthSessionState = z.infer<typeof authSessionStateSchema>;
 
-/** Shared helper: capabilities granted by role (local session + future RLS-aligned gates). */
+/** Shared helper: capabilities granted by role (Auth JWT when live; local fallback). */
 export function capabilitiesForRole(role: UserRole): readonly AuthCapability[] {
   const base: AuthCapability[] = [
     "session",

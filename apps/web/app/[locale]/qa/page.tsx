@@ -10,10 +10,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface Project {
   id: string;
@@ -48,6 +48,7 @@ interface QaReport {
   findings: Array<{
     id: string;
     title: string;
+    summary: string;
     severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
     domain: string;
     epistemicState:
@@ -58,7 +59,49 @@ interface QaReport {
       | "UNKNOWN"
       | "CONFLICTED";
   }>;
-  portfolioPatterns: Array<{ id: string; title: string; summary: string }>;
+  portfolioPatterns: Array<{
+    id: string;
+    patternKey: string;
+    title: string;
+    summary: string;
+  }>;
+  regressionRulesTriggered: Array<{
+    id: string;
+    patternKey: string;
+    title: string;
+  }>;
+  learnedPatternKeys?: string[];
+  emittedPatternKeys?: string[];
+  contextPatterns?: Array<{
+    id: string;
+    patternKey: string;
+    title: string;
+  }>;
+  memoryContext?: {
+    contextPatternCount?: number;
+    patternLessons?: string[];
+  };
+}
+
+interface PatternsResponse {
+  items: Array<{
+    id: string;
+    patternKey: string;
+    title: string;
+    summary: string;
+    severity: string;
+    domain: string;
+    projectIds?: string[];
+  }>;
+  learnedPatternKeys: string[];
+  crossProjectCount?: number;
+  storedCount?: number;
+  total?: number;
+}
+
+interface RunsResponse {
+  items: Array<{ id: string }>;
+  learnedPatternKeys: string[];
 }
 
 const PROFILES = [
@@ -74,8 +117,14 @@ const PROFILES = [
   "CHANGED_ONLY",
 ] as const;
 
+function extractPatternKey(summary: string): string | null {
+  const match = /\[pattern:([^\]]+)\]/.exec(summary);
+  return match?.[1] ?? null;
+}
+
 export default function QaPage() {
   const t = useTranslations("qa");
+  const queryClient = useQueryClient();
   const [scope, setScope] = useState<
     "SINGLE_PROJECT" | "SELECTED_PROJECTS" | "ENTIRE_PORTFOLIO"
   >("SINGLE_PROJECT");
@@ -89,10 +138,35 @@ export default function QaPage() {
     queryFn: () => apiGet<{ items: Project[] }>("/api/v1/projects"),
   });
 
+  const runsQuery = useQuery({
+    queryKey: ["qa", "runs"],
+    queryFn: () => apiGet<RunsResponse>("/api/v1/qa/runs"),
+  });
+
+  const patternsQuery = useQuery({
+    queryKey: ["qa", "patterns"],
+    queryFn: () => apiGet<PatternsResponse>("/api/v1/qa/patterns"),
+  });
+
   const projects = useMemo(
     () => projectsQuery.data?.items ?? [],
     [projectsQuery.data],
   );
+
+  const learnedKeys = useMemo(() => {
+    const fromRuns = runsQuery.data?.learnedPatternKeys ?? [];
+    const fromPatterns = patternsQuery.data?.learnedPatternKeys ?? [];
+    const fromReport = report?.learnedPatternKeys ?? [];
+    return [...new Set([...fromRuns, ...fromPatterns, ...fromReport])];
+  }, [runsQuery.data, patternsQuery.data, report]);
+
+  const portfolioPatterns = patternsQuery.data?.items ?? [];
+  const portfolioPatternCount =
+    patternsQuery.data?.crossProjectCount ?? portfolioPatterns.length;
+
+  const invalidateLearn = () => {
+    void queryClient.invalidateQueries({ queryKey: ["qa"] });
+  };
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -105,7 +179,26 @@ export default function QaPage() {
           scope === "SELECTED_PROJECTS" && projectId ? [projectId] : undefined,
         userRequest: request || t("defaultRequest"),
       }),
-    onSuccess: setReport,
+    onSuccess: (data) => {
+      setReport(data);
+      invalidateLearn();
+    },
+  });
+
+  const learnMutation = useMutation({
+    mutationFn: (patternKey: string) =>
+      apiPost<{ learnedPatternKeys: string[] }>("/api/v1/qa/learn", {
+        patternKey,
+      }),
+    onSuccess: invalidateLearn,
+  });
+
+  const unlearnMutation = useMutation({
+    mutationFn: (patternKey: string) =>
+      apiDelete<{ learnedPatternKeys: string[] }>("/api/v1/qa/learn", {
+        patternKey,
+      }),
+    onSuccess: invalidateLearn,
   });
 
   return (
@@ -189,6 +282,111 @@ export default function QaPage() {
         <Alert severity="error">{(mutation.error as Error).message}</Alert>
       ) : null}
 
+      <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>
+        <Typography variant="overline">{t("learnedKeys")}</Typography>
+        {learnedKeys.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {t("noLearnedKeys")}
+          </Typography>
+        ) : (
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {learnedKeys.map((key) => (
+              <Box
+                key={key}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 2,
+                  py: 0.5,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                  {key}
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() => unlearnMutation.mutate(key)}
+                  disabled={unlearnMutation.isPending}
+                >
+                  {t("unlearn")}
+                </Button>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Box>
+
+      <Box>
+        <Typography variant="overline">
+          {t("patterns")} · {t("patternsCount", { count: portfolioPatternCount })}
+        </Typography>
+        {portfolioPatterns.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {t("noPatterns")}
+          </Typography>
+        ) : (
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            {portfolioPatterns.map((p) => {
+              const learned = learnedKeys.includes(p.patternKey);
+              const projectCount = p.projectIds?.length ?? 0;
+              return (
+                <Box
+                  key={p.id}
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 1.5,
+                    alignItems: "start",
+                    py: 1,
+                    borderBottom: "1px solid rgba(20,32,34,0.08)",
+                  }}
+                >
+                  <Box>
+                    <Typography fontWeight={600}>{p.title}</Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontFamily: "monospace" }}
+                    >
+                      {p.patternKey}
+                      {projectCount > 0
+                        ? ` · ${t("patternProjects", { count: projectCount })}`
+                        : ""}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {p.summary}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant={learned ? "outlined" : "contained"}
+                    onClick={() =>
+                      learned
+                        ? unlearnMutation.mutate(p.patternKey)
+                        : learnMutation.mutate(p.patternKey)
+                    }
+                    disabled={
+                      learnMutation.isPending || unlearnMutation.isPending
+                    }
+                  >
+                    {learned ? t("unlearn") : t("learn")}
+                  </Button>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+      </Box>
+
+      {report?.memoryContext?.contextPatternCount ? (
+        <Alert severity="info">
+          {t("contextPatternsHint", {
+            count: report.memoryContext.contextPatternCount,
+          })}
+        </Alert>
+      ) : null}
+
       {report ? (
         <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>
           <Typography variant="overline">{t("severity")}</Typography>
@@ -229,36 +427,76 @@ export default function QaPage() {
             {t("writeGate")}
           </Alert>
 
+          {report.regressionRulesTriggered.length > 0 ? (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="overline">{t("regressions")}</Typography>
+              <Stack spacing={0.5} sx={{ mt: 1 }}>
+                {report.regressionRulesTriggered.map((r) => (
+                  <Typography key={r.id} variant="body2">
+                    • {r.title}{" "}
+                    <Box
+                      component="span"
+                      sx={{ fontFamily: "monospace", opacity: 0.7 }}
+                    >
+                      ({r.patternKey})
+                    </Box>
+                  </Typography>
+                ))}
+              </Stack>
+            </Box>
+          ) : null}
+
           <Typography variant="overline">{t("findings")}</Typography>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
-            {report.findings.slice(0, 12).map((f) => (
-              <Box
-                key={f.id}
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: "auto 1fr",
-                  gap: 1.5,
-                  alignItems: "center",
-                  py: 1,
-                  borderBottom: "1px solid rgba(20,32,34,0.08)",
-                }}
-              >
-                <EpistemicChip state={f.epistemicState} />
-                <Box>
-                  <Typography fontWeight={600}>
-                    [{f.severity}] {f.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {f.domain}
-                  </Typography>
+            {report.findings.slice(0, 12).map((f) => {
+              const patternKey = extractPatternKey(f.summary);
+              const learned =
+                patternKey != null && learnedKeys.includes(patternKey);
+              return (
+                <Box
+                  key={f.id}
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "auto 1fr auto",
+                    gap: 1.5,
+                    alignItems: "center",
+                    py: 1,
+                    borderBottom: "1px solid rgba(20,32,34,0.08)",
+                  }}
+                >
+                  <EpistemicChip state={f.epistemicState} />
+                  <Box>
+                    <Typography fontWeight={600}>
+                      [{f.severity}] {f.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {f.domain}
+                      {patternKey ? ` · ${patternKey}` : ""}
+                    </Typography>
+                  </Box>
+                  {patternKey ? (
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        learned
+                          ? unlearnMutation.mutate(patternKey)
+                          : learnMutation.mutate(patternKey)
+                      }
+                      disabled={
+                        learnMutation.isPending || unlearnMutation.isPending
+                      }
+                    >
+                      {learned ? t("unlearn") : t("learn")}
+                    </Button>
+                  ) : null}
                 </Box>
-              </Box>
-            ))}
+              );
+            })}
           </Stack>
 
           {report.portfolioPatterns.length > 0 ? (
             <Box sx={{ mt: 3 }}>
-              <Typography variant="overline">{t("patterns")}</Typography>
+              <Typography variant="overline">{t("runPatterns")}</Typography>
               {report.portfolioPatterns.map((p) => (
                 <Typography key={p.id} variant="body2" sx={{ mt: 1 }}>
                   {p.title} — {p.summary}

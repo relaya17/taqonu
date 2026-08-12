@@ -105,9 +105,18 @@ Not the LLM. **Engineering Evidence Graph + historical engineering memory.**
 
 Playbooks: [`docs/strategy/startup-validation.md`](docs/strategy/startup-validation.md) ·
 [`design-partner-playbook.md`](docs/strategy/design-partner-playbook.md) ·
+[`design-partner-audit-runbook.md`](docs/strategy/design-partner-audit-runbook.md) (1-week · real URLs/APIs) ·
+[`design-partner-execution-checklist.md`](docs/strategy/design-partner-execution-checklist.md) ·
+[`design-partner-tracker.md`](docs/strategy/design-partner-tracker.md) ·
 [`case-study-template.md`](docs/strategy/case-study-template.md) ·
+[`_partner-fill-in.md`](docs/case-studies/_partner-fill-in.md) ·
 [`why-customers-pay.md`](docs/strategy/why-customers-pay.md) ·
-[`byo-storage.md`](docs/strategy/byo-storage.md)
+[`byo-storage.md`](docs/strategy/byo-storage.md) ·
+[`gap-vs-world-class.md`](docs/strategy/gap-vs-world-class.md)
+
+Marketing / investors: [`/investors`](http://localhost:3000/investors) · alias [`/marketing`](http://localhost:3000/marketing)
+
+**Human still owns:** send outreach, run the champion week, fill the case study — product hooks on `/partners` cannot automate that.
 
 Pricing direction (market test): Developer · Team · Company · Enterprise —
 sell **time + risk + money**, not AI credits.
@@ -120,7 +129,7 @@ sell **time + risk + money**, not AI credits.
 | --- | --- |
 | Verdict | Release status READY/CONDITIONAL/BLOCKED + Evidence |
 | Readiness | Certificate with openable dimensions |
-| Proof 1.1 | Engineering Loop · BrokerOS golden · atlas-evals A–F |
+| Proof 1.1 | Engineering Loop · BrokerOS golden · atlas-evals A–F · `pnpm proof:run` / `POST /api/v1/proof/run` |
 | Code intel | Analyze · impact · patch approve/apply/rollback |
 | Evidence | Claims · conflicts · authority · events |
 | QA / Experts | Risk · council · eval · gates |
@@ -185,11 +194,16 @@ pnpm dev
 | App (Hebrew) | http://localhost:3000/he |
 | Readiness | http://localhost:3000/he/readiness |
 | Partners | http://localhost:3000/he/partners |
+| Proof | http://localhost:3000/he/proof |
 | API | http://localhost:4000 |
 
 ```bash
-# Golden Project
+# Golden Project (optional — falls back to fixtures/golden-brokeros)
 # ATLAS_GOLDEN_PROJECT_ROOT=C:\Users\User\Desktop\game\brokerOS-main
+
+# Atlas 1.1 Proof golden (gates A–F → evidence report; exit 0 on PASS)
+pnpm proof:run
+# or: POST /api/v1/proof/run · GET /api/v1/proof/status · UI /he/proof
 ```
 
 ---
@@ -206,6 +220,8 @@ POST /api/v1/onboarding/connect-repo
 GET  /api/v1/analytics/usage
 POST /api/v1/readiness/certificate
 POST /api/v1/engineering/loop
+POST /api/v1/proof/run
+GET  /api/v1/proof/status
 POST /api/v1/benchmarks/run
 ```
 

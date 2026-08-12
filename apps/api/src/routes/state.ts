@@ -1,43 +1,27 @@
 import type { FastifyInstance } from "fastify";
 import {
-  projectStateSnapshotSchema,
+  projectCurrentStateResponseSchema,
   reconcileProjectStateRequestSchema,
   uuidSchema,
 } from "@atlas/shared";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
-
-function emptyUnknownSnapshot(projectId: string) {
-  const now = new Date().toISOString();
-  return projectStateSnapshotSchema.parse({
-    id: crypto.randomUUID(),
-    projectId,
-    asOf: now,
-    reconciledAt: now,
-    slices: [
-      {
-        key: "GIT",
-        summary: "No GitHub sync yet — state UNKNOWN until connector evidence arrives.",
-        epistemicState: "UNKNOWN",
-        confidence: 0,
-        evidenceIds: [],
-        claimIds: [],
-        asOf: now,
-        validUntil: null,
-        stale: true,
-      },
-    ],
-    conflicts: [],
-    overallEpistemicState: "UNKNOWN",
-    sourceConnectors: ["github"],
-  });
-}
+import {
+  buildCurrentStateRollup,
+  emptyUnknownSnapshot,
+} from "../services/current-state-rollup.js";
 
 export async function registerStateRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/projects/:id/state", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    return osStore.getSnapshot(params.id) ?? emptyUnknownSnapshot(params.id);
+    const snapshot =
+      osStore.getSnapshot(params.id) ?? emptyUnknownSnapshot(params.id);
+    const rollup = buildCurrentStateRollup(
+      snapshot,
+      osStore.getEvidence(params.id),
+    );
+    return projectCurrentStateResponseSchema.parse(rollup);
   });
 
   app.post("/api/v1/projects/:id/state/reconcile", async (request, reply) => {
@@ -45,13 +29,19 @@ export async function registerStateRoutes(app: FastifyInstance): Promise<void> {
     reconcileProjectStateRequestSchema.parse(request.body ?? {});
 
     const snapshot = runStateReconciliation(params.id);
+    const rollup = buildCurrentStateRollup(
+      snapshot,
+      osStore.getEvidence(params.id),
+    );
+
     app.atlasLogger.info("state_reconciled", {
       projectId: params.id,
       snapshotId: snapshot.id,
       overall: snapshot.overallEpistemicState,
       conflicts: snapshot.conflicts.length,
+      evidenceLinked: rollup.evidence.length,
     });
 
-    return reply.status(200).send(snapshot);
+    return reply.status(200).send(projectCurrentStateResponseSchema.parse(rollup));
   });
 }

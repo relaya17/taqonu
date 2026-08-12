@@ -221,8 +221,11 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
-    if (existing.status !== "APPLIED") {
-      throw new AtlasError("VALIDATION_ERROR", "Only APPLIED patches can roll back");
+    if (existing.status !== "APPLIED" && existing.status !== "VERIFIED") {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Only APPLIED or VERIFIED patches can roll back",
+      );
     }
     const restored = rollbackPatchFiles(
       body.workspaceRoot,

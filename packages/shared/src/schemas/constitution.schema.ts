@@ -126,6 +126,11 @@ export const runConstitutionRequestSchema = z.object({
   /** Optional user intent — feeds Omission Detector. */
   intent: z.string().max(4000).optional(),
   profiles: z.array(productProfileSchema).optional(),
+  /**
+   * When true (and signed-in WRITE), LOW AUTO_FIX drafts may auto-apply.
+   * Also enabled by ATLAS_AUTO_APPLY_LOW. HIGH/CRITICAL never auto-apply.
+   */
+  autoApplyLow: z.boolean().optional(),
 });
 
 export type ConstitutionDomain = z.infer<typeof constitutionDomainSchema>;

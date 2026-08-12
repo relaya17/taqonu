@@ -4,44 +4,43 @@ import {
   AtlasError,
   STUB_OWNER_ID,
   approveEngineeringLoopSchema,
+  atlasProofReportSchema,
   classifyActionRequestSchema,
   classifyActionResultSchema,
   decisionSchema,
-  evidenceRecordSchema,
+  parseEvidenceRecord,
   patchArtifactSchema,
   startEngineeringLoopSchema,
   regressionCompareSchema,
+  runProofRequestSchema,
   uuidSchema,
 } from "@atlas/shared";
 import {
   classifyAction,
   compareSuiteRuns,
+  findEvalsRoot,
   loadEvalTasks,
   proposeForLoop,
+  resolveGoldenWorkspace,
+  runAtlasProof,
   runBenchmarkSuite,
   runEngineeringLoop,
   summarizeProofMetrics,
 } from "@atlas/engineering-loop";
 import { applyPatchFiles } from "@atlas/code-intelligence";
-import { resolve, dirname } from "node:path";
-import { existsSync } from "node:fs";
+import { tryPersistDecisionToSupabase } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import {
+  buildAtlasVerdict,
+  buildEvidenceReport,
+} from "../services/atlas-verdict.js";
 
-function findEvalsRoot(): string {
-  const fromEnv = process.env.ATLAS_EVALS_ROOT;
-  if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  let dir = process.cwd();
-  for (;;) {
-    const candidate = resolve(dir, "atlas-evals");
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return resolve(process.cwd(), "atlas-evals");
+function evalsRoot(): string {
+  return findEvalsRoot();
 }
 
 export async function registerEngineeringLoopRoutes(
@@ -224,7 +223,7 @@ export async function registerEngineeringLoopRoutes(
       osStore.upsertPatch(appliedPatch);
 
       if (existing.projectId) {
-        const evidence = evidenceRecordSchema.parse({
+        const evidence = parseEvidenceRecord({
           id: crypto.randomUUID(),
           ownerId: STUB_OWNER_ID,
           projectId: existing.projectId,
@@ -240,6 +239,7 @@ export async function registerEngineeringLoopRoutes(
           epistemicState: "OBSERVED",
           classification: "INTERNAL",
           authorityRank: "REPOSITORY_CODE",
+          category: "CODE",
           metadata: {
             loopId: existing.id,
             patchId: approved.id,
@@ -270,6 +270,14 @@ export async function registerEngineeringLoopRoutes(
         });
         osStore.addDecision(decision);
         decisionId = decision.id;
+        const identity = await resolveCloudIdentity(app, request);
+        if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+        void tryPersistDecisionToSupabase(
+          app.atlasEnv,
+          decision,
+          identity.ownerId,
+          { userAccessToken: identity.userAccessToken },
+        );
       }
 
       const bump = (
@@ -347,10 +355,10 @@ export async function registerEngineeringLoopRoutes(
   });
 
   app.get("/api/v1/benchmarks/tasks", async () => {
-    const items = loadEvalTasks(findEvalsRoot()).filter(
+    const items = loadEvalTasks(evalsRoot()).filter(
       (t) => !t.id.startsWith("placeholder"),
     );
-    return { items, total: items.length, evalsRoot: findEvalsRoot() };
+    return { items, total: items.length, evalsRoot: evalsRoot() };
   });
 
   app.get("/api/v1/benchmarks/suites", async () => {
@@ -374,7 +382,7 @@ export async function registerEngineeringLoopRoutes(
       defaultGoldenRoot();
 
     const suite = runBenchmarkSuite({
-      evalsRoot: findEvalsRoot(),
+      evalsRoot: evalsRoot(),
       workspaceRoot,
       projectId: body.projectId ?? null,
       projectSlug: body.projectSlug ?? "brokeros",
@@ -407,14 +415,155 @@ export async function registerEngineeringLoopRoutes(
   });
 
   app.get("/api/v1/golden/project", async () => {
-    const root =
-      app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT || defaultGoldenRoot();
-    return {
+    const golden = resolveGoldenWorkspace({
+      envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       slug: app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros",
-      workspaceRoot: root,
-      exists: existsSync(root),
-      evalsRoot: findEvalsRoot(),
-      note: "BrokerOS is the Golden Project for Atlas 1.1 Proof & Autonomy.",
+    });
+    return {
+      slug: golden.slug,
+      workspaceRoot: golden.workspaceRoot,
+      exists: golden.exists,
+      source: golden.source,
+      evalsRoot: evalsRoot(),
+      note:
+        golden.source === "fixture"
+          ? "Using in-repo fixtures/golden-brokeros (BrokerOS path missing). Set ATLAS_GOLDEN_PROJECT_ROOT for the full lab repo."
+          : "BrokerOS is the Golden Project for Atlas 1.1 Proof & Autonomy.",
+    };
+  });
+
+  /** Atlas 1.1 Proof golden scenario — Engineering Loop A–F → Verdict + evidence. */
+  app.post("/api/v1/proof/run", async (request, reply) => {
+    osStore.ensureLoaded();
+    const body = runProofRequestSchema.parse(request.body ?? {});
+    const slug =
+      body.projectSlug ??
+      app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ??
+      "brokeros";
+
+    let projectId = body.projectId ?? null;
+    if (!projectId) {
+      const project =
+        osStore.getProjectBySlug(slug) ??
+        osStore.listProjects().find((p) => p.slug === slug) ??
+        null;
+      projectId = project?.id ?? null;
+    }
+
+    let verdictSummary: {
+      status: string | null;
+      productionReadiness: number | null;
+      evidenceCoverage: number | null;
+      criticalBlockers: number | null;
+      evidenceCount: number | null;
+    } | null = null;
+    let evidenceReportId: string | null = null;
+
+    const report = runAtlasProof({
+      workspaceRoot: body.workspaceRoot ?? null,
+      envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+      projectId,
+      projectSlug: slug,
+      ...(body.taskIds ? { taskIds: body.taskIds } : {}),
+      evalsRoot: evalsRoot(),
+      atlasVersion: "1.1.0",
+    });
+
+    osStore.addEvalSuite(report.suite);
+
+    if (projectId && osStore.getProject(projectId)) {
+      try {
+        const verdict = buildAtlasVerdict({
+          projectId,
+          workspaceRoot: report.golden.workspaceRoot,
+          locale: "en",
+        });
+        verdictSummary = {
+          status: verdict.status,
+          productionReadiness: verdict.productionReadiness,
+          evidenceCoverage: verdict.evidenceCoverage,
+          criticalBlockers: verdict.criticalBlockers,
+          evidenceCount: verdict.evidenceCount,
+        };
+        const evReport = buildEvidenceReport({
+          projectId,
+          workspaceRoot: report.golden.workspaceRoot,
+          locale: "en",
+        });
+        evidenceReportId = evReport.id;
+        osStore.incrementUsage("reportsGenerated");
+      } catch {
+        /* project may lack enough state — suite proof still valid */
+      }
+    }
+
+    const final = atlasProofReportSchema.parse({
+      ...report,
+      verdictSummary,
+      evidenceReportMarkdown: evidenceReportId
+        ? `${report.evidenceReportMarkdown}\n\n_Product evidence report id: ${evidenceReportId}_\n`
+        : report.evidenceReportMarkdown,
+    });
+
+    osStore.setMeta("lastProofReport", JSON.stringify(final));
+    osStore.appendAudit({
+      type: "proof.golden.completed",
+      proofId: final.id,
+      status: final.status,
+      passRate: final.suite.passRate,
+      unauthorizedWrites: final.suite.unauthorizedWrites,
+      goldenSource: final.golden.source,
+      at: final.createdAt,
+    });
+    appendDomainEvent({
+      type: "evaluation.completed",
+      projectId,
+      epistemicState: "OBSERVED",
+      payload: {
+        kind: "atlas-proof-1.1",
+        proofId: final.id,
+        status: final.status,
+        gatesPass: final.checklist.allGatesPass,
+      },
+    });
+
+    return reply.status(201).send(final);
+  });
+
+  app.get("/api/v1/proof/status", async () => {
+    osStore.ensureLoaded();
+    const raw = osStore.getMeta("lastProofReport");
+    const golden = resolveGoldenWorkspace({
+      envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+      slug: app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros",
+    });
+    if (!raw) {
+      return {
+        hasRun: false,
+        golden: {
+          slug: golden.slug,
+          workspaceRoot: golden.workspaceRoot,
+          exists: golden.exists,
+          source: golden.source,
+        },
+        report: null,
+        howToRun: [
+          "pnpm proof:run",
+          "POST /api/v1/proof/run",
+          "UI: /he/proof → Run Proof 1.1",
+        ],
+      };
+    }
+    const report = atlasProofReportSchema.parse(JSON.parse(raw));
+    return {
+      hasRun: true,
+      golden: report.golden,
+      report,
+      howToRun: [
+        "pnpm proof:run",
+        "POST /api/v1/proof/run",
+        "UI: /he/proof → Run Proof 1.1",
+      ],
     };
   });
 }

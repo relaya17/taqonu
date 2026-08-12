@@ -129,6 +129,22 @@ export function verifyLocalPassword(email: string, password: string): AuthUser |
   return toPublicUser(user);
 }
 
+export interface OAuthUpsertResult {
+  readonly user: AuthUser;
+  /**
+   * When a pre-existing local (email/password) user is linked to OAuth and
+   * their local id differed from the Supabase OAuth `sub`, this is the old
+   * local id that was rewritten to match. Callers must rekey tenant/cloud
+   * owner_id references from this id → `user.id`.
+   */
+  readonly reconciledFromId: string | null;
+}
+
+/**
+ * Upsert an OAuth identity. If an existing local user shares the email but
+ * has a different id than Supabase's OAuth user, adopt the OAuth id so
+ * `auth.uid()` and local `owner_id` stay aligned for RLS.
+ */
 export function upsertOAuthUser(input: {
   id?: string;
   email: string;
@@ -137,11 +153,20 @@ export function upsertOAuthUser(input: {
   avatarUrl?: string | null;
   locale?: "he" | "en" | "ar";
   adminEmail?: string;
-}): AuthUser {
+}): OAuthUpsertResult {
   const file = load();
   const email = input.email.trim().toLowerCase();
   const existing = file.users.find((u) => u.email === email);
   if (existing) {
+    let reconciledFromId: string | null = null;
+    if (input.id && input.id !== existing.id) {
+      // Guard: do not clobber another account that already owns the OAuth id.
+      const collision = file.users.find((u) => u.id === input.id && u.email !== email);
+      if (!collision) {
+        reconciledFromId = existing.id;
+        existing.id = input.id;
+      }
+    }
     existing.provider = input.provider;
     existing.displayName = input.displayName ?? existing.displayName;
     existing.avatarUrl = input.avatarUrl ?? existing.avatarUrl;
@@ -152,7 +177,7 @@ export function upsertOAuthUser(input: {
       existing.role = "admin";
     }
     save(file);
-    return toPublicUser(existing);
+    return { user: toPublicUser(existing), reconciledFromId };
   }
   const isAdmin =
     Boolean(input.adminEmail) &&
@@ -164,6 +189,85 @@ export function upsertOAuthUser(input: {
     role: isAdmin || file.users.length === 0 ? "admin" : "user",
     locale: input.locale ?? "he",
     provider: input.provider,
+    passwordHash: null,
+    salt: null,
+    avatarUrl: input.avatarUrl ?? null,
+    createdAt: new Date().toISOString(),
+  };
+  file.users.push(user);
+  save(file);
+  return { user: toPublicUser(user), reconciledFromId: null };
+}
+
+/**
+ * Rewrite a stored user's id (e.g. login-time drift where the Supabase
+ * access-token `sub` no longer matches the local record). No-op when ids
+ * match or the source user is missing. Returns the updated public user, or
+ * null when nothing changed / source missing / target collision.
+ */
+export function rekeyLocalUserId(fromId: string, toId: string): AuthUser | null {
+  if (!fromId || !toId || fromId === toId) return null;
+  const file = load();
+  const existing = file.users.find((u) => u.id === fromId);
+  if (!existing) return null;
+  if (file.users.some((u) => u.id === toId)) return null;
+  existing.id = toId;
+  save(file);
+  return toPublicUser(existing);
+}
+
+/**
+ * Mirror Auth-sourced role onto the local offline/dev store. No-op when the
+ * user is missing or the role already matches.
+ */
+export function setLocalUserRole(userId: string, role: UserRole): AuthUser | null {
+  const file = load();
+  const existing = file.users.find((u) => u.id === userId);
+  if (!existing) return null;
+  if (existing.role === role) return toPublicUser(existing);
+  existing.role = role;
+  save(file);
+  return toPublicUser(existing);
+}
+
+/**
+ * Upsert a thin local mirror from Supabase Auth claims (offline fallback).
+ * Does not overwrite password hashes. Used when Auth JWT is the live source
+ * of truth but local session still needs a row for stub mode continuity.
+ */
+export function mirrorAuthUserLocally(input: {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  role: UserRole;
+  locale?: "he" | "en" | "ar";
+  provider?: "email" | "google" | "github" | "local";
+  avatarUrl?: string | null;
+}): AuthUser {
+  const file = load();
+  const email = input.email.trim().toLowerCase();
+  const existing = file.users.find((u) => u.id === input.id) ??
+    file.users.find((u) => u.email === email);
+  if (existing) {
+    existing.id = input.id;
+    existing.email = email;
+    existing.role = input.role;
+    if (input.displayName !== undefined && input.displayName !== null) {
+      existing.displayName = input.displayName;
+    }
+    if (input.locale) existing.locale = input.locale;
+    if (input.provider) existing.provider = input.provider;
+    if (input.avatarUrl !== undefined) existing.avatarUrl = input.avatarUrl;
+    save(file);
+    return toPublicUser(existing);
+  }
+  const user: StoredUser = {
+    id: input.id,
+    email,
+    displayName: input.displayName?.trim() || email.split("@")[0] || "user",
+    role: input.role,
+    locale: input.locale ?? "he",
+    provider: input.provider ?? "email",
     passwordHash: null,
     salt: null,
     avatarUrl: input.avatarUrl ?? null,

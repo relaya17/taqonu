@@ -11,6 +11,7 @@ import { registerEvidenceRoutes } from "./routes/evidence.js";
 import { registerGraphRoutes } from "./routes/graph.js";
 import { registerPortfolioRoutes } from "./routes/portfolio.js";
 import { registerAgentRoutes } from "./routes/agent.js";
+import { registerConversationRoutes } from "./routes/conversation.js";
 import { registerEvalRoutes } from "./routes/eval.js";
 import { registerGithubRoutes } from "./routes/github.js";
 import { registerDbFeedRoutes } from "./routes/db-feeds.js";
@@ -39,8 +40,12 @@ import { registerKernelRoutes } from "./routes/kernel.js";
 import { registerEngineeringAuditRoutes } from "./routes/engineering-audit.js";
 import { registerRemediationRoutes } from "./routes/remediation.js";
 import { registerMetricsRoutes } from "./routes/metrics.js";
+import { registerLegalMediaRoutes } from "./routes/legal-media.js";
+import { registerSecuritySarifRoutes } from "./routes/security-sarif.js";
+import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { osStore } from "./store/os-store.js";
+import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 
 export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   const logger = createLogger({
@@ -62,6 +67,19 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   app.decorate("atlasLogger", logger);
 
   osStore.ensureLoaded();
+  const hydrate = await hydrateOsStoreFromCloudIfEmpty(env, {
+    ownerId: env.ATLAS_OWNER_ID ?? null,
+  });
+  if (hydrate.attempted) {
+    logger.info("store_cloud_hydrate", {
+      hydrated: hydrate.hydrated,
+      projects: hydrate.projects,
+      memories: hydrate.memories,
+      decisions: hydrate.decisions,
+      plans: hydrate.plans,
+      reason: hydrate.reason ?? null,
+    });
+  }
 
   await registerHealthRoutes(app);
   await registerProjectRoutes(app);
@@ -72,7 +90,9 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerGraphRoutes(app);
   await registerPortfolioRoutes(app);
   await registerAgentRoutes(app);
+  await registerConversationRoutes(app);
   await registerEvalRoutes(app);
+  await registerEvalCiGateRoutes(app);
   await registerGithubRoutes(app);
   await registerDbFeedRoutes(app);
   // Deferred connectors / research — stubs only (Architecture v1.0 non-MVP)
@@ -93,6 +113,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerGateRoutes(app);
   await registerEventRoutes(app);
   await registerProviderAdapterRoutes(app);
+  await registerSecuritySarifRoutes(app);
   await registerEngineeringLoopRoutes(app);
   await registerReadinessRoutes(app);
   await registerCommercialValidationRoutes(app);
@@ -101,6 +122,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerEngineeringAuditRoutes(app);
   await registerRemediationRoutes(app);
   await registerMetricsRoutes(app);
+  await registerLegalMediaRoutes(app);
 
   return app;
 }

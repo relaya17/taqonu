@@ -150,17 +150,21 @@ export default function DashboardPage() {
   };
 
   return (
-    <Stack spacing={4} sx={{ maxWidth: 920 }}>
+    <Stack spacing={4} sx={{ maxWidth: 920, width: "100%", minWidth: 0 }}>
       <Box>
         <Typography
           variant="h1"
           sx={{
-            fontSize: { xs: "2.2rem", md: "3rem" },
+            fontSize: { xs: "2rem", sm: "2.2rem", md: "3rem" },
             mb: 1,
+            wordBreak: "break-word",
             animation: "atlasIn 700ms ease both",
             "@keyframes atlasIn": {
               from: { opacity: 0, transform: "translateY(12px)" },
               to: { opacity: 1, transform: "translateY(0)" },
+            },
+            "@media (prefers-reduced-motion: reduce)": {
+              animation: "none",
             },
           }}
         >

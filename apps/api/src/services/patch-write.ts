@@ -3,12 +3,16 @@ import { resolve } from "node:path";
 import {
   AtlasError,
   STUB_OWNER_ID,
-  evidenceRecordSchema,
+  parseEvidenceRecord,
   patchArtifactSchema,
   type AuthUser,
   type PatchArtifact,
 } from "@atlas/shared";
-import { applyPatchFiles } from "@atlas/code-intelligence";
+import {
+  applyPatchFiles,
+  verifyRemediationApply,
+  type RemediationVerifyResult,
+} from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import { atlasMetrics } from "../routes/metrics.js";
@@ -105,9 +109,17 @@ export function assertPatchApprovedForApply(existing: PatchArtifact): void {
 
 export function approvePatchArtifact(
   existing: PatchArtifact,
-  input: { readonly approvedBy: string; readonly note?: string; readonly userId: string },
+  input: {
+    readonly approvedBy: string;
+    readonly note?: string;
+    readonly userId: string;
+  },
 ): PatchArtifact {
-  if (existing.status === "APPLIED" || existing.status === "ROLLED_BACK") {
+  if (
+    existing.status === "APPLIED" ||
+    existing.status === "VERIFIED" ||
+    existing.status === "ROLLED_BACK"
+  ) {
     throw new AtlasError(
       "VALIDATION_ERROR",
       `Cannot approve patch in status ${existing.status}`,
@@ -136,12 +148,100 @@ export function approvePatchArtifact(
   return patch;
 }
 
+export function recordRemediationVerification(input: {
+  readonly patch: PatchArtifact;
+  readonly workspaceRoot: string;
+  readonly verify: RemediationVerifyResult;
+  readonly userId: string;
+}): PatchArtifact {
+  const now = new Date().toISOString();
+  const evidenceIds = [...input.patch.evidenceIds];
+  let evidenceId: string | null = null;
+
+  if (input.patch.projectId) {
+    evidenceId = crypto.randomUUID();
+    const evidence = parseEvidenceRecord({
+      id: evidenceId,
+      ownerId: STUB_OWNER_ID,
+      projectId: input.patch.projectId,
+      source: `remediation-verify:${input.patch.id}`,
+      sourceType: "SYSTEM",
+      sourceId: input.patch.id,
+      uri: null,
+      excerpt: input.verify.summary,
+      version: null,
+      observedAt: now,
+      createdAt: now,
+      confidence: input.verify.ok ? 0.85 : 0.55,
+      epistemicState: input.verify.ok ? "OBSERVED" : "CONFLICTED",
+      classification: "INTERNAL",
+      authorityRank: "REPOSITORY_CODE",
+      category: "CODE",
+      metadata: {
+        patchId: input.patch.id,
+        sourceIssueId: input.patch.sourceIssueId ?? null,
+        ok: input.verify.ok,
+        checks: input.verify.checks
+          .map((c) => `${c.id}:${c.passed ? "pass" : "fail"}`)
+          .join("; "),
+        workspaceRoot: input.workspaceRoot,
+      },
+    });
+    osStore.addEvidence(input.patch.projectId, [evidence]);
+    evidenceIds.push(evidenceId);
+  }
+
+  const patch = patchArtifactSchema.parse({
+    ...input.patch,
+    status: input.verify.ok ? "VERIFIED" : input.patch.status,
+    verifiedAt: input.verify.ok ? now : input.patch.verifiedAt,
+    evidenceIds,
+    updatedAt: now,
+    evaluationSummary: [
+      input.patch.evaluationSummary ?? "",
+      input.verify.summary,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    epistemicState: input.verify.ok ? "OBSERVED" : input.patch.epistemicState,
+  });
+  osStore.upsertPatch(patch);
+  osStore.appendAudit({
+    type: "code.patch.verified",
+    patchId: patch.id,
+    ok: input.verify.ok,
+    sourceIssueId: patch.sourceIssueId ?? null,
+    at: now,
+    by: input.userId,
+  });
+  appendDomainEvent({
+    type: "evaluation.completed",
+    projectId: patch.projectId,
+    epistemicState: input.verify.ok ? "OBSERVED" : "CONFLICTED",
+    payload: {
+      kind: "auto-remediation-verify",
+      patchId: patch.id,
+      sourceIssueId: patch.sourceIssueId ?? null,
+      ok: input.verify.ok,
+      evidenceId,
+      checks: input.verify.checks,
+    },
+  });
+  return patch;
+}
+
 export function applyApprovedPatch(input: {
   readonly existing: PatchArtifact;
   readonly user: AuthUser;
   readonly bodyWorkspaceRoot?: string | null | undefined;
   readonly requireProjectRoot?: boolean | undefined;
-}): { patch: PatchArtifact; apply: ReturnType<typeof applyPatchFiles> } {
+  /** When true, caller runs verify separately (auto-apply loop). */
+  readonly skipVerify?: boolean | undefined;
+}): {
+  patch: PatchArtifact;
+  apply: ReturnType<typeof applyPatchFiles>;
+  verify: RemediationVerifyResult | null;
+} {
   assertPatchApprovedForApply(input.existing);
 
   const workspaceRoot = resolveApplyWorkspaceRoot({
@@ -177,7 +277,7 @@ export function applyApprovedPatch(input: {
   let evidenceId: string | null = null;
   if (input.existing.projectId) {
     evidenceId = crypto.randomUUID();
-    const evidence = evidenceRecordSchema.parse({
+    const evidence = parseEvidenceRecord({
       id: evidenceId,
       ownerId: STUB_OWNER_ID,
       projectId: input.existing.projectId,
@@ -193,6 +293,7 @@ export function applyApprovedPatch(input: {
       epistemicState: "OBSERVED",
       classification: "INTERNAL",
       authorityRank: "REPOSITORY_CODE",
+      category: "CODE",
       metadata: {
         patchId: input.existing.id,
         sourceIssueId: input.existing.sourceIssueId ?? null,
@@ -214,7 +315,7 @@ export function applyApprovedPatch(input: {
     });
   }
 
-  const patch = patchArtifactSchema.parse({
+  let patch = patchArtifactSchema.parse({
     ...input.existing,
     status: "APPLIED",
     appliedAt: now,
@@ -258,5 +359,20 @@ export function applyApprovedPatch(input: {
     autoRemediation: isAutoRemediationDraft(input.existing) ? "true" : "false",
   });
 
-  return { patch, apply: result };
+  let verify: RemediationVerifyResult | null = null;
+  if (!input.skipVerify && isAutoRemediationDraft(input.existing)) {
+    verify = verifyRemediationApply({
+      workspaceRoot,
+      patch,
+      appliedPaths: result.applied,
+    });
+    patch = recordRemediationVerification({
+      patch,
+      workspaceRoot,
+      verify,
+      userId: input.user.id,
+    });
+  }
+
+  return { patch, apply: result, verify };
 }

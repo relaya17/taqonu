@@ -38,6 +38,7 @@ export const createDecisionSchema = z.object({
   alternatives: z.array(z.string().min(1).max(500)).optional(),
   tradeOffs: z.array(z.string().min(1).max(500)).optional(),
   evidence: z.array(z.string().min(1).max(500)).optional(),
+  /** Defaults to PROPOSED — accept via lifecycle transition. */
   status: decisionStatusSchema.optional(),
   confidence: confidenceSchema.optional(),
   epistemicState: epistemicStateSchema.optional(),
@@ -45,5 +46,23 @@ export const createDecisionSchema = z.object({
   decidedAt: isoDateTimeSchema.optional(),
 });
 
+/** Lifecycle: PROPOSED → ACTIVE (accepted) | REJECTED | SUPERSEDED. */
+export const transitionDecisionSchema = z
+  .object({
+    status: z.enum(["ACTIVE", "REJECTED", "SUPERSEDED"]),
+    supersededBy: uuidSchema.nullable().optional(),
+    reason: z.string().min(1).max(500).optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.status === "SUPERSEDED" && !body.supersededBy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "supersededBy is required when status is SUPERSEDED",
+        path: ["supersededBy"],
+      });
+    }
+  });
+
 export type Decision = z.infer<typeof decisionSchema>;
 export type CreateDecision = z.infer<typeof createDecisionSchema>;
+export type TransitionDecision = z.infer<typeof transitionDecisionSchema>;

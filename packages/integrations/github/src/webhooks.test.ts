@@ -26,4 +26,24 @@ describe("verifyGitHubWebhookSignature", () => {
       }),
     ).toThrow(/Invalid GitHub webhook signature/);
   });
+
+  it("rejects a missing signature header", () => {
+    expect(() =>
+      verifyGitHubWebhookSignature({
+        payload: "{}",
+        signatureHeader: undefined,
+        secret: "test-secret",
+      }),
+    ).toThrow(/Missing GitHub signature header/);
+  });
+
+  it("rejects a non-sha256 signature scheme", () => {
+    expect(() =>
+      verifyGitHubWebhookSignature({
+        payload: "{}",
+        signatureHeader: "sha1=abc",
+        secret: "test-secret",
+      }),
+    ).toThrow(/Missing GitHub signature header/);
+  });
 });

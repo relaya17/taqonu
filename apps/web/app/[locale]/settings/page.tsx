@@ -70,6 +70,9 @@ export default function SettingsPage() {
             >
               {t("logout")}
             </Button>
+            <Button component={Link} href="/settings/billing" variant="outlined">
+              {t("openBilling")}
+            </Button>
             {me.data.user.role === "admin" ? (
               <Button href="/admin" variant="contained">
                 {t("openAdmin")}
@@ -78,6 +81,30 @@ export default function SettingsPage() {
           </Stack>
         </Stack>
       )}
+
+      <Stack spacing={1}>
+        <Typography variant="subtitle2">{t("opsLinks")}</Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button component={Link} href="/contract" variant="outlined" size="small">
+            {t("openContract")}
+          </Button>
+          <Button component={Link} href="/ops/metrics" variant="outlined" size="small">
+            {t("openMetrics")}
+          </Button>
+          <Button component={Link} href="/gates" variant="outlined" size="small">
+            {t("openGates")}
+          </Button>
+          <Button component={Link} href="/eval" variant="outlined" size="small">
+            {t("openEval")}
+          </Button>
+          <Button component={Link} href="/artifacts" variant="outlined" size="small">
+            {t("openArtifacts")}
+          </Button>
+          <Button component={Link} href="/conflicts" variant="outlined" size="small">
+            {t("openConflicts")}
+          </Button>
+        </Stack>
+      </Stack>
 
       <Alert severity="success">{t("a11yNote")}</Alert>
     </Stack>

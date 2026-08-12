@@ -13,7 +13,10 @@ import {
   localConnectionPublicSchema,
   scanLocalRequestSchema,
 } from "@atlas/shared";
-import { discoverGitHubPortfolio } from "../services/portfolio-discovery.js";
+import {
+  discoverGitHubPortfolio,
+  discoverLocalPortfolio,
+} from "../services/portfolio-discovery.js";
 import { osStore } from "../store/os-store.js";
 
 function publicGithub() {
@@ -234,46 +237,28 @@ export async function registerConnectionRoutes(
     }
     const now = new Date().toISOString();
     try {
-      const discovered = scanLocalReposRoot(
-        connection.reposRoot,
-        body.maxDepth,
-      );
+      const discovered = discoverLocalPortfolio({
+        reposRoot: connection.reposRoot,
+        maxDepth: body.maxDepth,
+        reconcile: body.reconcile,
+        linkLocalRoots: true,
+      });
       osStore.setLocalConnection({
         ...connection,
         status: "CONNECTED",
         updatedAt: now,
         lastError: null,
         lastScanAt: now,
-        lastScanRepoCount: discovered.length,
+        lastScanRepoCount: discovered.scanned,
       });
 
-      if (discovered.length === 0) {
-        return reply.status(200).send({
-          scanned: 0,
-          repos: [],
-          created: 0,
-          updated: 0,
-          projects: [],
-        });
-      }
-
-      const result = discoverGitHubPortfolio({
-        repositories: discovered.map((repo) => ({
-          fullName:
-            repo.fullName ??
-            `local/${repo.folderName}`.toLowerCase().replace(/\s+/g, "-"),
-          defaultBranch: "main",
-          private: true,
-          htmlUrl: repo.remoteUrl?.startsWith("http")
-            ? repo.remoteUrl.replace(/\.git$/i, "")
-            : null,
-        })),
-        reconcile: body.reconcile,
-      });
-      return reply.status(201).send({
-        scanned: discovered.length,
-        repos: discovered,
-        ...result,
+      return reply.status(discovered.scanned === 0 ? 200 : 201).send({
+        scanned: discovered.scanned,
+        repos: discovered.repos,
+        created: discovered.created,
+        updated: discovered.updated,
+        linked: discovered.linked,
+        projects: discovered.projects,
       });
     } catch (error) {
       osStore.setLocalConnection({

@@ -1,4 +1,5 @@
 import type { GitHubRepoObservation } from "./observation.js";
+import type { EvidenceCategory } from "@atlas/shared";
 
 export interface GitHubEvidenceDraft {
   readonly source: string;
@@ -10,6 +11,7 @@ export interface GitHubEvidenceDraft {
   readonly observedAt: string;
   readonly epistemicState: "FACT";
   readonly confidence: number;
+  readonly category: EvidenceCategory;
   readonly metadata: Readonly<Record<string, string | number | boolean | null>>;
 }
 
@@ -28,6 +30,7 @@ export function observationToEvidenceDrafts(
       observedAt: observation.observedAt,
       epistemicState: "FACT",
       confidence: 1,
+      category: "GIT",
       metadata: {
         openPrCount: observation.openPrCount,
         openIssueCount: observation.openIssueCount,
@@ -46,6 +49,7 @@ export function observationToEvidenceDrafts(
       observedAt: observation.observedAt,
       epistemicState: "FACT",
       confidence: 1,
+      category: "GIT",
       metadata: {},
     });
   }
@@ -61,6 +65,7 @@ export function observationToEvidenceDrafts(
       observedAt: observation.observedAt,
       epistemicState: "FACT",
       confidence: 0.95,
+      category: "ARCHITECTURE",
       metadata: { kind: "architecture_doc" },
     });
   }
@@ -76,6 +81,7 @@ export function observationToEvidenceDrafts(
       observedAt: observation.observedAt,
       epistemicState: "FACT",
       confidence: 0.95,
+      category: "DEPENDENCIES",
       metadata: { kind: "dependency_manifest" },
     });
   }

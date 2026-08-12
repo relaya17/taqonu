@@ -228,17 +228,22 @@ export function searchKnowledgeFabric(input: {
   maxResults?: number;
   minAuthority?: number;
   allowStale?: boolean;
-  /** Optional vector similarities keyed by doc id (from embeddings package). */
+  /** Optional vector similarities keyed by doc id (from embeddings / pgvector). */
   vectorScores?: Readonly<Record<string, number>>;
+  /** Override active corpus (e.g. pgvector candidate set). */
+  corpus?: readonly CorpusDoc[];
+  /** Which store produced candidates — surfaced in result + INSUFFICIENT_EVIDENCE copy. */
+  retrievalBackend?: "pgvector" | "local";
 }): KnowledgeSearchResult {
   const maxResults = input.maxResults ?? 20;
   const minAuthority = input.minAuthority ?? 0.4;
   const allowStale = input.allowStale ?? false;
+  const docs = input.corpus ?? CORPUS;
   const q = input.query.toLowerCase();
   const now = new Date().toISOString();
   let filteredOut = 0;
 
-  const scored = CORPUS.map((doc) => {
+  const scored = docs.map((doc) => {
     const authority =
       EXTERNAL_SOURCE_CONFIDENCE[doc.sourceClass] ??
       EXTERNAL_SOURCE_CONFIDENCE.TECHNICAL_ARTICLE ??
@@ -264,7 +269,8 @@ export function searchKnowledgeFabric(input: {
       return false;
     }
     const hybridHit = row.relevance > 0 || row.vector >= 0.35;
-    if (!hybridHit && q.length > 2 && row.authority < 0.95) {
+    // Need-based retrieval: never return packages that neither keyword nor vector matched.
+    if (!hybridHit && q.length > 2) {
       filteredOut += 1;
       return false;
     }
@@ -295,11 +301,18 @@ export function searchKnowledgeFabric(input: {
         : ("INFERRED" as const),
   }));
 
+  const backend = input.retrievalBackend ?? "local";
+  const plainLanguage =
+    hits.length === 0
+      ? `INSUFFICIENT_EVIDENCE — hybrid retrieve (${backend}) returned 0 packages (filtered ${filteredOut}). No invented results.`
+      : `Hybrid retrieve (${backend}) returned ${hits.length} packages (filtered ${filteredOut}). Keyword + vector — evidence packages only.`;
+
   return knowledgeSearchResultSchema.parse({
     query: input.query,
     hits,
     filteredOut,
-    plainLanguage: `Hybrid retrieve returned ${hits.length} packages (filtered ${filteredOut}). Keyword + optional vectors — not full corpus dump.`,
+    plainLanguage,
+    retrievalBackend: backend,
   });
 }
 

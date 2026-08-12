@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AtlasError,
   PLAN_CLOUD_LIMITS,
@@ -28,21 +28,27 @@ import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { analyzeRepository } from "@atlas/code-intelligence";
 import { discoverGitHubPortfolio } from "../services/portfolio-discovery.js";
 import { resolveWorkspaceRoot } from "../services/golden-root.js";
+import { assertCloudSlotAvailable } from "../services/plan-quota.js";
+import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import {
-  assertCloudSlotAvailable,
-  resolveOwnerId,
-} from "../services/plan-quota.js";
+  partnerAuditSpineRequestSchema,
+  runPartnerAuditSpine,
+} from "../services/partner-audit-spine.js";
+import { recordSystemHealthReport } from "./engineering-audit.js";
 
 async function maybeSyncEvidenceCloud(
   app: FastifyInstance,
   project: { id: string; slug: string; name: string; description: string | null; status: string; techStack: string[]; createdAt: string; updatedAt: string },
   sync: boolean | undefined,
+  request: FastifyRequest,
+  reply: FastifyReply,
 ): Promise<{ cloudSynced: boolean; cloudProjectId: string | null }> {
   if (!sync) {
     return { cloudSynced: false, cloudProjectId: null };
   }
-  await assertCloudSlotAvailable(app.atlasEnv);
-  const ownerId = resolveOwnerId(app.atlasEnv);
+  const identity = await resolveCloudIdentity(app, request);
+  if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+  await assertCloudSlotAvailable(app.atlasEnv, identity);
   const now = new Date().toISOString();
   const cloud = await tryPersistProjectToSupabase(
     {
@@ -57,8 +63,8 @@ async function maybeSyncEvidenceCloud(
       techStack: project.techStack,
       syncToCloud: true,
     },
-    ownerId,
-    { requireSuccess: true },
+    identity.ownerId,
+    { requireSuccess: true, userAccessToken: identity.userAccessToken },
   );
   if (cloud) {
     osStore.setCloudLink(project.id, {
@@ -186,15 +192,20 @@ export async function registerCommercialValidationRoutes(
   /** Legacy Design Partner path — local workspace only. */
   app.post("/api/v1/onboarding/connect-repo", async (request, reply) => {
     const body = connectExternalRepoSchema.parse(request.body);
-    const imported = await importLocal(app, {
-      name: body.name,
-      slug: body.slug,
-      workspaceRoot: body.workspaceRoot,
-      ...(body.description ? { description: body.description } : {}),
-      ...(body.syncEvidenceToCloud != null
-        ? { syncEvidenceToCloud: body.syncEvidenceToCloud }
-        : {}),
-    });
+    const imported = await importLocal(
+      app,
+      {
+        name: body.name,
+        slug: body.slug,
+        workspaceRoot: body.workspaceRoot,
+        ...(body.description ? { description: body.description } : {}),
+        ...(body.syncEvidenceToCloud != null
+          ? { syncEvidenceToCloud: body.syncEvidenceToCloud }
+          : {}),
+      },
+      request,
+      reply,
+    );
     return reply.status(201).send(imported);
   });
 
@@ -207,15 +218,20 @@ export async function registerCommercialValidationRoutes(
 
     if (body.source === "local") {
       return reply.status(201).send(
-        await importLocal(app, {
-          name: body.name,
-          slug: body.slug,
-          workspaceRoot: body.workspaceRoot,
-          ...(body.description ? { description: body.description } : {}),
-          ...(body.syncEvidenceToCloud != null
-            ? { syncEvidenceToCloud: body.syncEvidenceToCloud }
-            : {}),
-        }),
+        await importLocal(
+          app,
+          {
+            name: body.name,
+            slug: body.slug,
+            workspaceRoot: body.workspaceRoot,
+            ...(body.description ? { description: body.description } : {}),
+            ...(body.syncEvidenceToCloud != null
+              ? { syncEvidenceToCloud: body.syncEvidenceToCloud }
+              : {}),
+          },
+          request,
+          reply,
+        ),
       );
     }
 
@@ -268,6 +284,8 @@ export async function registerCommercialValidationRoutes(
         app,
         project,
         body.syncEvidenceToCloud,
+        request,
+        reply,
       );
       const verdict = buildAtlasVerdict({
         projectId: project.id,
@@ -332,6 +350,8 @@ export async function registerCommercialValidationRoutes(
       app,
       project,
       body.syncEvidenceToCloud,
+      request,
+      reply,
     );
     const verdict = buildAtlasVerdict({
       projectId: project.id,
@@ -374,6 +394,36 @@ export async function registerCommercialValidationRoutes(
       updatedAt: new Date().toISOString(),
     });
   });
+
+  /**
+   * Design Partner audit spine — one-click: audit-engine → Verdict + Health + Readiness
+   * deep-link targets + shareable checklist (markdown/JSON). No email automation.
+   */
+  app.post("/api/v1/partners/audit-spine", async (request, reply) => {
+    osStore.ensureLoaded();
+    const body = partnerAuditSpineRequestSchema.parse(request.body ?? {});
+    const project = osStore.getProject(body.projectId);
+    if (!project) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    try {
+      const result = runPartnerAuditSpine({
+        projectId: body.projectId,
+        ...(body.intent !== undefined ? { intent: body.intent } : {}),
+        includeConstitution: body.includeConstitution,
+        issueCertificate: body.issueCertificate,
+        envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT,
+        recordHealthReport: recordSystemHealthReport,
+      });
+      return reply.status(201).send(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Audit spine failed";
+      if (message === "Project not found") {
+        throw new AtlasError("NOT_FOUND", message);
+      }
+      throw new AtlasError("INTERNAL_ERROR", message);
+    }
+  });
 }
 
 async function importLocal(
@@ -385,6 +435,8 @@ async function importLocal(
     description?: string;
     syncEvidenceToCloud?: boolean;
   },
+  request: FastifyRequest,
+  reply: FastifyReply,
 ) {
   const root = resolve(body.workspaceRoot);
   if (!existsSync(root)) {
@@ -428,6 +480,8 @@ async function importLocal(
     app,
     project,
     body.syncEvidenceToCloud,
+    request,
+    reply,
   );
   const verdict = buildAtlasVerdict({
     projectId: project.id,

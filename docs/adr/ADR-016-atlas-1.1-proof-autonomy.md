@@ -69,7 +69,8 @@ Compare suite pass rates. Drop or task PASS→FAIL ⇒ **BLOCKED**.
 
 ## Consequences
 
-- UI: `/he/proof`
-- APIs: `/api/v1/engineering/loop*`, `/api/v1/benchmarks*`, `/api/v1/actions/classify`, `/api/v1/golden/project`
-- Package: `@atlas/engineering-loop`
+- UI: `/he/proof` (Run Proof 1.1 + last status)
+- APIs: `/api/v1/proof/run`, `/api/v1/proof/status`, `/api/v1/engineering/loop*`, `/api/v1/benchmarks*`, `/api/v1/actions/classify`, `/api/v1/golden/project`
+- CLI: `pnpm proof:run` (env → BrokerOS → `fixtures/golden-brokeros`)
+- Package: `@atlas/engineering-loop` (`runAtlasProof`)
 - Docs: `atlas-evals/README.md`

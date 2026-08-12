@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Box,
   Drawer,
@@ -18,32 +18,29 @@ import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 import { useTranslations, useLocale } from "next-intl";
 import { useTheme } from "@mui/material/styles";
-import { useSearchParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 
 const DRAWER_WIDTH = 248;
 
+/** Primary nav — demo-critical surfaces only (contract/metrics live under Settings). */
 const NAV_KEYS = [
   "dashboard",
   "projects",
+  "state",
+  "chat",
   "agent",
   "models",
+  "agents",
   "patches",
-  "gates",
-  "eval",
   "proof",
   "readiness",
   "health",
-  "contract",
   "partners",
   "qa",
   "experts",
-  "uiux",
-  "design",
-  "artifacts",
-  "conflicts",
+  "legalMedia",
   "plan",
   "memory",
   "decisions",
@@ -54,22 +51,19 @@ const NAV_KEYS = [
 const PATHS: Record<(typeof NAV_KEYS)[number], string> = {
   dashboard: "/",
   projects: "/projects",
+  state: "/state",
+  chat: "/chat",
   agent: "/agent",
   models: "/models",
+  agents: "/agents",
   patches: "/patches",
-  gates: "/gates",
-  eval: "/eval",
   proof: "/proof",
   readiness: "/readiness",
   health: "/health",
-  contract: "/contract",
   partners: "/partners",
   qa: "/qa",
   experts: "/experts",
-  uiux: "/experts?expert=UI_UX",
-  design: "/experts?expert=VISUAL_DESIGN",
-  artifacts: "/artifacts",
-  conflicts: "/conflicts",
+  legalMedia: "/legal-media",
   plan: "/plan",
   memory: "/memory",
   decisions: "/decisions",
@@ -80,20 +74,16 @@ const PATHS: Record<(typeof NAV_KEYS)[number], string> = {
 function isNavSelected(
   key: (typeof NAV_KEYS)[number],
   pathname: string,
-  expertParam: string | null,
 ): boolean {
-  if (key === "uiux") {
-    return pathname.startsWith("/experts") && expertParam === "UI_UX";
-  }
-  if (key === "design") {
-    return pathname.startsWith("/experts") && expertParam === "VISUAL_DESIGN";
-  }
-  if (key === "experts") {
+  if (key === "state") {
     return (
-      pathname.startsWith("/experts") &&
-      expertParam !== "UI_UX" &&
-      expertParam !== "VISUAL_DESIGN"
+      pathname === "/state" ||
+      pathname.startsWith("/state/") ||
+      /\/projects\/[^/]+\/state$/.test(pathname)
     );
+  }
+  if (key === "projects" && /\/projects\/[^/]+\/state$/.test(pathname)) {
+    return false;
   }
   const href = PATHS[key];
   if (!href || !pathname) {
@@ -117,16 +107,30 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useTranslations();
   const locale = useLocale();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const expertParam = searchParams.get("expert");
   const isRtl = locale === "he" || locale === "ar";
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileNavId = useId();
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     setMobileOpen(false);
-  }, [pathname, expertParam]);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileOpen(false);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (mobileOpen) {
+      closeButtonRef.current?.focus();
+    }
+  }, [mobileOpen]);
 
   const meQuery = useQuery({
     queryKey: ["auth-session"],
@@ -153,15 +157,37 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.location.href = `/${locale}/auth/login`;
   };
 
+  const closeMobileNav = () => {
+    setMobileOpen(false);
+    queueMicrotask(() => menuButtonRef.current?.focus());
+  };
+
+  const focusMain = (event?: MouseEvent<HTMLAnchorElement>) => {
+    event?.preventDefault();
+    const main = mainRef.current ?? document.getElementById("main-content");
+    main?.focus({ preventScroll: false });
+    main?.scrollIntoView({ block: "start" });
+  };
+
   const nav = (
     <>
       <Stack spacing={0.5} sx={{ px: 1.5, mb: 3 }}>
         <Typography
-          component="p"
+          component={Link}
+          href="/"
           variant="h5"
+          onClick={() => setMobileOpen(false)}
           sx={{
             fontFamily: '"Fraunces", "Frank Ruhl Libre", serif',
             letterSpacing: "-0.03em",
+            color: "inherit",
+            textDecoration: "none",
+            display: "inline-block",
+            borderRadius: 1,
+            "&:focus-visible": {
+              outline: "3px solid #C45C26",
+              outlineOffset: 2,
+            },
           }}
         >
           {t("brand.name")}
@@ -175,7 +201,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <List dense disablePadding>
           {NAV_KEYS.map((key) => {
             const href = PATHS[key];
-            const selected = isNavSelected(key, pathname, expertParam);
+            const selected = isNavSelected(key, pathname);
             return (
               <ListItemButton
                 key={key}
@@ -257,6 +283,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               variant={locale === code ? "contained" : "outlined"}
               color="secondary"
               aria-pressed={locale === code}
+              aria-label={t(`a11y.lang.${code}`)}
+              lang={code}
               sx={{ minWidth: 44, px: 1.2 }}
             >
               {code.toUpperCase()}
@@ -269,6 +297,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const drawerPaperSx = {
     width: DRAWER_WIDTH,
+    maxWidth: "100vw",
     border: 0,
     background:
       "linear-gradient(180deg, rgba(15,61,62,0.96) 0%, rgba(20,40,42,0.98) 100%)",
@@ -277,6 +306,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     py: 2.5,
     display: "flex",
     flexDirection: "column" as const,
+    overflowX: "hidden" as const,
   };
 
   return (
@@ -284,10 +314,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       sx={{
         display: "flex",
         minHeight: "100vh",
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "clip",
         flexDirection: isRtl ? "row-reverse" : "row",
       }}
     >
-      <a href="#main-content" className="skip-link">
+      <a href="#main-content" className="skip-link" onClick={focusMain}>
         {t("a11y.skipToContent")}
       </a>
 
@@ -295,14 +328,19 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Drawer
           variant="temporary"
           open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
+          onClose={closeMobileNav}
           anchor={isRtl ? "right" : "left"}
           ModalProps={{ keepMounted: true }}
-          PaperProps={{ sx: drawerPaperSx, "aria-label": t("nav.main") }}
+          PaperProps={{
+            sx: drawerPaperSx,
+            "aria-label": t("nav.main"),
+            id: mobileNavId,
+          }}
         >
           <Stack direction="row" justifyContent="flex-end">
             <IconButton
-              onClick={() => setMobileOpen(false)}
+              ref={closeButtonRef}
+              onClick={closeMobileNav}
               aria-label={t("a11y.closeMenu")}
               sx={{ color: "#F4F7F5" }}
             >
@@ -321,7 +359,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             flexShrink: 0,
             [`& .MuiDrawer-paper`]: drawerPaperSx,
           }}
-          PaperProps={{ "aria-label": t("nav.main") }}
+          PaperProps={{ "aria-label": t("nav.main"), component: "aside" }}
         >
           {nav}
         </Drawer>
@@ -330,12 +368,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Box
         component="main"
         id="main-content"
+        ref={mainRef}
         tabIndex={-1}
+        aria-label={t("a11y.mainContent")}
         sx={{
           flex: 1,
+          minWidth: 0,
           width: { xs: "100%", md: `calc(100% - ${DRAWER_WIDTH}px)` },
-          p: { xs: 2, sm: 3, md: 4 },
           maxWidth: "100%",
+          overflowX: "clip",
+          p: { xs: 2, sm: 3, md: 4 },
           outline: "none",
         }}
       >
@@ -344,19 +386,24 @@ export function AppShell({ children }: { children: ReactNode }) {
             direction="row"
             alignItems="center"
             spacing={1}
-            sx={{ mb: 2 }}
+            sx={{ mb: 2, minWidth: 0 }}
             component="header"
           >
             <IconButton
+              ref={menuButtonRef}
               edge="start"
               onClick={() => setMobileOpen(true)}
               aria-label={t("a11y.openMenu")}
               aria-expanded={mobileOpen}
-              aria-controls="mobile-nav"
+              aria-controls={mobileNavId}
             >
               <MenuIcon />
             </IconButton>
-            <Typography component="p" fontWeight={700}>
+            <Typography
+              component="p"
+              fontWeight={700}
+              sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
               {t("brand.name")}
             </Typography>
           </Stack>

@@ -81,7 +81,22 @@ describe("durable knowledge corpus", () => {
       query: "webhook idempotency",
       minAuthority: 0.3,
       vectorScores: { kf_custom: 0.9 },
+      retrievalBackend: "local",
     });
     expect(search.hits.some((h) => h.id === "kf_custom")).toBe(true);
+    expect(search.retrievalBackend).toBe("local");
+  });
+
+  it("returns INSUFFICIENT_EVIDENCE when hybrid filter yields zero hits", () => {
+    resetKnowledgeCorpusToSeed();
+    const search = searchKnowledgeFabric({
+      query: "zzzz-no-such-topic-xyz",
+      minAuthority: 0.99,
+      allowStale: false,
+      retrievalBackend: "local",
+    });
+    expect(search.hits).toHaveLength(0);
+    expect(search.plainLanguage).toMatch(/INSUFFICIENT_EVIDENCE/);
+    expect(search.retrievalBackend).toBe("local");
   });
 });

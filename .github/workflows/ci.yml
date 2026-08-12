@@ -20,8 +20,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Typecheck packages
-        run: pnpm --filter @atlas/shared --filter @atlas/config --filter @atlas/agent-core --filter @atlas/knowledge --filter @atlas/integrations-github build
+        run: pnpm --filter @atlas/shared --filter @atlas/config --filter @atlas/agent-core --filter @atlas/knowledge --filter @atlas/integrations-github --filter @atlas/observability --filter @atlas/code-intelligence build
       - name: Unit tests
         run: pnpm test:unit
       - name: Lint
         run: pnpm exec eslint packages apps --max-warnings 0
+      - name: Atlas CI eval gate (blocking)
+        env:
+          ATLAS_SKIP_AUDIT_LOG: "1"
+          ATLAS_SKIP_METRICS_LOG: "1"
+          NODE_ENV: test
+        run: pnpm --filter @atlas/api exec tsx src/scripts/ci-eval-gate.ts

@@ -39,6 +39,12 @@ export default function AuthCallbackPage() {
           avatarUrl: session.user.user_metadata?.avatar_url ?? null,
           provider,
           locale,
+          // Forward the Supabase session the browser already holds so the
+          // API can route cloud writes through an RLS-scoped client instead
+          // of the service-role bypass (see apps/api/.../auth.ts oauth/sync).
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token ?? null,
+          expiresAt: session.expires_at ? session.expires_at * 1000 : null,
         });
         if (!cancelled) {
           router.replace("/");

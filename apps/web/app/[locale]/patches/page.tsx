@@ -26,6 +26,7 @@ interface PatchItem {
   evaluationSummary: string | null;
   sourceIssueId?: string | null;
   createdBy?: string;
+  verifiedAt?: string | null;
   filesChanged: Array<{ path: string; action: string; summary: string }>;
   approvals: Array<{ by: string; at: string }>;
 }
@@ -65,6 +66,16 @@ export default function PatchesPage() {
     mutationFn: (id: string) =>
       apiPost(`/api/v1/code/patches/${id}/rollback`, {
         workspaceRoot: root,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["patches"] });
+    },
+  });
+
+  const verify = useMutation({
+    mutationFn: (id: string) =>
+      apiPost(`/api/v1/remediation/drafts/${id}/verify`, {
+        ...(root.trim() ? { workspaceRoot: root.trim() } : {}),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["patches"] });
@@ -115,6 +126,9 @@ export default function PatchesPage() {
               {patch.sourceIssueId || patch.createdBy === "atlas-auto-remediation" ? (
                 <Chip size="small" color="info" label={t("autoFix")} />
               ) : null}
+              {patch.verifiedAt || patch.status === "VERIFIED" ? (
+                <Chip size="small" color="success" label={t("verified")} />
+              ) : null}
             </Stack>
             <Typography variant="body2" sx={{ mt: 1 }}>
               {patch.reason}
@@ -135,6 +149,7 @@ export default function PatchesPage() {
                 disabled={
                   approve.isPending ||
                   patch.status === "APPLIED" ||
+                  patch.status === "VERIFIED" ||
                   patch.status === "APPROVED" ||
                   patch.status === "ROLLED_BACK"
                 }
@@ -153,15 +168,36 @@ export default function PatchesPage() {
               <Button
                 size="small"
                 color="warning"
-                disabled={rollback.isPending || patch.status !== "APPLIED"}
+                disabled={
+                  rollback.isPending ||
+                  (patch.status !== "APPLIED" && patch.status !== "VERIFIED")
+                }
                 onClick={() => rollback.mutate(patch.id)}
               >
                 {t("rollback")}
               </Button>
+              {(patch.sourceIssueId ||
+                patch.createdBy === "atlas-auto-remediation") &&
+              (patch.status === "APPLIED" || patch.status === "VERIFIED") ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="success"
+                  disabled={verify.isPending || patch.status === "VERIFIED"}
+                  onClick={() => verify.mutate(patch.id)}
+                >
+                  {t("verify")}
+                </Button>
+              ) : null}
             </Stack>
             {apply.isError ? (
               <Alert severity="error" sx={{ mt: 1 }}>
                 {(apply.error as Error).message}
+              </Alert>
+            ) : null}
+            {verify.isError ? (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {(verify.error as Error).message}
               </Alert>
             ) : null}
           </Box>

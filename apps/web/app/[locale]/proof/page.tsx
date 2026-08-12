@@ -32,14 +32,6 @@ interface LoopRun {
   workspaceRoot: string;
 }
 
-interface SuiteResult {
-  taskId: string;
-  status: string;
-  notes: string;
-  evidenceCount: number;
-  unauthorizedWrite: boolean;
-}
-
 interface SuitePayload {
   suite: {
     id: string;
@@ -47,7 +39,13 @@ interface SuitePayload {
     passed: number;
     failed: number;
     unauthorizedWrites: number;
-    results: SuiteResult[];
+    results: Array<{
+      taskId: string;
+      status: string;
+      notes: string;
+      evidenceCount: number;
+      unauthorizedWrite: boolean;
+    }>;
   };
   metrics: {
     truth: number;
@@ -55,6 +53,60 @@ interface SuitePayload {
     qaAccuracy: number;
     autonomy: number;
   };
+}
+
+interface ProofReport {
+  id: string;
+  status: "PASS" | "FAIL" | "PARTIAL";
+  plainLanguageSummary: string;
+  evidenceReportMarkdown: string;
+  golden: {
+    slug: string;
+    workspaceRoot: string;
+    source: string;
+    exists: boolean;
+  };
+  gates: Array<{
+    id: string;
+    taskId: string;
+    title: string;
+    status: string;
+    evidenceCount: number;
+  }>;
+  checklist: {
+    workspaceExists: boolean;
+    allGatesPass: boolean;
+    unauthorizedWritesZero: boolean;
+    suitePassRateOk: boolean;
+  };
+  metrics: {
+    truth: number;
+    engineeringSuccess: number;
+    qaAccuracy: number;
+    autonomy: number;
+  };
+  suite: {
+    passRate: number;
+    passed: number;
+    failed: number;
+    unauthorizedWrites: number;
+  };
+  verdictSummary: {
+    status: string | null;
+    productionReadiness: number | null;
+  } | null;
+}
+
+interface ProofStatus {
+  hasRun: boolean;
+  golden: {
+    slug: string;
+    workspaceRoot: string;
+    exists: boolean;
+    source: string;
+  };
+  report: ProofReport | null;
+  howToRun: string[];
 }
 
 export default function ProofPage() {
@@ -71,7 +123,14 @@ export default function ProofPage() {
         slug: string;
         workspaceRoot: string;
         exists: boolean;
+        source?: string;
+        note?: string;
       }>("/api/v1/golden/project"),
+  });
+
+  const proofStatus = useQuery({
+    queryKey: ["proof-status"],
+    queryFn: () => apiGet<ProofStatus>("/api/v1/proof/status"),
   });
 
   const tasks = useQuery({
@@ -88,7 +147,6 @@ export default function ProofPage() {
         userRequest: request,
         projectSlug: "brokeros",
         workspaceRoot: golden.data?.workspaceRoot,
-        projectId: "16d7bb7e-dd23-498e-b3f3-f5f4e4f1c50f",
       }),
   });
 
@@ -109,12 +167,23 @@ export default function ProofPage() {
       apiPost<SuitePayload>("/api/v1/benchmarks/run", {
         workspaceRoot: golden.data?.workspaceRoot,
         projectSlug: "brokeros",
-        projectId: "16d7bb7e-dd23-498e-b3f3-f5f4e4f1c50f",
       }),
+  });
+
+  const proof = useMutation({
+    mutationFn: () =>
+      apiPost<ProofReport>("/api/v1/proof/run", {
+        workspaceRoot: golden.data?.workspaceRoot,
+        projectSlug: "brokeros",
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["proof-status"] });
+    },
   });
 
   const run = loop.data ?? approve.data;
   const suite = bench.data;
+  const proofReport = proof.data ?? proofStatus.data?.report ?? null;
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 960 }}>
@@ -131,7 +200,24 @@ export default function ProofPage() {
           path: golden.data?.workspaceRoot ?? "…",
           ok: golden.data?.exists ? "OK" : "MISSING",
         })}
+        {golden.data?.source
+          ? ` · source=${golden.data.source}`
+          : null}
       </Alert>
+
+      {proofStatus.data ? (
+        <Alert severity={proofReport?.status === "PASS" ? "success" : "info"}>
+          {proofStatus.data.hasRun
+            ? t("lastStatus", {
+                status: proofReport?.status ?? "…",
+                summary: proofReport?.plainLanguageSummary ?? "",
+              })
+            : t("neverRun")}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {(proofStatus.data.howToRun ?? []).join(" · ")}
+          </Typography>
+        </Alert>
+      ) : null}
 
       <TextField
         label={t("request")}
@@ -143,6 +229,14 @@ export default function ProofPage() {
       />
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        <Button
+          variant="contained"
+          color="secondary"
+          disabled={proof.isPending}
+          onClick={() => proof.mutate()}
+        >
+          {t("runProof")}
+        </Button>
         <Button
           variant="contained"
           disabled={loop.isPending}
@@ -174,6 +268,62 @@ export default function ProofPage() {
               </Typography>
             ))}
           </Stack>
+        </Box>
+      ) : null}
+
+      {proofReport ? (
+        <Box>
+          <Typography fontWeight={700}>{t("proofResult")}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+            <Chip
+              label={proofReport.status}
+              color={
+                proofReport.status === "PASS"
+                  ? "success"
+                  : proofReport.status === "PARTIAL"
+                    ? "warning"
+                    : "error"
+              }
+            />
+            <Chip
+              label={`${Math.round(proofReport.suite.passRate * 100)}%`}
+              variant="outlined"
+            />
+            <Chip
+              label={`${t("unauthorized", { n: proofReport.suite.unauthorizedWrites })}`}
+              variant="outlined"
+            />
+          </Stack>
+          <Typography sx={{ mt: 1 }}>{proofReport.plainLanguageSummary}</Typography>
+          {proofReport.verdictSummary?.status ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {t("verdictAttached", {
+                status: proofReport.verdictSummary.status,
+                score: proofReport.verdictSummary.productionReadiness ?? "—",
+              })}
+            </Typography>
+          ) : null}
+          <Stack spacing={0.5} sx={{ mt: 1 }}>
+            {proofReport.gates.map((g) => (
+              <Typography key={g.id} variant="body2">
+                Gate {g.id}: {g.status} · {g.taskId} · evidence={g.evidenceCount}
+              </Typography>
+            ))}
+          </Stack>
+          <Typography
+            component="pre"
+            variant="body2"
+            sx={{
+              mt: 2,
+              p: 1.5,
+              bgcolor: "action.hover",
+              whiteSpace: "pre-wrap",
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+            }}
+          >
+            {proofReport.evidenceReportMarkdown}
+          </Typography>
         </Box>
       ) : null}
 
@@ -246,9 +396,9 @@ export default function ProofPage() {
         </Box>
       ) : null}
 
-      {loop.isError || bench.isError ? (
+      {loop.isError || bench.isError || proof.isError ? (
         <Alert severity="error">
-          {((loop.error || bench.error) as Error).message}
+          {((loop.error || bench.error || proof.error) as Error).message}
         </Alert>
       ) : null}
     </Stack>

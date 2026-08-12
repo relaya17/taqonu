@@ -11,7 +11,10 @@ export const fabricAgentIdSchema = z.enum(FABRIC_AGENT_IDS);
 export const fabricAgentPublicSchema = z.object({
   id: fabricAgentIdSchema,
   title: z.string(),
+  titleHe: z.string().optional(),
+  titleAr: z.string().optional(),
   specialty: z.string(),
+  category: z.string().optional(),
   allowedTools: z.array(z.string()),
   forbiddenTools: z.array(z.string()),
   evidenceRequirements: z.array(z.string()),
@@ -21,11 +24,21 @@ export const fabricAgentPublicSchema = z.object({
   canWriteCode: z.boolean(),
   evaluationSuite: z.string(),
   trustLevel: z.enum(["LAB", "BETA", "GA"]).default("LAB"),
+  costHintEn: z.string().optional(),
+  costHintHe: z.string().optional(),
+  costHintAr: z.string().optional(),
+  strengthsEn: z.array(z.string()).optional(),
+  strengthsHe: z.array(z.string()).optional(),
+  strengthsAr: z.array(z.string()).optional(),
+  weaknessesEn: z.array(z.string()).optional(),
+  weaknessesHe: z.array(z.string()).optional(),
+  weaknessesAr: z.array(z.string()).optional(),
 });
 
 export const agentPlanRequestSchema = z.object({
   request: z.string().min(1).max(8000),
   projectId: uuidSchema.nullable().optional(),
+  agentIds: z.array(fabricAgentIdSchema).min(1).max(8).optional(),
   maxAgents: z.number().int().min(1).max(8).default(5),
   budgetUsd: z.number().min(0).max(20).default(2),
 });
@@ -128,6 +141,8 @@ export const knowledgeSearchResultSchema = z.object({
   hits: z.array(knowledgeHitSchema),
   filteredOut: z.number().int().min(0),
   plainLanguage: z.string(),
+  /** pgvector when live DB answered; local = file corpus + local embeddings. */
+  retrievalBackend: z.enum(["pgvector", "local"]).optional(),
 });
 
 export const lessonLearnedSchema = z.object({

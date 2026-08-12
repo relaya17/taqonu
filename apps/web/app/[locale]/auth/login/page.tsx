@@ -63,6 +63,8 @@ export default function LoginPage() {
     if (error) setOauthError(error.message);
   };
 
+  const canSubmit = !login.isPending && Boolean(email) && password.length >= 8;
+
   return (
     <Stack
       spacing={3}
@@ -70,46 +72,57 @@ export default function LoginPage() {
         maxWidth: 440,
         mx: "auto",
         width: "100%",
+        minWidth: 0,
         py: { xs: 2, md: 6 },
       }}
     >
       <Box>
-        <Typography variant="h1">{t("loginTitle")}</Typography>
+        <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" } }}>
+          {t("loginTitle")}
+        </Typography>
         <Typography color="text.secondary" sx={{ mt: 1 }}>
           {t("loginSubtitle")}
         </Typography>
       </Box>
 
-      <TextField
-        label={t("email")}
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        fullWidth
-        required
-      />
-      <TextField
-        label={t("password")}
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        fullWidth
-        required
-      />
-
-      <Button
-        variant="contained"
-        fullWidth
-        disabled={login.isPending || !email || password.length < 8}
-        onClick={() => login.mutate()}
+      <Box
+        component="form"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) login.mutate();
+        }}
       >
-        {t("login")}
-      </Button>
+        <Stack spacing={2}>
+          <TextField
+            label={t("email")}
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            fullWidth
+            required
+          />
+          <TextField
+            label={t("password")}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            fullWidth
+            required
+          />
+
+          <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>
+            {t("login")}
+          </Button>
+        </Stack>
+      </Box>
 
       {login.isError ? (
-        <Alert severity="error">{(login.error as Error).message}</Alert>
+        <Alert severity="error" role="alert">
+          {(login.error as Error).message}
+        </Alert>
       ) : null}
 
       <Divider>{t("or")}</Divider>
@@ -136,7 +149,11 @@ export default function LoginPage() {
             {t("oauthNeedsCloud")}
           </Typography>
         ) : null}
-        {oauthError ? <Alert severity="error">{oauthError}</Alert> : null}
+        {oauthError ? (
+          <Alert severity="error" role="alert">
+            {oauthError}
+          </Alert>
+        ) : null}
       </Stack>
 
       <Typography variant="body2">

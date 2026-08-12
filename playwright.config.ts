@@ -1,8 +1,16 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Critical-path smoke for ArletOS demo surfaces.
- * Run: pnpm exec playwright test (after pnpm exec playwright install)
+ * Playwright suites for ArletOS (e2e/).
+ *
+ *   pnpm test:e2e              — all suites
+ *   pnpm test:e2e:critical     — critical-path smoke (keep green)
+ *   pnpm test:e2e:product      — broader product surfaces
+ *   pnpm test:e2e:security     — API auth / webhook / redaction checks
+ *   pnpm test:e2e:a11y         — light a11y / responsive smoke
+ *
+ * Requires: pnpm exec playwright install
+ * Optional: PLAYWRIGHT_BASE_URL (web), PLAYWRIGHT_API_URL (API, default :4000)
  */
 export default defineConfig({
   testDir: "./e2e",

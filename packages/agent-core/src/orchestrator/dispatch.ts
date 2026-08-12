@@ -20,9 +20,10 @@ function runSpecialistStub(agentId: FabricAgentId, request: string) {
 
   return agentRunResultSchema.parse({
     agentId,
-    status: hasHint || agentId === "ORCHESTRATOR" || agentId === "JUDGE"
-      ? "COMPLETED"
-      : "NEEDS_EVIDENCE",
+    status:
+      hasHint || agentId === "ORCHESTRATOR" || agentId === "JUDGE"
+        ? "COMPLETED"
+        : "NEEDS_EVIDENCE",
     summary:
       agentId === "ORCHESTRATOR"
         ? `Planned specialists with isolated contexts for: ${request.slice(0, 160)}`
@@ -30,10 +31,15 @@ function runSpecialistStub(agentId: FabricAgentId, request: string) {
     claims: [
       `${def.id}: specialty=${def.specialty}`,
       `WRITE=${def.canWriteCode ? "patch-only-gated" : "forbidden"}`,
+      `budgetCapUsd=${def.maxCostUsd}`,
     ],
     evidenceRefs: needs.map((n) => `required:${n}`),
     epistemicState:
-      agentId === "ORCHESTRATOR" ? "INFERRED" : hasHint ? "INFERRED" : "UNVERIFIED",
+      agentId === "ORCHESTRATOR"
+        ? "INFERRED"
+        : hasHint
+          ? "INFERRED"
+          : "UNVERIFIED",
     costUsd: Number((def.maxCostUsd * 0.05).toFixed(4)),
     durationMs: Math.max(1, Date.now() - started),
   });
@@ -55,13 +61,12 @@ export function dispatchAgentPlan(input: {
       ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
       ...(input.maxAgents !== undefined ? { maxAgents: input.maxAgents } : {}),
       ...(input.budgetUsd !== undefined ? { budgetUsd: input.budgetUsd } : {}),
+      ...(input.agentIds !== undefined ? { agentIds: input.agentIds } : {}),
     });
 
-  const selected = input.agentIds?.length
-    ? plan.steps.filter((s) => input.agentIds!.includes(s.agentId))
-    : plan.steps;
+  // Plan already honors forced agentIds — run all non-Judge steps in parallel groups
+  const selected = plan.steps;
 
-  // Parallel groups: run group 0 then 1 then 2 (Judge last)
   const byGroup = new Map<number, typeof selected>();
   for (const step of selected) {
     const g = byGroup.get(step.parallelGroup) ?? [];

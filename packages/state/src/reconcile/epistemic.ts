@@ -1,12 +1,23 @@
 import type { EpistemicState } from "@atlas/shared";
 
+/**
+ * Lower = weaker. Overall project state takes the weakest slice —
+ * never upgrade PROPOSED/INFERRED to FACT.
+ */
 const RANK: Record<EpistemicState, number> = {
   CONFLICTED: 0,
-  UNKNOWN: 1,
-  PROPOSED: 2,
-  INFERRED: 3,
-  CONFIRMED: 4,
-  FACT: 5,
+  CONTRADICTED: 0,
+  INSUFFICIENT_EVIDENCE: 1,
+  UNKNOWN: 2,
+  UNVERIFIED: 3,
+  ASSUMED: 3,
+  STALE: 3,
+  PROPOSED: 4,
+  INFERRED: 5,
+  OBSERVED: 6,
+  CONFIRMED: 7,
+  VERIFIED: 8,
+  FACT: 9,
 };
 
 /** Overall state is the weakest slice — never upgrade PROPOSED to FACT. */

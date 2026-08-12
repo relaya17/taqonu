@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
   Claim,
@@ -9,6 +9,7 @@ import type {
   ProjectStateSnapshot,
   Artifact,
   AssistRun,
+  AgentRun,
   CreditsBalance,
   ContactLead,
   PatchArtifact,
@@ -20,8 +21,15 @@ import type {
   RegressionReport,
   ProductionReadinessCertificate,
 } from "@atlas/shared";
+import { parseEvidenceRecord } from "@atlas/shared";
 import type { ConnectorObservation } from "@atlas/state";
 import type { GitHubRepoObservation } from "@atlas/integrations-github";
+import {
+  appendAuditLogLine,
+  AUDIT_MEMORY_RING,
+  resolveAuditLogPath,
+} from "../services/audit-log.js";
+import { atomicWriteStoreFile, loadJsonWithBackup } from "./store-io.js";
 
 export interface DbFeedObservation {
   readonly provider: "supabase" | "mongodb";
@@ -45,6 +53,21 @@ export interface StoredGithubConnection {
   connectedAt: string | null;
   updatedAt: string;
   lastError: string | null;
+}
+
+/** GitHub App installation confirmed via the App-level JWT (GET /app/installations/{id}). */
+export interface StoredGithubAppInstallation {
+  installationId: string;
+  /** Project this installation is linked to, or null for an account-level install. */
+  projectId: string | null;
+  accountLogin: string | null;
+  accountType: string | null;
+  targetType: string | null;
+  repositorySelection: string | null;
+  setupAction: string | null;
+  suspendedAt: string | null;
+  installedAt: string;
+  updatedAt: string;
 }
 
 export interface StoredLocalConnection {
@@ -71,15 +94,21 @@ interface PersistedShape {
   openTasks: Record<string, string[]>;
   events: Array<Record<string, unknown>>;
   githubConnection?: StoredGithubConnection | null;
+  githubAppInstallations?: Record<string, StoredGithubAppInstallation>;
   localConnection?: StoredLocalConnection | null;
   /** Local project id → cloud row id (ADR-011) */
   cloudLinks?: Record<string, CloudProjectLink>;
+  /** Legacy single-instance plan (kept for personal deployments). */
   plan?: StoredPlan | null;
+  /** Per-tenant Stripe/freemium subscription state keyed by owner_id. */
+  tenantSubscriptions?: Record<string, StoredTenantSubscription>;
   artifacts?: Artifact[];
   assistRuns?: AssistRun[];
   credits?: CreditsBalance | null;
   conflictResolutions?: Record<string, string>;
   audit?: Array<Record<string, unknown>>;
+  /** Recent agent run summaries (ring); durable trail also in audit.ndjson. */
+  agentRuns?: AgentRun[];
   contactLeads?: ContactLead[];
   patches?: PatchArtifact[];
   gateGraphs?: QualityGateGraph[];
@@ -92,6 +121,16 @@ interface PersistedShape {
   meta?: Record<string, string>;
   /** Local absolute paths for BYO project roots (explicit permissions). */
   workspaceRoots?: Record<string, string>;
+  /** Durable conversation threads (survives API restart). */
+  conversationThreads?: Record<string, ConversationThreadTurn[]>;
+}
+
+export interface ConversationThreadTurn {
+  role: "user" | "assistant";
+  content: string;
+  epistemicLabel?: string;
+  evidenceRefs?: unknown[];
+  at: string;
 }
 
 export interface CloudProjectLink {
@@ -101,6 +140,25 @@ export interface CloudProjectLink {
 
 export interface StoredPlan {
   tier: "free" | "pro";
+  updatedAt: string;
+}
+
+export type TenantSubscriptionStatus =
+  | "active"
+  | "canceled"
+  | "past_due"
+  | "trialing"
+  | "incomplete"
+  | "none";
+
+/** Tenant-scoped freemium/Stripe subscription (ADR-011). */
+export interface StoredTenantSubscription {
+  ownerId: string;
+  tier: "free" | "pro";
+  status: TenantSubscriptionStatus;
+  cloudSlotLimit: number;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
   updatedAt: string;
 }
 
@@ -132,6 +190,11 @@ function storePath(): string {
   }
 }
 
+/** Load primary store, then `.bak`, so a torn write does not wipe state. */
+function loadPersistedShape(): PersistedShape | null {
+  return loadJsonWithBackup<PersistedShape>(storePath());
+}
+
 function emptyShape(): PersistedShape {
   return {
     projects: [],
@@ -145,14 +208,17 @@ function emptyShape(): PersistedShape {
     openTasks: {},
     events: [],
     githubConnection: null,
+    githubAppInstallations: {},
     localConnection: null,
     cloudLinks: {},
     plan: null,
+    tenantSubscriptions: {},
     artifacts: [],
     assistRuns: [],
     credits: null,
     conflictResolutions: {},
     audit: [],
+    agentRuns: [],
     contactLeads: [],
     patches: [],
     gateGraphs: [],
@@ -164,6 +230,7 @@ function emptyShape(): PersistedShape {
     readinessCertificates: [],
     meta: {},
     workspaceRoots: {},
+    conversationThreads: {},
   };
 }
 
@@ -181,14 +248,17 @@ class OsStore {
   readonly openTasks = new Map<string, string[]>();
   events: Array<Record<string, unknown>> = [];
   private githubConnection: StoredGithubConnection | null = null;
+  private githubAppInstallations = new Map<string, StoredGithubAppInstallation>();
   private localConnection: StoredLocalConnection | null = null;
   private cloudLinks = new Map<string, CloudProjectLink>();
   private plan: StoredPlan | null = null;
+  private tenantSubscriptions = new Map<string, StoredTenantSubscription>();
   private artifacts: Artifact[] = [];
   private assistRuns: AssistRun[] = [];
   private credits: CreditsBalance | null = null;
   private conflictResolutions = new Map<string, string>();
   private audit: Array<Record<string, unknown>> = [];
+  private agentRuns: AgentRun[] = [];
   private contactLeads: ContactLead[] = [];
   private patches: PatchArtifact[] = [];
   private gateGraphs: QualityGateGraph[] = [];
@@ -200,6 +270,7 @@ class OsStore {
   private readinessCertificates: ProductionReadinessCertificate[] = [];
   private meta: Record<string, string> = {};
   private workspaceRoots: Record<string, string> = {};
+  private conversationThreads = new Map<string, ConversationThreadTurn[]>();
   private loaded = false;
 
   ensureLoaded(): void {
@@ -207,71 +278,98 @@ class OsStore {
       return;
     }
     this.loaded = true;
-    const path = storePath();
-    if (!existsSync(path)) {
+    const raw = loadPersistedShape();
+    if (!raw) {
       return;
     }
-    try {
-      const raw = JSON.parse(readFileSync(path, "utf8")) as PersistedShape;
-      this.projects = raw.projects ?? [];
-      for (const [k, v] of Object.entries(raw.evidence ?? {})) {
-        this.evidence.set(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.claims ?? {})) {
-        this.claims.set(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.memories ?? {})) {
-        this.memories.set(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.decisions ?? {})) {
-        this.decisions.set(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.snapshots ?? {})) {
-        this.snapshots.set(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.github ?? {})) {
-        this.github.set(k, v);
-        this.rebuildGithubObservation(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.dbFeeds ?? {})) {
-        this.dbFeeds.set(k, v);
-        this.rebuildDbObservations(k, v);
-      }
-      for (const [k, v] of Object.entries(raw.openTasks ?? {})) {
-        this.openTasks.set(k, v);
-      }
-      this.events = raw.events ?? [];
-      this.githubConnection = raw.githubConnection ?? null;
-      this.localConnection = raw.localConnection ?? null;
-      this.cloudLinks = new Map(Object.entries(raw.cloudLinks ?? {}));
-      this.plan = raw.plan ?? null;
-      this.artifacts = raw.artifacts ?? [];
-      this.assistRuns = raw.assistRuns ?? [];
-      this.credits = raw.credits ?? null;
-      this.conflictResolutions = new Map(
-        Object.entries(raw.conflictResolutions ?? {}),
+    this.applyShape(raw);
+  }
+
+  /** True when local disk has no critical domain rows (safe to hydrate from cloud). */
+  isEssentiallyEmpty(): boolean {
+    this.ensureLoaded();
+    const memoryCount = [...this.memories.values()].reduce((n, list) => n + list.length, 0);
+    const decisionCount = [...this.decisions.values()].reduce((n, list) => n + list.length, 0);
+    return (
+      this.projects.length === 0 &&
+      memoryCount === 0 &&
+      decisionCount === 0 &&
+      this.tenantSubscriptions.size === 0
+    );
+  }
+
+  private applyShape(raw: PersistedShape): void {
+    this.projects = raw.projects ?? [];
+    for (const [k, v] of Object.entries(raw.evidence ?? {})) {
+      this.evidence.set(
+        k,
+        (v ?? []).map((item) => parseEvidenceRecord(item)),
       );
-      this.audit = raw.audit ?? [];
-      this.contactLeads = raw.contactLeads ?? [];
-      this.patches = raw.patches ?? [];
-      this.gateGraphs = raw.gateGraphs ?? [];
-      this.evalRuns = raw.evalRuns ?? [];
-      this.usageMeters = raw.usageMeters ?? { evalRunsByDay: {} };
-      this.loopRuns = raw.loopRuns ?? [];
-      this.evalSuites = raw.evalSuites ?? [];
-      this.regressionReports = raw.regressionReports ?? [];
-      this.readinessCertificates = raw.readinessCertificates ?? [];
-      this.meta = raw.meta ?? {};
-      this.workspaceRoots = raw.workspaceRoots ?? {};
-    } catch {
-      // corrupt store — start fresh
     }
+    for (const [k, v] of Object.entries(raw.claims ?? {})) {
+      this.claims.set(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.memories ?? {})) {
+      this.memories.set(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.decisions ?? {})) {
+      this.decisions.set(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.snapshots ?? {})) {
+      this.snapshots.set(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.github ?? {})) {
+      this.github.set(k, v);
+      this.rebuildGithubObservation(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.dbFeeds ?? {})) {
+      this.dbFeeds.set(k, v);
+      this.rebuildDbObservations(k, v);
+    }
+    for (const [k, v] of Object.entries(raw.openTasks ?? {})) {
+      this.openTasks.set(k, v);
+    }
+    this.events = raw.events ?? [];
+    this.githubConnection = raw.githubConnection ?? null;
+    this.githubAppInstallations = new Map(
+      Object.entries(raw.githubAppInstallations ?? {}),
+    );
+    this.localConnection = raw.localConnection ?? null;
+    this.cloudLinks = new Map(Object.entries(raw.cloudLinks ?? {}));
+    this.plan = raw.plan ?? null;
+    this.tenantSubscriptions = new Map(
+      Object.entries(raw.tenantSubscriptions ?? {}),
+    );
+    this.artifacts = raw.artifacts ?? [];
+    this.assistRuns = raw.assistRuns ?? [];
+    this.credits = raw.credits ?? null;
+    this.conflictResolutions = new Map(
+      Object.entries(raw.conflictResolutions ?? {}),
+    );
+    this.audit = raw.audit ?? [];
+    this.agentRuns = raw.agentRuns ?? [];
+    this.contactLeads = raw.contactLeads ?? [];
+    this.patches = raw.patches ?? [];
+    this.gateGraphs = raw.gateGraphs ?? [];
+    this.evalRuns = raw.evalRuns ?? [];
+    this.usageMeters = raw.usageMeters ?? { evalRunsByDay: {} };
+    this.loopRuns = raw.loopRuns ?? [];
+    this.evalSuites = raw.evalSuites ?? [];
+    this.regressionReports = raw.regressionReports ?? [];
+    this.readinessCertificates = raw.readinessCertificates ?? [];
+    this.meta = raw.meta ?? {};
+    this.workspaceRoots = raw.workspaceRoots ?? {};
+    this.conversationThreads = new Map(
+      Object.entries(raw.conversationThreads ?? {}),
+    );
   }
 
   persist(): void {
     this.ensureLoaded();
+    if (process.env.ATLAS_SKIP_STORE_PERSIST === "1") {
+      return;
+    }
     const path = storePath();
-    mkdirSync(dirname(path), { recursive: true });
     const shape: PersistedShape = {
       projects: this.projects,
       evidence: Object.fromEntries(this.evidence),
@@ -284,14 +382,17 @@ class OsStore {
       openTasks: Object.fromEntries(this.openTasks),
       events: this.events.slice(-500),
       githubConnection: this.githubConnection,
+      githubAppInstallations: Object.fromEntries(this.githubAppInstallations),
       localConnection: this.localConnection,
       cloudLinks: Object.fromEntries(this.cloudLinks),
       plan: this.plan,
+      tenantSubscriptions: Object.fromEntries(this.tenantSubscriptions),
       artifacts: this.artifacts,
       assistRuns: this.assistRuns.slice(-200),
       credits: this.credits,
       conflictResolutions: Object.fromEntries(this.conflictResolutions),
-      audit: this.audit.slice(-1000),
+      audit: this.audit.slice(-AUDIT_MEMORY_RING),
+      agentRuns: this.agentRuns.slice(-200),
       contactLeads: this.contactLeads.slice(-500),
       patches: this.patches.slice(-200),
       gateGraphs: this.gateGraphs.slice(-50),
@@ -303,8 +404,9 @@ class OsStore {
       readinessCertificates: this.readinessCertificates.slice(-50),
       meta: this.meta,
       workspaceRoots: this.workspaceRoots,
+      conversationThreads: Object.fromEntries(this.conversationThreads),
     };
-    writeFileSync(path, JSON.stringify(shape, null, 2), "utf8");
+    atomicWriteStoreFile(path, JSON.stringify(shape, null, 2));
   }
 
   getGithubConnection(): StoredGithubConnection | null {
@@ -316,6 +418,34 @@ class OsStore {
     this.ensureLoaded();
     this.githubConnection = connection;
     this.persist();
+  }
+
+  upsertGithubAppInstallation(
+    installation: StoredGithubAppInstallation,
+  ): StoredGithubAppInstallation {
+    this.ensureLoaded();
+    this.githubAppInstallations.set(installation.installationId, installation);
+    this.persist();
+    return installation;
+  }
+
+  getGithubAppInstallation(installationId: string): StoredGithubAppInstallation | undefined {
+    this.ensureLoaded();
+    return this.githubAppInstallations.get(installationId);
+  }
+
+  listGithubAppInstallations(): readonly StoredGithubAppInstallation[] {
+    this.ensureLoaded();
+    return [...this.githubAppInstallations.values()];
+  }
+
+  getGithubAppInstallationForProject(
+    projectId: string,
+  ): StoredGithubAppInstallation | undefined {
+    this.ensureLoaded();
+    return [...this.githubAppInstallations.values()].find(
+      (item) => item.projectId === projectId,
+    );
   }
 
   getLocalConnection(): StoredLocalConnection | null {
@@ -338,6 +468,106 @@ class OsStore {
     this.ensureLoaded();
     this.plan = plan;
     this.persist();
+  }
+
+  getTenantSubscription(ownerId: string): StoredTenantSubscription | null {
+    this.ensureLoaded();
+    return this.tenantSubscriptions.get(ownerId) ?? null;
+  }
+
+  findTenantByStripeCustomerId(
+    customerId: string,
+  ): StoredTenantSubscription | null {
+    this.ensureLoaded();
+    for (const sub of this.tenantSubscriptions.values()) {
+      if (sub.stripeCustomerId === customerId) return sub;
+    }
+    return null;
+  }
+
+  setTenantSubscription(sub: StoredTenantSubscription): void {
+    this.ensureLoaded();
+    this.tenantSubscriptions.set(sub.ownerId, sub);
+    // Keep legacy single-plan mirror for personal-instance callers.
+    this.plan = { tier: sub.tier, updatedAt: sub.updatedAt };
+    this.persist();
+  }
+
+  /**
+   * Move a tenant subscription from one owner id to another (OAuth id
+   * reconciliation). No-op when `fromId` has no row or ids match.
+   */
+  rekeyTenantOwner(fromId: string, toId: string): boolean {
+    this.ensureLoaded();
+    if (!fromId || !toId || fromId === toId) return false;
+    const existing = this.tenantSubscriptions.get(fromId);
+    if (!existing) return false;
+    this.tenantSubscriptions.delete(fromId);
+    const next: StoredTenantSubscription = {
+      ...existing,
+      ownerId: toId,
+      updatedAt: new Date().toISOString(),
+    };
+    // Prefer keeping the destination row if one already exists (rare).
+    if (!this.tenantSubscriptions.has(toId)) {
+      this.tenantSubscriptions.set(toId, next);
+    }
+    this.persist();
+    return true;
+  }
+
+  /** Test helper — clear billing fields without touching the rest of the store. */
+  resetBillingStateForTests(): void {
+    this.ensureLoaded();
+    this.plan = null;
+    this.tenantSubscriptions.clear();
+    for (const key of Object.keys(this.meta)) {
+      if (key.startsWith("stripe.")) {
+        delete this.meta[key];
+      }
+    }
+  }
+
+  /**
+   * Test-only: clear in-memory state and force the next ensureLoaded() to
+   * re-read store.json (simulates process restart for agentRuns / audit ring).
+   */
+  unloadForTests(): void {
+    this.projects = [];
+    this.evidence.clear();
+    this.claims.clear();
+    this.memories.clear();
+    this.decisions.clear();
+    this.observations.clear();
+    this.github.clear();
+    this.dbFeeds.clear();
+    this.snapshots.clear();
+    this.openTasks.clear();
+    this.events = [];
+    this.githubConnection = null;
+    this.githubAppInstallations.clear();
+    this.localConnection = null;
+    this.cloudLinks.clear();
+    this.plan = null;
+    this.tenantSubscriptions.clear();
+    this.artifacts = [];
+    this.assistRuns = [];
+    this.credits = null;
+    this.conflictResolutions.clear();
+    this.audit = [];
+    this.agentRuns = [];
+    this.contactLeads = [];
+    this.patches = [];
+    this.gateGraphs = [];
+    this.evalRuns = [];
+    this.usageMeters = { evalRunsByDay: {} };
+    this.loopRuns = [];
+    this.evalSuites = [];
+    this.regressionReports = [];
+    this.readinessCertificates = [];
+    this.meta = {};
+    this.workspaceRoots = {};
+    this.loaded = false;
   }
 
   getCloudLink(projectId: string): CloudProjectLink | undefined {
@@ -396,13 +626,16 @@ class OsStore {
 
   getEvidence(projectId: string): EvidenceRecord[] {
     this.ensureLoaded();
-    return this.evidence.get(projectId) ?? [];
+    return (this.evidence.get(projectId) ?? []).map((item) =>
+      parseEvidenceRecord(item),
+    );
   }
 
   addEvidence(projectId: string, records: readonly EvidenceRecord[]): void {
     this.ensureLoaded();
     const existing = this.getEvidence(projectId);
-    this.evidence.set(projectId, [...existing, ...records]);
+    const normalized = records.map((item) => parseEvidenceRecord(item));
+    this.evidence.set(projectId, [...existing, ...normalized]);
     this.persist();
   }
 
@@ -435,12 +668,49 @@ class OsStore {
     return this.decisions.get(projectId) ?? [];
   }
 
+  listDecisions(): Decision[] {
+    this.ensureLoaded();
+    return [...this.decisions.values()].flat();
+  }
+
+  getDecision(id: string): Decision | undefined {
+    this.ensureLoaded();
+    for (const list of this.decisions.values()) {
+      const found = list.find((d) => d.id === id);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
   addDecision(decision: Decision): void {
     this.ensureLoaded();
     const projectId = decision.projectId ?? "global";
     const existing = this.decisions.get(projectId) ?? [];
     this.decisions.set(projectId, [...existing, decision]);
     this.persist();
+  }
+
+  updateDecision(decision: Decision): Decision {
+    this.ensureLoaded();
+    let previousKey: string | null = null;
+    for (const [key, list] of this.decisions.entries()) {
+      if (list.some((d) => d.id === decision.id)) {
+        previousKey = key;
+        break;
+      }
+    }
+    if (previousKey === null) {
+      throw new Error(`Decision ${decision.id} not found`);
+    }
+    const nextKey = decision.projectId ?? "global";
+    const without = (this.decisions.get(previousKey) ?? []).filter(
+      (d) => d.id !== decision.id,
+    );
+    this.decisions.set(previousKey, without);
+    const dest = this.decisions.get(nextKey) ?? [];
+    this.decisions.set(nextKey, [...dest, decision]);
+    this.persist();
+    return decision;
   }
 
   setGitHubObservation(
@@ -776,15 +1046,50 @@ class OsStore {
     return this.patches.filter((p) => p.projectId === projectId);
   }
 
+  /**
+   * Append-only audit: durable NDJSON under `.atlas/audit/audit.ndjson`
+   * (hash-chained) plus an in-memory / store.json ring for API reads.
+   * The file log is never truncated.
+   */
   appendAudit(entry: Record<string, unknown>): void {
     this.ensureLoaded();
-    this.audit.push(entry);
+    const record = appendAuditLogLine(entry);
+    this.audit.push({
+      id: record.id,
+      at: record.at,
+      type: record.type,
+      prevHash: record.prevHash,
+      hash: record.hash,
+      ...record.payload,
+    });
+    if (this.audit.length > AUDIT_MEMORY_RING) {
+      this.audit = this.audit.slice(-AUDIT_MEMORY_RING);
+    }
     this.persist();
   }
 
   listAudit(): readonly Record<string, unknown>[] {
     this.ensureLoaded();
     return this.audit;
+  }
+
+  /** Path of the durable append-only audit file (may not exist yet). */
+  getAuditLogPath(): string {
+    return resolveAuditLogPath();
+  }
+
+  addAgentRun(run: AgentRun): void {
+    this.ensureLoaded();
+    this.agentRuns.push(run);
+    if (this.agentRuns.length > 200) {
+      this.agentRuns = this.agentRuns.slice(-200);
+    }
+    this.persist();
+  }
+
+  listAgentRuns(): readonly AgentRun[] {
+    this.ensureLoaded();
+    return this.agentRuns;
   }
 
   getConflictResolution(id: string): string | undefined {
@@ -820,6 +1125,20 @@ class OsStore {
     this.persist();
   }
 
+  getConversationThread(threadId: string): readonly ConversationThreadTurn[] {
+    this.ensureLoaded();
+    return this.conversationThreads.get(threadId) ?? [];
+  }
+
+  setConversationThread(
+    threadId: string,
+    turns: readonly ConversationThreadTurn[],
+  ): void {
+    this.ensureLoaded();
+    this.conversationThreads.set(threadId, [...turns].slice(-40));
+    this.persist();
+  }
+
   getWorkspaceRoot(projectId: string): string | undefined {
     this.ensureLoaded();
     return this.workspaceRoots[projectId];
@@ -838,6 +1157,68 @@ class OsStore {
   listWorkspaceRoots(): Readonly<Record<string, string>> {
     this.ensureLoaded();
     return { ...this.workspaceRoots };
+  }
+
+  /**
+   * Startup recovery: merge cloud rows into an empty (or sparse) local store
+   * and flush once. Idempotent for ids already present.
+   */
+  applyCloudHydration(input: {
+    readonly projects?: readonly Project[];
+    readonly memories?: readonly Memory[];
+    readonly decisions?: readonly Decision[];
+    readonly tenantSubscriptions?: readonly StoredTenantSubscription[];
+    readonly meta?: Readonly<Record<string, string>>;
+  }): { projects: number; memories: number; decisions: number; plans: number } {
+    this.ensureLoaded();
+    let projects = 0;
+    let memories = 0;
+    let decisions = 0;
+    let plans = 0;
+    const now = new Date().toISOString();
+
+    for (const project of input.projects ?? []) {
+      if (!this.projects.some((p) => p.id === project.id || p.slug === project.slug)) {
+        this.projects.push(project);
+        projects += 1;
+      }
+      if (!this.cloudLinks.has(project.id)) {
+        this.cloudLinks.set(project.id, { cloudProjectId: project.id, syncedAt: now });
+      }
+    }
+
+    for (const memory of input.memories ?? []) {
+      const key = memory.projectId ?? "global";
+      const list = this.memories.get(key) ?? [];
+      if (list.some((m) => m.id === memory.id)) continue;
+      this.memories.set(key, [...list, memory]);
+      memories += 1;
+    }
+
+    for (const decision of input.decisions ?? []) {
+      const key = decision.projectId ?? "global";
+      const list = this.decisions.get(key) ?? [];
+      if (list.some((d) => d.id === decision.id)) continue;
+      this.decisions.set(key, [...list, decision]);
+      decisions += 1;
+    }
+
+    for (const sub of input.tenantSubscriptions ?? []) {
+      if (this.tenantSubscriptions.has(sub.ownerId)) continue;
+      this.tenantSubscriptions.set(sub.ownerId, sub);
+      plans += 1;
+    }
+
+    if (input.meta) {
+      for (const [k, v] of Object.entries(input.meta)) {
+        if (this.meta[k] === undefined) this.meta[k] = v;
+      }
+    }
+
+    if (projects + memories + decisions + plans > 0 || input.meta) {
+      this.persist();
+    }
+    return { projects, memories, decisions, plans };
   }
 }
 

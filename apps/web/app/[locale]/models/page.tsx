@@ -28,10 +28,13 @@ interface ProviderItem {
   skills: string[];
   strengthsEn: string[];
   strengthsHe: string[];
+  strengthsAr?: string[];
   weaknessesEn: string[];
   weaknessesHe: string[];
+  weaknessesAr?: string[];
   bestForEn: string;
   bestForHe: string;
+  bestForAr?: string;
   available: boolean;
   priceLabel: string;
   memoryCount?: number;
@@ -72,11 +75,23 @@ export default function ModelsPage() {
   const title = (p: ProviderItem) =>
     locale === "he" ? p.titleHe : locale === "ar" ? p.titleAr : p.titleEn;
   const strengths = (p: ProviderItem) =>
-    locale === "en" ? p.strengthsEn : p.strengthsHe;
+    locale === "he"
+      ? (p.strengthsHe ?? p.strengthsEn)
+      : locale === "ar"
+        ? (p.strengthsAr ?? p.strengthsEn)
+        : p.strengthsEn;
   const weaknesses = (p: ProviderItem) =>
-    locale === "en" ? p.weaknessesEn : p.weaknessesHe;
+    locale === "he"
+      ? (p.weaknessesHe ?? p.weaknessesEn)
+      : locale === "ar"
+        ? (p.weaknessesAr ?? p.weaknessesEn)
+        : p.weaknessesEn;
   const bestFor = (p: ProviderItem) =>
-    locale === "en" ? p.bestForEn : p.bestForHe;
+    locale === "he"
+      ? p.bestForHe
+      : locale === "ar"
+        ? (p.bestForAr ?? p.bestForEn)
+        : p.bestForEn;
 
   const tierColor = (tier: ProviderItem["priceTier"]) => {
     if (tier === "free") return "success" as const;
@@ -156,6 +171,9 @@ export default function ModelsPage() {
         ))}
         <Button component={Link} href="/plan" size="small" variant="outlined">
           {t("buyCredits")}
+        </Button>
+        <Button component={Link} href="/agents" size="small" variant="outlined">
+          {t("openAgents")}
         </Button>
         <Button component={Link} href="/agent" size="small" variant="contained">
           {t("openAgent")}
