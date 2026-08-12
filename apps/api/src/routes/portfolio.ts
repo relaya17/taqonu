@@ -29,6 +29,12 @@ import {
 } from "../services/portfolio-discovery.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 
+const portfolioPatternsPageSchema = paginatedResponseSchema(
+  portfolioPatternSchema,
+).extend({
+  epistemicState: z.enum(["INFERRED", "UNKNOWN"]),
+});
+
 function loadPersistedPortfolioHealth() {
   osStore.ensureLoaded();
   const raw = osStore.getMeta(PORTFOLIO_HEALTH_META_KEY);
@@ -280,9 +286,3 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     });
   });
 }
-
-const portfolioPatternsPageSchema = paginatedResponseSchema(
-  portfolioPatternSchema,
-).extend({
-  epistemicState: z.enum(["INFERRED", "UNKNOWN"]),
-});
