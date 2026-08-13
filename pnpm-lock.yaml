@@ -98,6 +98,9 @@ importers:
       '@atlas/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@atlas/observer':
+        specifier: workspace:*
+        version: link:../../packages/observer
       '@atlas/qa-core':
         specifier: workspace:*
         version: link:../../packages/qa-core
@@ -456,6 +459,25 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.12)
 
   packages/observability:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.8
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.12)
+
+  packages/observer:
+    dependencies:
+      '@atlas/code-intelligence':
+        specifier: workspace:*
+        version: link:../code-intelligence
+      '@atlas/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       typescript:
         specifier: ^5.8.2

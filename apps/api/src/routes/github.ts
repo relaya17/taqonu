@@ -417,6 +417,31 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
             headSha: incremental.headSha,
             recentCiStatus: incremental.recentCiStatus,
           };
+
+          // TRUTH-10 0.9 — continuous observer when local workspace is linked
+          try {
+            const { tryContinuousObserve } = await import(
+              "../services/observe-cycle.js"
+            );
+            const observed = tryContinuousObserve({
+              projectId: match.id,
+              envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+              trigger: "github_webhook",
+            });
+            if (observed) {
+              app.atlasLogger.info("observer_cycle_from_webhook", {
+                projectId: match.id,
+                observeCycleId: observed.id,
+                riskBand: observed.risk.band,
+              });
+            }
+          } catch (observeErr) {
+            app.atlasLogger.warn("observer_cycle_webhook_skipped", {
+              projectId: match.id,
+              error:
+                observeErr instanceof Error ? observeErr.message : "unknown",
+            });
+          }
         }
       }
     } catch (error) {

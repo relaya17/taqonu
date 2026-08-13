@@ -38,3 +38,4 @@ export * from "./audit-engine.schema.js";
 export * from "./constitution.schema.js";
 export * from "./conversation.schema.js";
 export * from "./legal-media.schema.js";
+export * from "./observer.schema.js";

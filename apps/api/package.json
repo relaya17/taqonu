@@ -29,6 +29,7 @@
     "@atlas/integrations-vercel": "workspace:*",
     "@atlas/integrations-cloudflare": "workspace:*",
     "@atlas/knowledge": "workspace:*",
+    "@atlas/observer": "workspace:*",
     "@atlas/observability": "workspace:*",
     "@atlas/qa-core": "workspace:*",
     "@atlas/shared": "workspace:*",
