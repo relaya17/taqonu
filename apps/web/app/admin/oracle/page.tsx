@@ -96,6 +96,14 @@ export default function AdminOraclePage() {
       apiGet<{
         oracle: OracleShell;
         queue: ActionQueue;
+        digest?: {
+          date: string;
+          summary: string;
+          top3: { id: string; title: string; severity: string; href: string; cta: string }[];
+        };
+        versions?: { id: string; title: string; severity: string; detail: string; recommendation: string }[];
+        cyber?: { id: string; title: string; severity: string; detail: string; sourceUrl: string; remediation: string }[];
+        audit?: { id: string; at: string; type: string; summary: string; actor: string }[];
         watchdogScore: number;
         note: string;
       }>("/api/v1/admin/oracle"),
@@ -137,6 +145,10 @@ export default function AdminOraclePage() {
   const oracle = oracleQ.data?.oracle;
   const queue = oracleQ.data?.queue;
   const actions = queue?.top ?? [];
+  const digest = oracleQ.data?.digest;
+  const versions = oracleQ.data?.versions ?? [];
+  const cyber = oracleQ.data?.cyber ?? [];
+  const audit = oracleQ.data?.audit ?? [];
 
   return (
     <Box sx={{ maxWidth: 1040, mx: "auto", color: "#E8F4F2" }}>
@@ -219,6 +231,87 @@ export default function AdminOraclePage() {
         ) : null}
         {refresh.isError ? (
           <Alert severity="error">{(refresh.error as Error).message}</Alert>
+        ) : null}
+
+        {digest ? (
+          <Box>
+            <Typography
+              sx={{
+                fontFamily: '"Syne", sans-serif',
+                fontWeight: 750,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontSize: 12,
+                opacity: 0.7,
+                mb: 1.25,
+              }}
+            >
+              Morning digest · {digest.date}
+            </Typography>
+            <Typography sx={{ mb: 1.5, opacity: 0.85 }}>{digest.summary}</Typography>
+            <Stack spacing={1}>
+              {digest.top3.map((t, i) => (
+                <Box
+                  key={t.id}
+                  sx={{
+                    p: 1.75,
+                    borderRadius: 2,
+                    border: "1px solid rgba(62,200,190,0.22)",
+                    bgcolor: "rgba(0,0,0,0.2)",
+                  }}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip size="small" label={`#${i + 1}`} sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 800 }} />
+                    <Chip size="small" label={t.severity} sx={{ bgcolor: "rgba(255,255,255,0.06)", color: severityColor(t.severity) }} />
+                    <Typography fontWeight={700}>{t.title}</Typography>
+                  </Stack>
+                  <Typography variant="caption" sx={{ opacity: 0.65, display: "block", mt: 0.5 }}>
+                    {t.cta}
+                  </Typography>
+                  <Button component={Link} href={t.href} size="small" sx={{ mt: 0.75, color: "#3EC8BE", fontWeight: 700 }}>
+                    פתח
+                  </Button>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        ) : null}
+
+        {(versions.length > 0 || cyber.length > 0) ? (
+          <Box>
+            <Typography
+              sx={{
+                fontFamily: '"Syne", sans-serif',
+                fontWeight: 750,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontSize: 12,
+                opacity: 0.7,
+                mb: 1.25,
+              }}
+            >
+              Versions · defensive cyber
+            </Typography>
+            <Stack spacing={1}>
+              {versions.slice(0, 5).map((v) => (
+                <Alert key={v.id} severity={v.severity === "high" || v.severity === "critical" ? "warning" : "info"}>
+                  <Typography fontWeight={700}>{v.title}</Typography>
+                  <Typography variant="body2">{v.detail}</Typography>
+                  <Typography variant="caption">{v.recommendation}</Typography>
+                </Alert>
+              ))}
+              {cyber.slice(0, 5).map((c) => (
+                <Alert key={c.id} severity="warning">
+                  <Typography fontWeight={700}>{c.title}</Typography>
+                  <Typography variant="body2">{c.detail}</Typography>
+                  <Typography variant="caption" display="block">{c.remediation}</Typography>
+                  <Button component={Link} href={c.sourceUrl} target="_blank" rel="noreferrer" size="small">
+                    מקור advisory
+                  </Button>
+                </Alert>
+              ))}
+            </Stack>
+          </Box>
         ) : null}
 
         <Box>
@@ -435,6 +528,31 @@ export default function AdminOraclePage() {
         </Box>
 
         {oracleQ.data?.note ? <Alert severity="info">{oracleQ.data.note}</Alert> : null}
+
+        {audit.length > 0 ? (
+          <Box>
+            <Typography
+              sx={{
+                fontFamily: '"Syne", sans-serif',
+                fontWeight: 750,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontSize: 12,
+                opacity: 0.7,
+                mb: 1.25,
+              }}
+            >
+              Audit trail
+            </Typography>
+            <Stack spacing={0.75}>
+              {audit.slice(0, 8).map((e) => (
+                <Typography key={e.id} variant="body2" sx={{ opacity: 0.8 }}>
+                  {e.at} · {e.type} · {e.summary} · {e.actor}
+                </Typography>
+              ))}
+            </Stack>
+          </Box>
+        ) : null}
       </Stack>
     </Box>
   );

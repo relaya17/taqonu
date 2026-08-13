@@ -14,6 +14,11 @@ import {
 } from "../services/platform-watchdog.js";
 import { buildAdminOracleShell } from "../services/admin-oracle.js";
 import { buildOracleActionQueue } from "../services/admin-oracle-queue.js";
+import {
+  appendOracleAudit,
+  buildOracleMorningDigest,
+  listOracleAudit,
+} from "../services/admin-oracle-digest.js";
 import { osStore } from "../store/os-store.js";
 
 export async function registerAdminOpsRoutes(
@@ -27,6 +32,7 @@ export async function registerAdminOpsRoutes(
     const watchdog = runPlatformWatchdog({ tier, ownerId });
     const oracle = buildAdminOracleShell({ locale: "he" });
     const queue = buildOracleActionQueue(watchdog);
+    const { digest } = buildOracleMorningDigest({ queue });
 
     return {
       platform: {
@@ -39,6 +45,7 @@ export async function registerAdminOpsRoutes(
       watchdog,
       oracle,
       queue,
+      digest,
       generatedAt: watchdog.generatedAt,
     };
   });
@@ -51,12 +58,40 @@ export async function registerAdminOpsRoutes(
     const watchdog = runPlatformWatchdog({ tier, ownerId });
     const oracle = buildAdminOracleShell({ locale: "he" });
     const queue = buildOracleActionQueue(watchdog);
+    const { digest, versions, cyber } = buildOracleMorningDigest({ queue });
     return {
-      oracle,
+      oracle: {
+        ...oracle,
+        dailyBrief: digest.brief,
+      },
       queue,
+      digest,
+      versions,
+      cyber,
+      audit: listOracleAudit(20),
       watchdogScore: watchdog.score,
       generatedAt: new Date().toISOString(),
-      note: "TRUTH-10 A1 — persona + ranked action queue (detect→rank→notify/propose).",
+      note: "TRUTH-10 A1 — queue + versions + defensive advisories + digest + audit.",
+    };
+  });
+
+  app.get("/api/v1/admin/oracle/digest", async (request) => {
+    requireAdmin(app, request);
+    const identity = await resolveCloudIdentity(app, request);
+    const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
+    const { tier } = resolveTier(app.atlasEnv, ownerId);
+    const watchdog = runPlatformWatchdog({ tier, ownerId });
+    const queue = buildOracleActionQueue(watchdog);
+    const { digest, versions, cyber } = buildOracleMorningDigest({ queue });
+    return { digest, versions, cyber, generatedAt: new Date().toISOString() };
+  });
+
+  app.get("/api/v1/admin/oracle/audit", async (request) => {
+    requireAdmin(app, request);
+    return {
+      items: listOracleAudit(50),
+      total: listOracleAudit(50).length,
+      note: "Oracle automation audit trail — who refreshed / what was ranked.",
     };
   });
 
@@ -67,6 +102,17 @@ export async function registerAdminOpsRoutes(
     const { tier } = resolveTier(app.atlasEnv, ownerId);
     const watchdog = runPlatformWatchdog({ tier, ownerId });
     const queue = buildOracleActionQueue(watchdog);
+    const { digest } = buildOracleMorningDigest({ queue });
+    appendOracleAudit({
+      type: "oracle.queue.refresh",
+      summary: `Ranked ${queue.total} actions · digest top3=${digest.top3.length}`,
+      actor: identity.ownerId || "admin",
+      meta: {
+        total: queue.total,
+        critical: queue.counts.critical,
+        high: queue.counts.high,
+      },
+    });
     osStore.recordEvent({
       type: "admin.oracle.queue.refresh",
       total: queue.total,
@@ -77,13 +123,14 @@ export async function registerAdminOpsRoutes(
     return {
       ok: true as const,
       queue,
+      digest,
       watchdogScore: watchdog.score,
       message:
         queue.counts.critical > 0
           ? "Critical actions in queue — investigate before users hit failures."
           : queue.total === 0
             ? "Queue empty — Oracle has nothing urgent."
-            : `Ranked ${queue.total} action(s) for notify/propose.`,
+            : `Ranked ${queue.total} action(s) · morning digest ready.`,
     };
   });
 

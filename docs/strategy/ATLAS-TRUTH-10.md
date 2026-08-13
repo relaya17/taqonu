@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (A1.2 Oracle action queue)  
+**עדכון אחרון:** 2026-08-13 (A1.3–A1.7 Oracle intel + digest)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -75,7 +75,7 @@
 | 2.3 | Patent landscape / Trademark Atlas | `OPEN` — משפטי, לא קוד |
 | 2.4 | Pricing experiments (repos/seats) | `PARTIAL` — freemium usage היום |
 | 2.5 | Case studies + Seed narrative | `OPEN` |
-| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1.1 shell חי; A1.2–A1.7 OPEN |
+| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1.1–A1.7 seeds חיים |
 
 ---
 
@@ -117,13 +117,13 @@
 
 | # | משימה | סטטוס |
 |---:|---|---|
-| A1.1 | מסך Admin Command Center (premium dashboard shell) | `PARTIAL` — `/admin` + **`/admin/oracle`** + `GET /api/v1/admin/oracle` |
-| A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `PARTIAL` — `buildOracleActionQueue` + refresh + UI תור |
-| A1.3 | Version instability detector (deps/runtime/EOL) | `OPEN` |
-| A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `OPEN` |
-| A1.5 | Defensive cyber feed → findings על Graph (CVE↔deps) | `OPEN` |
-| A1.6 | Full automation loop עם audit trail (מי אישר / מה הוחל) | `OPEN` |
-| A1.7 | “מנבא” digest: בוקר אחד — סיכום + Top 3 actions | `OPEN` |
+| A1.1 | מסך Admin Command Center (premium dashboard shell) | `PARTIAL` — `/admin` + `/admin/oracle` |
+| A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `PARTIAL` — queue + refresh |
+| A1.3 | Version instability detector (deps/runtime/EOL) | `PARTIAL` — Node EOL + Next/React stale majors |
+| A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `PARTIAL` — brief חי מ־queue/versions/cyber |
+| A1.5 | Defensive cyber feed → findings על Graph (CVE↔deps) | `PARTIAL` — allowlisted advisory↔deps (לא Graph edges עדיין) |
+| A1.6 | Full automation loop עם audit trail (מי אישר / מה הוחל) | `PARTIAL` — `admin.oracle.audit` על refresh |
+| A1.7 | “מנבא” digest: בוקר אחד — סיכום + Top 3 actions | `PARTIAL` — digest API + UI |
 
 **תלות:** P0 DONE · P1.1 remediation · P1.3 production · G5 security review לפני automation רחבה.
 
@@ -189,6 +189,7 @@ Sprint C
 | 2026-08-13 | **A1 נוסף לרשימה:** Admin Oracle / Command Agent — לוח בקרה + ניטור + בריפינג + סייבר הגנתי ממקורות מורשים |
 | 2026-08-13 | **A1.1:** `/admin/oracle` shell + API persona/allowlist/brief scaffold |
 | 2026-08-13 | **A1.2:** Oracle action queue — detect→rank→notify/propose (watchdog + patches + deploys) |
+| 2026-08-13 | **A1.3–A1.7:** version EOL · defensive advisory match · daily brief · audit · morning digest |
 
 ---
 

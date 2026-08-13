@@ -6,6 +6,10 @@ import type { PatchArtifact } from "@atlas/shared";
 import type { WatchAlert, WatchdogReport } from "./platform-watchdog.js";
 import { osStore } from "../store/os-store.js";
 import { isAutoRemediationDraft } from "./patch-write.js";
+import {
+  detectDefensiveCyberMatches,
+  detectVersionInstability,
+} from "./admin-oracle-intel.js";
 
 export type OracleActionKind = "notify" | "investigate" | "propose" | "approve";
 
@@ -19,7 +23,7 @@ export interface OracleQueueAction {
   readonly evidenceRefs: readonly string[];
   readonly href: string;
   readonly cta: string;
-  readonly source: "watchdog" | "remediation" | "deploy" | "truth";
+  readonly source: "watchdog" | "remediation" | "deploy" | "truth" | "version" | "cyber";
   readonly projectId: string | null;
   readonly blockedAutoApply: boolean;
 }
@@ -185,6 +189,40 @@ export function buildOracleActionQueue(
   }
 
   actions.push(...deployActions());
+
+  for (const v of detectVersionInstability()) {
+    actions.push({
+      id: v.id,
+      kind: v.severity === "info" ? "notify" : "investigate",
+      priority: SEV_PRIORITY[v.severity],
+      severity: v.severity,
+      title: v.title,
+      detail: v.detail,
+      evidenceRefs: v.evidenceRefs,
+      href: "/admin/oracle",
+      cta: v.recommendation,
+      source: "version",
+      projectId: v.projectId,
+      blockedAutoApply: true,
+    });
+  }
+
+  for (const c of detectDefensiveCyberMatches()) {
+    actions.push({
+      id: c.id,
+      kind: "investigate",
+      priority: SEV_PRIORITY[c.severity] + 3,
+      severity: c.severity,
+      title: c.title,
+      detail: c.detail,
+      evidenceRefs: c.evidenceRefs,
+      href: c.sourceUrl,
+      cta: c.remediation,
+      source: "cyber",
+      projectId: c.projectId,
+      blockedAutoApply: true,
+    });
+  }
 
   const ranked = [...actions].sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
