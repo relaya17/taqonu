@@ -10,6 +10,7 @@ import {
   detectDefensiveCyberMatches,
   detectVersionInstability,
 } from "./admin-oracle-intel.js";
+import { loadSentinelLastScan } from "@atlas/observer";
 
 export type OracleActionKind = "notify" | "investigate" | "propose" | "approve";
 
@@ -23,7 +24,14 @@ export interface OracleQueueAction {
   readonly evidenceRefs: readonly string[];
   readonly href: string;
   readonly cta: string;
-  readonly source: "watchdog" | "remediation" | "deploy" | "truth" | "version" | "cyber";
+  readonly source:
+    | "watchdog"
+    | "remediation"
+    | "deploy"
+    | "truth"
+    | "version"
+    | "cyber"
+    | "sentinel";
   readonly projectId: string | null;
   readonly blockedAutoApply: boolean;
 }
@@ -220,6 +228,38 @@ export function buildOracleActionQueue(
       cta: c.remediation,
       source: "cyber",
       projectId: c.projectId,
+      blockedAutoApply: true,
+    });
+  }
+
+  for (const project of osStore.listProjects()) {
+    const root = osStore.getWorkspaceRoot(project.id);
+    if (!root) continue;
+    const scan = loadSentinelLastScan(root);
+    if (!scan || scan.posture === "CLEAR" || scan.posture === "LOW") continue;
+    const sev =
+      scan.posture === "CRITICAL"
+        ? "critical"
+        : scan.posture === "HIGH"
+          ? "high"
+          : "medium";
+    actions.push({
+      id: `sentinel:${project.id}:${scan.scannedAt}`,
+      kind: "investigate",
+      priority: SEV_PRIORITY[sev] + 4,
+      severity: sev,
+      title: `Atlas Sentinel · ${project.name} · ${scan.posture}`,
+      detail: scan.summary,
+      evidenceRefs: [
+        `.atlas/sentinel/last-scan.json`,
+        `critical:${scan.counts.critical}`,
+        `high:${scan.counts.high}`,
+        `packs:${scan.counts.packs ?? 0}`,
+      ],
+      href: "/sentinel",
+      cta: "Open Sentinel · propose fix · verify",
+      source: "sentinel",
+      projectId: project.id,
       blockedAutoApply: true,
     });
   }

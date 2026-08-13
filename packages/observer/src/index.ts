@@ -83,4 +83,7 @@ export { verifySentinelFinding } from "./security/verify.js";
 export type { SentinelVerifyResult } from "./security/verify.js";
 export { evaluateSecurityGraphPolicy } from "./security/graph-policy.js";
 export type { SecurityGraphPolicyFinding } from "./security/graph-policy.js";
+export { runSpecialistPacks } from "./security/packs.js";
+export type { PackFinding, SpecialistPackId } from "./security/packs.js";
+export { loadSentinelLastScan } from "./security/persist.js";
 export { runCiSecretScan } from "./security/ci-secrets-scan.js";

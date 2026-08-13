@@ -15,6 +15,10 @@ const RULES: { terms: RegExp; topic: string }[] = [
   { terms: /confirm|confirmation|receipt/i, topic: "confirmation sequencing" },
   { terms: /tenant|isolation|multi.?tenant/i, topic: "tenant isolation" },
   { terms: /auth|permission|rbac|authorization/i, topic: "authorization" },
+  { terms: /rate.?limit|throttle|quota/i, topic: "rate limiting" },
+  { terms: /retention|gdpr|pii|encrypt.?at.?rest/i, topic: "data retention/privacy" },
+  { terms: /cors|csp|security.?header/i, topic: "security headers" },
+  { terms: /secret|credential|api.?key.?rotation/i, topic: "secret handling" },
 ];
 
 /** Flag behavior drifts that conflict with ADR/decision text. */

@@ -11,13 +11,15 @@ import {
   type DependencyFinding,
 } from "./deps.js";
 import { detectConfigSecurity, type ConfigFinding } from "./config.js";
+import { runSpecialistPacks, type PackFinding } from "./packs.js";
 import { saveSentinelLastScan } from "./persist.js";
 
 export type SentinelFinding =
   | SecretFinding
   | AuthzRegressionFinding
   | DependencyFinding
-  | ConfigFinding;
+  | ConfigFinding
+  | PackFinding;
 
 export interface SentinelScanResult {
   readonly scannedAt: string;
@@ -28,12 +30,14 @@ export interface SentinelScanResult {
   readonly authz: readonly AuthzRegressionFinding[];
   readonly dependencies: readonly DependencyFinding[];
   readonly config: readonly ConfigFinding[];
+  readonly packs: readonly PackFinding[];
   readonly findings: readonly SentinelFinding[];
   readonly counts: {
     readonly secrets: number;
     readonly authz: number;
     readonly dependencies: number;
     readonly config: number;
+    readonly packs: number;
     readonly critical: number;
     readonly high: number;
   };
@@ -60,7 +64,14 @@ export function runSentinelScan(
   });
   const dependencies = detectDependencyAdvisories(workspaceRoot);
   const config = detectConfigSecurity(workspaceRoot);
-  const findings = [...secrets, ...authz, ...dependencies, ...config];
+  const packs = runSpecialistPacks(workspaceRoot);
+  const findings = [
+    ...secrets,
+    ...authz,
+    ...dependencies,
+    ...config,
+    ...packs,
+  ];
   const posture = postureOf(findings);
   const critical = findings.filter((f) => f.severity === "CRITICAL").length;
   const high = findings.filter((f) => f.severity === "HIGH").length;
@@ -86,6 +97,12 @@ export function runSentinelScan(
       "Harden CORS/cookies/JWT/TLS/headers · confirm intentional public exceptions",
     );
   }
+  if (packs.length > 0) {
+    const packIds = [...new Set(packs.map((p) => p.pack))].join(", ");
+    nextActions.push(
+      `Review specialist pack findings (${packIds}) · propose fix · verify with separate engine`,
+    );
+  }
   if (posture === "CLEAR") {
     nextActions.push(
       "Keep scanning on observe · expand advisory catalog as stack grows",
@@ -94,8 +111,8 @@ export function runSentinelScan(
 
   const summary =
     posture === "CLEAR"
-      ? "No secret, authz, dependency, or config signals in this defensive pass."
-      : `${critical} critical · ${high} high · secrets ${secrets.length} · authz ${authz.length} · deps ${dependencies.length} · config ${config.length}`;
+      ? "No secret, authz, dependency, config, or pack signals in this defensive pass."
+      : `${critical} critical · ${high} high · secrets ${secrets.length} · authz ${authz.length} · deps ${dependencies.length} · config ${config.length} · packs ${packs.length}`;
 
   const result: SentinelScanResult = {
     scannedAt: new Date().toISOString(),
@@ -106,12 +123,14 @@ export function runSentinelScan(
     authz,
     dependencies,
     config,
+    packs,
     findings,
     counts: {
       secrets: secrets.length,
       authz: authz.length,
       dependencies: dependencies.length,
       config: config.length,
+      packs: packs.length,
       critical,
       high,
     },
@@ -130,4 +149,5 @@ export type {
   AuthzRegressionFinding,
   DependencyFinding,
   ConfigFinding,
+  PackFinding,
 };

@@ -261,6 +261,7 @@ export function runObserveCycle(input: {
       `authz:${sentinel.counts.authz}`,
       `deps:${sentinel.counts.dependencies}`,
       `config:${sentinel.counts.config}`,
+      `packs:${sentinel.counts.packs}`,
     ],
   });
 

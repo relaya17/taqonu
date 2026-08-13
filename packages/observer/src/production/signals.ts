@@ -17,6 +17,8 @@ export function detectProductionSignals(workspaceRoot: string): ProductionSignal
   let metrics = false;
   let health = false;
   let deployConfig = false;
+  let errorTracking = false;
+  let alerting = false;
 
   for (const rel of sample) {
     const text = readTextFile(workspaceRoot, rel);
@@ -35,6 +37,13 @@ export function detectProductionSignals(workspaceRoot: string): ProductionSignal
       /vercel\.json|render\.yaml|dockerfile/i.test(lower)
     ) {
       deployConfig = true;
+    }
+    if (/@sentry|sentry\.init|bugsnag|rollbar|newrelic/i.test(text)) {
+      errorTracking = true;
+      tracing = true;
+    }
+    if (/pagerduty|opsgenie|alertmanager|oncall|slack.*webhook.*alert/i.test(text)) {
+      alerting = true;
     }
   }
 
@@ -90,6 +99,24 @@ export function detectProductionSignals(workspaceRoot: string): ProductionSignal
         : "No deploy config signal found.",
       present: deployConfig,
       claim: deployConfig ? "OBSERVED" : "UNKNOWN",
+    },
+    {
+      id: "prod-error-tracking",
+      title: "Error tracking",
+      detail: errorTracking
+        ? "Sentry/Bugsnag/Rollbar/NewRelic-style error tracking detected."
+        : "No error-tracking SDK signal found.",
+      present: errorTracking,
+      claim: errorTracking ? "OBSERVED" : "UNKNOWN",
+    },
+    {
+      id: "prod-alerting",
+      title: "Alerting / on-call hooks",
+      detail: alerting
+        ? "Alerting/on-call integration signal detected."
+        : "No alerting/on-call hook signal found.",
+      present: alerting,
+      claim: alerting ? "OBSERVED" : "UNKNOWN",
     },
   ];
 }

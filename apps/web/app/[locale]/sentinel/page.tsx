@@ -47,6 +47,7 @@ interface SentinelScan {
     authz: number;
     dependencies: number;
     config: number;
+    packs?: number;
     critical: number;
     high: number;
   };
@@ -213,6 +214,10 @@ export default function SentinelPage() {
               size="small"
               label={t("countConfig", { n: result.counts.config ?? 0 })}
               variant="outlined"
+            />
+            <Chip
+              size="small"
+              label={t("countPacks", { n: result.counts.packs ?? 0 })}
             />
             <Chip
               size="small"
