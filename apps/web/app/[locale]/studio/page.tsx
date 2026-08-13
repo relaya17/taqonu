@@ -27,6 +27,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
 import { useColorMode } from "@/components/providers/ColorModeProvider";
+import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface Project {
   id: string;
@@ -306,6 +307,14 @@ export default function StudioPage() {
           </MenuItem>
         ))}
       </TextField>
+
+      {projectId ? (
+        <LinkWorkspaceRoot
+          projectId={projectId}
+          currentRoot={selectedProject?.workspaceRoot}
+          compact
+        />
+      ) : null}
 
       {projectId && !hasRoot ? (
         <Alert severity="warning">

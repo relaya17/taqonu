@@ -16,11 +16,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface ProjectItem {
   id: string;
   name: string;
   slug: string;
+  workspaceRoot?: string | null;
 }
 
 interface Finding {
@@ -240,6 +242,8 @@ export default function TruthPage() {
   const counters = result?.counters ?? state.data?.counters;
   const history = result?.history ?? state.data?.history ?? [];
   const linkError = state.data?.error ?? null;
+  const activeProject =
+    projects.data?.items.find((p) => p.id === activeId) ?? null;
   const expectedCompare = state.data?.expectedCompare;
   const snapshots = state.data?.snapshots ?? [];
   const p1Signals = state.data?.p1Signals;
@@ -385,6 +389,7 @@ export default function TruthPage() {
             {(projects.data?.items ?? []).map((p) => (
               <MenuItem key={p.id} value={p.id}>
                 {p.name}
+                {p.workspaceRoot ? "" : " · —"}
               </MenuItem>
             ))}
           </TextField>
@@ -419,6 +424,14 @@ export default function TruthPage() {
             {t("openObserver")}
           </Button>
         </Stack>
+
+        {activeId ? (
+          <LinkWorkspaceRoot
+            projectId={activeId}
+            currentRoot={activeProject?.workspaceRoot}
+            compact
+          />
+        ) : null}
 
         {cycle.isError ? (
           <Alert severity="error">

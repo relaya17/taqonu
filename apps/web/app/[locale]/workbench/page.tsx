@@ -23,6 +23,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
+import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface Project {
   id: string;
@@ -322,6 +323,14 @@ export default function WorkbenchPage() {
           ))}
         </TextField>
       </Stack>
+
+      {projectId ? (
+        <LinkWorkspaceRoot
+          projectId={projectId}
+          currentRoot={selected?.workspaceRoot}
+          compact
+        />
+      ) : null}
 
       {projectId && !hasRoot ? (
         <Stack spacing={1.5}>

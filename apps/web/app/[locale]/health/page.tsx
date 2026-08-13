@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface ProjectItem {
   id: string;
@@ -207,9 +208,18 @@ export default function SystemHealthPage() {
         {(projects.data?.items ?? []).map((p) => (
           <MenuItem key={p.id} value={p.id}>
             {p.name} ({p.slug})
+            {p.workspaceRoot ? "" : " · —"}
           </MenuItem>
         ))}
       </TextField>
+
+      {projectId ? (
+        <LinkWorkspaceRoot
+          projectId={projectId}
+          currentRoot={selected?.workspaceRoot}
+          compact
+        />
+      ) : null}
 
       <TextField
         size="small"

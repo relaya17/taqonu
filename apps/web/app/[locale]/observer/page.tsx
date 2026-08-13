@@ -14,6 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
+import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface ProjectItem {
   id: string;
@@ -113,6 +114,17 @@ export default function ObserverPage() {
           </MenuItem>
         ))}
       </TextField>
+
+      {selectedId ? (
+        <LinkWorkspaceRoot
+          projectId={selectedId}
+          currentRoot={
+            (projects.data?.items ?? []).find((p) => p.id === selectedId)
+              ?.workspaceRoot
+          }
+          compact
+        />
+      ) : null}
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <Button

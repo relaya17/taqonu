@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
   Button,
   Chip,
+  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -14,6 +15,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+
+interface ProjectItem {
+  id: string;
+  name: string;
+  slug: string;
+  workspaceRoot?: string | null;
+}
 
 interface PatchItem {
   id: string;
@@ -34,7 +43,31 @@ interface PatchItem {
 export default function PatchesPage() {
   const t = useTranslations("patches");
   const queryClient = useQueryClient();
-  const [root, setRoot] = useState("C:\\Users\\User\\Desktop\\game\\taqono");
+  const [projectId, setProjectId] = useState("");
+  const [root, setRoot] = useState("");
+
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => apiGet<{ items: ProjectItem[] }>("/api/v1/projects"),
+    staleTime: 60_000,
+  });
+
+  const selected =
+    projects.data?.items.find((p) => p.id === projectId) ?? null;
+
+  useEffect(() => {
+    if (!projectId && (projects.data?.items?.length ?? 0) > 0) {
+      const first =
+        projects.data!.items.find((p) => p.workspaceRoot) ??
+        projects.data!.items[0]!;
+      setProjectId(first.id);
+      setRoot(first.workspaceRoot ?? "");
+      return;
+    }
+    if (selected) {
+      setRoot(selected.workspaceRoot ?? "");
+    }
+  }, [projectId, projects.data, selected]);
 
   const patches = useQuery({
     queryKey: ["patches"],
@@ -95,6 +128,29 @@ export default function PatchesPage() {
       </Box>
 
       <TextField
+        select
+        label={t("project")}
+        value={projectId}
+        onChange={(e) => setProjectId(e.target.value)}
+        fullWidth
+      >
+        {(projects.data?.items ?? []).map((p) => (
+          <MenuItem key={p.id} value={p.id}>
+            {p.name}
+            {p.workspaceRoot ? "" : ` (${t("unlinked")})`}
+          </MenuItem>
+        ))}
+      </TextField>
+
+      {projectId ? (
+        <LinkWorkspaceRoot
+          projectId={projectId}
+          currentRoot={selected?.workspaceRoot}
+          compact
+        />
+      ) : null}
+
+      <TextField
         label={t("workspaceRoot")}
         value={root}
         onChange={(e) => setRoot(e.target.value)}
@@ -130,29 +186,22 @@ export default function PatchesPage() {
                 <Chip size="small" color="success" label={t("verified")} />
               ) : null}
             </Stack>
-            <Typography variant="body2" sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {patch.reason}
             </Typography>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-              {patch.filesChanged.map((f) => f.path).join(" · ")}
-              {patch.sourceIssueId ? ` · finding ${patch.sourceIssueId}` : ""}
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              {patch.expectedImpact}
             </Typography>
             {patch.evaluationSummary ? (
-              <Typography variant="body2" sx={{ mt: 1, whiteSpace: "pre-wrap" }}>
+              <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
                 {patch.evaluationSummary}
               </Typography>
             ) : null}
-            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
               <Button
                 size="small"
                 variant="outlined"
-                disabled={
-                  approve.isPending ||
-                  patch.status === "APPLIED" ||
-                  patch.status === "VERIFIED" ||
-                  patch.status === "APPROVED" ||
-                  patch.status === "ROLLED_BACK"
-                }
+                disabled={approve.isPending}
                 onClick={() => approve.mutate(patch.id)}
               >
                 {t("approve")}
@@ -160,46 +209,29 @@ export default function PatchesPage() {
               <Button
                 size="small"
                 variant="contained"
-                disabled={apply.isPending || patch.status !== "APPROVED"}
+                disabled={apply.isPending || !root.trim()}
                 onClick={() => apply.mutate(patch.id)}
               >
                 {t("apply")}
               </Button>
               <Button
                 size="small"
-                color="warning"
-                disabled={
-                  rollback.isPending ||
-                  (patch.status !== "APPLIED" && patch.status !== "VERIFIED")
-                }
+                variant="text"
+                disabled={rollback.isPending || !root.trim()}
                 onClick={() => rollback.mutate(patch.id)}
               >
                 {t("rollback")}
               </Button>
-              {(patch.sourceIssueId ||
-                patch.createdBy === "atlas-auto-remediation") &&
-              (patch.status === "APPLIED" || patch.status === "VERIFIED") ? (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="success"
-                  disabled={verify.isPending || patch.status === "VERIFIED"}
-                  onClick={() => verify.mutate(patch.id)}
-                >
-                  {t("verify")}
-                </Button>
-              ) : null}
+              <Button
+                size="small"
+                variant="outlined"
+                color="success"
+                disabled={verify.isPending || !root.trim()}
+                onClick={() => verify.mutate(patch.id)}
+              >
+                {t("verify")}
+              </Button>
             </Stack>
-            {apply.isError ? (
-              <Alert severity="error" sx={{ mt: 1 }}>
-                {(apply.error as Error).message}
-              </Alert>
-            ) : null}
-            {verify.isError ? (
-              <Alert severity="error" sx={{ mt: 1 }}>
-                {(verify.error as Error).message}
-              </Alert>
-            ) : null}
           </Box>
         ))}
       </Stack>
