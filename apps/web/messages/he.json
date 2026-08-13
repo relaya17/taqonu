@@ -1238,11 +1238,15 @@
     "scannedAt": "נסרק ב־{at}",
     "countSecrets": "סודות {n}",
     "countAuthz": "הרשאות {n}",
+    "countDeps": "תלויות {n}",
+    "countConfig": "קונפיג {n}",
     "countCritical": "קריטי {n}",
     "countHigh": "גבוה {n}",
-    "clear": "אין אותות סודות או רגרסיית AuthZ במעבר זה.",
+    "clear": "אין אותות סודות, AuthZ, תלויות או קונפיג במעבר זה.",
     "remediation": "תיקון מומלץ",
-    "nextActions": "צעדים הבאים"
+    "nextActions": "צעדים הבאים",
+    "propose": "הצע תיקון",
+    "verify": "אמת בסריקה מחדש"
   },
   "health": {
     "title": "בריאות מערכת",

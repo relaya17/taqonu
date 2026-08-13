@@ -44,6 +44,8 @@ interface SentinelScan {
   counts: {
     secrets: number;
     authz: number;
+    dependencies: number;
+    config: number;
     critical: number;
     high: number;
   };
@@ -64,6 +66,7 @@ export default function SentinelPage() {
   const t = useTranslations("sentinel");
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState("");
+  const [actionNote, setActionNote] = useState<string | null>(null);
 
   const projects = useQuery({
     queryKey: ["projects"],
@@ -85,6 +88,32 @@ export default function SentinelPage() {
         {},
       ),
     onSuccess: () => {
+      setActionNote(null);
+      void queryClient.invalidateQueries({
+        queryKey: ["sentinel", selectedId],
+      });
+    },
+  });
+
+  const propose = useMutation({
+    mutationFn: (findingId: string) =>
+      apiPost<{ note: string; loop: string }>(
+        `/api/v1/projects/${selectedId}/sentinel/propose`,
+        { findingId },
+      ),
+    onSuccess: (data) => {
+      setActionNote(`${data.loop} — ${data.note}`);
+    },
+  });
+
+  const verify = useMutation({
+    mutationFn: (findingId: string) =>
+      apiPost<{ verified: boolean; note: string }>(
+        `/api/v1/projects/${selectedId}/sentinel/verify`,
+        { findingId },
+      ),
+    onSuccess: (data) => {
+      setActionNote(data.note);
       void queryClient.invalidateQueries({
         queryKey: ["sentinel", selectedId],
       });
@@ -143,6 +172,8 @@ export default function SentinelPage() {
         </Alert>
       ) : null}
 
+      {actionNote ? <Alert severity="info">{actionNote}</Alert> : null}
+
       {result ? (
         <Stack spacing={2}>
           <Alert severity={postureSeverity(result.posture)}>
@@ -160,6 +191,15 @@ export default function SentinelPage() {
             <Chip
               size="small"
               label={t("countAuthz", { n: result.counts.authz })}
+              variant="outlined"
+            />
+            <Chip
+              size="small"
+              label={t("countDeps", { n: result.counts.dependencies ?? 0 })}
+            />
+            <Chip
+              size="small"
+              label={t("countConfig", { n: result.counts.config ?? 0 })}
               variant="outlined"
             />
             <Chip
@@ -215,6 +255,24 @@ export default function SentinelPage() {
                       {t("remediation")}: {f.remediation}
                     </Typography>
                   ) : null}
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={!selectedId || propose.isPending}
+                      onClick={() => propose.mutate(f.id)}
+                    >
+                      {t("propose")}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={!selectedId || verify.isPending}
+                      onClick={() => verify.mutate(f.id)}
+                    >
+                      {t("verify")}
+                    </Button>
+                  </Stack>
                 </Box>
               ))
             )}

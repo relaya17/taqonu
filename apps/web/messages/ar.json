@@ -1238,11 +1238,15 @@
     "scannedAt": "تم المسح في {at}",
     "countSecrets": "أسرار {n}",
     "countAuthz": "صلاحيات {n}",
+    "countDeps": "تبعيات {n}",
+    "countConfig": "إعدادات {n}",
     "countCritical": "حرج {n}",
     "countHigh": "عالٍ {n}",
-    "clear": "لا إشارات أسرار أو تراجع AuthZ في هذه الجولة.",
+    "clear": "لا إشارات أسرار أو AuthZ أو تبعيات أو إعدادات في هذه الجولة.",
     "remediation": "المعالجة",
-    "nextActions": "الخطوات التالية"
+    "nextActions": "الخطوات التالية",
+    "propose": "اقترح إصلاحاً",
+    "verify": "تحقق بإعادة المسح"
   },
   "health": {
     "title": "صحة النظام",

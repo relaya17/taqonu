@@ -6,8 +6,17 @@ import {
   detectAuthzRegressions,
   type AuthzRegressionFinding,
 } from "./authz-regression.js";
+import {
+  detectDependencyAdvisories,
+  type DependencyFinding,
+} from "./deps.js";
+import { detectConfigSecurity, type ConfigFinding } from "./config.js";
 
-export type SentinelFinding = SecretFinding | AuthzRegressionFinding;
+export type SentinelFinding =
+  | SecretFinding
+  | AuthzRegressionFinding
+  | DependencyFinding
+  | ConfigFinding;
 
 export interface SentinelScanResult {
   readonly scannedAt: string;
@@ -16,10 +25,14 @@ export interface SentinelScanResult {
   readonly summary: string;
   readonly secrets: readonly SecretFinding[];
   readonly authz: readonly AuthzRegressionFinding[];
+  readonly dependencies: readonly DependencyFinding[];
+  readonly config: readonly ConfigFinding[];
   readonly findings: readonly SentinelFinding[];
   readonly counts: {
     readonly secrets: number;
     readonly authz: number;
+    readonly dependencies: number;
+    readonly config: number;
     readonly critical: number;
     readonly high: number;
   };
@@ -27,22 +40,22 @@ export interface SentinelScanResult {
 }
 
 function postureOf(
-  secrets: readonly SecretFinding[],
-  authz: readonly AuthzRegressionFinding[],
+  findings: readonly SentinelFinding[],
 ): SentinelScanResult["posture"] {
-  const all = [...secrets, ...authz];
-  if (all.some((f) => f.severity === "CRITICAL")) return "CRITICAL";
-  if (all.some((f) => f.severity === "HIGH")) return "HIGH";
-  if (all.some((f) => f.severity === "MEDIUM")) return "MEDIUM";
-  if (all.length > 0) return "LOW";
+  if (findings.some((f) => f.severity === "CRITICAL")) return "CRITICAL";
+  if (findings.some((f) => f.severity === "HIGH")) return "HIGH";
+  if (findings.some((f) => f.severity === "MEDIUM")) return "MEDIUM";
+  if (findings.length > 0) return "LOW";
   return "CLEAR";
 }
 
 export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
   const secrets = detectSecrets(workspaceRoot);
   const authz = detectAuthzRegressions(workspaceRoot);
-  const findings = [...secrets, ...authz];
-  const posture = postureOf(secrets, authz);
+  const dependencies = detectDependencyAdvisories(workspaceRoot);
+  const config = detectConfigSecurity(workspaceRoot);
+  const findings = [...secrets, ...authz, ...dependencies, ...config];
+  const posture = postureOf(findings);
   const critical = findings.filter((f) => f.severity === "CRITICAL").length;
   const high = findings.filter((f) => f.severity === "HIGH").length;
 
@@ -57,16 +70,26 @@ export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
       "Restore AuthN/AuthZ guards · add regression tests that unauthenticated calls fail",
     );
   }
+  if (dependencies.length > 0) {
+    nextActions.push(
+      "Upgrade allowlisted vulnerable packages · re-lock · re-run Sentinel verify",
+    );
+  }
+  if (config.length > 0) {
+    nextActions.push(
+      "Harden CORS/cookies/JWT/TLS/headers · confirm intentional public exceptions",
+    );
+  }
   if (posture === "CLEAR") {
     nextActions.push(
-      "Keep scanning on each observe · expand S1.2 dependency advisories when ready",
+      "Keep scanning on observe · expand advisory catalog as stack grows",
     );
   }
 
   const summary =
     posture === "CLEAR"
-      ? "No secret or authz-regression signals in this defensive pass."
-      : `${critical} critical · ${high} high · ${secrets.length} secret · ${authz.length} authz signals (defensive scan only).`;
+      ? "No secret, authz, dependency, or config signals in this defensive pass."
+      : `${critical} critical · ${high} high · secrets ${secrets.length} · authz ${authz.length} · deps ${dependencies.length} · config ${config.length}`;
 
   return {
     scannedAt: new Date().toISOString(),
@@ -75,10 +98,14 @@ export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
     summary,
     secrets,
     authz,
+    dependencies,
+    config,
     findings,
     counts: {
       secrets: secrets.length,
       authz: authz.length,
+      dependencies: dependencies.length,
+      config: config.length,
       critical,
       high,
     },
@@ -86,4 +113,9 @@ export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
   };
 }
 
-export type { SecretFinding, AuthzRegressionFinding };
+export type {
+  SecretFinding,
+  AuthzRegressionFinding,
+  DependencyFinding,
+  ConfigFinding,
+};

@@ -64,6 +64,15 @@ export { detectSecrets } from "./security/secrets.js";
 export type { SecretFinding } from "./security/secrets.js";
 export { detectAuthzRegressions } from "./security/authz-regression.js";
 export type { AuthzRegressionFinding } from "./security/authz-regression.js";
+export { detectDependencyAdvisories } from "./security/deps.js";
+export type { DependencyFinding } from "./security/deps.js";
+export { detectConfigSecurity } from "./security/config.js";
+export type { ConfigFinding } from "./security/config.js";
+export {
+  DEFENSIVE_ADVISORIES,
+  isVersionBelow,
+} from "./security/advisories.js";
+export type { DefensiveAdvisory } from "./security/advisories.js";
 export { runSentinelScan } from "./security/scan.js";
 export type {
   SentinelScanResult,

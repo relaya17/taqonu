@@ -1238,11 +1238,15 @@
     "scannedAt": "Scanned {at}",
     "countSecrets": "Secrets {n}",
     "countAuthz": "AuthZ {n}",
+    "countDeps": "Deps {n}",
+    "countConfig": "Config {n}",
     "countCritical": "Critical {n}",
     "countHigh": "High {n}",
-    "clear": "No secret or authz-regression signals in this pass.",
+    "clear": "No secret, authz, dependency, or config signals in this pass.",
     "remediation": "Remediation",
-    "nextActions": "Next actions"
+    "nextActions": "Next actions",
+    "propose": "Propose fix",
+    "verify": "Verify re-scan"
   },
   "health": {
     "title": "System Health",
