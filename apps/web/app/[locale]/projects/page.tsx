@@ -264,7 +264,6 @@ export default function ProjectsPage() {
       // continue once even if storage blocked
     }
     refreshDiscovery.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot on first discovery load
   }, [discoveryQuery.isSuccess, discoveryQuery.data?.summary.unlinkedCount]);
 
   const linkDiscovery = useMutation({

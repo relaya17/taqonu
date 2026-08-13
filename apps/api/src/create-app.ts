@@ -89,7 +89,14 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   }
 
   const localBootstrap = ensureDevLocalPortfolioLink(env);
-  logger.info("dev_local_portfolio_bootstrap", localBootstrap);
+  logger.info("dev_local_portfolio_bootstrap", {
+    connected: localBootstrap.connected,
+    reposRoot: localBootstrap.reposRoot,
+    scanned: localBootstrap.scanned,
+    linked: localBootstrap.linked,
+    goldenLinked: localBootstrap.goldenLinked,
+    note: localBootstrap.note,
+  });
 
   await registerHealthRoutes(app);
   await registerProjectRoutes(app);
