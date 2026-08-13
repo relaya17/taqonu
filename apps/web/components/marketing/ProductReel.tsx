@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Stack, Typography } from "@mui/material";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 /** Default cinematic promo — override with NEXT_PUBLIC_MARKETING_VIDEO_URL. */
@@ -11,28 +11,9 @@ const DEFAULT_PROMO_VIDEO =
 const VIDEO_URL =
   process.env.NEXT_PUBLIC_MARKETING_VIDEO_URL?.trim() || DEFAULT_PROMO_VIDEO;
 
-function isYouTube(url: string): boolean {
-  return /youtube\.com|youtu\.be/.test(url);
-}
+type PromoPhase = "playing" | "ended" | "error";
 
-function youTubeEmbed(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes("youtu.be")) {
-      return `https://www.youtube.com/embed/${u.pathname.replace("/", "")}?rel=0&autoplay=1&mute=1`;
-    }
-    const id = u.searchParams.get("v");
-    return id
-      ? `https://www.youtube.com/embed/${id}?rel=0&autoplay=1&mute=1`
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-type PromoPhase = "playing" | "ended";
-
-/** Full-bleed marketing promo — at video end, register / login CTAs. */
+/** Full-bleed marketing promo — at video end (or error), register / login CTAs. */
 export function ProductReel({
   onPhaseChange,
 }: {
@@ -52,17 +33,24 @@ export function ProductReel({
     [onPhaseChange],
   );
 
-  const replay = () => {
+  useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    setPromoPhase("playing");
-    el.currentTime = 0;
+    el.muted = muted;
     void el.play().catch(() => {
-      /* autoplay may still be blocked after user gesture */
+      /* autoplay blocked — user can still use CTAs in hero */
     });
+  }, [muted]);
+
+  const replay = () => {
+    const el = videoRef.current;
+    setPromoPhase("playing");
+    if (!el) return;
+    el.currentTime = 0;
+    void el.play().catch(() => setPromoPhase("ended"));
   };
 
-  const yt = isYouTube(VIDEO_URL) ? youTubeEmbed(VIDEO_URL) : null;
+  const showEnd = phase === "ended" || phase === "error";
 
   return (
     <Box
@@ -72,86 +60,84 @@ export function ProductReel({
         width: "100%",
         height: "100%",
         overflow: "hidden",
-        bgcolor: "#040A0B",
+        bgcolor: "#071416",
       }}
     >
-      {yt ? (
-        <Box
-          component="iframe"
-          title={t("reelAria")}
-          src={yt}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          sx={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            border: 0,
-          }}
-        />
-      ) : (
-        <Box
-          component="video"
-          ref={videoRef}
-          src={VIDEO_URL}
-          autoPlay
-          muted={muted}
-          playsInline
-          preload="auto"
-          aria-label={t("reelAria")}
-          onEnded={() => setPromoPhase("ended")}
-          sx={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
-        />
-      )}
+      <Box
+        component="video"
+        ref={videoRef}
+        src={VIDEO_URL}
+        autoPlay
+        muted
+        playsInline
+        preload="auto"
+        controls={false}
+        aria-label={t("reelAria")}
+        onEnded={() => setPromoPhase("ended")}
+        onError={() => setPromoPhase("error")}
+        sx={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          opacity: showEnd ? 0.35 : 1,
+          transition: "opacity 0.4s ease",
+        }}
+      />
 
-      {/* Atmosphere veil — keeps brand readable without sticking cards on media */}
       <Box
         sx={{
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          background:
-            phase === "ended"
-              ? "linear-gradient(180deg, rgba(4,10,11,0.55) 0%, rgba(4,10,11,0.88) 55%, rgba(4,10,11,0.96) 100%)"
-              : "linear-gradient(90deg, rgba(4,10,11,0.72) 0%, rgba(4,10,11,0.35) 42%, rgba(4,10,11,0.15) 100%), linear-gradient(180deg, rgba(4,10,11,0.35) 0%, transparent 28%, rgba(4,10,11,0.55) 100%)",
-          transition: "background 0.6s ease",
+          background: showEnd
+            ? "linear-gradient(180deg, rgba(4,10,11,0.7) 0%, rgba(4,10,11,0.92) 100%)"
+            : "linear-gradient(90deg, rgba(4,10,11,0.78) 0%, rgba(4,10,11,0.4) 45%, rgba(4,10,11,0.2) 100%), linear-gradient(180deg, rgba(4,10,11,0.45) 0%, transparent 30%, rgba(4,10,11,0.55) 100%)",
         }}
       />
 
-      {phase === "playing" && !yt ? (
-        <Button
-          size="small"
-          onClick={() => {
-            setMuted((m) => {
-              const next = !m;
-              if (videoRef.current) videoRef.current.muted = next;
-              return next;
-            });
-          }}
+      {phase === "playing" ? (
+        <Stack
+          direction="row"
+          spacing={1}
           sx={{
             position: "absolute",
             bottom: { xs: 16, md: 24 },
             insetInlineEnd: { xs: 16, md: 24 },
             zIndex: 3,
-            color: "#E8F4F2",
-            bgcolor: "rgba(4,10,11,0.55)",
-            border: "1px solid rgba(62,200,190,0.35)",
-            fontWeight: 600,
-            "&:hover": { bgcolor: "rgba(4,10,11,0.75)" },
           }}
         >
-          {muted ? t("promoUnmute") : t("promoMute")}
-        </Button>
+          <Button
+            size="small"
+            onClick={() => setMuted((m) => !m)}
+            sx={{
+              color: "#E8F4F2",
+              bgcolor: "rgba(4,10,11,0.65)",
+              border: "1px solid rgba(62,200,190,0.35)",
+              fontWeight: 600,
+              "&:hover": { bgcolor: "rgba(4,10,11,0.85)" },
+            }}
+          >
+            {muted ? t("promoUnmute") : t("promoMute")}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setPromoPhase("ended")}
+            sx={{
+              color: "#E8F4F2",
+              bgcolor: "rgba(4,10,11,0.65)",
+              border: "1px solid rgba(62,200,190,0.35)",
+              fontWeight: 600,
+              "&:hover": { bgcolor: "rgba(4,10,11,0.85)" },
+            }}
+          >
+            {t("promoSkip")}
+          </Button>
+        </Stack>
       ) : null}
 
-      {phase === "ended" ? (
+      {showEnd ? (
         <Stack
           spacing={2.5}
           alignItems="center"
@@ -189,7 +175,7 @@ export function ProductReel({
               maxWidth: 420,
             }}
           >
-            {t("promoEndTitle")}
+            {phase === "error" ? t("promoErrorTitle") : t("promoEndTitle")}
           </Typography>
           <Typography
             sx={{
@@ -198,7 +184,7 @@ export function ProductReel({
               lineHeight: 1.5,
             }}
           >
-            {t("promoEndBody")}
+            {phase === "error" ? t("promoErrorBody") : t("promoEndBody")}
           </Typography>
           <Stack
             direction={{ xs: "column", sm: "row" }}
@@ -238,14 +224,24 @@ export function ProductReel({
             >
               {t("ctaLogin")}
             </Button>
+            <Button
+              component="a"
+              href={`/${locale}`}
+              size="large"
+              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+            >
+              {t("ctaApp")}
+            </Button>
           </Stack>
-          <Button
-            onClick={replay}
-            size="small"
-            sx={{ color: "rgba(160,190,188,0.9)", mt: 0.5 }}
-          >
-            {t("ctaReplay")}
-          </Button>
+          {phase === "ended" ? (
+            <Button
+              onClick={replay}
+              size="small"
+              sx={{ color: "rgba(160,190,188,0.9)", mt: 0.5 }}
+            >
+              {t("ctaReplay")}
+            </Button>
+          ) : null}
         </Stack>
       ) : null}
     </Box>

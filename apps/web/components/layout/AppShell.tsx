@@ -441,14 +441,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             position: "fixed",
             top: 0,
             insetInline: 0,
-            zIndex: 20,
+            zIndex: 30,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 2,
             px: { xs: 2, md: 3 },
             py: 1.5,
-            background: "linear-gradient(180deg, rgba(5,12,13,0.92), transparent)",
+            bgcolor: "rgba(5,12,13,0.88)",
+            borderBottom: "1px solid rgba(62,200,190,0.22)",
+            backdropFilter: "blur(10px)",
           }}
         >
           <Typography
@@ -465,7 +467,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             {t("brand.name")}
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Button
+              component={Link}
+              href="/"
+              size="small"
+              sx={{ color: "#E8F4F2", fontWeight: 650 }}
+            >
+              {t("nav.dashboard")}
+            </Button>
+            <Button
+              component={Link}
+              href="/truth"
+              size="small"
+              sx={{ color: "#E8F4F2", fontWeight: 650 }}
+            >
+              {t("nav.truth")}
+            </Button>
             <Button
               component={Link}
               href="/plan"

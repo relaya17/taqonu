@@ -25,7 +25,7 @@ export function WelcomeLanding() {
         overflow: "clip",
       }}
     >
-      {/* Full-bleed cinematic promo — brand + CTAs; end-of-video = register/login */}
+      {/* Full-bleed cinematic promo — brand + CTAs stay readable over video */}
       <Box
         component="section"
         sx={{
@@ -34,7 +34,9 @@ export function WelcomeLanding() {
           overflow: "hidden",
         }}
       >
-        <ProductReel onPhaseChange={(p) => setPromoEnded(p === "ended")} />
+        <ProductReel
+          onPhaseChange={(p) => setPromoEnded(p === "ended" || p === "error")}
+        />
 
         <Stack
           spacing={2.5}
@@ -47,14 +49,11 @@ export function WelcomeLanding() {
             pt: { xs: 10, md: 12 },
             pb: { xs: 6, md: 10 },
             maxWidth: 560,
+            // Keep copy visible while playing; end overlay owns the close
             opacity: promoEnded ? 0 : 1,
+            visibility: promoEnded ? "hidden" : "visible",
             pointerEvents: promoEnded ? "none" : "auto",
             transition: "opacity 0.45s ease",
-            animation: "landingHeroIn 0.85s ease-out",
-            "@keyframes landingHeroIn": {
-              from: { opacity: 0, transform: "translateY(18px)" },
-              to: { opacity: 1, transform: "translateY(0)" },
-            },
           }}
         >
           <Typography
@@ -66,6 +65,7 @@ export function WelcomeLanding() {
               letterSpacing: "-0.04em",
               lineHeight: 0.95,
               color: "#F2FBFA",
+              textShadow: "0 2px 24px rgba(0,0,0,0.55)",
             }}
           >
             {t("brand")}
@@ -77,18 +77,20 @@ export function WelcomeLanding() {
               fontWeight: 600,
               fontSize: { xs: "1.25rem", md: "1.45rem" },
               letterSpacing: "-0.02em",
-              color: "rgba(200, 230, 226, 0.95)",
+              color: "#E8F4F2",
               maxWidth: 420,
+              textShadow: "0 1px 16px rgba(0,0,0,0.5)",
             }}
           >
             {t("headline")}
           </Typography>
           <Typography
             sx={{
-              color: "rgba(180, 210, 208, 0.9)",
+              color: "rgba(210, 230, 228, 0.95)",
               fontSize: "1.05rem",
               lineHeight: 1.5,
               maxWidth: 400,
+              textShadow: "0 1px 12px rgba(0,0,0,0.45)",
             }}
           >
             {t("subhead")}
@@ -115,16 +117,25 @@ export function WelcomeLanding() {
               variant="outlined"
               size="large"
               sx={{
-                borderColor: "rgba(62, 200, 190, 0.55)",
-                color: "#E8F4F2",
+                borderColor: "rgba(232, 244, 242, 0.55)",
+                color: "#F2FBFA",
                 fontWeight: 600,
+                bgcolor: "rgba(4,10,11,0.35)",
                 "&:hover": {
                   borderColor: "#3EC8BE",
-                  bgcolor: "rgba(62, 200, 190, 0.08)",
+                  bgcolor: "rgba(62, 200, 190, 0.12)",
                 },
               }}
             >
               {t("ctaLogin")}
+            </Button>
+            <Button
+              component="a"
+              href={`/${locale}`}
+              size="large"
+              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+            >
+              {t("ctaApp")}
             </Button>
           </Stack>
         </Stack>
