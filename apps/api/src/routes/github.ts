@@ -3,16 +3,20 @@ import {
   GITHUB_APP_PERMISSIONS,
   GITHUB_INSTALLATION_STATES,
   GITHUB_SYNC_STAGES,
+  GitHubAppTokenCache,
   buildGitHubAppSetupUrl,
   extractIncrementalWebhookSync,
   fetchGitHubAppInstallation,
   matchProjectByRepoFullName,
   normalizeGithubPrivateKey,
+  postAtlasTruthCheckRun,
   resolveGitHubAppSlug,
+  resolveInstallationIdForCheck,
   signGitHubInstallState,
   verifyGitHubInstallState,
   verifyGitHubWebhookSignature,
 } from "@atlas/integrations-github";
+import { selectTopTruthFinding } from "@atlas/observer";
 import { AtlasError, uuidSchema } from "@atlas/shared";
 import { z } from "zod";
 import {
@@ -434,6 +438,63 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
                 observeCycleId: observed.id,
                 riskBand: observed.risk.band,
               });
+
+              // TRUTH-10 1.6 — publish Check Run when App credentials + SHA exist
+              const headSha = incremental.headSha;
+              const installationObj =
+                typeof body.installation === "object" && body.installation
+                  ? (body.installation as { id?: string | number })
+                  : null;
+              const projectInstall = osStore.getGithubAppInstallationForProject(
+                match.id,
+              );
+              const installationId = resolveInstallationIdForCheck({
+                webhookInstallationId: installationObj?.id ?? null,
+                projectInstallationId: projectInstall?.installationId ?? null,
+              });
+              const appId = app.atlasEnv.GITHUB_APP_ID;
+              const privateKey = app.atlasEnv.GITHUB_PRIVATE_KEY;
+              if (headSha && installationId && appId && privateKey) {
+                try {
+                  const cache = new GitHubAppTokenCache({
+                    appId,
+                    privateKeyPem: normalizeGithubPrivateKey(privateKey),
+                  });
+                  const token = await cache.getToken(installationId);
+                  const top = selectTopTruthFinding(observed.findings);
+                  const publicBase = app.atlasEnv.WEB_ORIGIN.replace(/\/$/, "");
+                  const check = await postAtlasTruthCheckRun({
+                    token,
+                    fullName,
+                    headSha,
+                    riskBand: observed.risk.band,
+                    riskScore: observed.risk.score,
+                    topFindingTitle: top?.title ?? null,
+                    observeCycleId: observed.id,
+                    detailsUrl: `${publicBase}/en/truth`,
+                  });
+                  if (check.ok) {
+                    app.atlasLogger.info("atlas_truth_check_run_posted", {
+                      projectId: match.id,
+                      checkRunId: check.id,
+                      headSha,
+                    });
+                  } else {
+                    app.atlasLogger.warn("atlas_truth_check_run_skipped", {
+                      projectId: match.id,
+                      reason: check.reason,
+                    });
+                  }
+                } catch (checkErr) {
+                  app.atlasLogger.warn("atlas_truth_check_run_error", {
+                    projectId: match.id,
+                    error:
+                      checkErr instanceof Error
+                        ? checkErr.message
+                        : "unknown",
+                  });
+                }
+              }
             }
           } catch (observeErr) {
             app.atlasLogger.warn("observer_cycle_webhook_skipped", {

@@ -11,4 +11,5 @@ Integrate GitHub via a GitHub App with least-privilege read permissions and shor
 ## Initial permissions
 
 Read: metadata, contents, statuses, issues, pull requests, actions, deployments.  
-Write permissions deferred until an explicit feature requires them.
+Write: **checks** only — required to publish `Atlas Truth` Check Runs after observe (TRUTH-10 · 1.6).  
+Other write permissions remain deferred.

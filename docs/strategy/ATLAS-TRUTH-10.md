@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (P1 surface on `/truth`)  
+**עדכון אחרון:** 2026-08-13 (P1.6 Truth Check Runs)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -62,7 +62,7 @@
 | 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — repo probes + deploy→observe + **Truth strip**; לא APM חי |
 | 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + **top finding** ב־`/truth` |
 | 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — claim על `/truth` + BYO; audit controls עדיין חלשים |
-| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook + deploy observe; חסר Check Runs ללקוח |
+| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + **Atlas Truth Check Run** (דורש `checks:write` באפליקציית GitHub) |
 
 ---
 
@@ -130,6 +130,7 @@ Sprint C
 | 2026-08-13 | P1.3/1.4: production signals + ADR conflict detect; deploy feeds trigger observe |
 | 2026-08-13 | **0.6 harden:** Expected GET/PUT + Truth EXPECTED vs OBSERVED; **0.11:** genome snapshots API+UI; **G1 pack** `design-partner-truth10-early-access.md` |
 | 2026-08-13 | **P1 surface:** `/truth` מציג Security/ADR/Production signals; top finding כולל adr-conflict; isolation claim |
+| 2026-08-13 | **P1.6:** webhook → observe → GitHub Check Run `Atlas Truth` (`checks:write`) |
 
 ---
 
