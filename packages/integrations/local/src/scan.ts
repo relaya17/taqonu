@@ -112,3 +112,58 @@ export function scanLocalReposRoot(
   walk(root, 1);
   return found;
 }
+
+function looksLikeProjectFolder(dir: string): boolean {
+  return (
+    existsSync(join(dir, "package.json")) ||
+    existsSync(join(dir, "pnpm-workspace.yaml")) ||
+    existsSync(join(dir, "src")) ||
+    existsSync(join(dir, "app")) ||
+    existsSync(join(dir, "README.md"))
+  );
+}
+
+/**
+ * Git repos under root PLUS immediate child folders that look like apps
+ * (even without `.git`) — used to link CaseFlow-style unzipped folders.
+ */
+export function listLocalProjectCandidates(
+  reposRoot: string,
+  maxDepth = 2,
+): readonly LocalRepoDiscovery[] {
+  const root = resolve(reposRoot);
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    throw new Error(`Local path not found or not a directory: ${root}`);
+  }
+
+  const gitRepos = scanLocalReposRoot(reposRoot, maxDepth);
+  const seen = new Set(gitRepos.map((r) => resolve(r.absolutePath)));
+  const extra: LocalRepoDiscovery[] = [];
+
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return gitRepos;
+  }
+
+  for (const name of entries) {
+    if (name === "node_modules" || name.startsWith(".")) continue;
+    const absolute = join(root, name);
+    try {
+      if (!statSync(absolute).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    if (seen.has(resolve(absolute))) continue;
+    if (!looksLikeProjectFolder(absolute)) continue;
+    extra.push({
+      folderName: name,
+      absolutePath: absolute,
+      fullName: null,
+      remoteUrl: null,
+    });
+  }
+
+  return [...gitRepos, ...extra];
+}

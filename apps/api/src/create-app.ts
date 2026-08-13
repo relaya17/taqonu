@@ -50,6 +50,7 @@ import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
+import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
 
 export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   const logger = createLogger({
@@ -86,6 +87,9 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
       reason: hydrate.reason ?? null,
     });
   }
+
+  const localBootstrap = ensureDevLocalPortfolioLink(env);
+  logger.info("dev_local_portfolio_bootstrap", localBootstrap);
 
   await registerHealthRoutes(app);
   await registerProjectRoutes(app);

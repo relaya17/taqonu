@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -249,6 +249,23 @@ export default function ProjectsPage() {
       await queryClient.invalidateQueries({ queryKey: ["portfolio-overview"] });
     },
   });
+
+  // One-shot auto-link when local discovery shows unlinked projects.
+  useEffect(() => {
+    if (!discoveryQuery.isSuccess || refreshDiscovery.isPending) return;
+    const status = discoveryQuery.data;
+    if (!status?.sources.local.connected) return;
+    if ((status.summary.unlinkedCount ?? 0) <= 0) return;
+    const key = "atlas.autoDiscoveryRefresh";
+    try {
+      if (sessionStorage.getItem(key) === "1") return;
+      sessionStorage.setItem(key, "1");
+    } catch {
+      // continue once even if storage blocked
+    }
+    refreshDiscovery.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot on first discovery load
+  }, [discoveryQuery.isSuccess, discoveryQuery.data?.summary.unlinkedCount]);
 
   const linkDiscovery = useMutation({
     mutationFn: (input: { projectId: string; workspaceRoot: string }) =>

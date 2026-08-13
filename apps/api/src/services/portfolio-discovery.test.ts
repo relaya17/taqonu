@@ -8,6 +8,7 @@ import {
   discoverLocalPortfolio,
   isPathInsideConfiguredRoot,
   linkDiscoveredWorkspaceRoot,
+  localMatchKeys,
 } from "./portfolio-discovery.js";
 
 describe("portfolio-discovery", () => {
@@ -116,5 +117,41 @@ describe("portfolio-discovery", () => {
         workspaceRoot: outside,
       }),
     ).toThrow(/inside the configured local reposRoot/);
+  });
+
+  it("localMatchKeys fuzzy-matches hotelOS-AI and CaseFlow-AI-main", () => {
+    expect(localMatchKeys("hotelOS-AI")).toContain("hotelos");
+    expect(localMatchKeys("CaseFlow-AI-main")).toContain("caseflow");
+  });
+
+  it("links non-git folder to existing project by fuzzy name", () => {
+    const root = tempDir("atlas-nongit-");
+    const folder = join(root, "hotelOS-AI");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "package.json"), "{\"name\":\"hotelos\"}\n");
+
+    const now = new Date().toISOString();
+    const existing = osStore.getProjectBySlug("hotelos");
+    const projectId = existing?.id ?? crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectId,
+      slug: "hotelos",
+      name: "hotelos",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
+
+    const result = discoverLocalPortfolio({
+      reposRoot: root,
+      maxDepth: 1,
+      reconcile: false,
+      linkLocalRoots: true,
+    });
+
+    expect(result.linked).toBeGreaterThanOrEqual(1);
+    expect(osStore.getWorkspaceRoot(projectId)).toBe(folder);
   });
 });

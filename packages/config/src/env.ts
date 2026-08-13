@@ -45,6 +45,8 @@ const serverEnvSchema = baseEnvSchema.extend({
   ATLAS_GOLDEN_PROJECT_ROOT: optionalString,
   ATLAS_GOLDEN_PROJECT_SLUG: optionalString,
   ATLAS_EVALS_ROOT: optionalString,
+  /** Parent folder of local apps for portfolio discovery (dev-friendly). */
+  ATLAS_LOCAL_REPOS_ROOT: optionalString,
   /**
    * When true, LOW AUTO_FIX remediation drafts may auto-approve+apply after
    * detect — still requires a signed-in WRITE session. HIGH/CRITICAL never.

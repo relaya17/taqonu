@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { resolve, relative, isAbsolute } from "node:path";
+import { resolve, relative, isAbsolute, join } from "node:path";
 import type { Project } from "@atlas/shared";
 import {
   AtlasError,
@@ -21,7 +21,7 @@ import {
   normalizeGithubPrivateKey,
 } from "@atlas/integrations-github";
 import {
-  scanLocalReposRoot,
+  listLocalProjectCandidates,
   type LocalRepoDiscovery,
 } from "@atlas/integrations-local";
 import { osStore } from "../store/os-store.js";
@@ -115,6 +115,25 @@ function projectMatchCandidates() {
   }));
 }
 
+/** Normalize folder/slug tokens for fuzzy local matching (hotelOS-AI ↔ hotelos). */
+export function localMatchKeys(raw: string): string[] {
+  const base = raw
+    .toLowerCase()
+    .replace(/\.git$/i, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const keys = new Set<string>([base, base.replace(/-/g, "")]);
+  let cur = base;
+  for (const suffix of ["-main", "-master", "-ai", "-app", "-os"] as const) {
+    if (cur.endsWith(suffix) && cur.length > suffix.length + 2) {
+      cur = cur.slice(0, -suffix.length).replace(/-$/, "");
+      keys.add(cur);
+      keys.add(cur.replace(/-/g, ""));
+    }
+  }
+  return [...keys].filter(Boolean);
+}
+
 function resolveMatchingProject(repo: LocalRepoDiscovery): Project | undefined {
   const candidates = projectMatchCandidates();
   if (repo.fullName) {
@@ -124,7 +143,27 @@ function resolveMatchingProject(repo: LocalRepoDiscovery): Project | undefined {
     }
   }
   const folderSlug = slugFromFullName(`local/${repo.folderName}`);
-  return osStore.getProjectBySlug(folderSlug);
+  const bySlug = osStore.getProjectBySlug(folderSlug);
+  if (bySlug) return bySlug;
+
+  const folderKeys = new Set(localMatchKeys(repo.folderName));
+  if (repo.fullName) {
+    for (const k of localMatchKeys(repo.fullName.split("/").pop() ?? "")) {
+      folderKeys.add(k);
+    }
+  }
+  for (const candidate of candidates) {
+    const projectKeys = new Set([
+      ...localMatchKeys(candidate.slug),
+      ...localMatchKeys(candidate.name),
+    ]);
+    for (const key of folderKeys) {
+      if (projectKeys.has(key)) {
+        return osStore.getProject(candidate.id);
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -145,7 +184,7 @@ export function discoverLocalPortfolio(input: {
   repos: readonly LocalRepoDiscovery[];
   projects: Project[];
 } {
-  const repos = scanLocalReposRoot(input.reposRoot, input.maxDepth ?? 2);
+  const repos = listLocalProjectCandidates(input.reposRoot, input.maxDepth ?? 2);
   let created = 0;
   let updated = 0;
   let linked = 0;
@@ -196,6 +235,12 @@ export function discoverLocalPortfolio(input: {
           linked += 1;
         }
       }
+      continue;
+    }
+
+    // Unzipped / non-git folders: only link when they match an existing project.
+    const hasGit = existsSync(join(repo.absolutePath, ".git"));
+    if (!hasGit) {
       continue;
     }
 
@@ -273,7 +318,7 @@ export function buildPortfolioDiscoveryStatus(input?: {
   if (localConnected && local?.reposRoot) {
     pathHints.push(local.reposRoot);
     try {
-      const scanned = scanLocalReposRoot(local.reposRoot, 2);
+      const scanned = listLocalProjectCandidates(local.reposRoot, 2);
       localCandidates = scanned.map((repo) => {
         const match = resolveMatchingProject(repo);
         const linkedRoot = match
