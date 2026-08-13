@@ -244,7 +244,7 @@ export default function InvestorsPage() {
           </Button>
           <Button
             component={Link}
-            href={`${productHref}/partners`}
+            href={`${productHref}/experts`}
             size="small"
             sx={{ color: "#DCDDE1" }}
           >
@@ -372,7 +372,7 @@ export default function InvestorsPage() {
             </Button>
             <Button
               component={Link}
-              href={`${productHref}/partners`}
+              href={`${productHref}/experts`}
               variant="outlined"
               size="large"
               sx={{
@@ -623,7 +623,7 @@ export default function InvestorsPage() {
         </Typography>
         <Button
           component={Link}
-          href={`${productHref}/partners`}
+          href={`${productHref}/experts`}
           variant="contained"
           color="secondary"
           size="large"

@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
-import { Link } from "@/i18n/routing";
+import { Link, useRouter } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface ProjectItem {
@@ -40,7 +40,7 @@ interface PatchItem {
   approvals: Array<{ by: string; at: string }>;
 }
 
-export default function PatchesPage() {
+export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   const t = useTranslations("patches");
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState("");
@@ -116,16 +116,20 @@ export default function PatchesPage() {
   });
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 920 }}>
-      <Box>
-        <Typography variant="h1">{t("title")}</Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          {t("subtitle")}
-        </Typography>
-        <Alert severity="info" sx={{ mt: 2 }}>
-          {t("gateNote")}
-        </Alert>
-      </Box>
+    <Stack spacing={3} sx={{ maxWidth: embedded ? "100%" : 920 }}>
+      {!embedded ? (
+        <Box>
+          <Typography variant="h1">{t("title")}</Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>
+            {t("subtitle")}
+          </Typography>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            {t("gateNote")}
+          </Alert>
+        </Box>
+      ) : (
+        <Alert severity="info">{t("gateNote")}</Alert>
+      )}
 
       <TextField
         select
@@ -237,4 +241,12 @@ export default function PatchesPage() {
       </Stack>
     </Stack>
   );
+}
+
+export default function PatchesPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/?desk=patches");
+  }, [router]);
+  return null;
 }

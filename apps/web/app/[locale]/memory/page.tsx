@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
+import { useRouter } from "@/i18n/routing";
 
 type EpistemicState =
   | "FACT"
@@ -102,7 +103,7 @@ function MemoryRow({
   );
 }
 
-export default function MemoryPage() {
+export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
   const t = useTranslations("memory");
   const queryClient = useQueryClient();
   const [statement, setStatement] = useState("");
@@ -165,15 +166,17 @@ export default function MemoryPage() {
   const projects = projectsQuery.data?.items ?? [];
 
   return (
-    <Stack spacing={4} sx={{ maxWidth: 820 }}>
-      <Box>
-        <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
-          {t("title")}
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          {t("subtitle")}
-        </Typography>
-      </Box>
+    <Stack spacing={embedded ? 3 : 4} sx={{ maxWidth: embedded ? "100%" : 820 }}>
+      {!embedded ? (
+        <Box>
+          <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
+            {t("title")}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>
+            {t("subtitle")}
+          </Typography>
+        </Box>
+      ) : null}
 
       <Stack spacing={1.5}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
@@ -271,3 +274,13 @@ export default function MemoryPage() {
     </Stack>
   );
 }
+
+/** Deep links land on the personal desk inside the dashboard. */
+export default function MemoryPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/?desk=memory");
+  }, [router]);
+  return null;
+}
+

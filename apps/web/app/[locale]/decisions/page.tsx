@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
+import { useRouter } from "@/i18n/routing";
 
 type DecisionStatus = "PROPOSED" | "ACTIVE" | "REJECTED" | "SUPERSEDED";
 
@@ -85,7 +86,7 @@ function nextActions(status: DecisionStatus): Array<"ACTIVE" | "REJECTED" | "SUP
   return [];
 }
 
-export default function DecisionsPage() {
+export function DecisionsPanel({ embedded = false }: { embedded?: boolean }) {
   const t = useTranslations("decisions");
   const queryClient = useQueryClient();
   const [decision, setDecision] = useState("");
@@ -199,15 +200,17 @@ export default function DecisionsPage() {
   }, [evidenceQuery.data?.items, projectId]);
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 920, width: "100%", minWidth: 0 }}>
-      <Box>
-        <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.4rem" }, wordBreak: "break-word" }}>
-          {t("title")}
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          {t("subtitle")}
-        </Typography>
-      </Box>
+    <Stack spacing={3} sx={{ maxWidth: embedded ? "100%" : 920, width: "100%", minWidth: 0 }}>
+      {!embedded ? (
+        <Box>
+          <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.4rem" }, wordBreak: "break-word" }}>
+            {t("title")}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>
+            {t("subtitle")}
+          </Typography>
+        </Box>
+      ) : null}
 
       <Box
         component="form"
@@ -543,4 +546,12 @@ export default function DecisionsPage() {
       </Stack>
     </Stack>
   );
+}
+
+export default function DecisionsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/?desk=decisions");
+  }, [router]);
+  return null;
 }

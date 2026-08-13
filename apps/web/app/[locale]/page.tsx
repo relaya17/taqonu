@@ -18,6 +18,8 @@ import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
+import { PersonalDesk } from "@/components/dashboard/PersonalDesk";
+import { Suspense } from "react";
 
 interface ProjectItem {
   id: string;
@@ -219,7 +221,7 @@ export default function DashboardPage() {
           <Button component={Link} href="/agents" variant="outlined" size="large">
             {t("dashboard.ctaAgents")}
           </Button>
-          <Button component={Link} href="/partners" variant="outlined" size="large">
+          <Button component={Link} href="/experts" variant="outlined" size="large">
             {t("dashboard.ctaPartners")}
           </Button>
           <Button component={Link} href="/readiness" variant="text" size="large">
@@ -235,9 +237,6 @@ export default function DashboardPage() {
           {t("dashboard.opsHelp")}
         </Typography>
         <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
-          <Button component={Link} href="/patches" size="small" variant="outlined">
-            {t("dashboard.opsPatches")}
-          </Button>
           <Button component={Link} href="/health" size="small" variant="outlined">
             {t("dashboard.opsHealth")}
           </Button>
@@ -285,7 +284,7 @@ export default function DashboardPage() {
       {!projectId && !projects.isLoading ? (
         <Alert severity="info">
           {t("dashboard.noProjects")}{" "}
-          <Button component={Link} href="/partners" size="small">
+          <Button component={Link} href="/experts" size="small">
             {t("dashboard.ctaPartners")}
           </Button>
         </Alert>
@@ -447,6 +446,10 @@ export default function DashboardPage() {
       <Typography variant="body2" color="text.secondary">
         {t("dashboard.workersNote")}
       </Typography>
+
+      <Suspense fallback={null}>
+        <PersonalDesk />
+      </Suspense>
     </Stack>
   );
 }

@@ -15,6 +15,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
+import { PartnerAuditIntake } from "@/components/partners/PartnerAuditIntake";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 
@@ -196,6 +197,26 @@ export default function ExpertsPage() {
           {t("consultHelp")}{" "}
           <Link href="/agents">{t("openAgents")}</Link>
         </Alert>
+        <Alert severity="success" sx={{ mt: 1.5 }}>
+          {t("partnerBridge")}
+        </Alert>
+      </Box>
+
+      <PartnerAuditIntake
+        embedded
+        onProjectReady={(id) => {
+          setProjectId(id);
+          void projectsQuery.refetch();
+        }}
+      />
+
+      <Box>
+        <Typography fontWeight={700} sx={{ fontSize: "1.15rem" }}>
+          {t("reviewSection")}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
+          {t("reviewSectionHelp")}
+        </Typography>
       </Box>
 
       <Stack

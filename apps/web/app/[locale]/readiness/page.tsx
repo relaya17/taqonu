@@ -176,7 +176,7 @@ export default function ReadinessPage() {
         </Button>
         <Button
           component={Link}
-          href="/partners"
+          href="/experts"
           size="medium"
           variant="text"
           sx={{ minHeight: 44 }}
