@@ -126,6 +126,29 @@ export function createAtlasTheme(
           },
         },
       },
+      MuiPaper: {
+        defaultProps: {
+          elevation: 0,
+        },
+        styleOverrides: {
+          root: {
+            // MUI 6 still injects --Paper-overlay on the client for elevation;
+            // pin both vars so SSR HTML matches the first client paint.
+            backgroundImage: "none",
+            "--Paper-shadow": "none",
+            "--Paper-overlay": "none",
+          },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundImage: "none",
+            "--Paper-shadow": "none",
+            "--Paper-overlay": "none",
+          },
+        },
+      },
       MuiButton: {
         styleOverrides: {
           root: {

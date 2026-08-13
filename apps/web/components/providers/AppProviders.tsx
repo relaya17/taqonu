@@ -6,8 +6,6 @@ import { CssBaseline, ThemeProvider } from "@mui/material";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { prefixer } from "stylis";
 import rtlPlugin from "stylis-plugin-rtl";
-import createCache from "@emotion/cache";
-import { CacheProvider } from "@emotion/react";
 import { createAtlasTheme } from "@/styles/theme";
 import { AiCompanionProvider } from "@/components/providers/AiCompanionProvider";
 import {
@@ -43,25 +41,24 @@ function ThemedApp({
       }),
   );
 
-  const cache = useMemo(
+  // One Emotion cache only (AppRouterCacheProvider). A second CacheProvider
+  // caused SSR/client className mismatches on Drawer / ListItemButton.
+  const cacheOptions = useMemo(
     () =>
-      createCache({
-        key: direction === "rtl" ? "muirtl" : "mui",
-        stylisPlugins: direction === "rtl" ? [prefixer, rtlPlugin] : [prefixer],
-      }),
+      direction === "rtl"
+        ? { key: "muirtl", stylisPlugins: [prefixer, rtlPlugin] }
+        : { key: "mui", stylisPlugins: [prefixer] },
     [direction],
   );
 
   return (
-    <AppRouterCacheProvider>
-      <CacheProvider value={cache}>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <QueryClientProvider client={queryClient}>
-            <AiCompanionProvider>{children}</AiCompanionProvider>
-          </QueryClientProvider>
-        </ThemeProvider>
-      </CacheProvider>
+    <AppRouterCacheProvider options={cacheOptions}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <QueryClientProvider client={queryClient}>
+          <AiCompanionProvider>{children}</AiCompanionProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </AppRouterCacheProvider>
   );
 }

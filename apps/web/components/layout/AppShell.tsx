@@ -387,12 +387,27 @@ export function AppShell({ children }: { children: ReactNode }) {
     border: 0,
     background:
       "linear-gradient(180deg, rgba(15,61,62,0.96) 0%, rgba(20,40,42,0.98) 100%)",
+    backgroundImage: "none",
+    boxShadow: "none",
     color: "#F4F7F5",
     py: 2.5,
     px: 1.5,
     display: "flex",
     flexDirection: "column" as const,
     overflowX: "hidden" as const,
+    "--Paper-shadow": "none",
+    "--Paper-overlay": "none",
+  };
+
+  const drawerPaperProps = {
+    "aria-label": t("nav.main"),
+    component: "aside" as const,
+    elevation: 0 as const,
+    square: true as const,
+    style: {
+      ["--Paper-shadow" as string]: "none",
+      ["--Paper-overlay" as string]: "none",
+    },
   };
 
   if (isMarketing) {
@@ -519,8 +534,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           [`& .MuiDrawer-paper`]: drawerPaperSx,
         }}
         PaperProps={{
-          "aria-label": t("nav.main"),
-          component: "aside",
+          ...drawerPaperProps,
           id: navId,
         }}
       >
@@ -547,10 +561,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           flexShrink: 0,
           [`& .MuiDrawer-paper`]: drawerPaperSx,
         }}
-        PaperProps={{
-          "aria-label": t("nav.main"),
-          component: "aside",
-        }}
+        PaperProps={drawerPaperProps}
       >
         {nav({ mobile: false })}
       </Drawer>
