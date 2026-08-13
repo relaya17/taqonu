@@ -101,7 +101,7 @@ export function buildAdminOracleShell(input?: {
     ],
     roadmap: [
       { id: "A1.1", title: "Admin Command Center shell", status: "PARTIAL" },
-      { id: "A1.2", title: "Agent action queue (detect→rank→notify/propose)", status: "OPEN" },
+      { id: "A1.2", title: "Agent action queue (detect→rank→notify/propose)", status: "PARTIAL" },
       { id: "A1.3", title: "Version instability detector", status: "OPEN" },
       { id: "A1.4", title: "Daily hi-tech / advisory brief", status: "OPEN" },
       { id: "A1.5", title: "Defensive cyber feed → Graph", status: "OPEN" },

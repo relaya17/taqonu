@@ -13,6 +13,7 @@ import {
   type WatchdogReport,
 } from "../services/platform-watchdog.js";
 import { buildAdminOracleShell } from "../services/admin-oracle.js";
+import { buildOracleActionQueue } from "../services/admin-oracle-queue.js";
 import { osStore } from "../store/os-store.js";
 
 export async function registerAdminOpsRoutes(
@@ -25,6 +26,7 @@ export async function registerAdminOpsRoutes(
     const { tier } = resolveTier(app.atlasEnv, ownerId);
     const watchdog = runPlatformWatchdog({ tier, ownerId });
     const oracle = buildAdminOracleShell({ locale: "he" });
+    const queue = buildOracleActionQueue(watchdog);
 
     return {
       platform: {
@@ -36,17 +38,52 @@ export async function registerAdminOpsRoutes(
       tier,
       watchdog,
       oracle,
+      queue,
       generatedAt: watchdog.generatedAt,
     };
   });
 
   app.get("/api/v1/admin/oracle", async (request) => {
     requireAdmin(app, request);
+    const identity = await resolveCloudIdentity(app, request);
+    const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
+    const { tier } = resolveTier(app.atlasEnv, ownerId);
+    const watchdog = runPlatformWatchdog({ tier, ownerId });
     const oracle = buildAdminOracleShell({ locale: "he" });
+    const queue = buildOracleActionQueue(watchdog);
     return {
       oracle,
+      queue,
+      watchdogScore: watchdog.score,
       generatedAt: new Date().toISOString(),
-      note: "TRUTH-10 A1 shell — persona, allowlist, brief scaffold. Live ingest = A1.4+.",
+      note: "TRUTH-10 A1 — persona + ranked action queue (detect→rank→notify/propose).",
+    };
+  });
+
+  app.post("/api/v1/admin/oracle/refresh-queue", async (request) => {
+    requireAdmin(app, request);
+    const identity = await resolveCloudIdentity(app, request);
+    const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
+    const { tier } = resolveTier(app.atlasEnv, ownerId);
+    const watchdog = runPlatformWatchdog({ tier, ownerId });
+    const queue = buildOracleActionQueue(watchdog);
+    osStore.recordEvent({
+      type: "admin.oracle.queue.refresh",
+      total: queue.total,
+      critical: queue.counts.critical,
+      high: queue.counts.high,
+      at: queue.generatedAt,
+    });
+    return {
+      ok: true as const,
+      queue,
+      watchdogScore: watchdog.score,
+      message:
+        queue.counts.critical > 0
+          ? "Critical actions in queue — investigate before users hit failures."
+          : queue.total === 0
+            ? "Queue empty — Oracle has nothing urgent."
+            : `Ranked ${queue.total} action(s) for notify/propose.`,
     };
   });
 

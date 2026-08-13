@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (A1.1 Admin Oracle shell)  
+**עדכון אחרון:** 2026-08-13 (A1.2 Oracle action queue)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -118,7 +118,7 @@
 | # | משימה | סטטוס |
 |---:|---|---|
 | A1.1 | מסך Admin Command Center (premium dashboard shell) | `PARTIAL` — `/admin` + **`/admin/oracle`** + `GET /api/v1/admin/oracle` |
-| A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `OPEN` |
+| A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `PARTIAL` — `buildOracleActionQueue` + refresh + UI תור |
 | A1.3 | Version instability detector (deps/runtime/EOL) | `OPEN` |
 | A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `OPEN` |
 | A1.5 | Defensive cyber feed → findings על Graph (CVE↔deps) | `OPEN` |
@@ -188,6 +188,7 @@ Sprint C
 | 2026-08-13 | **P1.3:** Vercel/Render deploy → `.atlas/production/deploys.json` → DEPLOYMENT nodes + Truth finding |
 | 2026-08-13 | **A1 נוסף לרשימה:** Admin Oracle / Command Agent — לוח בקרה + ניטור + בריפינג + סייבר הגנתי ממקורות מורשים |
 | 2026-08-13 | **A1.1:** `/admin/oracle` shell + API persona/allowlist/brief scaffold |
+| 2026-08-13 | **A1.2:** Oracle action queue — detect→rank→notify/propose (watchdog + patches + deploys) |
 
 ---
 
