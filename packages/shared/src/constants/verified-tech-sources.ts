@@ -508,6 +508,87 @@ export const VERIFIED_TECH_SOURCES: readonly VerifiedTechSource[] = [
   },
 ];
 
+/** Hostnames (and parent suffixes) allowed for agent-facing tech knowledge. */
+export function verifiedTechSourceHosts(): readonly string[] {
+  const hosts = new Set<string>();
+  for (const s of VERIFIED_TECH_SOURCES) {
+    try {
+      hosts.add(new URL(s.url).hostname.toLowerCase());
+    } catch {
+      // skip malformed
+    }
+  }
+  return [...hosts];
+}
+
+/**
+ * True when URL hostname matches the verified allow-list (exact or subdomain).
+ * Agents / ingestion must reject non-matching external knowledge.
+ */
+export function isAuthorizedVerifiedTechUrl(url: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return verifiedTechSourceHosts().some(
+    (host) => hostname === host || hostname.endsWith(`.${host}`),
+  );
+}
+
+/** Downloadable allow-list pack for offline / handoff (JSON). */
+export function buildVerifiedTechSourcesPack(generatedAt = new Date().toISOString()): {
+  schema: "atlas.verified-tech-sources.v1";
+  policy: string;
+  generatedAt: string;
+  count: number;
+  domains: readonly TechSourceDomain[];
+  hosts: readonly string[];
+  items: readonly VerifiedTechSource[];
+} {
+  return {
+    schema: "atlas.verified-tech-sources.v1",
+    policy:
+      "Authorized verified knowledge only — official vendor docs, standards, government cyber, university CS. Agents must refuse or mark INSUFFICIENT_EVIDENCE outside this allow-list.",
+    generatedAt,
+    count: VERIFIED_TECH_SOURCES.length,
+    domains: TECH_SOURCE_DOMAINS,
+    hosts: verifiedTechSourceHosts(),
+    items: VERIFIED_TECH_SOURCES,
+  };
+}
+
+/** Human-readable markdown for the same pack. */
+export function buildVerifiedTechSourcesMarkdown(
+  generatedAt = new Date().toISOString(),
+): string {
+  const pack = buildVerifiedTechSourcesPack(generatedAt);
+  const lines = [
+    "# Atlas — Verified / authorized tech sources",
+    "",
+    `Generated: ${pack.generatedAt}`,
+    "",
+    pack.policy,
+    "",
+    `Count: ${pack.count}`,
+    "",
+    "## Sources",
+    "",
+  ];
+  for (const item of pack.items) {
+    lines.push(`### ${item.titleEn}`);
+    lines.push(`- Hebrew: ${item.titleHe}`);
+    lines.push(`- Kind: ${item.kind}`);
+    lines.push(`- Domain: ${item.domain}`);
+    lines.push(`- URL: ${item.url}`);
+    lines.push(`- Topics: ${item.topics.join(", ")}`);
+    lines.push(`- Note: ${item.excerptEn}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 /** Map allow-list entries into Knowledge Fabric corpus documents. */
 export function verifiedTechSourcesAsCorpusSeed(): readonly {
   id: string;

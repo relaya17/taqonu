@@ -2,8 +2,10 @@ import type { FastifyInstance } from "fastify";
 import {
   filterPortfolioPatterns,
   orchestrateQaAnalyze,
+  runProcessInternalAudit,
 } from "@atlas/qa-core";
 import {
+  createProcessAuditSchema,
   createQaRunSchema,
   qaPortfolioPatternSchema,
   type QaPortfolioPattern,
@@ -11,12 +13,21 @@ import {
 } from "@atlas/shared";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
+import {
+  assertProcessAuditQuota,
+  recordProcessAuditUsage,
+} from "../services/plan-quota.js";
 import { resolveWorkspaceRoot } from "../services/golden-root.js";
 import {
   buildMemoryContext,
   seedPortfolioPatternMemories,
 } from "../services/memory-pipeline.js";
 import { atlasMetrics } from "./metrics.js";
+import {
+  rememberProcessAuditId,
+  syncProcessAuditToMemory,
+} from "../services/central-opinion.js";
+
 
 const QA_RUNS_META = "qa.runs";
 const QA_PATTERNS_META = "qa.portfolioPatterns";
@@ -356,4 +367,77 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
       })),
     });
   });
+
+  /**
+   * Process agent — enters the customer's app class profile and audits
+   * internal journeys (auth/RBAC/tenant/E2E/AI-HITL/UI-UX/perf/providers).
+   * Returns a structured GO / CONDITIONAL_GO / NO_GO document.
+   */
+  app.post("/api/v1/qa/process-audit", async (request, reply) => {
+    const started = Date.now();
+    osStore.ensureLoaded();
+    assertProcessAuditQuota(app.atlasEnv);
+    const body = createProcessAuditSchema.parse(request.body ?? {});
+    const project = body.projectId ? osStore.getProject(body.projectId) : null;
+    const allProjects = osStore.listProjects();
+    const projectId =
+      body.projectId ?? allProjects[0]?.id ?? null;
+    const resolvedProject = projectId
+      ? (osStore.getProject(projectId) ?? project)
+      : null;
+
+    const goldenSlug = app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros";
+    const workspaceRoots = resolveProjectWorkspaceRoots({
+      projectIds: projectId ? [projectId] : [],
+      goldenSlug,
+      queryRoot: null,
+      envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+    });
+    const workspaceRoot = projectId ? workspaceRoots[projectId] : undefined;
+
+    const document = runProcessInternalAudit({
+      request: body,
+      projectId,
+      workspaceRoot,
+      projectName: resolvedProject?.name,
+    });
+
+    osStore.setMeta(
+      `qa.processAudit.${document.id}`,
+      JSON.stringify(document),
+    );
+    rememberProcessAuditId(document.id);
+    const memory = syncProcessAuditToMemory(document);
+    recordProcessAuditUsage();
+
+    osStore.recordEvent({
+      type: "qa.process_audit.completed",
+      auditId: document.id,
+      projectId,
+      appProfile: document.appProfile,
+      verdict: document.verdict,
+      itemCount: document.items.length,
+      memoryId: memory.id,
+      at: document.completedAt,
+    });
+
+    atlasMetrics.record("agent_run_duration", Date.now() - started, {
+      kind: "process_audit",
+    });
+    app.atlasLogger.info("qa_process_audit_completed", {
+      auditId: document.id,
+      projectId,
+      appProfile: document.appProfile,
+      verdict: document.verdict,
+      items: document.items.length,
+      memoryId: memory.id,
+    });
+
+    return reply.status(201).send({
+      ...document,
+      syncedMemoryId: memory.id,
+      note: "Audit synced to Memory — manager-partner agent can remind you later. Use central-opinion PDF/HTML for one consolidated client opinion.",
+    });
+  });
 }
+

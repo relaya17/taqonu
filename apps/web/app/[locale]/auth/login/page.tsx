@@ -13,7 +13,7 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, downloadVerifiedSourcesPack, ADMIN_LOGIN_PATH } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 
 interface AuthProviders {
@@ -84,6 +84,14 @@ export default function LoginPage() {
         <Typography color="text.secondary" sx={{ mt: 1 }}>
           {t("loginSubtitle")}
         </Typography>
+        <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+          <Button component={Link} href="/welcome" size="small">
+            {t("openLanding")}
+          </Button>
+          <Button component={Link} href="/plan" size="small" variant="outlined">
+            {t("openPricing")}
+          </Button>
+        </Stack>
       </Box>
 
       <Box
@@ -168,6 +176,37 @@ export default function LoginPage() {
       <Typography variant="body2">
         {t("noAccount")}{" "}
         <Link href="/auth/register">{t("registerLink")}</Link>
+      </Typography>
+
+      <Divider />
+
+      <Alert severity="info">
+        {t("verifiedPackNote")}
+      </Alert>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Button
+          variant="outlined"
+          onClick={() => downloadVerifiedSourcesPack("json")}
+        >
+          {t("downloadVerifiedJson")}
+        </Button>
+        <Button
+          variant="outlined"
+          onClick={() => downloadVerifiedSourcesPack("markdown")}
+        >
+          {t("downloadVerifiedMd")}
+        </Button>
+      </Stack>
+
+      <Typography variant="body2" color="text.secondary">
+        {t("adminSeparateNote")}{" "}
+        <Box
+          component="a"
+          href={ADMIN_LOGIN_PATH}
+          sx={{ color: "primary.main", fontWeight: 600 }}
+        >
+          {ADMIN_LOGIN_PATH}
+        </Box>
       </Typography>
     </Stack>
   );

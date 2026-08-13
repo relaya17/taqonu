@@ -17,6 +17,8 @@ export const QA_PROFILES = [
   "PORTFOLIO",
   "FULL_AUDIT",
   "CHANGED_ONLY",
+  /** Agent enters the app and audits internal business processes (per app class). */
+  "PROCESS_INTERNAL",
 ] as const;
 
 export type QaProfile = (typeof QA_PROFILES)[number];
@@ -143,4 +145,18 @@ export const PROFILE_DOMAIN_MAP: Readonly<Record<QaProfile, readonly QaDomain[]>
     "CONTRACT",
   ],
   CHANGED_ONLY: ["UNIT", "API", "REGRESSION", "CONTRACT"],
+  PROCESS_INTERNAL: [
+    "E2E",
+    "FUNCTIONAL",
+    "SECURITY",
+    "API",
+    "AI",
+    "DATABASE",
+    "UI_UX",
+    "ACCESSIBILITY",
+    "PERFORMANCE",
+    "DEPLOYMENT",
+    "INTEGRATION",
+    "ARCHITECTURE",
+  ],
 };

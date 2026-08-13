@@ -145,19 +145,14 @@ describe("tenant quota enforcement", () => {
     osStore.resetBillingStateForTests();
   });
 
-  it("blocks free-tier cloud slots when count reaches limit", () => {
+  it("blocks free-tier Atlas evidence mirror (free slots = 0)", () => {
     expect(
       hasRemainingCloudSlots({
         tier: "free",
-        cloudProjectCount: PLAN_CLOUD_LIMITS.free,
+        cloudProjectCount: 0,
       }),
     ).toBe(false);
-    expect(
-      hasRemainingCloudSlots({
-        tier: "free",
-        cloudProjectCount: PLAN_CLOUD_LIMITS.free - 1,
-      }),
-    ).toBe(true);
+    expect(PLAN_CLOUD_LIMITS.free).toBe(0);
   });
 
   it("allows more slots after Stripe upgrades the tenant to pro", () => {

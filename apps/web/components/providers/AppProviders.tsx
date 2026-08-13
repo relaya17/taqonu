@@ -10,8 +10,12 @@ import createCache from "@emotion/cache";
 import { CacheProvider } from "@emotion/react";
 import { createAtlasTheme } from "@/styles/theme";
 import { AiCompanionProvider } from "@/components/providers/AiCompanionProvider";
+import {
+  ColorModeProvider,
+  useColorMode,
+} from "@/components/providers/ColorModeProvider";
 
-export function AppProviders({
+function ThemedApp({
   locale,
   children,
 }: {
@@ -19,7 +23,11 @@ export function AppProviders({
   children: ReactNode;
 }) {
   const direction = locale === "en" ? "ltr" : "rtl";
-  const theme = useMemo(() => createAtlasTheme(direction), [direction]);
+  const { mode } = useColorMode();
+  const theme = useMemo(
+    () => createAtlasTheme(direction, mode),
+    [direction, mode],
+  );
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -55,5 +63,19 @@ export function AppProviders({
         </ThemeProvider>
       </CacheProvider>
     </AppRouterCacheProvider>
+  );
+}
+
+export function AppProviders({
+  locale,
+  children,
+}: {
+  locale: string;
+  children: ReactNode;
+}) {
+  return (
+    <ColorModeProvider>
+      <ThemedApp locale={locale}>{children}</ThemedApp>
+    </ColorModeProvider>
   );
 }

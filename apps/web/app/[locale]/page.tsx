@@ -177,6 +177,9 @@ export default function DashboardPage() {
           <Button component={Link} href="/projects" variant="contained" size="large">
             {t("dashboard.ctaProjects")}
           </Button>
+          <Button component={Link} href="/studio" variant="outlined" size="large">
+            {t("dashboard.ctaStudio")}
+          </Button>
           <Button component={Link} href="/agents" variant="outlined" size="large">
             {t("dashboard.ctaAgents")}
           </Button>
@@ -207,6 +210,14 @@ export default function DashboardPage() {
           </Button>
           <Button component={Link} href="/qa" size="small" variant="outlined">
             {t("dashboard.opsQa")}
+          </Button>
+          <Button
+            component={Link}
+            href="/process-audit"
+            size="small"
+            variant="outlined"
+          >
+            {t("dashboard.opsProcessAudit")}
           </Button>
         </Stack>
       </Box>

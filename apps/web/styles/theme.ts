@@ -1,31 +1,39 @@
 "use client";
 
-import { createTheme } from "@mui/material/styles";
+import { createTheme, type Theme } from "@mui/material/styles";
 
-export function createAtlasTheme(direction: "rtl" | "ltr") {
+export type AtlasColorMode = "light" | "dark";
+
+export function createAtlasTheme(
+  direction: "rtl" | "ltr",
+  mode: AtlasColorMode = "light",
+): Theme {
+  const dark = mode === "dark";
+
   return createTheme({
     direction,
     cssVariables: true,
     palette: {
-      mode: "light",
+      mode,
       primary: {
-        main: "#0F3D3E",
-        contrastText: "#F4F7F5",
+        main: dark ? "#7EB8B9" : "#0F3D3E",
+        contrastText: dark ? "#0A1C1D" : "#F4F7F5",
       },
       secondary: {
-        main: "#C45C26",
+        main: dark ? "#E08A5C" : "#C45C26",
       },
       background: {
-        default: "#E8EEF0",
-        paper: "#F7FAF8",
+        default: dark ? "#0B1415" : "#E8EEF0",
+        paper: dark ? "#132022" : "#F7FAF8",
       },
       text: {
-        primary: "#142022",
-        secondary: "#3D5557",
+        primary: dark ? "#E8F0F0" : "#142022",
+        secondary: dark ? "#9BB0B2" : "#3D5557",
       },
-      success: { main: "#1F7A4D" },
-      warning: { main: "#B7791F" },
-      error: { main: "#B42318" },
+      divider: dark ? "rgba(232,240,240,0.12)" : "rgba(20,32,34,0.12)",
+      success: { main: dark ? "#3D9B6E" : "#1F7A4D" },
+      warning: { main: dark ? "#D4A017" : "#B7791F" },
+      error: { main: dark ? "#E05A4F" : "#B42318" },
     },
     typography: {
       fontFamily:
@@ -64,10 +72,12 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
           html: {
             maxWidth: "100%",
             overflowX: "clip",
+            colorScheme: mode,
           },
           body: {
-            backgroundImage:
-              "radial-gradient(circle at 12% 10%, rgba(196, 92, 38, 0.12), transparent 36%), radial-gradient(circle at 88% 0%, rgba(15, 61, 62, 0.16), transparent 42%), linear-gradient(180deg, #E8EEF0 0%, #D9E4E6 100%)",
+            backgroundImage: dark
+              ? "radial-gradient(circle at 14% 8%, rgba(126, 184, 185, 0.14), transparent 40%), radial-gradient(circle at 90% 0%, rgba(224, 138, 92, 0.1), transparent 38%), linear-gradient(180deg, #0B1415 0%, #0F1A1B 100%)"
+              : "radial-gradient(circle at 12% 10%, rgba(196, 92, 38, 0.12), transparent 36%), radial-gradient(circle at 88% 0%, rgba(15, 61, 62, 0.16), transparent 42%), linear-gradient(180deg, #E8EEF0 0%, #D9E4E6 100%)",
             minHeight: "100vh",
             maxWidth: "100%",
             overflowX: "clip",
@@ -81,7 +91,7 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
             overflowX: "auto",
           },
           ":focus-visible": {
-            outline: "3px solid #C45C26",
+            outline: dark ? "3px solid #E08A5C" : "3px solid #C45C26",
             outlineOffset: 2,
           },
           ".skip-link": {
@@ -90,8 +100,8 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
             top: 8,
             zIndex: 4000,
             padding: "10px 14px",
-            background: "#0F3D3E",
-            color: "#F4F7F5",
+            background: dark ? "#7EB8B9" : "#0F3D3E",
+            color: dark ? "#0A1C1D" : "#F4F7F5",
             borderRadius: 8,
             transform: "translateY(-160%)",
             transition: "transform 120ms ease",
@@ -125,7 +135,6 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
       },
       MuiIconButton: {
         defaultProps: {
-          // Encourage callers to set aria-label; size keeps 44px touch target.
           size: "medium",
         },
         styleOverrides: {
@@ -146,7 +155,7 @@ export function createAtlasTheme(direction: "rtl" | "ltr") {
         styleOverrides: {
           root: {
             "&:focus-visible": {
-              outline: "3px solid #C45C26",
+              outline: dark ? "3px solid #E08A5C" : "3px solid #C45C26",
               outlineOffset: 2,
             },
           },

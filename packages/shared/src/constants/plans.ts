@@ -1,18 +1,25 @@
-/** Freemium quotas — ADR-011 + ADR-014 multi-axis */
+/** Freemium = Atlas *usage* limits. Customer cloud (Cloudflare) holds data. */
+
 export const PLAN_TIERS = ["free", "pro"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
+/**
+ * Optional Atlas-hosted evidence mirror slots (NOT customer project storage).
+ * Free = 0 — we do not subsidize hosted storage. Pro may mirror metadata.
+ */
 export const PLAN_CLOUD_LIMITS: Record<PlanTier, number> = {
-  free: 3,
+  free: 0,
   pro: 100,
 };
 
-/** Metering axes beyond cloud projects (ADR-014 §12). */
+/** Product usage axes Atlas meters and sells (ADR-014 §12 + storage policy v2). */
 export const PLAN_AXIS_LIMITS: Record<
   PlanTier,
   {
     evidenceRecords: number;
     evalRunsPerDay: number;
+    processAuditsPerDay: number;
+    agentMessagesPerDay: number;
     integrations: number;
     retentionDays: number;
   }
@@ -20,13 +27,17 @@ export const PLAN_AXIS_LIMITS: Record<
   free: {
     evidenceRecords: 200,
     evalRunsPerDay: 20,
-    integrations: 2,
+    processAuditsPerDay: 5,
+    agentMessagesPerDay: 40,
+    integrations: 3,
     retentionDays: 30,
   },
   pro: {
     evidenceRecords: 10_000,
     evalRunsPerDay: 500,
-    integrations: 20,
+    processAuditsPerDay: 100,
+    agentMessagesPerDay: 2_000,
+    integrations: 25,
     retentionDays: 365,
   },
 };

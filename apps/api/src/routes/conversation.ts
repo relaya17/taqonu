@@ -21,7 +21,11 @@ import {
   chargeCredits,
   ensureCreditsInitialized,
 } from "../services/artifacts-assists.js";
-import { resolveTier } from "../services/plan-quota.js";
+import {
+  assertAgentMessageQuota,
+  recordAgentMessageUsage,
+  resolveTier,
+} from "../services/plan-quota.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import { searchKnowledgeClosedLoop } from "../services/hybrid-rag.js";
 import {
@@ -107,6 +111,7 @@ export async function registerConversationRoutes(
   app.post("/api/v1/conversation/message", async (request, reply) => {
     osStore.ensureLoaded();
     const body = createConversationMessageSchema.parse(request.body);
+    assertAgentMessageQuota(app.atlasEnv);
     const now = new Date().toISOString();
     const locale = body.locale ?? "en";
     const threadId = body.threadId ?? crypto.randomUUID();
@@ -312,6 +317,7 @@ export async function registerConversationRoutes(
       at: now,
     });
     osStore.setConversationThread(threadId, history);
+    recordAgentMessageUsage();
 
     return reply.status(201).send({
       messageId,

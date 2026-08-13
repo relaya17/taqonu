@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -342,6 +343,19 @@ export default function ProjectsPage() {
           {" · "}
           <Link href="/plan">{t("viewPlan")}</Link>
         </Typography>
+        {plan?.tier === "free" ? (
+          <Alert
+            severity="warning"
+            sx={{ mt: 2 }}
+            action={
+              <Button component={Link} href="/plan" color="inherit" size="small">
+                {t("viewPlan")}
+              </Button>
+            }
+          >
+            {t("quotaSell")}
+          </Alert>
+        ) : null}
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.5 }}>
           <EpistemicChip
             state={portfolioQuery.data?.epistemicState ?? "UNKNOWN"}
@@ -872,19 +886,19 @@ export default function ProjectsPage() {
                     ) : null}
                     <Button
                       component={Link}
+                      href="/studio"
+                      size="small"
+                      variant="contained"
+                    >
+                      {t("openStudio")}
+                    </Button>
+                    <Button
+                      component={Link}
                       href={`/projects/${project.id}/state`}
                       size="small"
                       variant="outlined"
                     >
                       {t("openState")}
-                    </Button>
-                    <Button
-                      component={Link}
-                      href="/agent"
-                      size="small"
-                      variant="outlined"
-                    >
-                      {t("askAgent")}
                     </Button>
                   </Stack>
                 </Box>

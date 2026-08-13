@@ -136,6 +136,8 @@ interface PersistedShape {
   workspaceRoots?: Record<string, string>;
   /** Durable conversation threads (survives API restart). */
   conversationThreads?: Record<string, ConversationThreadTurn[]>;
+  /** Customer BYO cloud bindings (Cloudflare-first). Keyed by ownerId. */
+  byoCloudBindings?: Record<string, StoredByoCloudBinding>;
 }
 
 export interface ConversationThreadTurn {
@@ -177,11 +179,25 @@ export interface StoredTenantSubscription {
 
 export interface UsageMeters {
   evalRunsByDay: Record<string, number>;
+  processAuditsByDay?: Record<string, number>;
+  agentMessagesByDay?: Record<string, number>;
   verdictsRequested?: number;
   certificatesIssued?: number;
   reportsGenerated?: number;
   reposConnected?: number;
   designPartnerSessions?: number;
+}
+
+export interface StoredByoCloudBinding {
+  provider: "cloudflare";
+  status: "disconnected" | "connected" | "error";
+  accountLabel: string | null;
+  externalAccountId: string | null;
+  connectedAt: string | null;
+  lastError: string | null;
+  capabilities: Array<"r2" | "d1" | "kv" | "workers" | "pages">;
+  /** Presence only — never persist raw API tokens in store.json (v1). */
+  tokenConfigured: boolean;
 }
 
 
@@ -235,6 +251,7 @@ function emptyShape(): PersistedShape {
     meta: {},
     workspaceRoots: {},
     conversationThreads: {},
+    byoCloudBindings: {},
   };
 }
 
@@ -276,6 +293,7 @@ class OsStore {
   private meta: Record<string, string> = {};
   private workspaceRoots: Record<string, string> = {};
   private conversationThreads = new Map<string, ConversationThreadTurn[]>();
+  private byoCloudBindings = new Map<string, StoredByoCloudBinding>();
   private loaded = false;
 
   ensureLoaded(): void {
@@ -376,6 +394,7 @@ class OsStore {
     this.conversationThreads = new Map(
       Object.entries(raw.conversationThreads ?? {}),
     );
+    this.byoCloudBindings = new Map(Object.entries(raw.byoCloudBindings ?? {}));
   }
 
   persist(): void {
@@ -420,6 +439,7 @@ class OsStore {
       meta: this.meta,
       workspaceRoots: this.workspaceRoots,
       conversationThreads: Object.fromEntries(this.conversationThreads),
+      byoCloudBindings: Object.fromEntries(this.byoCloudBindings),
     };
     atomicWriteStoreFile(path, JSON.stringify(shape, null, 2));
   }
@@ -896,11 +916,34 @@ class OsStore {
     let n = 0;
     if (this.githubConnection?.status === "CONNECTED") n += 1;
     if (this.localConnection?.status === "CONNECTED") n += 1;
+    for (const binding of this.byoCloudBindings.values()) {
+      if (binding.status === "connected") n += 1;
+    }
     return n;
+  }
+
+  getByoCloudBinding(ownerId: string): StoredByoCloudBinding | null {
+    this.ensureLoaded();
+    return this.byoCloudBindings.get(ownerId) ?? null;
+  }
+
+  setByoCloudBinding(ownerId: string, binding: StoredByoCloudBinding): void {
+    this.ensureLoaded();
+    this.byoCloudBindings.set(ownerId, binding);
+    this.persist();
+  }
+
+  clearByoCloudBinding(ownerId: string): void {
+    this.ensureLoaded();
+    this.byoCloudBindings.delete(ownerId);
+    this.persist();
   }
 
   incrementEvalRunMeter(dayKey: string): number {
     this.ensureLoaded();
+    if (!this.usageMeters.evalRunsByDay) {
+      this.usageMeters.evalRunsByDay = {};
+    }
     const next = (this.usageMeters.evalRunsByDay[dayKey] ?? 0) + 1;
     this.usageMeters.evalRunsByDay[dayKey] = next;
     this.persist();
@@ -910,6 +953,38 @@ class OsStore {
   getEvalRunsToday(dayKey: string): number {
     this.ensureLoaded();
     return this.usageMeters.evalRunsByDay[dayKey] ?? 0;
+  }
+
+  incrementProcessAuditMeter(dayKey: string): number {
+    this.ensureLoaded();
+    if (!this.usageMeters.processAuditsByDay) {
+      this.usageMeters.processAuditsByDay = {};
+    }
+    const next = (this.usageMeters.processAuditsByDay[dayKey] ?? 0) + 1;
+    this.usageMeters.processAuditsByDay[dayKey] = next;
+    this.persist();
+    return next;
+  }
+
+  getProcessAuditsToday(dayKey: string): number {
+    this.ensureLoaded();
+    return this.usageMeters.processAuditsByDay?.[dayKey] ?? 0;
+  }
+
+  incrementAgentMessageMeter(dayKey: string): number {
+    this.ensureLoaded();
+    if (!this.usageMeters.agentMessagesByDay) {
+      this.usageMeters.agentMessagesByDay = {};
+    }
+    const next = (this.usageMeters.agentMessagesByDay[dayKey] ?? 0) + 1;
+    this.usageMeters.agentMessagesByDay[dayKey] = next;
+    this.persist();
+    return next;
+  }
+
+  getAgentMessagesToday(dayKey: string): number {
+    this.ensureLoaded();
+    return this.usageMeters.agentMessagesByDay?.[dayKey] ?? 0;
   }
 
   upsertGateGraph(graph: QualityGateGraph): void {

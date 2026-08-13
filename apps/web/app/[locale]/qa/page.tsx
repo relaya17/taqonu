@@ -105,6 +105,7 @@ interface RunsResponse {
 }
 
 const PROFILES = [
+  "PROCESS_INTERNAL",
   "QUICK",
   "STANDARD",
   "DEEP",
@@ -117,6 +118,36 @@ const PROFILES = [
   "CHANGED_ONLY",
 ] as const;
 
+const APP_PROFILES = [
+  "AUTO",
+  "GENERIC",
+  "SAAS",
+  "ECOMMERCE",
+  "MARKETPLACE",
+  "CONTENT",
+  "FINTECH",
+  "HEALTH",
+  "EDTECH",
+  "HOTEL",
+] as const;
+
+interface ProcessAuditDocument {
+  id: string;
+  appProfile: string;
+  appProfileSource: string;
+  verdict: "GO" | "CONDITIONAL_GO" | "NO_GO";
+  verdictReason: string;
+  specialistsEngaged: string[];
+  sections: {
+    executiveSummary: string;
+    defects: string[];
+    blockers: string[];
+    futureChecks: string[];
+    recommendations: string[];
+  };
+  markdownReport: string;
+}
+
 function extractPatternKey(summary: string): string | null {
   const match = /\[pattern:([^\]]+)\]/.exec(summary);
   return match?.[1] ?? null;
@@ -128,10 +159,17 @@ export default function QaPage() {
   const [scope, setScope] = useState<
     "SINGLE_PROJECT" | "SELECTED_PROJECTS" | "ENTIRE_PORTFOLIO"
   >("SINGLE_PROJECT");
-  const [profile, setProfile] = useState<(typeof PROFILES)[number]>("STANDARD");
+  const [profile, setProfile] = useState<(typeof PROFILES)[number]>(
+    "PROCESS_INTERNAL",
+  );
+  const [appProfile, setAppProfile] =
+    useState<(typeof APP_PROFILES)[number]>("AUTO");
   const [projectId, setProjectId] = useState("");
   const [request, setRequest] = useState("");
   const [report, setReport] = useState<QaReport | null>(null);
+  const [processDoc, setProcessDoc] = useState<ProcessAuditDocument | null>(
+    null,
+  );
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -181,7 +219,25 @@ export default function QaPage() {
       }),
     onSuccess: (data) => {
       setReport(data);
+      setProcessDoc(null);
       invalidateLearn();
+    },
+  });
+
+  const processMutation = useMutation({
+    mutationFn: () =>
+      apiPost<ProcessAuditDocument>("/api/v1/qa/process-audit", {
+        projectId: projectId || null,
+        appProfile: appProfile === "AUTO" ? null : appProfile,
+        userRequest: request || t("processDefaultRequest"),
+        environment: "LOCAL",
+        includeProviders: true,
+        includeUiUx: true,
+        includePerformance: true,
+      }),
+    onSuccess: (data) => {
+      setProcessDoc(data);
+      setReport(null);
     },
   });
 
@@ -212,6 +268,8 @@ export default function QaPage() {
         </Typography>
       </Box>
 
+      <Alert severity="info">{t("processIntro")}</Alert>
+
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
         <TextField
           select
@@ -236,6 +294,22 @@ export default function QaPage() {
           sx={{ minWidth: 220 }}
         >
           {PROFILES.map((p) => (
+            <MenuItem key={p} value={p}>
+              {p === "PROCESS_INTERNAL" ? t("profileProcessInternal") : p}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label={t("appProfile")}
+          value={appProfile}
+          onChange={(e) =>
+            setAppProfile(e.target.value as (typeof APP_PROFILES)[number])
+          }
+          sx={{ minWidth: 200 }}
+          helperText={t("appProfileHelp")}
+        >
+          {APP_PROFILES.map((p) => (
             <MenuItem key={p} value={p}>
               {p}
             </MenuItem>
@@ -269,17 +343,99 @@ export default function QaPage() {
         placeholder={t("placeholder")}
       />
 
-      <Button
-        variant="contained"
-        onClick={() => mutation.mutate()}
-        disabled={mutation.isPending}
-        sx={{ alignSelf: "flex-start" }}
-      >
-        {t("run")}
-      </Button>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+        <Button
+          variant="contained"
+          onClick={() => processMutation.mutate()}
+          disabled={processMutation.isPending}
+        >
+          {processMutation.isPending ? t("processRunning") : t("processRun")}
+        </Button>
+        <Button
+          variant="outlined"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending}
+        >
+          {t("run")}
+        </Button>
+      </Stack>
 
       {mutation.isError ? (
         <Alert severity="error">{(mutation.error as Error).message}</Alert>
+      ) : null}
+      {processMutation.isError ? (
+        <Alert severity="error">
+          {(processMutation.error as Error).message}
+        </Alert>
+      ) : null}
+
+      {processDoc ? (
+        <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>
+          <Typography variant="overline">{t("processReport")}</Typography>
+          <Alert
+            severity={
+              processDoc.verdict === "GO"
+                ? "success"
+                : processDoc.verdict === "CONDITIONAL_GO"
+                  ? "warning"
+                  : "error"
+            }
+            sx={{ mt: 1, mb: 2 }}
+          >
+            <Typography fontWeight={700}>
+              {t(`verdict_${processDoc.verdict}`)} — {processDoc.appProfile} (
+              {processDoc.appProfileSource})
+            </Typography>
+            <Typography variant="body2">{processDoc.verdictReason}</Typography>
+          </Alert>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t("specialists")}: {processDoc.specialistsEngaged.join(" · ")}
+          </Typography>
+
+          {processDoc.sections.blockers.length > 0 ? (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="overline">{t("blockers")}</Typography>
+              {processDoc.sections.blockers.map((b) => (
+                <Typography key={b} variant="body2">
+                  • {b}
+                </Typography>
+              ))}
+            </Box>
+          ) : null}
+
+          {processDoc.sections.defects.length > 0 ? (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="overline">{t("defects")}</Typography>
+              {processDoc.sections.defects.map((d) => (
+                <Typography key={d} variant="body2">
+                  • {d}
+                </Typography>
+              ))}
+            </Box>
+          ) : null}
+
+          {processDoc.sections.recommendations.length > 0 ? (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="overline">{t("recommendations")}</Typography>
+              {processDoc.sections.recommendations.map((r) => (
+                <Typography key={r} variant="body2">
+                  • {r}
+                </Typography>
+              ))}
+            </Box>
+          ) : null}
+
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={async () => {
+              await navigator.clipboard.writeText(processDoc.markdownReport);
+            }}
+          >
+            {t("copyMarkdown")}
+          </Button>
+        </Box>
       ) : null}
 
       <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>

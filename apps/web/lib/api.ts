@@ -1,5 +1,22 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+/** Separate admin console path (not under locale app shell). */
+export const ADMIN_BASE_PATH = "/admin";
+export const ADMIN_LOGIN_PATH = "/admin/login";
+
+export function verifiedSourcesDownloadUrl(
+  format: "json" | "markdown" = "json",
+): string {
+  return `${API_URL}/api/v1/knowledge/verified-sources/download?format=${format}`;
+}
+
+export function downloadVerifiedSourcesPack(
+  format: "json" | "markdown" = "json",
+): void {
+  if (typeof window === "undefined") return;
+  window.open(verifiedSourcesDownloadUrl(format), "_blank", "noopener,noreferrer");
+}
+
 async function readError(path: string, response: Response): Promise<never> {
   let detail = `API ${path} failed with ${response.status}`;
   try {

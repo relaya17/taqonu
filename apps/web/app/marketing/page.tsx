@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Public marketing alias → investor / partner landing. */
+/** Public marketing alias → localized product landing. */
 export default function MarketingAliasPage() {
-  redirect("/investors");
+  redirect("/he/welcome");
 }

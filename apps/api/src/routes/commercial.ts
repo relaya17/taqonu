@@ -1,11 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AtlasError,
-  PLAN_CLOUD_LIMITS,
+  buildDefaultStoragePolicy,
   connectExternalRepoSchema,
   importProjectSchema,
   projectSchema,
-  storagePolicySchema,
   usageAnalyticsSchema,
   uuidSchema,
 } from "@atlas/shared";
@@ -81,30 +80,9 @@ async function maybeSyncEvidenceCloud(
 export async function registerCommercialValidationRoutes(
   app: FastifyInstance,
 ): Promise<void> {
-  /** Product policy: BYO source, Atlas stores evidence graph (freemium cloud slots). */
+  /** Product policy: BYO customer cloud (Cloudflare-first); Atlas meters usage. */
   app.get("/api/v1/onboarding/storage-policy", async () => {
-    return storagePolicySchema.parse({
-      model: "BYO_SOURCE_ATLAS_EVIDENCE",
-      atlasStores: [
-        "Evidence Graph (claims, evidence refs, conflicts)",
-        "Release Verdict + Readiness Certificate",
-        "Audit / approvals / governance events",
-        "Optional cloud project metadata (freemium slots)",
-      ],
-      atlasDoesNotStore: [
-        "Full source trees / git blobs",
-        "Customer CI logs wholesale",
-        "Secrets / credentials from the repo",
-      ],
-      freeCloudProjectSlots: PLAN_CLOUD_LIMITS.free,
-      customerPaysProvidersFor: [
-        "GitHub / GitLab / Bitbucket hosting",
-        "Cloud compute & databases",
-        "CI minutes & monitoring",
-      ],
-      plainLanguage:
-        "Import any repo from your machine, GitHub, or another remote. Atlas keeps the evidence graph; your code stays with you or your git host. Free tier includes limited Atlas cloud slots for evidence metadata — beyond that, upgrade Atlas usage; git/cloud bills stay with the other providers.",
-    });
+    return buildDefaultStoragePolicy();
   });
 
   app.get("/api/v1/projects/:id/verdict", async (request) => {

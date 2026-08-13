@@ -27,6 +27,7 @@
     "@atlas/integrations-render": "workspace:*",
     "@atlas/integrations-supabase": "workspace:*",
     "@atlas/integrations-vercel": "workspace:*",
+    "@atlas/integrations-cloudflare": "workspace:*",
     "@atlas/knowledge": "workspace:*",
     "@atlas/observability": "workspace:*",
     "@atlas/qa-core": "workspace:*",

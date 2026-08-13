@@ -4,10 +4,41 @@
 > Know what your software actually does. Know what is verified. Know what is
 > risky. And let AI fix it — safely.
 
-| Layer | Name |
-| --- | --- |
-| Product | **Atlas** / **Atlas Core** |
-| This instance | **ArletOS** |
+| Layer | Name | Version |
+| --- | --- | --- |
+| Monorepo | **atlas** | **0.1.0** |
+| Product | **Atlas** / **Atlas Core** | — |
+| This instance | **ArletOS** | — |
+| Web (`@atlas/web`) | Next.js 15 · React 19 | **0.1.0** |
+| API (`@atlas/api`) | Node ≥22 | **0.1.0** |
+| Package manager | pnpm | **10.28.2** |
+
+Keep this table in sync when you bump `package.json` versions.
+
+---
+
+## Where to sell (in the app)
+
+Monetization is **Atlas usage freemium** — not Atlas-hosted storage:
+
+| Surface | URL | What the user sees |
+| --- | --- | --- |
+| **Marketing landing** | `/he/welcome` · alias `/marketing` | Hero + Free/Pro (BYO Cloudflare story) |
+| **Pricing / Plan** | `/he/plan` | Connect Cloudflare BYO · usage quotas · Stripe |
+| **Billing settings** | `/he/settings/billing` | Tenant plan + upgrade |
+| **Nav** | **מחירים / Pricing** + **דף נחיתה** | Primary nav |
+| **Upgrade CTA** | Sidebar when tier is `free` | Persistent sell |
+| **Projects** | Banner → Plan | Usage sell message |
+
+### Plan model (storage policy v2)
+
+| Tier | Customer data | Atlas evidence mirror | Atlas usage |
+| --- | --- | --- | --- |
+| **Free** | Cloudflare free (theirs) / local / git | **0** slots | Limited audits / eval / agent |
+| **Pro** | Same BYO | up to **100** optional | Higher ceilings |
+
+Defined in `packages/shared/src/constants/plans.ts` + `docs/strategy/byo-storage.md`.  
+Platform version: `PLATFORM_VERSION` in `packages/shared/src/constants/platform.ts` (keep in sync with package.json **0.1.0**).
 
 ---
 
@@ -58,24 +89,21 @@ Instead of *“We think we’re ready.”*
 
 Atlas gives: **what is verified, what isn’t, what’s dangerous — and the Evidence.**
 
-### Killer workflow — *Is this release actually safe?*
-
-```
-DISCOVER → RECONCILE → CLAIMS → EVIDENCE → RISK → QA → SECURITY
-  → EXPERT COUNCIL → QUALITY GATES → RELEASE VERDICT
-```
-
-Product surfaces:
+### Product surfaces (keep current)
 
 | Surface | URL / API |
 | --- | --- |
-| Release Verdict (home) | `/he` · `GET /api/v1/projects/:id/verdict` |
-| Production Readiness Certificate | `/he/readiness` |
-| Evidence report | `GET /api/v1/projects/:id/report` |
-| Partners | `/he/partners` · `POST /api/v1/onboarding/import` · `GET …/storage-policy` |
-| System Health (Continuous Audit) | `/he/health` · `POST /api/v1/audit-engine/run` |
-| Engineering Constitution | `GET/POST /api/v1/constitution/*` · Omission Detector agent |
-| BrokerOS Case #001 (lab) | `GET /api/v1/case-studies/brokeros-001` |
+| Marketing landing | `/he/welcome` |
+| Release Verdict (app home) | `/he` · `GET /api/v1/projects/:id/verdict` |
+| Pricing | `/he/plan` · `GET/POST /api/v1/billing/plan` |
+| Workbench | `/he/workbench` |
+| Studio | `/he/studio` |
+| E2E process audit | `/he/process-audit` · `POST /api/v1/qa/process-audit` |
+| Production Readiness | `/he/readiness` |
+| Partners | `/he/partners` |
+| System Health | `/he/health` |
+| Admin (separate) | `/admin` · `/admin/login` |
+| Investors deck | `/investors` |
 
 ### Three product pillars
 
@@ -85,8 +113,8 @@ Product surfaces:
 
 Sell **Continuous AI Engineering Audit**, not “another bug scanner.” Normative: [ADR-019](docs/adr/ADR-019-engineering-intelligence-engine.md).
 
-**Living backlog** (what was asked · done · remaining · Constitution):  
-[`docs/strategy/living-request-tracker.md`](docs/strategy/living-request-tracker.md) · [ADR-020](docs/adr/ADR-020-engineering-constitution.md) (Accepted — Constitution + Omission Detector v1) · [Admin necessity](docs/strategy/admin-necessity.md).
+**Living backlog**:  
+[`docs/strategy/living-request-tracker.md`](docs/strategy/living-request-tracker.md) · [ADR-020](docs/adr/ADR-020-engineering-constitution.md) · [Admin necessity](docs/strategy/admin-necessity.md).
 
 ### Moat
 
@@ -94,32 +122,16 @@ Not the LLM. **Engineering Evidence Graph + historical engineering memory.**
 
 ---
 
-## Commercial validation (now)
-
-**Stop expanding core features.** Run Design Partners.
+## Commercial validation
 
 1. ICP: AI-native SaaS teams (5–40 engineers)  
 2. Offer: **Engineering Readiness Audit** (one production repo)  
 3. Measure: unknown risks found · blockers · time saved  
 4. Case study → first payment → retention  
 
-Playbooks: [`docs/strategy/startup-validation.md`](docs/strategy/startup-validation.md) ·
-[`design-partner-playbook.md`](docs/strategy/design-partner-playbook.md) ·
-[`design-partner-audit-runbook.md`](docs/strategy/design-partner-audit-runbook.md) (1-week · real URLs/APIs) ·
-[`design-partner-execution-checklist.md`](docs/strategy/design-partner-execution-checklist.md) ·
-[`design-partner-tracker.md`](docs/strategy/design-partner-tracker.md) ·
-[`case-study-template.md`](docs/strategy/case-study-template.md) ·
-[`_partner-fill-in.md`](docs/case-studies/_partner-fill-in.md) ·
-[`why-customers-pay.md`](docs/strategy/why-customers-pay.md) ·
-[`byo-storage.md`](docs/strategy/byo-storage.md) ·
-[`gap-vs-world-class.md`](docs/strategy/gap-vs-world-class.md)
+Playbooks live under `docs/strategy/`.
 
-Marketing / investors: [`/investors`](http://localhost:3000/investors) · alias [`/marketing`](http://localhost:3000/marketing)
-
-**Human still owns:** send outreach, run the champion week, fill the case study — product hooks on `/partners` cannot automate that.
-
-Pricing direction (market test): Developer · Team · Company · Enterprise —
-sell **time + risk + money**, not AI credits.
+Pricing in product today: **Free / Pro** cloud slots (+ multi-axis quotas). Broader Developer · Team · Company · Enterprise packaging can sit on top later — sell **time + risk + money**.
 
 ---
 
@@ -129,54 +141,16 @@ sell **time + risk + money**, not AI credits.
 | --- | --- |
 | Verdict | Release status READY/CONDITIONAL/BLOCKED + Evidence |
 | Readiness | Certificate with openable dimensions |
-| Proof 1.1 | Engineering Loop · BrokerOS golden · atlas-evals A–F · `pnpm proof:run` / `POST /api/v1/proof/run` |
-| Code intel | Analyze · impact · patch approve/apply/rollback |
-| Evidence | Claims · conflicts · authority · events |
-| QA / Experts | Risk · council · eval · gates |
-| Freemium | Cloud slots + multi-axis quotas |
+| Workbench | Files · code · Visual Studio path · Cloud consoles · Cursor · agent chat |
+| Studio | Human view-only · agent proposes patches (Approve → Apply) |
+| Process / E2E | Internal deep process audits · opinion-style UI |
+| Freemium | Cloud slots + multi-axis quotas + Stripe |
+| Verified knowledge | Allow-listed tech sources · admin pack download |
 | Partners | External repo connect + usage analytics |
 
 Normative: [ADR-014](docs/adr/ADR-014-evidence-governance-north-star.md) ·
 [ADR-015](docs/adr/ADR-015-governed-native-code-engineering.md) ·
-[ADR-016](docs/adr/ADR-016-atlas-1.1-proof-autonomy.md) ·
-[Evidence Model](docs/architecture/evidence-model.md).
-
----
-
-## ATLAS Intelligence Kernel v1 (Phases 1–10)
-
-Agent Operating System — ADR-018. **All phases shipped as foundation.**
-
-| Phase | API |
-| --- | --- |
-| Status | `GET /api/v1/kernel/status` |
-| Registry | `GET /api/v1/kernel/agents` |
-| Orchestrator | `POST /api/v1/kernel/plan` |
-| Full run | `POST /api/v1/kernel/run` |
-| Knowledge search/ingest | `POST /api/v1/kernel/knowledge/search` · `…/ingest` |
-| Evaluation | `POST /api/v1/kernel/eval/run` |
-| Memory lessons | `GET/POST /api/v1/kernel/memory/lessons` |
-| Self-improvement | `POST /api/v1/kernel/improve` |
-
-Hard rule: **INSUFFICIENT_EVIDENCE** over confident hallucination.
-
----
-
-## Atlas 1.2 — Multi-Agent Intelligence Fabric (foundation)
-
-**One Brain + Many Specialists + One Judge** — ADR-017.
-
-| API | Purpose |
-| --- | --- |
-| `GET /api/v1/agents` | Registry of 12 fabric roles |
-| `POST /api/v1/agents/plan` | Orchestrator plan (Genius Router) |
-| `POST /api/v1/agents/dispatch` | Parallel specialist stubs + Judge |
-| `POST /api/v1/judge/evaluate` | Belief decision |
-| `POST /api/v1/knowledge/search` | Need-based Evidence packages |
-| `GET /api/v1/knowledge/lessons` | Cross-project patterns (no leakage) |
-
-Specialists are **contracts** today (tools, budgets, evidence policy). Full LLM
-bodies + eval suites land behind metrics — not agent-to-agent chat.
+[ADR-016](docs/adr/ADR-016-atlas-1.1-proof-autonomy.md).
 
 ---
 
@@ -191,41 +165,15 @@ pnpm dev
 
 | Surface | URL |
 | --- | --- |
-| App (Hebrew) | http://localhost:3000/he |
-| Readiness | http://localhost:3000/he/readiness |
-| Partners | http://localhost:3000/he/partners |
-| Proof | http://localhost:3000/he/proof |
+| Landing (HE) | http://localhost:3000/he/welcome |
+| App home | http://localhost:3000/he |
+| Pricing | http://localhost:3000/he/plan |
+| Workbench | http://localhost:3000/he/workbench |
 | API | http://localhost:4000 |
 
 ```bash
-# Golden Project (optional — falls back to fixtures/golden-brokeros)
-# ATLAS_GOLDEN_PROJECT_ROOT=C:\Users\User\Desktop\game\brokerOS-main
-
-# Atlas 1.1 Proof golden (gates A–F → evidence report; exit 0 on PASS)
 pnpm proof:run
-# or: POST /api/v1/proof/run · GET /api/v1/proof/status · UI /he/proof
 ```
-
----
-
-## Key APIs (commercial)
-
-```
-GET  /api/v1/projects/:id/verdict
-GET  /api/v1/projects/:id/report
-GET  /api/v1/case-studies/brokeros-001
-POST /api/v1/onboarding/import
-GET  /api/v1/onboarding/storage-policy
-POST /api/v1/onboarding/connect-repo
-GET  /api/v1/analytics/usage
-POST /api/v1/readiness/certificate
-POST /api/v1/engineering/loop
-POST /api/v1/proof/run
-GET  /api/v1/proof/status
-POST /api/v1/benchmarks/run
-```
-
-Full product map + APIs: see prior sections in git history / `docs/`.
 
 ---
 
@@ -236,12 +184,12 @@ Full product map + APIs: see prior sections in git history / `docs/`.
 3. WRITE is approval-gated (ADR-015).  
 4. Secrets redacted before LLM egress.  
 5. External AIs / editors are workers; Atlas is truth + gate.  
-6. Atlas must audit itself (DEF-000).
+6. Atlas must audit itself (DEF-000).  
+7. **README versions + sell surfaces stay current** when the product changes.
 
 ---
 
 ## Docs
 
 - Startup validation · Design partners · Case study templates — `docs/strategy/`
-- Elementor adapter research — `docs/integrations/elementor-atlas-spec.md`
-- ADRs `docs/adr/ADR-001` … `ADR-016`
+- ADRs — `docs/adr/`

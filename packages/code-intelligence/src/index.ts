@@ -10,3 +10,4 @@ export * from "./admin-necessity.js";
 export * from "./auto-remediation.js";
 export * from "./legal-media-review.js";
 export * from "./sarif-ingest.js";
+export * from "./workspace-browser.js";

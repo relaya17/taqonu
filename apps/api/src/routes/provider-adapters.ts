@@ -52,10 +52,16 @@ export async function registerProviderAdapterRoutes(
         note: "POST /api/v1/feeds/vercel → DEPLOYMENT evidence (+ /providers/vercel/observe)",
       },
       {
+        id: "netlify",
+        status: "planned",
+        note: "Netlify observe adapter planned (process-audit provider target)",
+      },
+      {
         id: "render",
         status: "live",
         note: "POST /api/v1/feeds/render → DEPLOYMENT evidence (+ /providers/render/observe)",
       },
+
       {
         id: "supabase",
         status: "feed",
@@ -65,6 +71,11 @@ export async function registerProviderAdapterRoutes(
         id: "mongodb",
         status: "feed",
         note: "DB feed observation (not full adapter yet)",
+      },
+      {
+        id: "cloudflare",
+        status: "live",
+        note: "BYO customer cloud (preferred free tier) — POST /api/v1/byo-cloud/cloudflare/connect",
       },
       {
         id: "ci",
@@ -80,6 +91,21 @@ export async function registerProviderAdapterRoutes(
         id: "stripe",
         status: "planned",
         note: "Billing event adapter planned",
+      },
+      {
+        id: "aws",
+        status: "planned",
+        note: "AWS console link + observe planned",
+      },
+      {
+        id: "azure",
+        status: "planned",
+        note: "Azure portal link + observe planned",
+      },
+      {
+        id: "gcp",
+        status: "planned",
+        note: "Google Cloud console link + observe planned",
       },
     ],
     contract: "Provider Adapter → Normalized Evidence → Atlas Evidence Graph",

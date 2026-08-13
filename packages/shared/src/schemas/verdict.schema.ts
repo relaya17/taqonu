@@ -122,15 +122,6 @@ export const importProjectSchema = z.discriminatedUnion("source", [
   }),
 ]);
 
-export const storagePolicySchema = z.object({
-  model: z.literal("BYO_SOURCE_ATLAS_EVIDENCE"),
-  atlasStores: z.array(z.string()),
-  atlasDoesNotStore: z.array(z.string()),
-  freeCloudProjectSlots: z.number().int().min(0),
-  customerPaysProvidersFor: z.array(z.string()),
-  plainLanguage: z.string(),
-});
-
 export const usageAnalyticsSchema = z.object({
   projectsConnected: z.number().int().min(0),
   certificatesIssued: z.number().int().min(0),

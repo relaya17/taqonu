@@ -74,11 +74,11 @@ describe("tenant plan resolution + quota", () => {
     expect(resolved.source).toBe("env");
   });
 
-  it("enforces freemium slot math for free vs pro", () => {
+  it("enforces freemium slot math — free has zero Atlas mirror slots", () => {
     expect(
       hasRemainingCloudSlots({
         tier: "free",
-        cloudProjectCount: 3,
+        cloudProjectCount: 0,
       }),
     ).toBe(false);
     expect(

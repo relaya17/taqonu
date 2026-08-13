@@ -11,12 +11,15 @@ import {
 import {
   analyzeImpact,
   analyzeRepository,
+  listWorkspaceTree,
   proposePatch,
   rankRisks,
+  readWorkspaceFile,
   rollbackPatchFiles,
 } from "@atlas/code-intelligence";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import {
@@ -38,6 +41,134 @@ const proposeBody = z.object({
 });
 
 export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
+  /** Read-only studio: project tree (human may view; never mutate here). */
+  app.get("/api/v1/studio/tree", async (request) => {
+    const q = z
+      .object({
+        projectId: z.string().uuid().optional(),
+        workspaceRoot: z.string().min(1).max(1000).optional(),
+      })
+      .parse(request.query);
+
+    let root: string | null = q.workspaceRoot ? resolve(q.workspaceRoot) : null;
+    if (q.projectId) {
+      const project = osStore.getProject(q.projectId);
+      if (!project) {
+        throw new AtlasError("NOT_FOUND", "Project not found");
+      }
+      root = osStore.getWorkspaceRoot(q.projectId) ?? root;
+    }
+    if (!root) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot on the project (or pass workspaceRoot) to open Studio.",
+      );
+    }
+    if (!existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        `workspaceRoot not found on the API host: ${root}`,
+      );
+    }
+    try {
+      const listed = listWorkspaceTree(root);
+      return {
+        projectId: q.projectId ?? null,
+        ...listed,
+        note: "Read-only. Only the agent may add or change code (Patch propose) — humans Approve & Apply.",
+      };
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to list workspace",
+      );
+    }
+  });
+
+  /** Read-only studio: single file contents. */
+  app.get("/api/v1/studio/file", async (request) => {
+    const q = z
+      .object({
+        projectId: z.string().uuid().optional(),
+        workspaceRoot: z.string().min(1).max(1000).optional(),
+        path: z.string().min(1).max(1000),
+      })
+      .parse(request.query);
+
+    let root: string | null = q.workspaceRoot ? resolve(q.workspaceRoot) : null;
+    if (q.projectId) {
+      const project = osStore.getProject(q.projectId);
+      if (!project) {
+        throw new AtlasError("NOT_FOUND", "Project not found");
+      }
+      root = osStore.getWorkspaceRoot(q.projectId) ?? root;
+    }
+    if (!root) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot to open files in Studio.",
+      );
+    }
+    try {
+      return {
+        projectId: q.projectId ?? null,
+        workspaceRoot: root,
+        ...readWorkspaceFile(root, q.path),
+        note: "Read-only. Only the agent proposes add/change — Apply only after Approve on /patches.",
+      };
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to read file",
+      );
+    }
+  });
+
+  /**
+   * Studio → agent: propose a Patch (fix/add). Does not apply.
+   * Disk writes remain on Approve → Apply only.
+   */
+  app.post("/api/v1/studio/ask-agent", async (request, reply) => {
+    const body = z
+      .object({
+        projectId: z.string().uuid().nullable().optional(),
+        workspaceRoot: z.string().min(1).max(1000).optional(),
+        path: z.string().max(1000).optional(),
+        mode: z.enum(["fix", "generate", "implement", "refactor", "secure"]).default("fix"),
+        instruction: z.string().min(3).max(4000),
+      })
+      .parse(request.body);
+
+    let root: string | null = body.workspaceRoot
+      ? resolve(body.workspaceRoot)
+      : null;
+    if (body.projectId) {
+      root = osStore.getWorkspaceRoot(body.projectId) ?? root;
+    }
+    if (!root || !existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Studio ask-agent requires a local workspaceRoot on the API host.",
+      );
+    }
+
+    const focus = body.path?.trim()
+      ? `Focus file (read-only context): ${body.path.trim()}\n\n`
+      : "";
+    return createProposal(
+      {
+        workspaceRoot: root,
+        userRequest: `${focus}${body.instruction.trim()}`,
+        mode: body.mode,
+        projectId: body.projectId ?? null,
+        title: body.path
+          ? `Studio · ${body.mode} · ${body.path}`
+          : `Studio · ${body.mode}`,
+      },
+      reply,
+    );
+  });
+
   app.post("/api/v1/code/analyze", async (request) => {
     const body = analyzeBody.parse(request.body);
     const root = resolve(body.workspaceRoot);

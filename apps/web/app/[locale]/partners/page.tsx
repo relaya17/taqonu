@@ -112,6 +112,8 @@ export default function PartnersPage() {
       apiGet<{
         plainLanguage: string;
         freeCloudProjectSlots: number;
+        preferredCustomerCloud?: string;
+        model?: string;
         atlasStores: string[];
         atlasDoesNotStore: string[];
         customerPaysProvidersFor: string[];

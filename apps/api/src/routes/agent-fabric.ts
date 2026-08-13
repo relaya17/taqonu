@@ -9,6 +9,10 @@ import {
   lessonLearnedSchema,
   VERIFIED_TECH_SOURCES,
   TECH_SOURCE_DOMAINS,
+  buildVerifiedTechSourcesPack,
+  buildVerifiedTechSourcesMarkdown,
+  isAuthorizedVerifiedTechUrl,
+  AtlasError,
 } from "@atlas/shared";
 import {
   dispatchAgentPlan,
@@ -23,6 +27,7 @@ import {
   listKnowledgeCorpus,
   listPortfolioLessons,
 } from "@atlas/knowledge";
+import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import {
   appendDomainEvent,
@@ -258,6 +263,20 @@ export async function registerAgentFabricRoutes(
     requireSignedInForWrite(app, request);
     ensureKnowledgeCorpusHydrated();
     const body = knowledgeIngestRequestSchema.parse(request.body);
+    if (body.url && !isAuthorizedVerifiedTechUrl(body.url)) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "External knowledge URL is not on the verified/authorized allow-list. Agents may only ingest official vendor, standards, government, or university sources.",
+        { statusCode: 403 },
+      );
+    }
+    if (!body.url && !body.projectScoped) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Non-project knowledge ingest requires a verified source URL.",
+        { statusCode: 400 },
+      );
+    }
     const { document: doc, corpus, pgvector } = await ingestKnowledgeClosedLoop(
       app.atlasEnv,
       {
@@ -313,9 +332,43 @@ export async function registerAgentFabricRoutes(
   app.get("/api/v1/knowledge/verified-sources", async () => ({
     domains: TECH_SOURCE_DOMAINS,
     items: VERIFIED_TECH_SOURCES,
+    policy:
+      "Authorized verified knowledge only. Agents and the app must not treat blogs/forums/unlisted hosts as evidence.",
+    download: {
+      json: "/api/v1/knowledge/verified-sources/download?format=json",
+      markdown: "/api/v1/knowledge/verified-sources/download?format=markdown",
+    },
     note:
       "Allow-list of official vendor docs, standards bodies, government cyber guidance, and university CS portals. Agents must cite these — no blogs or invented sources.",
   }));
+
+  /** Download verified allow-list to the user's computer (JSON or Markdown). */
+  app.get("/api/v1/knowledge/verified-sources/download", async (request, reply) => {
+    const q = z
+      .object({
+        format: z.enum(["json", "markdown"]).default("json"),
+      })
+      .parse(request.query ?? {});
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (q.format === "markdown") {
+      const body = buildVerifiedTechSourcesMarkdown();
+      return reply
+        .header(
+          "Content-Disposition",
+          `attachment; filename="atlas-verified-sources-${stamp}.md"`,
+        )
+        .type("text/markdown; charset=utf-8")
+        .send(body);
+    }
+    const pack = buildVerifiedTechSourcesPack();
+    return reply
+      .header(
+        "Content-Disposition",
+        `attachment; filename="atlas-verified-sources-${stamp}.json"`,
+      )
+      .type("application/json; charset=utf-8")
+      .send(pack);
+  });
 
   app.get("/api/v1/knowledge/lessons", async () => ({
     items: listPortfolioLessons().map((l) => lessonLearnedSchema.parse(l)),

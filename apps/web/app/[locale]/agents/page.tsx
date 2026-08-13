@@ -15,7 +15,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, downloadVerifiedSourcesPack } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 
 interface FabricAgent {
@@ -272,6 +272,22 @@ export default function AgentsPage() {
                 count: verifiedSourcesQuery.data.items.length,
               })}
             </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1.5 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => downloadVerifiedSourcesPack("json")}
+              >
+                {t("downloadVerifiedJson")}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => downloadVerifiedSourcesPack("markdown")}
+              >
+                {t("downloadVerifiedMd")}
+              </Button>
+            </Stack>
             <Stack
               direction="row"
               flexWrap="wrap"

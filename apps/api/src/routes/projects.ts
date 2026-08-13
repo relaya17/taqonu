@@ -17,6 +17,12 @@ import {
 } from "../services/plan-quota.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import {
+  buildCentralOpinion,
+  buildCentralOpinionPdfBytes,
+  resolveProjectReachability,
+  listManagerPartnerReminders,
+} from "../services/central-opinion.js";
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
@@ -325,6 +331,68 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       epistemicState: snapshot?.overallEpistemicState ?? "UNKNOWN",
       markdown,
       generatedAt: new Date().toISOString(),
+    };
+  });
+
+  /** Can Studio/files reach local disk and/or repo/cloud link? */
+  app.get("/api/v1/projects/:id/reachability", async (request) => {
+    const params = z.object({ id: uuidSchema }).parse(request.params);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    return resolveProjectReachability(params.id);
+  });
+
+  /**
+   * Single central opinion: sync process audits + memories + reachability.
+   * HTML is print-to-PDF ready; /pdf returns a downloadable PDF summary.
+   */
+  app.get("/api/v1/projects/:id/central-opinion", async (request) => {
+    const params = z.object({ id: uuidSchema }).parse(request.params);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    return buildCentralOpinion(params.id);
+  });
+
+  app.get("/api/v1/projects/:id/central-opinion.html", async (request, reply) => {
+    const params = z.object({ id: uuidSchema }).parse(request.params);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    const opinion = buildCentralOpinion(params.id);
+    return reply.type("text/html; charset=utf-8").send(opinion.html);
+  });
+
+  app.get("/api/v1/projects/:id/central-opinion.pdf", async (request, reply) => {
+    const params = z.object({ id: uuidSchema }).parse(request.params);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    const opinion = buildCentralOpinion(params.id);
+    const bytes = buildCentralOpinionPdfBytes(opinion);
+    const slug = opinion.projectName.replace(/[^\w.-]+/g, "_").slice(0, 40);
+    return reply
+      .header(
+        "Content-Disposition",
+        `attachment; filename="atlas-central-opinion-${slug}.pdf"`,
+      )
+      .type("application/pdf")
+      .send(Buffer.from(bytes));
+  });
+
+  /** Manager-partner reminders (process/studio memories the agent tracks). */
+  app.get("/api/v1/projects/:id/manager-reminders", async (request) => {
+    const params = z.object({ id: uuidSchema }).parse(request.params);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    const reachability = resolveProjectReachability(params.id);
+    return {
+      projectId: params.id,
+      reachability,
+      reminders: listManagerPartnerReminders(params.id),
+      note: "Agent acts as management partner — tracks process audits and studio notes in Memory for follow-up.",
     };
   });
 }

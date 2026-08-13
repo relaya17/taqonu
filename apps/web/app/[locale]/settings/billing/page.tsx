@@ -91,15 +91,13 @@ export default function BillingSettingsPage() {
             {t("tier")}: {plan.tier.toUpperCase()}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {t("slots", {
+            {t("mirrorSlots", {
               used: usage?.cloudProjectCount ?? plan.cloudProjectCount,
               limit: usage?.cloudProjectLimit ?? plan.cloudProjectLimit,
             })}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {t("remaining", {
-              count: usage?.remainingCloudSlots ?? plan.remainingCloudSlots,
-            })}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {t("sellBanner")}
           </Typography>
           {plan.subscriptionStatus ? (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

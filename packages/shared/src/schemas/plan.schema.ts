@@ -13,6 +13,14 @@ export const planAxesSchema = z.object({
     used: z.number().int().min(0),
     limit: z.number().int().positive(),
   }),
+  processAuditsPerDay: z.object({
+    used: z.number().int().min(0),
+    limit: z.number().int().positive(),
+  }),
+  agentMessagesPerDay: z.object({
+    used: z.number().int().min(0),
+    limit: z.number().int().positive(),
+  }),
   integrations: z.object({
     used: z.number().int().min(0),
     limit: z.number().int().positive(),
@@ -33,7 +41,8 @@ export const subscriptionStatusSchema = z.enum([
 
 export const accountPlanSchema = z.object({
   tier: planTierSchema,
-  cloudProjectLimit: z.number().int().positive(),
+  /** Optional Atlas evidence-mirror capacity (free = 0). Not customer cloud storage. */
+  cloudProjectLimit: z.number().int().min(0),
   cloudProjectCount: z.number().int().min(0),
   remainingCloudSlots: z.number().int().min(0),
   cloudConfigured: z.boolean(),
@@ -43,6 +52,8 @@ export const accountPlanSchema = z.object({
   subscriptionStatus: subscriptionStatusSchema.optional(),
   stripeCustomerId: z.string().nullable().optional(),
   axes: planAxesSchema,
+  storageModel: z.literal("BYO_CUSTOMER_CLOUD").default("BYO_CUSTOMER_CLOUD"),
+  preferredCustomerCloud: z.literal("cloudflare").default("cloudflare"),
 });
 
 export const setPlanSchema = z.object({
@@ -53,7 +64,7 @@ export const setPlanSchema = z.object({
 export const accountUsageSchema = z.object({
   ownerId: uuidSchema,
   tier: planTierSchema,
-  cloudProjectLimit: z.number().int().positive(),
+  cloudProjectLimit: z.number().int().min(0),
   cloudProjectCount: z.number().int().min(0),
   remainingCloudSlots: z.number().int().min(0),
   subscriptionStatus: subscriptionStatusSchema.optional(),

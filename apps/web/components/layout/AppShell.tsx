@@ -15,47 +15,58 @@ import {
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
+import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
+import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
+import { useColorMode } from "@/components/providers/ColorModeProvider";
 
 const DRAWER_WIDTH = 248;
 
 type NavKey =
   | "dashboard"
   | "projects"
+  | "studio"
+  | "workbench"
   | "agents"
   | "partners"
   | "patches"
   | "health"
   | "readiness"
   | "qa"
+  | "processAudit"
   | "models"
   | "experts"
   | "memory"
   | "decisions"
   | "integrations"
   | "plan"
+  | "welcome"
   | "legalMedia"
   | "settings";
 
 const PATHS: Record<NavKey, string> = {
   dashboard: "/",
   projects: "/projects",
+  studio: "/studio",
+  workbench: "/workbench",
   agents: "/agents",
   partners: "/partners",
   patches: "/patches",
   health: "/health",
   readiness: "/readiness",
   qa: "/qa",
+  processAudit: "/process-audit",
   models: "/models",
   experts: "/experts",
   memory: "/memory",
   decisions: "/decisions",
   integrations: "/integrations",
   plan: "/plan",
+  welcome: "/welcome",
   legalMedia: "/legal-media",
   settings: "/settings",
 };
@@ -68,12 +79,21 @@ const NAV_GROUPS: readonly {
 }[] = [
   {
     id: "main",
-    items: ["dashboard", "projects", "agents", "partners"],
+    items: [
+      "dashboard",
+      "projects",
+      "studio",
+      "workbench",
+      "agents",
+      "partners",
+      "plan",
+      "welcome",
+    ],
   },
   {
     id: "ops",
     labelKey: "opsGroup",
-    items: ["patches", "health", "readiness", "qa"],
+    items: ["patches", "health", "readiness", "qa", "processAudit"],
   },
   {
     id: "workspace",
@@ -84,7 +104,6 @@ const NAV_GROUPS: readonly {
       "memory",
       "decisions",
       "integrations",
-      "plan",
       "legalMedia",
       "settings",
     ],
@@ -118,6 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const locale = useLocale();
   const pathname = usePathname();
   const isRtl = locale === "he" || locale === "ar";
+  const { mode, toggleMode } = useColorMode();
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Small screens: closed by default; hamburger opens overlay drawer. */
@@ -148,6 +168,20 @@ export function AppShell({ children }: { children: ReactNode }) {
     retry: false,
     staleTime: 5 * 60_000,
   });
+
+  const planQuery = useQuery({
+    queryKey: ["billing-plan"],
+    queryFn: () =>
+      apiGet<{ tier: "free" | "pro"; remainingCloudSlots: number }>(
+        "/api/v1/billing/plan",
+      ),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const isMarketing =
+    pathname === "/welcome" || pathname.startsWith("/welcome/");
+  const showUpgradeCta = planQuery.data?.tier === "free";
 
   const logout = async () => {
     await apiPost("/api/v1/auth/logout", {});
@@ -247,6 +281,19 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Box>
 
       <Stack spacing={1} sx={{ mt: "auto", px: 1, pt: 3 }}>
+        {showUpgradeCta ? (
+          <Button
+            component={Link}
+            href="/plan"
+            size="small"
+            variant="contained"
+            color="secondary"
+            onClick={opts.mobile ? () => setNavOpen(false) : undefined}
+            sx={{ fontWeight: 700 }}
+          >
+            {t("nav.upgradePro")}
+          </Button>
+        ) : null}
         {meQuery.data?.user ? (
           <Box>
             <Typography variant="caption" sx={{ opacity: 0.8, display: "block" }}>
@@ -295,7 +342,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           spacing={1}
           role="group"
           aria-label={t("nav.languages")}
+          alignItems="center"
         >
+          <IconButton
+            size="small"
+            onClick={toggleMode}
+            aria-label={
+              mode === "dark" ? t("a11y.themeLight") : t("a11y.themeDark")
+            }
+            sx={{ color: "#F4F7F5" }}
+          >
+            {mode === "dark" ? (
+              <LightModeOutlinedIcon fontSize="small" />
+            ) : (
+              <DarkModeOutlinedIcon fontSize="small" />
+            )}
+          </IconButton>
           {(["he", "en", "ar"] as const).map((code) => (
             <Button
               key={code}
@@ -331,6 +393,103 @@ export function AppShell({ children }: { children: ReactNode }) {
     flexDirection: "column" as const,
     overflowX: "hidden" as const,
   };
+
+  if (isMarketing) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          width: "100%",
+          maxWidth: "100%",
+          overflowX: "clip",
+          bgcolor: "#050C0D",
+        }}
+      >
+        <Box
+          component="header"
+          sx={{
+            position: "fixed",
+            top: 0,
+            insetInline: 0,
+            zIndex: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+            px: { xs: 2, md: 3 },
+            py: 1.5,
+            background: "linear-gradient(180deg, rgba(5,12,13,0.92), transparent)",
+          }}
+        >
+          <Typography
+            component={Link}
+            href="/welcome"
+            sx={{
+              fontFamily: '"Syne", "Fraunces", sans-serif',
+              fontWeight: 700,
+              fontSize: "1.15rem",
+              color: "#E8F4F2",
+              textDecoration: "none",
+              letterSpacing: "-0.03em",
+            }}
+          >
+            {t("brand.name")}
+          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button
+              component={Link}
+              href="/plan"
+              size="small"
+              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+            >
+              {t("nav.plan")}
+            </Button>
+            <Button
+              component={Link}
+              href="/auth/login"
+              size="small"
+              variant="contained"
+              sx={{
+                bgcolor: "#3EC8BE",
+                color: "#041214",
+                fontWeight: 700,
+                "&:hover": { bgcolor: "#5AD8CF" },
+              }}
+            >
+              {t("auth.login")}
+            </Button>
+            {(["he", "en", "ar"] as const).map((code) => (
+              <Button
+                key={code}
+                component={Link}
+                href={pathname}
+                locale={code}
+                size="small"
+                variant={locale === code ? "contained" : "text"}
+                sx={{
+                  minWidth: 36,
+                  color: locale === code ? "#041214" : "#E8F4F2",
+                  bgcolor: locale === code ? "#3EC8BE" : "transparent",
+                }}
+              >
+                {code.toUpperCase()}
+              </Button>
+            ))}
+          </Stack>
+        </Box>
+        <Box
+          component="main"
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          aria-label={t("a11y.mainContent")}
+          sx={{ outline: "none" }}
+        >
+          {children}
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box

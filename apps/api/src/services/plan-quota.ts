@@ -182,6 +182,8 @@ export async function getAccountPlan(
     updatedAt: resolved.updatedAt ?? new Date().toISOString(),
     subscriptionStatus: resolved.subscriptionStatus ?? "none",
     stripeCustomerId: resolved.stripeCustomerId ?? null,
+    storageModel: "BYO_CUSTOMER_CLOUD",
+    preferredCustomerCloud: "cloudflare",
     axes: {
       evidenceRecords: {
         used: osStore.countEvidenceRecords(),
@@ -190,6 +192,14 @@ export async function getAccountPlan(
       evalRunsPerDay: {
         used: osStore.getEvalRunsToday(dayKey()),
         limit: axisLimits.evalRunsPerDay,
+      },
+      processAuditsPerDay: {
+        used: osStore.getProcessAuditsToday(dayKey()),
+        limit: axisLimits.processAuditsPerDay,
+      },
+      agentMessagesPerDay: {
+        used: osStore.getAgentMessagesToday(dayKey()),
+        limit: axisLimits.agentMessagesPerDay,
       },
       integrations: {
         used: osStore.countConnectedIntegrations(),
@@ -249,7 +259,7 @@ export async function assertCloudSlotAvailable(
   if (plan.remainingCloudSlots <= 0) {
     throw new AtlasError(
       "QUOTA_EXCEEDED",
-      `Cloud project limit reached (${plan.cloudProjectCount}/${plan.cloudProjectLimit} on ${plan.tier}). Upgrade to pro for more slots.`,
+      `Atlas evidence-mirror limit reached (${plan.cloudProjectCount}/${plan.cloudProjectLimit} on ${plan.tier}). Free tier does not include Atlas-hosted storage — connect Cloudflare BYO for your data, or upgrade Pro for optional mirror slots.`,
       {
         statusCode: 402,
         details: {
@@ -257,8 +267,10 @@ export async function assertCloudSlotAvailable(
           cloudProjectLimit: plan.cloudProjectLimit,
           cloudProjectCount: plan.cloudProjectCount,
           ownerId: plan.ownerId,
+          storageModel: "BYO_CUSTOMER_CLOUD",
+          preferredCustomerCloud: "cloudflare",
           upgradeHint:
-            'POST /api/v1/billing/stripe/checkout { "tier": "pro" } (or staging POST /billing/plan)',
+            'Connect Cloudflare via POST /api/v1/byo-cloud/cloudflare/connect — or Pro mirror: POST /api/v1/billing/stripe/checkout { "tier": "pro" }',
         },
       },
     );
@@ -294,4 +306,50 @@ export function assertEvalQuota(env: EnvSlice, ownerId?: string | null): void {
 
 export function recordEvalRunUsage(): void {
   osStore.incrementEvalRunMeter(dayKey());
+}
+
+export function assertProcessAuditQuota(
+  env: EnvSlice,
+  ownerId?: string | null,
+): void {
+  const { tier } = resolveTier(env, ownerId);
+  const limit = PLAN_AXIS_LIMITS[tier].processAuditsPerDay;
+  const used = osStore.getProcessAuditsToday(dayKey());
+  if (used >= limit) {
+    throw new AtlasError(
+      "QUOTA_EXCEEDED",
+      `Process audit quota reached (${used}/${limit} today on ${tier}). Upgrade usage on Pro.`,
+      {
+        statusCode: 402,
+        details: { axis: "processAuditsPerDay", used, limit, tier },
+      },
+    );
+  }
+}
+
+export function recordProcessAuditUsage(): void {
+  osStore.incrementProcessAuditMeter(dayKey());
+}
+
+export function assertAgentMessageQuota(
+  env: EnvSlice,
+  ownerId?: string | null,
+): void {
+  const { tier } = resolveTier(env, ownerId);
+  const limit = PLAN_AXIS_LIMITS[tier].agentMessagesPerDay;
+  const used = osStore.getAgentMessagesToday(dayKey());
+  if (used >= limit) {
+    throw new AtlasError(
+      "QUOTA_EXCEEDED",
+      `Agent message quota reached (${used}/${limit} today on ${tier}). Upgrade usage on Pro.`,
+      {
+        statusCode: 402,
+        details: { axis: "agentMessagesPerDay", used, limit, tier },
+      },
+    );
+  }
+}
+
+export function recordAgentMessageUsage(): void {
+  osStore.incrementAgentMessageMeter(dayKey());
 }
