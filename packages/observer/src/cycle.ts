@@ -116,6 +116,37 @@ export function runObserveCycle(input: {
     evidenceRefs: [`.atlas/genome/graph.json`],
   });
 
+  const authEdges = graph.edges.filter((e) => e.type === "AUTHENTICATED_BY").length;
+  const sensitiveEdges = graph.edges.filter((e) => e.type === "EXPOSES_DATA").length;
+  const decisions = graph.nodes.filter((n) => n.type === "DECISION").length;
+  if (authEdges || sensitiveEdges) {
+    findings.push({
+      id: "security-graph",
+      title: "Security graph signals",
+      detail: `Auth boundaries: ${authEdges} · Sensitive data edges: ${sensitiveEdges}.`,
+      claim: "INFERRED",
+      epistemicState: "INFERRED",
+      riskBand: sensitiveEdges > 3 ? "MEDIUM" : "LOW",
+      category: "GENOME",
+      evidenceRefs: [
+        `AUTHENTICATED_BY×${authEdges}`,
+        `EXPOSES_DATA×${sensitiveEdges}`,
+      ],
+    });
+  }
+  if (decisions > 0) {
+    findings.push({
+      id: "engineering-memory-graph",
+      title: "Engineering memory on graph",
+      detail: `${decisions} decision/ADR node(s) linked into the knowledge graph.`,
+      claim: "OBSERVED",
+      epistemicState: "OBSERVED",
+      riskBand: "LOW",
+      category: "GENOME",
+      evidenceRefs: [`DECISION×${decisions}`],
+    });
+  }
+
   for (const diff of behaviorDiffs) {
     const boost = impactBoostForFlow(graph, diff.flowId);
     findings.push({
@@ -166,7 +197,7 @@ export function runObserveCycle(input: {
     behaviorDiffs,
     openHighBugs,
     graph,
-    hasPrevious: Boolean(previous) || expected.source !== "baseline" || Boolean(previous),
+    hasPrevious: Boolean(previous),
     apiCount: genome.apis.length,
   });
 
@@ -206,7 +237,11 @@ export function runObserveCycle(input: {
   const cycleId = crypto.randomUUID();
   const top =
     findings
-      .filter((f) => f.category === "BEHAVIOR" || f.category === "BUG")
+      .filter(
+        (f) =>
+          f.id.startsWith("behavior-") ||
+          (f.category === "BUG" && f.riskBand !== "LOW"),
+      )
       .sort((a, b) => {
         const r = (x: string) =>
           x === "CRITICAL" ? 4 : x === "HIGH" ? 3 : x === "MEDIUM" ? 2 : 1;

@@ -58,9 +58,9 @@
 | # | משימה | סטטוס |
 |---:|---|---|
 | 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — gated LOW קיים; לא להרחיב ל־prod auto |
-| 1.2 | Security Graph (identity→API→data) | `OPEN` |
+| 1.2 | Security Graph (identity→API→data) | `PARTIAL` — AUTHENTICATED_BY / EXPOSES_DATA seed in Graph v0 |
 | 1.3 | Production Intelligence (logs/traces/metrics) | `OPEN` |
-| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — memory קיים; קישור ל־Graph חסר |
+| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — ADR/decision nodes on Graph; conflict detect later |
 | 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — BYO; לחזק messaging + audit |
 | 1.6 | CI/CD deep integrations | `PARTIAL` |
 
@@ -126,6 +126,7 @@ Sprint C
 | 2026-08-13 | Observer package + API + UI נשלחו קודם בשיחה זו |
 | 2026-08-13 | Graph v0 + Impact API + Observer sync + `/truth` ATLAS HEALTH — Sprint A סגור חלקית |
 | 2026-08-13 | **Sprint B / P0 ירוק:** EXPECTED model · evidenceRefs · graph-aware risk · webhook observe · cycle history · DP counters |
+| 2026-08-13 | Bugfix: no golden fallback for linked projects; resilient observer GET; top-finding filter; Security/ADR graph seeds |
 
 ---
 

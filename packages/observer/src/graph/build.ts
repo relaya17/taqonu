@@ -328,6 +328,92 @@ export function buildSoftwareKnowledgeGraph(input: {
         }),
       );
     }
+
+    // Security graph seed: auth middleware / requireUser → AUTHENTICATED_BY
+    if (
+      /\b(requireAuth|requireUser|requireSignedIn|authenticate|verifyJwt|authGuard)\b/.test(
+        text,
+      )
+    ) {
+      const authNode = put(
+        makeNode({
+          projectId,
+          type: "FEATURE",
+          key: `auth:${rel}`,
+          label: `auth@${rel.split("/").pop()}`,
+          properties: { kind: "auth_boundary", file: rel },
+          epistemicState: "INFERRED",
+          confidence: 0.65,
+        }),
+      );
+      edges.push(
+        makeEdge({
+          projectId,
+          type: "AUTHENTICATED_BY",
+          from: fromFile,
+          to: authNode,
+          epistemicState: "INFERRED",
+          confidence: 0.6,
+        }),
+      );
+    }
+
+    // Sensitive data touchpoints → EXPOSES_DATA
+    if (
+      /\b(password|secret|api[_-]?key|creditCard|ssn|nationalId|ENCRYPTION_KEY)\b/i.test(
+        text,
+      )
+    ) {
+      const dataNode = put(
+        makeNode({
+          projectId,
+          type: "FEATURE",
+          key: `sensitive:${rel}`,
+          label: `sensitive@${rel.split("/").pop()}`,
+          properties: { kind: "sensitive_data", file: rel },
+          epistemicState: "ASSUMED",
+          confidence: 0.55,
+        }),
+      );
+      edges.push(
+        makeEdge({
+          projectId,
+          type: "EXPOSES_DATA",
+          from: fromFile,
+          to: dataNode,
+          epistemicState: "INFERRED",
+          confidence: 0.55,
+        }),
+      );
+    }
+  }
+
+  // Engineering memory seed: ADR / decision docs → DECISION nodes
+  for (const rel of files) {
+    if (!/(^|\/)ADR[-_].+\.md$/i.test(rel) && !/\/decisions\//i.test(rel)) {
+      continue;
+    }
+    const decision = put(
+      makeNode({
+        projectId,
+        type: "DECISION",
+        key: rel,
+        label: rel.split("/").pop() ?? rel,
+        properties: { path: rel },
+        epistemicState: "OBSERVED",
+        confidence: 0.85,
+      }),
+    );
+    edges.push(
+      makeEdge({
+        projectId,
+        type: "CONTAINS",
+        from: project,
+        to: decision,
+        epistemicState: "OBSERVED",
+        confidence: 0.9,
+      }),
+    );
   }
 
   // Deduplicate edges by id

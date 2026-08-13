@@ -1187,7 +1187,8 @@
     "compared": "השוואה ל־{at}",
     "promoteExpected": "קבע EXPECTED",
     "history": "היסטוריית תצפית",
-    "historyEmptyTitle": "מחזור נרשם"
+    "historyEmptyTitle": "מחזור נרשם",
+    "openProjects": "לפרויקטים"
   },
   "observer": {
     "title": "צופה (Observer)",

@@ -47,6 +47,12 @@ function resolveGraphWorkspace(input: {
   }
 
   if (!workspaceRoot) {
+    if (projectId) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot on this project before building the Knowledge Graph.",
+      );
+    }
     workspaceRoot = resolve(input.envGoldenRoot || defaultGoldenRoot());
   }
   if (!existsSync(workspaceRoot)) {

@@ -35,6 +35,8 @@ export const GRAPH_EDGE_TYPES = [
   "WRITES",
   "TESTED_BY",
   "CHANGED_IN",
+  "AUTHENTICATED_BY",
+  "EXPOSES_DATA",
   "SAME_PATTERN_AS",
   "DUPLICATES",
 ] as const;

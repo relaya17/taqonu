@@ -134,50 +134,55 @@ export default function TruthPage() {
     staleTime: 60_000,
   });
 
+  const firstId = projects.data?.items[0]?.id ?? "";
+  const activeId = selectedId || firstId;
+
   const state = useQuery({
-    queryKey: ["observer-state", selectedId],
-    enabled: Boolean(selectedId),
+    queryKey: ["observer-state", activeId],
+    enabled: Boolean(activeId),
     queryFn: () =>
       apiGet<{
         counters: TruthCounters;
         history: HistoryEntry[];
-      }>(`/api/v1/projects/${selectedId}/observer`),
+        error?: string | null;
+      }>(`/api/v1/projects/${activeId}/observer`),
   });
 
   const graph = useQuery({
-    queryKey: ["graph-nodes", selectedId],
-    enabled: Boolean(selectedId),
+    queryKey: ["graph-nodes", activeId],
+    enabled: Boolean(activeId),
     queryFn: () =>
       apiGet<GraphPage>(
-        `/api/v1/graph/nodes?projectId=${selectedId}&pageSize=1`,
+        `/api/v1/graph/nodes?projectId=${activeId}&pageSize=1`,
       ),
   });
 
   const cycle = useMutation({
     mutationFn: () =>
-      apiPost<ObserveResult>(`/api/v1/projects/${selectedId}/observe-cycle`, {
+      apiPost<ObserveResult>(`/api/v1/projects/${activeId}/observe-cycle`, {
         trigger: "manual",
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["graph-nodes", selectedId] });
-      void queryClient.invalidateQueries({ queryKey: ["observer-state", selectedId] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-nodes", activeId] });
+      void queryClient.invalidateQueries({ queryKey: ["observer-state", activeId] });
     },
   });
 
   const promote = useMutation({
     mutationFn: () =>
-      apiPost<ObserveResult>(`/api/v1/projects/${selectedId}/observe-cycle`, {
+      apiPost<ObserveResult>(`/api/v1/projects/${activeId}/observe-cycle`, {
         trigger: "manual",
         promoteExpected: true,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["observer-state", selectedId] });
+      void queryClient.invalidateQueries({ queryKey: ["observer-state", activeId] });
     },
   });
 
   const result = cycle.data ?? promote.data;
   const counters = result?.counters ?? state.data?.counters;
   const history = result?.history ?? state.data?.history ?? [];
+  const linkError = state.data?.error ?? null;
   const scores = useMemo(() => {
     if (!result) {
       return {
@@ -207,7 +212,11 @@ export default function TruthPage() {
 
   const topFinding =
     result?.findings
-      .filter((f) => f.category === "BEHAVIOR" || f.category === "BUG")
+      .filter(
+        (f) =>
+          f.id.startsWith("behavior-") ||
+          (f.category === "BUG" && f.riskBand !== "LOW"),
+      )
       .sort((a, b) => {
         const rank = (x: string) =>
           x === "CRITICAL" ? 4 : x === "HIGH" ? 3 : x === "MEDIUM" ? 2 : 1;
@@ -272,7 +281,7 @@ export default function TruthPage() {
             select
             size="small"
             label={t("project")}
-            value={selectedId}
+            value={activeId}
             onChange={(e) => setSelectedId(e.target.value)}
             sx={{
               minWidth: 240,
@@ -295,7 +304,7 @@ export default function TruthPage() {
           </TextField>
           <Button
             variant="contained"
-            disabled={!selectedId || cycle.isPending}
+            disabled={!activeId || cycle.isPending}
             onClick={() => cycle.mutate()}
             sx={{
               bgcolor: "#3EC8BE",
@@ -309,7 +318,7 @@ export default function TruthPage() {
           </Button>
           <Button
             variant="outlined"
-            disabled={!selectedId || promote.isPending}
+            disabled={!activeId || promote.isPending}
             onClick={() => promote.mutate()}
             sx={{ borderColor: "rgba(232,244,242,0.35)", color: "#E8F4F2" }}
           >
@@ -328,6 +337,14 @@ export default function TruthPage() {
         {cycle.isError ? (
           <Alert severity="error">
             {cycle.error instanceof Error ? cycle.error.message : t("error")}
+          </Alert>
+        ) : null}
+        {linkError ? (
+          <Alert severity="warning">
+            {linkError}{" "}
+            <Button component={Link} href="/projects" size="small" sx={{ ml: 1 }}>
+              {t("openProjects")}
+            </Button>
           </Alert>
         ) : null}
 
@@ -480,6 +497,16 @@ export default function TruthPage() {
                   <Typography variant="caption" sx={{ opacity: 0.7 }}>
                     {t("evidenceHint")}
                   </Typography>
+                  {(topFinding.evidenceRefs?.length ?? 0) > 0 ? (
+                    <Box
+                      component="ul"
+                      sx={{ m: 0, pl: 2, opacity: 0.8, fontSize: "0.8rem" }}
+                    >
+                      {topFinding.evidenceRefs!.slice(0, 6).map((ref) => (
+                        <li key={ref}>{ref}</li>
+                      ))}
+                    </Box>
+                  ) : null}
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button
                       component={Link}

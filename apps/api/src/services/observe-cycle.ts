@@ -43,6 +43,13 @@ export function resolveObserverWorkspace(input: {
   }
 
   if (!workspaceRoot) {
+    // Never silently observe the golden lab for a different named project.
+    if (projectId) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot on this project (Projects → folder) before Observer/Truth.",
+      );
+    }
     workspaceRoot = resolve(input.envGoldenRoot || defaultGoldenRoot());
   }
 
@@ -182,14 +189,35 @@ export function readObserverState(input: {
   workspaceRoot?: string | null;
   envGoldenRoot?: string | null;
 }) {
-  const resolved = resolveObserverWorkspace(input);
-  return {
-    workspaceRoot: resolved.workspaceRoot,
-    projectId: resolved.projectId,
-    genome: loadGenome(resolved.workspaceRoot),
-    bugs: loadBugs(resolved.workspaceRoot),
-    expected: loadExpectedBehavior(resolved.workspaceRoot),
-    counters: loadTruthCounters(resolved.workspaceRoot),
-    history: listCycleHistory(resolved.workspaceRoot).slice(0, 20),
-  };
+  try {
+    const resolved = resolveObserverWorkspace(input);
+    return {
+      workspaceRoot: resolved.workspaceRoot,
+      projectId: resolved.projectId,
+      genome: loadGenome(resolved.workspaceRoot),
+      bugs: loadBugs(resolved.workspaceRoot),
+      expected: loadExpectedBehavior(resolved.workspaceRoot),
+      counters: loadTruthCounters(resolved.workspaceRoot),
+      history: listCycleHistory(resolved.workspaceRoot).slice(0, 20),
+      error: null as string | null,
+    };
+  } catch (error) {
+    return {
+      workspaceRoot: null,
+      projectId: input.projectId ?? null,
+      genome: null,
+      bugs: [],
+      expected: null,
+      counters: {
+        analyzed: 0,
+        meaningfulRisks: 0,
+        confirmedRegressions: 0,
+        caughtBeforeProd: 0,
+        cycles: 0,
+        updatedAt: new Date().toISOString(),
+      },
+      history: [],
+      error: error instanceof Error ? error.message : "Observer state unavailable",
+    };
+  }
 }
