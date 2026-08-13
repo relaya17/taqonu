@@ -125,6 +125,7 @@ Sprint C
 | 2026-08-13 | נוצר **ATLAS TRUTH-10**; Observer MVP סומן DONE; Graph v0 + /truth התחילו |
 | 2026-08-13 | Observer package + API + UI נשלחו קודם בשיחה זו |
 | 2026-08-13 | Graph v0 + Impact API + Observer sync + `/truth` ATLAS HEALTH — Sprint A סגור חלקית |
+| 2026-08-13 | **Sprint B / P0 ירוק:** EXPECTED model · evidenceRefs · graph-aware risk · webhook observe · cycle history · DP counters |
 
 ---
 
