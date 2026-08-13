@@ -9,6 +9,7 @@ export function atlasObserverPaths(workspaceRoot: string) {
   const metrics = join(atlas, "metrics");
   const cycles = join(atlas, "cycles");
   const production = join(atlas, "production");
+  const sentinel = join(atlas, "sentinel");
   return {
     atlas,
     genome,
@@ -23,5 +24,8 @@ export function atlasObserverPaths(workspaceRoot: string) {
     cyclesIndex: join(cycles, "index.json"),
     production,
     productionDeploys: join(production, "deploys.json"),
+    sentinel,
+    sentinelLastScan: join(sentinel, "last-scan.json"),
+    sentinelAuthzBaseline: join(sentinel, "authz-baseline.json"),
   };
 }

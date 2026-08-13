@@ -54,4 +54,28 @@ describe("selectTopTruthFinding", () => {
       }),
     ).toBe(false);
   });
+
+  it("prioritizes HIGH Sentinel findings", () => {
+    expect(
+      isTruthPriorityFinding({
+        id: "sentinel:secret:x",
+        category: "SECURITY",
+        riskBand: "HIGH",
+      }),
+    ).toBe(true);
+    const top = selectTopTruthFinding([
+      finding({
+        id: "behavior-x-STEP",
+        title: "step",
+        riskBand: "MEDIUM",
+      }),
+      finding({
+        id: "sentinel:authz-lost-guard:a",
+        title: "authz",
+        riskBand: "HIGH",
+        category: "SECURITY",
+      }),
+    ]);
+    expect(top?.id.startsWith("sentinel:")).toBe(true);
+  });
 });

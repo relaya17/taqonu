@@ -33,6 +33,8 @@ import {
 } from "./production/deploy-events.js";
 import { detectAdrConflicts } from "./memory/adr-conflict.js";
 import { selectTopTruthFinding } from "./findings/top.js";
+import { runSentinelScan } from "./security/scan.js";
+import { mergeSentinelIntoGraph } from "./security/graph-ingest.js";
 
 function claimToEpistemic(
   claim: ObserverFinding["claim"],
@@ -74,13 +76,18 @@ export function runObserveCycle(input: {
     capturedAt: startedAt,
   });
 
-  const graph = mergeDeployEventsIntoGraph(
+  let graph = mergeDeployEventsIntoGraph(
     buildSoftwareKnowledgeGraph({
       workspaceRoot: input.workspaceRoot,
       projectId: input.projectId ?? null,
       projectSlug: input.projectSlug ?? null,
     }),
   );
+
+  const sentinel = runSentinelScan(input.workspaceRoot, {
+    persist,
+  });
+  graph = mergeSentinelIntoGraph(graph, sentinel);
 
   const expected = input.promoteExpected
     ? promoteObservedToExpected(input.workspaceRoot, genome.apis)
@@ -220,6 +227,41 @@ export function runObserveCycle(input: {
     });
   }
 
+  findings.push({
+    id: "sentinel-posture",
+    title: `Atlas Sentinel · ${sentinel.posture}`,
+    detail: sentinel.summary,
+    claim: sentinel.posture === "CLEAR" ? "OBSERVED" : "INFERRED",
+    epistemicState: sentinel.posture === "CLEAR" ? "OBSERVED" : "INFERRED",
+    riskBand:
+      sentinel.posture === "CRITICAL" || sentinel.posture === "HIGH"
+        ? sentinel.posture
+        : sentinel.posture === "MEDIUM"
+          ? "MEDIUM"
+          : "LOW",
+    category: "SECURITY",
+    evidenceRefs: [
+      `.atlas/sentinel/last-scan.json`,
+      `secrets:${sentinel.counts.secrets}`,
+      `authz:${sentinel.counts.authz}`,
+      `deps:${sentinel.counts.dependencies}`,
+      `config:${sentinel.counts.config}`,
+    ],
+  });
+
+  for (const f of sentinel.findings) {
+    findings.push({
+      id: f.id.startsWith("sentinel:") ? f.id : `sentinel:${f.id}`,
+      title: f.title,
+      detail: f.detail,
+      claim: f.claim === "OBSERVED" ? "OBSERVED" : "INFERRED",
+      epistemicState: f.epistemicState === "OBSERVED" ? "OBSERVED" : "INFERRED",
+      riskBand: f.severity,
+      category: "SECURITY",
+      evidenceRefs: [...f.evidenceRefs],
+    });
+  }
+
   for (const diff of behaviorDiffs) {
     const boost = impactBoostForFlow(graph, diff.flowId);
     findings.push({
@@ -266,12 +308,16 @@ export function runObserveCycle(input: {
       (b.severity === "CRITICAL" || b.severity === "HIGH"),
   ).length;
 
+  const sentinelHigh =
+    sentinel.counts.critical + sentinel.counts.high;
+
   const risk = scoreRiskWithGraph({
     behaviorDiffs,
     openHighBugs,
     graph,
     hasPrevious: Boolean(previous),
     apiCount: genome.apis.length,
+    sentinelHigh,
   });
 
   findings.push({
@@ -326,17 +372,27 @@ export function runObserveCycle(input: {
   }
 
   const evidenceDrafts = findings
-    .filter((f) => f.category === "BEHAVIOR" || f.category === "BUG")
-    .slice(0, 20)
+    .filter(
+      (f) =>
+        f.category === "BEHAVIOR" ||
+        f.category === "BUG" ||
+        f.category === "SECURITY",
+    )
+    .slice(0, 24)
     .map((f) => ({
-      source: "atlas-observer",
+      source: f.category === "SECURITY" ? "atlas-sentinel" : "atlas-observer",
       sourceType: "SYSTEM" as const,
       excerpt: `${f.title}: ${f.detail}\nEvidence:\n${(f.evidenceRefs ?? []).join("\n")}`.slice(
         0,
         2000,
       ),
       epistemicState: f.epistemicState,
-      category: f.category === "BUG" ? ("RISKS" as const) : ("CODE" as const),
+      category:
+        f.category === "BUG"
+          ? ("RISKS" as const)
+          : f.category === "SECURITY"
+            ? ("SECURITY" as const)
+            : ("CODE" as const),
       confidence:
         f.claim === "VERIFIED" ? 0.95 : f.claim === "OBSERVED" ? 0.8 : 0.55,
     }));

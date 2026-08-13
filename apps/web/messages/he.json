@@ -1200,6 +1200,8 @@
     "p1Auth": "קצוות Auth {n}",
     "p1Identity": "זהות {n}",
     "p1Sensitive": "קצוות רגישים {n}",
+    "p1Sentinel": "Sentinel {posture} · קריטי {critical} · גבוה {high}",
+    "p1Packages": "חבילות {n} · advisories {adv}",
     "p1Data": "מאגרי נתונים {n}",
     "p1Adr": "קונפליקטי ADR {n}",
     "p1Decided": "DECIDED_BY {n}",

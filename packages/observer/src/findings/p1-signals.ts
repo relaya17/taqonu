@@ -6,6 +6,8 @@ import {
 } from "../production/deploy-events.js";
 import { detectAdrConflicts } from "../memory/adr-conflict.js";
 import type { BehaviorDifference } from "@atlas/shared";
+import { loadSentinelLastScan } from "../security/persist.js";
+import { runSentinelScan } from "../security/scan.js";
 
 export interface P1TruthSignals {
   authEdges: number;
@@ -15,10 +17,19 @@ export interface P1TruthSignals {
   identityNodes: number;
   dataStoreNodes: number;
   deploymentNodes: number;
+  packageNodes: number;
+  advisoryIncidents: number;
   adrConflicts: number;
   productionPresent: number;
   productionMissing: number;
   missingTitles: string[];
+  sentinelPosture: string;
+  sentinelCritical: number;
+  sentinelHigh: number;
+  sentinelSecrets: number;
+  sentinelAuthz: number;
+  sentinelDeps: number;
+  sentinelConfig: number;
   lastDeploy: {
     provider: string;
     environment: string;
@@ -46,10 +57,21 @@ export function collectP1TruthSignals(
     graph?.nodes.filter((n) => n.type === "DATA_STORE").length ?? 0;
   const deploymentNodes =
     graph?.nodes.filter((n) => n.type === "DEPLOYMENT").length ?? 0;
+  const packageNodes =
+    graph?.nodes.filter((n) => n.type === "PACKAGE").length ?? 0;
+  const advisoryIncidents =
+    graph?.nodes.filter(
+      (n) =>
+        n.type === "INCIDENT" &&
+        n.properties?.kind === "dependency_advisory",
+    ).length ?? 0;
   const adrConflicts = detectAdrConflicts(workspaceRoot, behaviorDiffs).length;
   const prod = detectProductionSignals(workspaceRoot);
   const missing = prod.filter((s) => !s.present);
   const deploy = summarizeLastDeploy(loadDeployEvents(workspaceRoot));
+  const last =
+    loadSentinelLastScan(workspaceRoot) ??
+    runSentinelScan(workspaceRoot, { persist: false });
   return {
     authEdges,
     sensitiveEdges,
@@ -58,10 +80,19 @@ export function collectP1TruthSignals(
     identityNodes,
     dataStoreNodes,
     deploymentNodes,
+    packageNodes,
+    advisoryIncidents,
     adrConflicts,
     productionPresent: prod.filter((s) => s.present).length,
     productionMissing: missing.length,
     missingTitles: missing.map((s) => s.title),
+    sentinelPosture: last.posture,
+    sentinelCritical: last.counts.critical,
+    sentinelHigh: last.counts.high,
+    sentinelSecrets: last.counts.secrets,
+    sentinelAuthz: last.counts.authz,
+    sentinelDeps: last.counts.dependencies,
+    sentinelConfig: last.counts.config,
     lastDeploy: deploy.last
       ? {
           provider: deploy.last.provider,

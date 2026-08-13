@@ -15,10 +15,13 @@ export function isTruthPriorityFinding(f: {
 }): boolean {
   if (f.id.startsWith("behavior-")) return true;
   if (f.id.startsWith("adr-conflict-")) return true;
+  if (f.id.startsWith("sentinel:") && f.riskBand !== "LOW") return true;
+  if (f.id === "sentinel-posture" && f.riskBand !== "LOW") return true;
   if (f.id === "security-graph" && f.riskBand !== "LOW") return true;
   if (f.id === "production-intelligence" && f.riskBand !== "LOW") return true;
   if (f.id === "production-deploy" && f.riskBand !== "LOW") return true;
   if (f.category === "BUG" && f.riskBand !== "LOW") return true;
+  if (f.category === "SECURITY" && f.riskBand !== "LOW") return true;
   return false;
 }
 
@@ -35,12 +38,14 @@ export function selectTopTruthFinding<T extends ObserverFinding>(
         // Prefer ADR / behavior over coverage notes at same band
         const weight = (id: string) =>
           id.startsWith("adr-conflict-")
-            ? 3
-            : id.startsWith("behavior-")
-              ? 2
-              : id.startsWith("bug-")
-                ? 1
-                : 0;
+            ? 4
+            : id.startsWith("sentinel:")
+              ? 3
+              : id.startsWith("behavior-")
+                ? 2
+                : id.startsWith("bug-")
+                  ? 1
+                  : 0;
         return weight(b.id) - weight(a.id);
       })[0] ?? null
   );

@@ -51,6 +51,7 @@ export function scoreRiskWithGraph(input: {
   graph: SoftwareKnowledgeGraph;
   hasPrevious: boolean;
   apiCount: number;
+  sentinelHigh?: number;
 }): {
   score: number;
   band: RiskBand;
@@ -76,6 +77,21 @@ export function scoreRiskWithGraph(input: {
   }
 
   if (input.openHighBugs > 0 && rank(maxBand) < rank("HIGH")) maxBand = "HIGH";
+  if ((input.sentinelHigh ?? 0) > 0 && rank(maxBand) < rank("HIGH")) {
+    maxBand = "HIGH";
+    evidenceNotes.push(
+      `Sentinel: ${input.sentinelHigh} HIGH/CRITICAL defensive finding(s).`,
+    );
+  }
+
+  const advisoryIncidents = input.graph.nodes.filter(
+    (n) =>
+      n.type === "INCIDENT" &&
+      n.properties?.kind === "dependency_advisory",
+  ).length;
+  if (advisoryIncidents > 0) {
+    evidenceNotes.push(`Graph advisory incidents: ${advisoryIncidents}`);
+  }
 
   const risk = computeRiskScore({
     impact:
@@ -83,13 +99,16 @@ export function scoreRiskWithGraph(input: {
         ? 5
         : maxBand === "HIGH"
           ? 4
-          : input.behaviorDiffs.length
+          : input.behaviorDiffs.length || (input.sentinelHigh ?? 0)
             ? 3
             : 2,
-    probability: input.behaviorDiffs.length ? 3 : 2,
+    probability: input.behaviorDiffs.length || (input.sentinelHigh ?? 0) ? 3 : 2,
     changeSurface: Math.min(
       5,
-      1 + input.behaviorDiffs.length + Math.floor(impactNodeTotal / 6),
+      1 +
+        input.behaviorDiffs.length +
+        Math.floor(impactNodeTotal / 6) +
+        Math.min(2, input.sentinelHigh ?? 0),
     ),
     uncertainty: input.hasPrevious ? 2 : 4,
     missingEvidence: input.apiCount === 0 ? 4 : evidenceNotes.length ? 1 : 3,

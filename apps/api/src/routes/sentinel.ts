@@ -5,7 +5,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidSchema } from "@atlas/shared";
-import { runSentinelScan } from "@atlas/observer";
+import { runSentinelScan, verifySentinelFinding } from "@atlas/observer";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { resolveObserverWorkspace } from "../services/observe-cycle.js";
 import { proposeTruthFindingRemediation } from "../services/remediation-pipeline.js";
@@ -24,7 +24,7 @@ export async function registerSentinelRoutes(
       workspaceRoot: body.workspaceRoot ?? null,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
-    const result = runSentinelScan(resolved.workspaceRoot);
+    const result = runSentinelScan(resolved.workspaceRoot, { persist: true });
     return reply.send({
       ...result,
       projectId,
@@ -40,7 +40,7 @@ export async function registerSentinelRoutes(
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
-    const result = runSentinelScan(resolved.workspaceRoot);
+    const result = runSentinelScan(resolved.workspaceRoot, { persist: false });
     return {
       ...result,
       projectId,
@@ -63,7 +63,7 @@ export async function registerSentinelRoutes(
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
-    const scan = runSentinelScan(resolved.workspaceRoot);
+    const scan = runSentinelScan(resolved.workspaceRoot, { persist: false });
     const finding = scan.findings.find((f) => f.id === body.findingId);
     if (!finding) {
       return reply.status(404).send({
@@ -95,7 +95,7 @@ export async function registerSentinelRoutes(
     });
   });
 
-  /** S1.5 seed — verify by re-scanning; finding absence = verified (separate engine). */
+  /** S1.5 — verify via separate Sentinel engine (re-scan + advisory/auth checks). */
   app.post("/api/v1/projects/:id/sentinel/verify", async (request, reply) => {
     requireSignedInForWrite(app, request);
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
@@ -108,22 +108,10 @@ export async function registerSentinelRoutes(
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
-    const scan = runSentinelScan(resolved.workspaceRoot);
-    const still = scan.findings.find((f) => f.id === body.findingId);
-    return reply.send({
-      findingId: body.findingId,
-      verified: !still,
-      stillPresent: Boolean(still),
-      posture: scan.posture,
-      summary: scan.summary,
-      scannedAt: scan.scannedAt,
-      evidenceRefs: still
-        ? [...still.evidenceRefs]
-        : [`verify:absent:${body.findingId}`, `scan:${scan.scannedAt}`],
-      claim: still ? "OBSERVED" : "OBSERVED",
-      note: still
-        ? "Finding still present — fix not verified"
-        : "Finding absent on re-scan — verification passed (defensive)",
-    });
+    const result = verifySentinelFinding(
+      resolved.workspaceRoot,
+      body.findingId,
+    );
+    return reply.send(result);
   });
 }

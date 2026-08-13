@@ -161,10 +161,19 @@ export default function TruthPage() {
           identityNodes?: number;
           dataStoreNodes?: number;
           deploymentNodes?: number;
+          packageNodes?: number;
+          advisoryIncidents?: number;
           adrConflicts: number;
           productionPresent: number;
           productionMissing: number;
           missingTitles: string[];
+          sentinelPosture?: string;
+          sentinelCritical?: number;
+          sentinelHigh?: number;
+          sentinelSecrets?: number;
+          sentinelAuthz?: number;
+          sentinelDeps?: number;
+          sentinelConfig?: number;
           lastDeploy?: {
             provider: string;
             environment: string;
@@ -252,10 +261,15 @@ export default function TruthPage() {
       (b) => b.status === "OPEN" || b.status === "REPRODUCED",
     ).length;
     const sensitive = p1Signals?.sensitiveEdges ?? 0;
+    const sentinelHit =
+      (p1Signals?.sentinelCritical ?? 0) + (p1Signals?.sentinelHigh ?? 0);
     return {
       software: base,
       behavior: Math.max(40, 100 - drifts * 12 - (p1Signals?.adrConflicts ?? 0) * 8),
-      security: Math.max(45, 96 - openBugs * 8 - sensitive * 5),
+      security: Math.max(
+        40,
+        96 - openBugs * 8 - sensitive * 5 - sentinelHit * 7,
+      ),
       architecture: Math.min(
         95,
         70 + Math.min(20, Math.floor((graph.data?.edgesTotal ?? 0) / 15)),
@@ -269,10 +283,13 @@ export default function TruthPage() {
       .filter((f) => {
         if (f.id.startsWith("behavior-")) return true;
         if (f.id.startsWith("adr-conflict-")) return true;
+        if (f.id.startsWith("sentinel:") && f.riskBand !== "LOW") return true;
+        if (f.id === "sentinel-posture" && f.riskBand !== "LOW") return true;
         if (f.id === "security-graph" && f.riskBand !== "LOW") return true;
         if (f.id === "production-intelligence" && f.riskBand !== "LOW") return true;
         if (f.id === "production-deploy" && f.riskBand !== "LOW") return true;
         if (f.category === "BUG" && f.riskBand !== "LOW") return true;
+        if (f.category === "SECURITY" && f.riskBand !== "LOW") return true;
         return false;
       })
       .sort((a, b) => {
@@ -280,12 +297,14 @@ export default function TruthPage() {
           x === "CRITICAL" ? 4 : x === "HIGH" ? 3 : x === "MEDIUM" ? 2 : 1;
         const weight = (id: string) =>
           id.startsWith("adr-conflict-")
-            ? 3
-            : id.startsWith("behavior-")
-              ? 2
-              : id.startsWith("bug-")
-                ? 1
-                : 0;
+            ? 4
+            : id.startsWith("sentinel:")
+              ? 3
+              : id.startsWith("behavior-")
+                ? 2
+                : id.startsWith("bug-")
+                  ? 1
+                  : 0;
         const band = rank(b.riskBand) - rank(a.riskBand);
         return band !== 0 ? band : weight(b.id) - weight(a.id);
       })[0] ?? null;
@@ -519,6 +538,26 @@ export default function TruthPage() {
                 size="small"
                 label={t("p1Sensitive", { n: p1Signals.sensitiveEdges })}
                 sx={{ bgcolor: "rgba(224,122,95,0.15)", color: "#F2C4B8" }}
+              />
+              <Chip
+                size="small"
+                label={t("p1Sentinel", {
+                  posture: p1Signals.sentinelPosture ?? "—",
+                  critical: p1Signals.sentinelCritical ?? 0,
+                  high: p1Signals.sentinelHigh ?? 0,
+                })}
+                sx={{ bgcolor: "rgba(224,122,95,0.18)", color: "#F2C4B8" }}
+                component={Link}
+                href="/sentinel"
+                clickable
+              />
+              <Chip
+                size="small"
+                label={t("p1Packages", {
+                  n: p1Signals.packageNodes ?? 0,
+                  adv: p1Signals.advisoryIncidents ?? 0,
+                })}
+                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
               />
               <Chip
                 size="small"

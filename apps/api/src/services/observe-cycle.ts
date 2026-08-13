@@ -259,10 +259,19 @@ export function readObserverState(input: {
         identityNodes: 0,
         dataStoreNodes: 0,
         deploymentNodes: 0,
+        packageNodes: 0,
+        advisoryIncidents: 0,
         adrConflicts: 0,
         productionPresent: 0,
         productionMissing: 0,
         missingTitles: [] as string[],
+        sentinelPosture: "CLEAR",
+        sentinelCritical: 0,
+        sentinelHigh: 0,
+        sentinelSecrets: 0,
+        sentinelAuthz: 0,
+        sentinelDeps: 0,
+        sentinelConfig: 0,
         lastDeploy: null as null | {
           provider: string;
           environment: string;

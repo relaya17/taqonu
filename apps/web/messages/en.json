@@ -1200,6 +1200,8 @@
     "p1Auth": "Auth edges {n}",
     "p1Identity": "Identity {n}",
     "p1Sensitive": "Sensitive edges {n}",
+    "p1Sentinel": "Sentinel {posture} · crit {critical} · high {high}",
+    "p1Packages": "Packages {n} · advisories {adv}",
     "p1Data": "Data stores {n}",
     "p1Adr": "ADR conflicts {n}",
     "p1Decided": "DECIDED_BY {n}",

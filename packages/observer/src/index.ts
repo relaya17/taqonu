@@ -78,3 +78,6 @@ export type {
   SentinelScanResult,
   SentinelFinding,
 } from "./security/scan.js";
+export { mergeSentinelIntoGraph } from "./security/graph-ingest.js";
+export { verifySentinelFinding } from "./security/verify.js";
+export type { SentinelVerifyResult } from "./security/verify.js";

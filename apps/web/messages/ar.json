@@ -1200,6 +1200,8 @@
     "p1Auth": "حواف Auth {n}",
     "p1Identity": "هوية {n}",
     "p1Sensitive": "حواف حساسة {n}",
+    "p1Sentinel": "Sentinel {posture} · حرج {critical} · عالٍ {high}",
+    "p1Packages": "حزم {n} · تنبيهات {adv}",
     "p1Data": "مخازن بيانات {n}",
     "p1Adr": "تعارضات ADR {n}",
     "p1Decided": "DECIDED_BY {n}",

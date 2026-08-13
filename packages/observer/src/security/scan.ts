@@ -11,6 +11,7 @@ import {
   type DependencyFinding,
 } from "./deps.js";
 import { detectConfigSecurity, type ConfigFinding } from "./config.js";
+import { saveSentinelLastScan } from "./persist.js";
 
 export type SentinelFinding =
   | SecretFinding
@@ -49,9 +50,14 @@ function postureOf(
   return "CLEAR";
 }
 
-export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
+export function runSentinelScan(
+  workspaceRoot: string,
+  options?: { readonly persist?: boolean },
+): SentinelScanResult {
   const secrets = detectSecrets(workspaceRoot);
-  const authz = detectAuthzRegressions(workspaceRoot);
+  const authz = detectAuthzRegressions(workspaceRoot, {
+    persistBaseline: options?.persist !== false,
+  });
   const dependencies = detectDependencyAdvisories(workspaceRoot);
   const config = detectConfigSecurity(workspaceRoot);
   const findings = [...secrets, ...authz, ...dependencies, ...config];
@@ -91,7 +97,7 @@ export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
       ? "No secret, authz, dependency, or config signals in this defensive pass."
       : `${critical} critical · ${high} high · secrets ${secrets.length} · authz ${authz.length} · deps ${dependencies.length} · config ${config.length}`;
 
-  return {
+  const result: SentinelScanResult = {
     scannedAt: new Date().toISOString(),
     workspaceRoot,
     posture,
@@ -111,6 +117,12 @@ export function runSentinelScan(workspaceRoot: string): SentinelScanResult {
     },
     nextActions,
   };
+
+  if (options?.persist !== false) {
+    saveSentinelLastScan(workspaceRoot, result);
+  }
+
+  return result;
 }
 
 export type {
