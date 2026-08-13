@@ -156,7 +156,7 @@ export default function LegalMediaPage() {
             {data.findings.map((f) => (
               <Box
                 key={f.id}
-                sx={{ borderBottom: "1px solid rgba(20,32,34,0.1)", pb: 1.5 }}
+                sx={{ borderBottom: "1px solid rgba(26,31,42,0.1)", pb: 1.5 }}
               >
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                   <Typography fontWeight={600}>{f.title}</Typography>

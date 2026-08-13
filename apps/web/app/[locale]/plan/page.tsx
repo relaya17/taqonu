@@ -236,7 +236,7 @@ export default function PlanPage() {
             {t("freeHint")}
           </Typography>
         </Box>
-        <Box sx={{ flex: 1, p: 2.5, bgcolor: "rgba(15,61,62,0.06)" }}>
+        <Box sx={{ flex: 1, p: 2.5, bgcolor: "rgba(42,46,54,0.06)" }}>
           <Typography fontWeight={700} color="primary">
             {t("proColumnTitle")}
           </Typography>

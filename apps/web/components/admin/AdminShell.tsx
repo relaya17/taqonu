@@ -154,9 +154,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
               maxWidth: "100vw",
               border: 0,
               background:
-                "linear-gradient(180deg, #061214 0%, #0C1E22 45%, #14282A 100%)",
-              color: "#F4F7F5",
-              borderInlineStart: "1px solid rgba(62,200,190,0.2)",
+                "linear-gradient(180deg, #12141A 0%, #16191F 45%, #1C1F26 100%)",
+              color: "#DCDDE1",
+              borderInlineStart: "1px solid rgba(154,158,168,0.2)",
               overflowX: "hidden",
             },
           }}

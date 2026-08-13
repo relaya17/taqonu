@@ -76,16 +76,16 @@ interface ActionQueue {
 }
 
 function statusTone(status: string): string {
-  if (status === "DONE") return "#3EC8BE";
+  if (status === "DONE") return "#9A9EA8";
   if (status === "PARTIAL") return "#E0B15A";
-  return "rgba(232,244,242,0.55)";
+  return "rgba(232,234,238,0.55)";
 }
 
 function severityColor(sev: string): string {
   if (sev === "critical") return "#E07A5F";
   if (sev === "high") return "#E0B15A";
-  if (sev === "medium") return "#7EC8C0";
-  return "rgba(232,244,242,0.65)";
+  if (sev === "medium") return "#B4B7BE";
+  return "rgba(232,234,238,0.65)";
 }
 
 export default function AdminOraclePage() {
@@ -151,17 +151,17 @@ export default function AdminOraclePage() {
   const audit = oracleQ.data?.audit ?? [];
 
   return (
-    <Box sx={{ maxWidth: 1040, mx: "auto", color: "#E8F4F2" }}>
+    <Box sx={{ maxWidth: 1040, mx: "auto", color: "#DCDDE1" }}>
       <Stack spacing={3}>
         <Box
           sx={{
             p: { xs: 2.5, md: 3.5 },
             borderRadius: 2,
-            border: "1px solid rgba(62,200,190,0.28)",
+            border: "1px solid rgba(154,158,168,0.28)",
             background: `
-              radial-gradient(900px 420px at 8% -20%, rgba(62,200,190,0.2), transparent 55%),
-              radial-gradient(700px 360px at 100% 0%, rgba(12,40,48,0.55), transparent 50%),
-              linear-gradient(165deg, #041214 0%, #0A2226 48%, #0E2F34 100%)
+              radial-gradient(900px 420px at 8% -20%, rgba(154,158,168,0.2), transparent 55%),
+              radial-gradient(700px 360px at 100% 0%, rgba(28,31,38,0.55), transparent 50%),
+              linear-gradient(165deg, #12141A 0%, #1C1F26 48%, #2A2E36 100%)
             `,
             animation: "oracleIn 700ms both",
             "@keyframes oracleIn": {
@@ -190,18 +190,18 @@ export default function AdminOraclePage() {
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
             <Chip
               label={`ציון ${oracleQ.data?.watchdogScore ?? "—"}`}
-              sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 700 }}
+              sx={{ bgcolor: "#9A9EA8", color: "#12141A", fontWeight: 700 }}
             />
             <Chip
               label={`תור ${queue?.total ?? 0}`}
               variant="outlined"
-              sx={{ borderColor: "rgba(62,200,190,0.45)", color: "#E8F4F2" }}
+              sx={{ borderColor: "rgba(154,158,168,0.45)", color: "#DCDDE1" }}
             />
             <Button
               variant="contained"
               disabled={refresh.isPending}
               onClick={() => refresh.mutate()}
-              sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 800 }}
+              sx={{ bgcolor: "#9A9EA8", color: "#12141A", fontWeight: 800 }}
             >
               {refresh.isPending ? "מרענן…" : "רענון תור פעולות"}
             </Button>
@@ -209,7 +209,7 @@ export default function AdminOraclePage() {
               component={Link}
               href="/admin"
               variant="outlined"
-              sx={{ borderColor: "rgba(232,244,242,0.35)", color: "#E8F4F2" }}
+              sx={{ borderColor: "rgba(232,234,238,0.35)", color: "#DCDDE1" }}
             >
               מרכז פיקוד
             </Button>
@@ -217,7 +217,7 @@ export default function AdminOraclePage() {
               component={Link}
               href={oracle?.surfaces.truth ?? "/he/truth"}
               variant="text"
-              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+              sx={{ color: "#9A9EA8", fontWeight: 650 }}
             >
               ATLAS HEALTH
             </Button>
@@ -256,19 +256,19 @@ export default function AdminOraclePage() {
                   sx={{
                     p: 1.75,
                     borderRadius: 2,
-                    border: "1px solid rgba(62,200,190,0.22)",
+                    border: "1px solid rgba(154,158,168,0.22)",
                     bgcolor: "rgba(0,0,0,0.2)",
                   }}
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip size="small" label={`#${i + 1}`} sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 800 }} />
+                    <Chip size="small" label={`#${i + 1}`} sx={{ bgcolor: "#9A9EA8", color: "#12141A", fontWeight: 800 }} />
                     <Chip size="small" label={t.severity} sx={{ bgcolor: "rgba(255,255,255,0.06)", color: severityColor(t.severity) }} />
                     <Typography fontWeight={700}>{t.title}</Typography>
                   </Stack>
                   <Typography variant="caption" sx={{ opacity: 0.65, display: "block", mt: 0.5 }}>
                     {t.cta}
                   </Typography>
-                  <Button component={Link} href={t.href} size="small" sx={{ mt: 0.75, color: "#3EC8BE", fontWeight: 700 }}>
+                  <Button component={Link} href={t.href} size="small" sx={{ mt: 0.75, color: "#9A9EA8", fontWeight: 700 }}>
                     פתח
                   </Button>
                 </Box>
@@ -331,8 +331,8 @@ export default function AdminOraclePage() {
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
             <Chip size="small" label={`critical ${queue?.counts.critical ?? 0}`} sx={{ bgcolor: "rgba(224,122,95,0.2)", color: "#F2C4B8" }} />
             <Chip size="small" label={`high ${queue?.counts.high ?? 0}`} sx={{ bgcolor: "rgba(224,177,90,0.18)", color: "#F0D7A0" }} />
-            <Chip size="small" label={`propose ${queue?.counts.propose ?? 0}`} sx={{ bgcolor: "rgba(62,200,190,0.15)", color: "#B7EDE8" }} />
-            <Chip size="small" label={`notify ${queue?.counts.notify ?? 0}`} sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }} />
+            <Chip size="small" label={`propose ${queue?.counts.propose ?? 0}`} sx={{ bgcolor: "rgba(154,158,168,0.15)", color: "#B4B7BE" }} />
+            <Chip size="small" label={`notify ${queue?.counts.notify ?? 0}`} sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#DCDDE1" }} />
           </Stack>
           {actions.length === 0 ? (
             <Alert severity="success">אין פעולות דחופות בתור.</Alert>
@@ -344,15 +344,15 @@ export default function AdminOraclePage() {
                   sx={{
                     p: 2,
                     borderRadius: 2,
-                    border: "1px solid rgba(232,244,242,0.12)",
+                    border: "1px solid rgba(232,234,238,0.12)",
                     bgcolor: "rgba(0,0,0,0.22)",
                     animation: `oracleIn 650ms ${60 + i * 50}ms both`,
                   }}
                 >
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 0.75 }}>
                     <Chip size="small" label={a.severity} sx={{ bgcolor: "rgba(255,255,255,0.06)", color: severityColor(a.severity) }} />
-                    <Chip size="small" label={a.kind} sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }} />
-                    <Chip size="small" label={a.source} variant="outlined" sx={{ borderColor: "rgba(232,244,242,0.2)", color: "#E8F4F2" }} />
+                    <Chip size="small" label={a.kind} sx={{ bgcolor: "rgba(154,158,168,0.12)", color: "#B4B7BE" }} />
+                    <Chip size="small" label={a.source} variant="outlined" sx={{ borderColor: "rgba(232,234,238,0.2)", color: "#DCDDE1" }} />
                     {a.blockedAutoApply ? (
                       <Chip size="small" label="no auto-apply" variant="outlined" sx={{ borderColor: "rgba(224,122,95,0.45)", color: "#F2C4B8" }} />
                     ) : null}
@@ -373,7 +373,7 @@ export default function AdminOraclePage() {
                     component={Link}
                     href={a.href}
                     size="small"
-                    sx={{ mt: 1, color: "#3EC8BE", fontWeight: 700 }}
+                    sx={{ mt: 1, color: "#9A9EA8", fontWeight: 700 }}
                   >
                     פתח
                   </Button>
@@ -433,7 +433,7 @@ export default function AdminOraclePage() {
                 sx={{
                   p: 2,
                   borderRadius: 2,
-                  border: "1px solid rgba(232,244,242,0.12)",
+                  border: "1px solid rgba(232,234,238,0.12)",
                   bgcolor: "rgba(0,0,0,0.22)",
                   animation: `oracleIn 650ms ${80 + i * 70}ms both`,
                 }}
@@ -442,7 +442,7 @@ export default function AdminOraclePage() {
                   <Chip
                     size="small"
                     label={item.epistemicState}
-                    sx={{ bgcolor: "rgba(62,200,190,0.15)", color: "#B7EDE8" }}
+                    sx={{ bgcolor: "rgba(154,158,168,0.15)", color: "#B4B7BE" }}
                   />
                   <Typography fontWeight={700}>{item.title}</Typography>
                 </Stack>
@@ -473,15 +473,15 @@ export default function AdminOraclePage() {
           </Typography>
           <Stack spacing={1}>
             {(oracle?.allowlist ?? []).map((s) => (
-              <Box key={s.id} sx={{ py: 1, borderBottom: "1px solid rgba(232,244,242,0.1)" }}>
+              <Box key={s.id} sx={{ py: 1, borderBottom: "1px solid rgba(232,234,238,0.1)" }}>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Chip size="small" label={s.family} variant="outlined" sx={{ borderColor: "rgba(232,244,242,0.25)", color: "#E8F4F2" }} />
+                  <Chip size="small" label={s.family} variant="outlined" sx={{ borderColor: "rgba(232,234,238,0.25)", color: "#DCDDE1" }} />
                   <Typography
                     component={Link}
                     href={s.url}
                     target={s.url.startsWith("http") ? "_blank" : undefined}
                     rel={s.url.startsWith("http") ? "noreferrer" : undefined}
-                    sx={{ color: "#3EC8BE", fontWeight: 650, textDecoration: "none" }}
+                    sx={{ color: "#9A9EA8", fontWeight: 650, textDecoration: "none" }}
                   >
                     {s.title}
                   </Typography>

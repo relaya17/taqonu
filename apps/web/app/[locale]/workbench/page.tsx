@@ -204,9 +204,9 @@ export default function WorkbenchPage() {
   const [thread, setThread] = useState<ChatTurn[]>([]);
 
   const border = dark
-    ? "1px solid rgba(232,240,240,0.12)"
-    : "1px solid rgba(20,32,34,0.12)";
-  const panelBg = dark ? "rgba(19,32,34,0.95)" : "rgba(247,250,248,0.96)";
+    ? "1px solid rgba(232,234,238,0.12)"
+    : "1px solid rgba(26,31,42,0.12)";
+  const panelBg = dark ? "rgba(28,31,38,0.95)" : "rgba(247,248,250,0.96)";
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -441,8 +441,8 @@ export default function WorkbenchPage() {
                     fontFamily:
                       "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
                     bgcolor: dark
-                      ? "rgba(8,16,17,0.9)"
-                      : "rgba(15,61,62,0.05)",
+                      ? "rgba(14,17,22,0.9)"
+                      : "rgba(42,46,54,0.05)",
                     borderRadius: 1.5,
                     overflow: "auto",
                     maxHeight: "100%",
@@ -478,8 +478,8 @@ export default function WorkbenchPage() {
                       fontSize: 12,
                       borderRadius: 1.5,
                       bgcolor: dark
-                        ? "rgba(8,16,17,0.9)"
-                        : "rgba(15,61,62,0.05)",
+                        ? "rgba(14,17,22,0.9)"
+                        : "rgba(42,46,54,0.05)",
                       overflow: "auto",
                     }}
                   >
@@ -610,8 +610,8 @@ export default function WorkbenchPage() {
                       bgcolor:
                         turn.role === "user"
                           ? dark
-                            ? "rgba(126,184,185,0.12)"
-                            : "rgba(15,61,62,0.06)"
+                            ? "rgba(154,158,168,0.12)"
+                            : "rgba(42,46,54,0.06)"
                           : "transparent",
                       border: turn.role === "assistant" ? border : "none",
                     }}

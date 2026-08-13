@@ -444,7 +444,7 @@ export default function SystemHealthPage() {
                   textAlign: "start",
                   py: 1.5,
                   borderRadius: 1,
-                  borderBottom: "1px solid rgba(20,32,34,0.1)",
+                  borderBottom: "1px solid rgba(26,31,42,0.1)",
                   color: "inherit",
                 }}
               >

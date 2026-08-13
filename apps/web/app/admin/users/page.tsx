@@ -82,7 +82,7 @@ export default function AdminUsersPage() {
             key={user.id}
             sx={{
               py: 2,
-              borderBottom: "1px solid rgba(20,32,34,0.12)",
+              borderBottom: "1px solid rgba(26,31,42,0.12)",
               display: "grid",
               gridTemplateColumns: { xs: "1fr", md: "1fr auto" },
               gap: 1.5,

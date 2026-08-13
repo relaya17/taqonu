@@ -81,7 +81,7 @@ export default function GatesPage() {
                 key={node.id}
                 sx={{
                   py: 1.5,
-                  borderBottom: "1px solid rgba(20,32,34,0.12)",
+                  borderBottom: "1px solid rgba(26,31,42,0.12)",
                 }}
               >
                 <Stack direction="row" spacing={1} alignItems="center">

@@ -122,7 +122,7 @@ export default function ModelsPage() {
         {t("skills")}: {p.skills.join(" · ")}
       </Typography>
       {p.id === "arletos-included" ? (
-        <Typography variant="caption" sx={{ color: "#9fdfb5", display: "block", mt: 0.5 }}>
+        <Typography variant="caption" sx={{ color: "#9A9EA8", display: "block", mt: 0.5 }}>
           {t("memoryCount", {
             n: p.memoryCount ?? providers.data?.arletosMemoryCount ?? 0,
           })}
@@ -197,12 +197,12 @@ export default function ModelsPage() {
             <Box
               sx={{
                 py: 2.5,
-                borderBottom: "1px solid rgba(20,32,34,0.12)",
+                borderBottom: "1px solid rgba(26,31,42,0.12)",
                 display: "grid",
                 gap: 1.5,
                 gridTemplateColumns: { xs: "1fr", md: "1.2fr 1fr 1fr" },
                 cursor: "help",
-                "&:hover": { backgroundColor: "rgba(20,32,34,0.03)" },
+                "&:hover": { backgroundColor: "rgba(26,31,42,0.03)" },
               }}
             >
               <Box>

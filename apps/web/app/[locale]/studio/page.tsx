@@ -88,9 +88,9 @@ function TreeBranch({
           pl: 1.5 + depth * 1.25,
           borderRadius: 1.5,
           mx: 0.5,
-          color: "#E8F0F0",
+          color: "#DCDDE1",
           "&.Mui-selected": {
-            bgcolor: "rgba(126,184,185,0.18)",
+            bgcolor: "rgba(154,158,168,0.18)",
           },
         }}
       >
@@ -106,7 +106,7 @@ function TreeBranch({
       <ListItemButton
         dense
         onClick={() => setOpen((v) => !v)}
-        sx={{ pl: 1.5 + depth * 1.25, borderRadius: 1.5, mx: 0.5, color: "#E8F0F0" }}
+        sx={{ pl: 1.5 + depth * 1.25, borderRadius: 1.5, mx: 0.5, color: "#DCDDE1" }}
       >
         <ListItemText
           primary={`${open ? "▾" : "▸"} ${node.name || "/"}`}
@@ -144,9 +144,9 @@ export default function StudioPage() {
   const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
 
   // Studio-only dark surface — does not flip the rest of the app.
-  const panelBorder = "1px solid rgba(232,240,240,0.12)";
-  const panelBg = "rgba(19,32,34,0.92)";
-  const codeBg = "rgba(8,16,17,0.9)";
+  const panelBorder = "1px solid rgba(232,234,238,0.12)";
+  const panelBg = "rgba(28,31,38,0.92)";
+  const codeBg = "rgba(14,17,22,0.9)";
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -231,11 +231,11 @@ export default function StudioPage() {
         py: { xs: 2, md: 2.5 },
         minHeight: "70vh",
         borderRadius: { xs: 0, md: 3 },
-        color: "#E8F0F0",
+        color: "#DCDDE1",
         textAlign: "start",
         background: `
-          radial-gradient(900px 420px at 8% -10%, rgba(126,184,185,0.16), transparent 55%),
-          linear-gradient(165deg, #0B1415 0%, #101C1E 50%, #0F1A1B 100%)
+          radial-gradient(900px 420px at 8% -10%, rgba(154,158,168,0.16), transparent 55%),
+          linear-gradient(165deg, #12141A 0%, #16191F 50%, #1C1F26 100%)
         `,
       }}
     >
@@ -249,11 +249,11 @@ export default function StudioPage() {
         <Box sx={{ minWidth: 0 }}>
           <Typography
             variant="h1"
-            sx={{ fontSize: { xs: "1.75rem", md: "2.35rem" }, color: "#F2FBFA" }}
+            sx={{ fontSize: { xs: "1.75rem", md: "2.35rem" }, color: "#EEEEF0" }}
           >
             {t("title")}
           </Typography>
-          <Typography sx={{ mt: 1, maxWidth: 640, color: "rgba(155,176,178,0.95)" }}>
+          <Typography sx={{ mt: 1, maxWidth: 640, color: "rgba(154,163,178,0.95)" }}>
             {t("subtitle")}
           </Typography>
         </Box>
@@ -263,9 +263,9 @@ export default function StudioPage() {
         severity="info"
         sx={{
           borderRadius: 2,
-          bgcolor: "rgba(126,184,185,0.08)",
-          color: "#E8F0F0",
-          "& .MuiAlert-icon": { color: "#7EB8B9" },
+          bgcolor: "rgba(154,158,168,0.08)",
+          color: "#DCDDE1",
+          "& .MuiAlert-icon": { color: "#9A9EA8" },
         }}
       >
         {t("agentPolicy")}
@@ -285,12 +285,12 @@ export default function StudioPage() {
         sx={{
           maxWidth: 480,
           "& .MuiOutlinedInput-root": {
-            color: "#E8F0F0",
+            color: "#DCDDE1",
             bgcolor: "rgba(255,255,255,0.04)",
-            "& fieldset": { borderColor: "rgba(232,240,240,0.2)" },
+            "& fieldset": { borderColor: "rgba(232,234,238,0.2)" },
           },
-          "& .MuiInputLabel-root": { color: "rgba(232,240,240,0.7)" },
-          "& .MuiFormHelperText-root": { color: "#9BB0B2" },
+          "& .MuiInputLabel-root": { color: "rgba(232,234,238,0.7)" },
+          "& .MuiFormHelperText-root": { color: "#8B9099" },
         }}
       >
         {projects.map((p) => (
@@ -365,13 +365,13 @@ export default function StudioPage() {
                 zIndex: 1,
               }}
             >
-              <Typography variant="subtitle2" fontWeight={700} sx={{ color: "#E8F0F0" }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ color: "#DCDDE1" }}>
                 {t("tree")}
               </Typography>
               {treeQuery.data?.truncated ? (
                 <Chip size="small" label={t("truncated")} />
               ) : null}
-              <Chip size="small" variant="outlined" label={t("readOnly")} sx={{ color: "#9BB0B2", borderColor: "rgba(232,240,240,0.25)" }} />
+              <Chip size="small" variant="outlined" label={t("readOnly")} sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }} />
             </Stack>
             {treeQuery.data ? (
               <List dense disablePadding sx={{ py: 0.75 }}>
@@ -385,7 +385,7 @@ export default function StudioPage() {
                 />
               </List>
             ) : (
-              <Typography variant="body2" sx={{ p: 2, color: "#9BB0B2" }}>
+              <Typography variant="body2" sx={{ p: 2, color: "#8B9099" }}>
                 {treeQuery.isLoading ? t("loadingTree") : t("emptyTree")}
               </Typography>
             )}
@@ -466,8 +466,8 @@ export default function StudioPage() {
                 boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
               }}
             >
-              <Typography fontWeight={700} sx={{ color: "#E8F0F0" }}>{t("askTitle")}</Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, color: "#9BB0B2" }}>
+              <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>{t("askTitle")}</Typography>
+              <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
                 {t("askHelp")}
               </Typography>
 

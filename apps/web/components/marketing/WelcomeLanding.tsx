@@ -20,8 +20,8 @@ export function WelcomeLanding() {
     <Box
       sx={{
         minHeight: "100vh",
-        bgcolor: "#050C0D",
-        color: "#E8F4F2",
+        bgcolor: "#12141A",
+        color: "#DCDDE1",
         overflow: "clip",
         textAlign: "center",
       }}
@@ -65,7 +65,7 @@ export function WelcomeLanding() {
               fontSize: { xs: "2.75rem", md: "3.6rem" },
               letterSpacing: "-0.04em",
               lineHeight: 0.95,
-              color: "#F2FBFA",
+              color: "#EEEEF0",
               textShadow: "0 2px 24px rgba(0,0,0,0.55)",
             }}
           >
@@ -78,7 +78,7 @@ export function WelcomeLanding() {
               fontWeight: 600,
               fontSize: { xs: "1.25rem", md: "1.45rem" },
               letterSpacing: "-0.02em",
-              color: "#E8F4F2",
+              color: "#DCDDE1",
               maxWidth: 440,
               textShadow: "0 1px 16px rgba(0,0,0,0.5)",
             }}
@@ -87,7 +87,7 @@ export function WelcomeLanding() {
           </Typography>
           <Typography
             sx={{
-              color: "rgba(210, 230, 228, 0.95)",
+              color: "rgba(212, 216, 224, 0.95)",
               fontSize: "1.05rem",
               lineHeight: 1.5,
               maxWidth: 400,
@@ -108,11 +108,11 @@ export function WelcomeLanding() {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: "#3EC8BE",
-                color: "#041214",
+                bgcolor: "#9A9EA8",
+                color: "#12141A",
                 fontWeight: 700,
                 px: 3,
-                "&:hover": { bgcolor: "#5AD8CF" },
+                "&:hover": { bgcolor: "#ADB1BA" },
               }}
             >
               {t("ctaRegister")}
@@ -123,13 +123,13 @@ export function WelcomeLanding() {
               variant="outlined"
               size="large"
               sx={{
-                borderColor: "rgba(232, 244, 242, 0.55)",
-                color: "#F2FBFA",
+                borderColor: "rgba(232, 234, 238, 0.55)",
+                color: "#EEEEF0",
                 fontWeight: 600,
-                bgcolor: "rgba(4,10,11,0.35)",
+                bgcolor: "rgba(14,17,22,0.35)",
                 "&:hover": {
-                  borderColor: "#3EC8BE",
-                  bgcolor: "rgba(62, 200, 190, 0.12)",
+                  borderColor: "#9A9EA8",
+                  bgcolor: "rgba(154, 158, 168, 0.12)",
                 },
               }}
             >
@@ -139,7 +139,7 @@ export function WelcomeLanding() {
               component="a"
               href={`/${locale}/plan`}
               size="large"
-              sx={{ color: "#E8A848", fontWeight: 650 }}
+              sx={{ color: "#B4B7BE", fontWeight: 650 }}
             >
               {t("ctaPricing")}
             </Button>
@@ -152,9 +152,9 @@ export function WelcomeLanding() {
         sx={{
           px: { xs: 2.5, sm: 4, md: 6 },
           py: { xs: 6, md: 9 },
-          borderTop: "1px solid rgba(62, 200, 190, 0.14)",
+          borderTop: "1px solid rgba(154, 158, 168, 0.14)",
           background:
-            "linear-gradient(180deg, #050C0D 0%, #0A1517 50%, #050C0D 100%)",
+            "linear-gradient(180deg, #12141A 0%, #16191F 50%, #12141A 100%)",
         }}
       >
         <Typography
@@ -173,7 +173,7 @@ export function WelcomeLanding() {
         </Typography>
         <Typography
           sx={{
-            color: "rgba(170, 200, 198, 0.88)",
+            color: "rgba(154, 163, 178, 0.88)",
             fontSize: "1.1rem",
             maxWidth: 520,
             mx: "auto",
@@ -191,13 +191,13 @@ export function WelcomeLanding() {
                   fontFamily: '"Syne", sans-serif',
                   fontWeight: 650,
                   fontSize: "1.15rem",
-                  color: "#3EC8BE",
+                  color: "#9A9EA8",
                   mb: 0.5,
                 }}
               >
                 {t(`pillars.${k}.title`)}
               </Typography>
-              <Typography sx={{ color: "rgba(170, 200, 198, 0.85)", lineHeight: 1.5 }}>
+              <Typography sx={{ color: "rgba(154, 163, 178, 0.85)", lineHeight: 1.5 }}>
                 {t(`pillars.${k}.body`)}
               </Typography>
             </Box>
@@ -210,7 +210,7 @@ export function WelcomeLanding() {
         sx={{
           px: { xs: 2.5, sm: 4, md: 6 },
           py: { xs: 6, md: 9 },
-          borderTop: "1px solid rgba(62, 200, 190, 0.14)",
+          borderTop: "1px solid rgba(154, 158, 168, 0.14)",
         }}
       >
         <Typography
@@ -229,7 +229,7 @@ export function WelcomeLanding() {
         </Typography>
         <Typography
           sx={{
-            color: "rgba(170, 200, 198, 0.88)",
+            color: "rgba(154, 163, 178, 0.88)",
             mb: 4,
             maxWidth: 480,
             mx: "auto",
@@ -241,7 +241,7 @@ export function WelcomeLanding() {
           direction={{ xs: "column", md: "row" }}
           spacing={0}
           sx={{
-            border: "1px solid rgba(62, 200, 190, 0.22)",
+            border: "1px solid rgba(154, 158, 168, 0.22)",
             maxWidth: 640,
             mx: "auto",
             overflow: "hidden",
@@ -253,26 +253,26 @@ export function WelcomeLanding() {
               flex: 1,
               p: 3,
               borderBottom: {
-                xs: "1px solid rgba(62, 200, 190, 0.18)",
+                xs: "1px solid rgba(154, 158, 168, 0.18)",
                 md: "none",
               },
               borderInlineEnd: {
                 xs: "none",
-                md: "1px solid rgba(62, 200, 190, 0.18)",
+                md: "1px solid rgba(154, 158, 168, 0.18)",
               },
             }}
           >
             <Typography sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1 }}>
               {t("freeName")}
             </Typography>
-            <Typography sx={{ color: "rgba(170, 200, 198, 0.9)", mb: 2 }}>
+            <Typography sx={{ color: "rgba(154, 163, 178, 0.9)", mb: 2 }}>
               {t("freeDetail")}
             </Typography>
             <Button
               component="a"
               href={`/${locale}/auth/register`}
               variant="outlined"
-              sx={{ color: "#E8F4F2", borderColor: "rgba(62,200,190,0.45)" }}
+              sx={{ color: "#DCDDE1", borderColor: "rgba(154,158,168,0.45)" }}
             >
               {t("ctaRegister")}
             </Button>
@@ -281,19 +281,19 @@ export function WelcomeLanding() {
             sx={{
               flex: 1,
               p: 3,
-              bgcolor: "rgba(62, 200, 190, 0.08)",
+              bgcolor: "rgba(154, 158, 168, 0.08)",
             }}
           >
-            <Typography sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1, color: "#3EC8BE" }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1, color: "#9A9EA8" }}>
               {t("proName")}
             </Typography>
-            <Typography sx={{ color: "rgba(170, 200, 198, 0.9)", mb: 2 }}>
+            <Typography sx={{ color: "rgba(154, 163, 178, 0.9)", mb: 2 }}>
               {t("proDetail")}
             </Typography>
             <Button
               onClick={goPlan}
               variant="contained"
-              sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 700, "&:hover": { bgcolor: "#5AD8CF" } }}
+              sx={{ bgcolor: "#9A9EA8", color: "#12141A", fontWeight: 700, "&:hover": { bgcolor: "#ADB1BA" } }}
             >
               {t("ctaUpgrade")}
             </Button>
@@ -306,7 +306,7 @@ export function WelcomeLanding() {
         sx={{
           px: { xs: 2.5, sm: 4, md: 6 },
           py: { xs: 5, md: 7 },
-          borderTop: "1px solid rgba(62, 200, 190, 0.14)",
+          borderTop: "1px solid rgba(154, 158, 168, 0.14)",
         }}
       >
         <Typography
@@ -333,11 +333,11 @@ export function WelcomeLanding() {
             variant="contained"
             size="large"
             sx={{
-              bgcolor: "#3EC8BE",
-              color: "#041214",
+              bgcolor: "#9A9EA8",
+              color: "#12141A",
               fontWeight: 700,
               px: 4,
-              "&:hover": { bgcolor: "#5AD8CF" },
+              "&:hover": { bgcolor: "#ADB1BA" },
             }}
           >
             {t("ctaRegister")}
@@ -348,8 +348,8 @@ export function WelcomeLanding() {
             variant="outlined"
             size="large"
             sx={{
-              borderColor: "rgba(62,200,190,0.5)",
-              color: "#E8F4F2",
+              borderColor: "rgba(154,158,168,0.5)",
+              color: "#DCDDE1",
               fontWeight: 650,
               px: 4,
             }}

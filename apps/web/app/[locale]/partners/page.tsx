@@ -249,7 +249,7 @@ export default function PartnersPage() {
 
       <Alert severity="info">{t("offer")}</Alert>
 
-      <Box sx={{ py: 2, borderBottom: "1px solid rgba(20,32,34,0.12)" }}>
+      <Box sx={{ py: 2, borderBottom: "1px solid rgba(26,31,42,0.12)" }}>
         <Typography fontWeight={700}>{t("modeTitle")}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           {t("modeNote")}
@@ -372,7 +372,7 @@ export default function PartnersPage() {
                 p: 1.5,
                 maxHeight: 220,
                 overflow: "auto",
-                bgcolor: "rgba(20,32,34,0.04)",
+                bgcolor: "rgba(26,31,42,0.04)",
                 fontSize: 12,
                 whiteSpace: "pre-wrap",
               }}
@@ -390,7 +390,7 @@ export default function PartnersPage() {
       </Box>
 
       {policy.data ? (
-        <Box sx={{ py: 2, borderBottom: "1px solid rgba(20,32,34,0.12)" }}>
+        <Box sx={{ py: 2, borderBottom: "1px solid rgba(26,31,42,0.12)" }}>
           <Typography fontWeight={700}>{t("storageTitle")}</Typography>
           <Typography variant="body2" sx={{ mt: 1 }}>
             {policy.data.plainLanguage}
@@ -407,7 +407,7 @@ export default function PartnersPage() {
       ) : null}
 
       {caseStudy.data ? (
-        <Box sx={{ py: 2, borderBottom: "1px solid rgba(20,32,34,0.12)" }}>
+        <Box sx={{ py: 2, borderBottom: "1px solid rgba(26,31,42,0.12)" }}>
           <Typography fontWeight={700}>{caseStudy.data.title}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {t("labOnly")}

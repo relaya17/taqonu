@@ -116,7 +116,7 @@ export default function EvalPage() {
             {latest.results.map((r) => (
               <Box
                 key={r.dimension}
-                sx={{ py: 1, borderBottom: "1px solid rgba(20,32,34,0.12)" }}
+                sx={{ py: 1, borderBottom: "1px solid rgba(26,31,42,0.12)" }}
               >
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography fontWeight={700}>{r.dimension}</Typography>

@@ -370,7 +370,7 @@ export default function QaPage() {
       ) : null}
 
       {processDoc ? (
-        <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>
+        <Box sx={{ borderTop: "1px solid rgba(26,31,42,0.14)", pt: 2.5 }}>
           <Typography variant="overline">{t("processReport")}</Typography>
           <Alert
             severity={
@@ -438,7 +438,7 @@ export default function QaPage() {
         </Box>
       ) : null}
 
-      <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>
+      <Box sx={{ borderTop: "1px solid rgba(26,31,42,0.14)", pt: 2.5 }}>
         <Typography variant="overline">{t("learnedKeys")}</Typography>
         {learnedKeys.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -495,7 +495,7 @@ export default function QaPage() {
                     gap: 1.5,
                     alignItems: "start",
                     py: 1,
-                    borderBottom: "1px solid rgba(20,32,34,0.08)",
+                    borderBottom: "1px solid rgba(26,31,42,0.08)",
                   }}
                 >
                   <Box>
@@ -544,7 +544,7 @@ export default function QaPage() {
       ) : null}
 
       {report ? (
-        <Box sx={{ borderTop: "1px solid rgba(20,32,34,0.14)", pt: 2.5 }}>
+        <Box sx={{ borderTop: "1px solid rgba(26,31,42,0.14)", pt: 2.5 }}>
           <Typography variant="overline">{t("severity")}</Typography>
           <Typography sx={{ mb: 2 }}>
             CRITICAL {report.run.severityCounts.CRITICAL} · HIGH{" "}
@@ -617,7 +617,7 @@ export default function QaPage() {
                     gap: 1.5,
                     alignItems: "center",
                     py: 1,
-                    borderBottom: "1px solid rgba(20,32,34,0.08)",
+                    borderBottom: "1px solid rgba(26,31,42,0.08)",
                   }}
                 >
                   <EpistemicChip state={f.epistemicState} />

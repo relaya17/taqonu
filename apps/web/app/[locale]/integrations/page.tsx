@@ -303,7 +303,7 @@ export default function IntegrationsPage() {
 
       <Box
         sx={{
-          borderBottom: "1px solid rgba(20,32,34,0.12)",
+          borderBottom: "1px solid rgba(26,31,42,0.12)",
           pb: 3,
         }}
       >
@@ -569,7 +569,7 @@ export default function IntegrationsPage() {
 
       <Box
         sx={{
-          borderTop: "1px solid rgba(20,32,34,0.12)",
+          borderTop: "1px solid rgba(26,31,42,0.12)",
           pt: 3,
         }}
       >
@@ -719,7 +719,7 @@ export default function IntegrationsPage() {
 
       <Box
         sx={{
-          borderTop: "1px solid rgba(20,32,34,0.12)",
+          borderTop: "1px solid rgba(26,31,42,0.12)",
           pt: 3,
         }}
       >

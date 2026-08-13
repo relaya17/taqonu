@@ -52,9 +52,9 @@ export default function AdminLoginPage() {
           width: "100%",
           p: { xs: 2.5, md: 3.5 },
           background:
-            "radial-gradient(ellipse at 20% 0%, rgba(62,200,190,0.14), transparent 55%), linear-gradient(165deg, #071214 0%, #0F1F22 100%)",
-          border: "1px solid rgba(62,200,190,0.22)",
-          color: "#E8F4F2",
+            "radial-gradient(ellipse at 20% 0%, rgba(154,158,168,0.14), transparent 55%), linear-gradient(165deg, #12141A 0%, #1C1F26 100%)",
+          border: "1px solid rgba(154,158,168,0.22)",
+          color: "#DCDDE1",
         }}
       >
         <Box>
@@ -68,14 +68,14 @@ export default function AdminLoginPage() {
           >
             כניסת פיקוד
           </Typography>
-          <Typography sx={{ mt: 1, color: "rgba(180,210,208,0.88)" }}>
+          <Typography sx={{ mt: 1, color: "rgba(154,163,178,0.88)" }}>
             /admin · role=admin בלבד · ניטור · ידע · אוטומציה
           </Typography>
         </Box>
 
         <Alert
           severity="info"
-          sx={{ bgcolor: "rgba(62,200,190,0.08)", color: "#E8F4F2" }}
+          sx={{ bgcolor: "rgba(154,158,168,0.08)", color: "#DCDDE1" }}
         >
           ידע לסוכנים חייב ממקורות מאומתים. הורידו את הרשימה לפני/אחרי הכניסה.
         </Alert>
@@ -84,20 +84,20 @@ export default function AdminLoginPage() {
           <Button
             variant="outlined"
             onClick={() => downloadVerifiedSourcesPack("json")}
-            sx={{ borderColor: "rgba(62,200,190,0.45)", color: "#E8F4F2" }}
+            sx={{ borderColor: "rgba(154,158,168,0.45)", color: "#DCDDE1" }}
           >
             מקורות JSON
           </Button>
           <Button
             variant="outlined"
             onClick={() => downloadVerifiedSourcesPack("markdown")}
-            sx={{ borderColor: "rgba(62,200,190,0.45)", color: "#E8F4F2" }}
+            sx={{ borderColor: "rgba(154,158,168,0.45)", color: "#DCDDE1" }}
           >
             Markdown
           </Button>
         </Stack>
 
-        <Divider sx={{ borderColor: "rgba(62,200,190,0.18)" }} />
+        <Divider sx={{ borderColor: "rgba(154,158,168,0.18)" }} />
 
         <TextField
           label="אימייל"
@@ -106,11 +106,11 @@ export default function AdminLoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="username"
           fullWidth
-          InputLabelProps={{ sx: { color: "rgba(180,210,208,0.8)" } }}
+          InputLabelProps={{ sx: { color: "rgba(154,163,178,0.8)" } }}
           sx={{
             "& .MuiOutlinedInput-root": {
-              color: "#E8F4F2",
-              "& fieldset": { borderColor: "rgba(62,200,190,0.35)" },
+              color: "#DCDDE1",
+              "& fieldset": { borderColor: "rgba(154,158,168,0.35)" },
             },
           }}
         />
@@ -121,11 +121,11 @@ export default function AdminLoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           fullWidth
-          InputLabelProps={{ sx: { color: "rgba(180,210,208,0.8)" } }}
+          InputLabelProps={{ sx: { color: "rgba(154,163,178,0.8)" } }}
           sx={{
             "& .MuiOutlinedInput-root": {
-              color: "#E8F4F2",
-              "& fieldset": { borderColor: "rgba(62,200,190,0.35)" },
+              color: "#DCDDE1",
+              "& fieldset": { borderColor: "rgba(154,158,168,0.35)" },
             },
           }}
         />
@@ -134,10 +134,10 @@ export default function AdminLoginPage() {
           disabled={!canSubmit}
           onClick={() => login.mutate()}
           sx={{
-            bgcolor: "#3EC8BE",
-            color: "#041214",
+            bgcolor: "#9A9EA8",
+            color: "#12141A",
             fontWeight: 700,
-            "&:hover": { bgcolor: "#5AD8CF" },
+            "&:hover": { bgcolor: "#ADB1BA" },
           }}
         >
           כניסה למרכז הפיקוד
@@ -148,7 +148,7 @@ export default function AdminLoginPage() {
 
         <Typography variant="body2" sx={{ color: "rgba(170,200,198,0.85)" }}>
           משתמשים רגילים:{" "}
-          <Box component="a" href="/he/auth/login" sx={{ color: "#3EC8BE" }}>
+          <Box component="a" href="/he/auth/login" sx={{ color: "#9A9EA8" }}>
             /he/auth/login
           </Box>
         </Typography>

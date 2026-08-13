@@ -49,7 +49,7 @@ export default function AdminLeadsPage() {
             key={lead.id}
             sx={{
               py: 2,
-              borderBottom: "1px solid rgba(20,32,34,0.12)",
+              borderBottom: "1px solid rgba(26,31,42,0.12)",
             }}
           >
             <Typography fontWeight={700}>

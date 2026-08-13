@@ -478,7 +478,7 @@ export default function ProjectsPage() {
                         key={item.projectId}
                         sx={{
                           py: 1,
-                          borderBottom: "1px solid rgba(20,32,34,0.08)",
+                          borderBottom: "1px solid rgba(26,31,42,0.08)",
                           display: "grid",
                           gridTemplateColumns: "1fr auto",
                           gap: 1,
@@ -531,7 +531,7 @@ export default function ProjectsPage() {
                       key={candidate.absolutePath}
                       sx={{
                         py: 1,
-                        borderBottom: "1px solid rgba(20,32,34,0.06)",
+                        borderBottom: "1px solid rgba(26,31,42,0.06)",
                         display: "grid",
                         gridTemplateColumns: "1fr auto",
                         gap: 1,
@@ -695,7 +695,7 @@ export default function ProjectsPage() {
                         gridTemplateColumns: { xs: "1fr", sm: "1fr auto" },
                         gap: 1,
                         py: 0.5,
-                        borderBottom: "1px solid rgba(20,32,34,0.06)",
+                        borderBottom: "1px solid rgba(26,31,42,0.06)",
                         minWidth: 0,
                       }}
                     >
@@ -734,7 +734,7 @@ export default function ProjectsPage() {
                 key={item.projectId}
                 sx={{
                   py: 1,
-                  borderBottom: "1px solid rgba(20,32,34,0.08)",
+                  borderBottom: "1px solid rgba(26,31,42,0.08)",
                   display: "grid",
                   gridTemplateColumns: { xs: "1fr", sm: "1fr auto" },
                   gap: 1,
@@ -859,7 +859,7 @@ export default function ProjectsPage() {
                 key={project.id}
                 sx={{
                   py: 2,
-                  borderBottom: "1px solid rgba(20,32,34,0.12)",
+                  borderBottom: "1px solid rgba(26,31,42,0.12)",
                   display: "grid",
                   gap: 1.5,
                 }}

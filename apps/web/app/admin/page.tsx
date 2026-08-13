@@ -173,9 +173,9 @@ export default function AdminHomePage() {
         sx={{
           p: { xs: 2.5, md: 3.5 },
           background:
-            "radial-gradient(ellipse at 12% 0%, rgba(62,200,190,0.18), transparent 50%), radial-gradient(ellipse at 90% 10%, rgba(224,138,92,0.12), transparent 45%), linear-gradient(160deg, #071214 0%, #0F1F22 55%, #0A1618 100%)",
-          color: "#E8F4F2",
-          border: "1px solid rgba(62,200,190,0.22)",
+            "radial-gradient(ellipse at 12% 0%, rgba(154,158,168,0.18), transparent 50%), radial-gradient(ellipse at 90% 10%, rgba(154,158,168,0.12), transparent 45%), linear-gradient(160deg, #12141A 0%, #1C1F26 55%, #16191F 100%)",
+          color: "#DCDDE1",
+          border: "1px solid rgba(154,158,168,0.22)",
         }}
       >
         <Typography
@@ -188,24 +188,24 @@ export default function AdminHomePage() {
         >
           מרכז פיקוד · {command.data?.platform.name ?? "ArletOS"}
         </Typography>
-        <Typography sx={{ mt: 1, color: "rgba(180,210,208,0.9)", maxWidth: 640 }}>
+        <Typography sx={{ mt: 1, color: "rgba(154,163,178,0.9)", maxWidth: 640 }}>
           Admin Oracle מנהל את הלוח — אוטומציה · גרף ידע · ניטור פרואקטיבי · מקורות
           מאומתים בלבד · סייבר הגנתי
         </Typography>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
           <Chip
             label={`ציון יציבות ${wd?.score ?? "—"}`}
-            sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 700 }}
+            sx={{ bgcolor: "#9A9EA8", color: "#12141A", fontWeight: 700 }}
           />
           <Chip
             label={posture}
             variant="outlined"
-            sx={{ borderColor: "rgba(62,200,190,0.45)", color: "#E8F4F2" }}
+            sx={{ borderColor: "rgba(154,158,168,0.45)", color: "#DCDDE1" }}
           />
           <Chip
             label={`v${command.data?.platform.version ?? "—"} · policy ${command.data?.platform.storagePolicyVersion ?? "—"}`}
             variant="outlined"
-            sx={{ borderColor: "rgba(62,200,190,0.35)", color: "rgba(200,230,226,0.9)" }}
+            sx={{ borderColor: "rgba(154,158,168,0.35)", color: "rgba(180,183,190,0.9)" }}
           />
           <Chip
             label={`תוכנית ${command.data?.tier?.toUpperCase() ?? "—"}`}
@@ -226,7 +226,7 @@ export default function AdminHomePage() {
                 height: 8,
                 bgcolor: "rgba(255,255,255,0.08)",
                 "& .MuiLinearProgress-bar": {
-                  bgcolor: wd.score >= 80 ? "#3EC8BE" : wd.score >= 55 ? "#E8A848" : "#E05A4F",
+                  bgcolor: wd.score >= 80 ? "#9A9EA8" : wd.score >= 55 ? "#E8A848" : "#E05A4F",
                 },
               }}
             />

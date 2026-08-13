@@ -204,7 +204,7 @@ export default function ArtifactsPage() {
                 key={item.id}
                 sx={{
                   py: 1.5,
-                  borderBottom: "1px solid rgba(20,32,34,0.1)",
+                  borderBottom: "1px solid rgba(26,31,42,0.1)",
                   display: "flex",
                   gap: 1,
                   alignItems: "center",

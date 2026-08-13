@@ -135,7 +135,7 @@ const copy = {
 
 const fieldSx = {
   "& .MuiOutlinedInput-root": {
-    color: "#F4F7F5",
+    color: "#DCDDE1",
     bgcolor: "rgba(255,255,255,0.06)",
     "& fieldset": { borderColor: "rgba(244,247,245,0.25)" },
   },
@@ -179,9 +179,9 @@ export default function InvestorsPage() {
       dir={dir}
       sx={{
         minHeight: "100vh",
-        color: "#F4F7F5",
+        color: "#DCDDE1",
         background:
-          "radial-gradient(ellipse 90% 70% at 80% 10%, rgba(196,92,38,0.28), transparent 55%), radial-gradient(ellipse 70% 50% at 10% 90%, rgba(15,61,62,0.9), transparent 50%), linear-gradient(165deg, #0B2425 0%, #14282A 45%, #1A3334 100%)",
+          "radial-gradient(ellipse 90% 70% at 80% 10%, rgba(154,158,168,0.28), transparent 55%), radial-gradient(ellipse 70% 50% at 10% 90%, rgba(42,46,54,0.9), transparent 50%), linear-gradient(165deg, #12141A 0%, #1C1F26 45%, #2A2E36 100%)",
       }}
     >
       <Box
@@ -246,11 +246,11 @@ export default function InvestorsPage() {
             component={Link}
             href={`${productHref}/partners`}
             size="small"
-            sx={{ color: "#F4F7F5" }}
+            sx={{ color: "#DCDDE1" }}
           >
             {t.partners}
           </Button>
-          <Button component={Link} href={productHref} size="small" sx={{ color: "#F4F7F5" }}>
+          <Button component={Link} href={productHref} size="small" sx={{ color: "#DCDDE1" }}>
             {t.product}
           </Button>
         </Stack>
@@ -275,7 +275,7 @@ export default function InvestorsPage() {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(ellipse 80% 55% at 70% 35%, rgba(196,92,38,0.35), transparent 60%), radial-gradient(circle at 20% 70%, rgba(15,61,62,0.5), transparent 45%)",
+              "radial-gradient(ellipse 80% 55% at 70% 35%, rgba(154,158,168,0.35), transparent 60%), radial-gradient(circle at 20% 70%, rgba(42,46,54,0.5), transparent 45%)",
             animation: "pulseGlow 8s ease-in-out infinite alternate",
             "@keyframes pulseGlow": {
               from: { opacity: 0.65, transform: "scale(1)" },
@@ -378,7 +378,7 @@ export default function InvestorsPage() {
               sx={{
                 minHeight: 48,
                 borderColor: "rgba(244,247,245,0.45)",
-                color: "#F4F7F5",
+                color: "#DCDDE1",
               }}
             >
               {t.ctaPartner}
@@ -501,8 +501,8 @@ export default function InvestorsPage() {
         >
           <defs>
             <linearGradient id="egStroke" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#C45C26" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="#F4F7F5" stopOpacity="0.55" />
+              <stop offset="0%" stopColor="#9A9EA8" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#DCDDE1" stopOpacity="0.55" />
             </linearGradient>
           </defs>
           {[
@@ -526,7 +526,7 @@ export default function InvestorsPage() {
                 x={n.x + 60}
                 y={n.y + 30}
                 textAnchor="middle"
-                fill="#F4F7F5"
+                fill="#DCDDE1"
                 fontFamily="ui-monospace, Menlo, monospace"
                 fontSize="13"
               >
@@ -537,7 +537,7 @@ export default function InvestorsPage() {
           <path
             d="M100 88 L100 130 L360 130 L360 150"
             fill="none"
-            stroke="rgba(196,92,38,0.65)"
+            stroke="rgba(154,158,168,0.65)"
             strokeWidth={2}
           />
           <path
@@ -564,15 +564,15 @@ export default function InvestorsPage() {
             width={200}
             height={52}
             rx={2}
-            fill="rgba(196,92,38,0.22)"
-            stroke="#C45C26"
+            fill="rgba(154,158,168,0.22)"
+            stroke="#9A9EA8"
             strokeWidth={1.75}
           />
           <text
             x={360}
             y={182}
             textAnchor="middle"
-            fill="#F4F7F5"
+            fill="#DCDDE1"
             fontFamily='"Fraunces", Georgia, serif'
             fontSize="16"
             fontWeight="700"
@@ -604,7 +604,7 @@ export default function InvestorsPage() {
         sx={{
           ...sectionPad,
           background:
-            "linear-gradient(120deg, rgba(196,92,38,0.18), transparent 55%), rgba(0,0,0,0.18)",
+            "linear-gradient(120deg, rgba(154,158,168,0.18), transparent 55%), rgba(0,0,0,0.18)",
         }}
       >
         <Typography

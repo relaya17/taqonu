@@ -171,7 +171,7 @@ export default function PatchesPage() {
             key={patch.id}
             sx={{
               py: 2,
-              borderBottom: "1px solid rgba(20,32,34,0.12)",
+              borderBottom: "1px solid rgba(26,31,42,0.12)",
             }}
           >
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">

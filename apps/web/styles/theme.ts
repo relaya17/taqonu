@@ -1,41 +1,39 @@
 "use client";
 
 import { createTheme, type Theme } from "@mui/material/styles";
+import { atlasChrome as c } from "@/styles/palette";
 
 export type AtlasColorMode = "light" | "dark";
-
-/** App chrome stays mint-cream; Studio paints its own dark surface. */
-const CREAM = "#EEF5F0";
-const PAPER = "#F8FCF9";
 
 export function createAtlasTheme(
   direction: "rtl" | "ltr",
   _mode: AtlasColorMode = "light",
 ): Theme {
-  // Global UI is always light. Dark is scoped to Studio only.
+  // Global UI is always light silver. Dark is scoped to Studio / marketing.
   return createTheme({
     direction,
     cssVariables: false,
     palette: {
       mode: "light",
       primary: {
-        main: "#0F3D3E",
-        contrastText: "#F4F7F5",
+        main: c.steelMid,
+        contrastText: c.chromeBright,
       },
       secondary: {
-        main: "#C45C26",
+        main: c.accent,
+        contrastText: c.onAccent,
       },
       background: {
-        default: CREAM,
-        paper: PAPER,
+        default: c.silverBg,
+        paper: c.silverPaper,
       },
       text: {
-        primary: "#142822",
-        secondary: "#3D5A52",
+        primary: c.textOnLight,
+        secondary: c.textSecondaryOnLight,
       },
-      divider: "rgba(20, 40, 34, 0.12)",
-      success: { main: "#1F7A4D" },
-      warning: { main: "#B7791F" },
+      divider: "rgba(26, 28, 34, 0.14)",
+      success: { main: "#3D7A5F" },
+      warning: { main: "#9A7B3C" },
       error: { main: "#B42318" },
     },
     typography: {
@@ -78,13 +76,13 @@ export function createAtlasTheme(
             colorScheme: "light",
           },
           body: {
-            backgroundColor: CREAM,
+            backgroundColor: c.silverBg,
             backgroundImage:
-              "radial-gradient(circle at 12% 8%, rgba(42,155,144,0.1), transparent 42%), radial-gradient(circle at 92% 0%, rgba(180,200,170,0.16), transparent 40%), linear-gradient(180deg, #F2F8F4 0%, #EEF5F0 50%, #E2EDE6 100%)",
+              "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.1), transparent 42%), radial-gradient(circle at 92% 0%, rgba(180,183,190,0.12), transparent 40%), linear-gradient(180deg, #F6F6F7 0%, #F1F2F4 50%, #E8E9EC 100%)",
             minHeight: "100vh",
             maxWidth: "100%",
             overflowX: "clip",
-            color: "#142822",
+            color: c.textOnLight,
             textAlign: "start",
           },
           "img, svg, video, canvas": {
@@ -96,7 +94,7 @@ export function createAtlasTheme(
             overflowX: "auto",
           },
           ":focus-visible": {
-            outline: "3px solid #C45C26",
+            outline: `3px solid ${c.accent}`,
             outlineOffset: 2,
           },
           ".skip-link": {
@@ -105,8 +103,8 @@ export function createAtlasTheme(
             top: 8,
             zIndex: 4000,
             padding: "10px 14px",
-            background: "#0F3D3E",
-            color: "#F4F7F5",
+            background: c.steelMid,
+            color: c.chromeBright,
             borderRadius: 8,
             transform: "translateY(-160%)",
             transition: "transform 120ms ease",
@@ -180,7 +178,7 @@ export function createAtlasTheme(
         styleOverrides: {
           root: {
             "&:focus-visible": {
-              outline: "3px solid #C45C26",
+              outline: `3px solid ${c.accent}`,
               outlineOffset: 2,
             },
           },

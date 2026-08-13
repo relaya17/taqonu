@@ -226,7 +226,7 @@ export default function ExpertsPage() {
         <Box
           sx={{
             py: 1.5,
-            borderBottom: "1px solid rgba(20,32,34,0.12)",
+            borderBottom: "1px solid rgba(26,31,42,0.12)",
             display: "grid",
             gap: 1.5,
             gridTemplateColumns: { xs: "1fr", md: "1.4fr 1fr" },
@@ -406,7 +406,7 @@ export default function ExpertsPage() {
                 key={finding.id}
                 sx={{
                   py: 1.5,
-                  borderBottom: "1px solid rgba(20,32,34,0.1)",
+                  borderBottom: "1px solid rgba(26,31,42,0.1)",
                 }}
               >
                 <Stack direction="row" spacing={1} alignItems="center">
@@ -442,7 +442,7 @@ export default function ExpertsPage() {
             component="pre"
             sx={{
               p: 2,
-              bgcolor: "rgba(20,32,34,0.04)",
+              bgcolor: "rgba(26,31,42,0.04)",
               whiteSpace: "pre-wrap",
               fontSize: "0.85rem",
               overflow: "auto",

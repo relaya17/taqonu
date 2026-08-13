@@ -367,8 +367,8 @@ export default function AgentsPage() {
         <Box
           sx={{
             py: 2,
-            borderTop: "1px solid rgba(20,32,34,0.12)",
-            borderBottom: "1px solid rgba(20,32,34,0.12)",
+            borderTop: "1px solid rgba(26,31,42,0.12)",
+            borderBottom: "1px solid rgba(26,31,42,0.12)",
             display: "grid",
             gap: 2,
             gridTemplateColumns: { xs: "1fr", md: "1.2fr 1fr 1fr" },
@@ -513,7 +513,7 @@ export default function AgentsPage() {
           {plan.steps.map((step) => (
             <Box
               key={`${step.agentId}-${step.rationale}`}
-              sx={{ py: 1, borderBottom: "1px solid rgba(20,32,34,0.08)" }}
+              sx={{ py: 1, borderBottom: "1px solid rgba(26,31,42,0.08)" }}
             >
               <Typography fontWeight={650}>{step.agentId}</Typography>
               <Typography variant="body2" color="text.secondary">
@@ -536,7 +536,7 @@ export default function AgentsPage() {
           {dispatch.runs.map((run) => (
             <Box
               key={`${run.agentId}-${run.summary}`}
-              sx={{ py: 1.25, borderBottom: "1px solid rgba(20,32,34,0.1)" }}
+              sx={{ py: 1.25, borderBottom: "1px solid rgba(26,31,42,0.1)" }}
             >
               <Stack direction="row" spacing={1} alignItems="center">
                 <Chip size="small" label={run.status} />

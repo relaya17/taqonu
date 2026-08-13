@@ -114,10 +114,10 @@ function ScoreRail({
         sx={{
           height: 8,
           borderRadius: 999,
-          bgcolor: "rgba(232,244,242,0.12)",
+          bgcolor: "rgba(232,234,238,0.12)",
           "& .MuiLinearProgress-bar": {
             borderRadius: 999,
-            bgcolor: value >= 90 ? "#3EC8BE" : value >= 75 ? "#E0B15A" : "#E07A5F",
+            bgcolor: value >= 90 ? "#9A9EA8" : value >= 75 ? "#E0B15A" : "#E07A5F",
           },
         }}
       />
@@ -329,11 +329,11 @@ export default function TruthPage() {
         px: { xs: 2, sm: 3, md: 4 },
         py: { xs: 2, md: 3 },
         background: `
-          radial-gradient(1200px 500px at 10% -10%, rgba(62,200,190,0.22), transparent 55%),
-          radial-gradient(900px 420px at 100% 0%, rgba(12,40,48,0.55), transparent 50%),
-          linear-gradient(165deg, #041214 0%, #0A2226 48%, #0E2F34 100%)
+          radial-gradient(1200px 500px at 10% -10%, rgba(154,158,168,0.22), transparent 55%),
+          radial-gradient(900px 420px at 100% 0%, rgba(28,31,38,0.55), transparent 50%),
+          linear-gradient(165deg, #12141A 0%, #1C1F26 48%, #2A2E36 100%)
         `,
-        color: "#E8F4F2",
+        color: "#DCDDE1",
         borderRadius: { xs: 0, md: 3 },
       }}
     >
@@ -381,11 +381,11 @@ export default function TruthPage() {
               flex: 1,
               "& .MuiOutlinedInput-root": {
                 bgcolor: "rgba(255,255,255,0.04)",
-                color: "#E8F4F2",
+                color: "#DCDDE1",
               },
-              "& .MuiInputLabel-root": { color: "rgba(232,244,242,0.7)" },
+              "& .MuiInputLabel-root": { color: "rgba(232,234,238,0.7)" },
               "& .MuiOutlinedInput-notchedOutline": {
-                borderColor: "rgba(232,244,242,0.2)",
+                borderColor: "rgba(232,234,238,0.2)",
               },
             }}
           >
@@ -401,11 +401,11 @@ export default function TruthPage() {
             disabled={!activeId || cycle.isPending}
             onClick={() => cycle.mutate()}
             sx={{
-              bgcolor: "#3EC8BE",
-              color: "#041214",
+              bgcolor: "#9A9EA8",
+              color: "#12141A",
               fontWeight: 800,
               px: 2.5,
-              "&:hover": { bgcolor: "#5AD8CF" },
+              "&:hover": { bgcolor: "#ADB1BA" },
             }}
           >
             {cycle.isPending ? t("running") : t("run")}
@@ -414,7 +414,7 @@ export default function TruthPage() {
             variant="outlined"
             disabled={!activeId || promote.isPending}
             onClick={() => promote.mutate()}
-            sx={{ borderColor: "rgba(232,244,242,0.35)", color: "#E8F4F2" }}
+            sx={{ borderColor: "rgba(232,234,238,0.35)", color: "#DCDDE1" }}
           >
             {t("promoteExpected")}
           </Button>
@@ -422,7 +422,7 @@ export default function TruthPage() {
             component={Link}
             href="/observer"
             variant="text"
-            sx={{ color: "#3EC8BE", fontWeight: 650 }}
+            sx={{ color: "#9A9EA8", fontWeight: 650 }}
           >
             {t("openObserver")}
           </Button>
@@ -475,7 +475,7 @@ export default function TruthPage() {
             sx={{
               p: 2,
               borderRadius: 2,
-              border: "1px solid rgba(62,200,190,0.25)",
+              border: "1px solid rgba(154,158,168,0.25)",
               bgcolor: "rgba(0,0,0,0.2)",
             }}
           >
@@ -522,7 +522,7 @@ export default function TruthPage() {
             sx={{
               p: 2,
               borderRadius: 2,
-              border: "1px solid rgba(232,244,242,0.14)",
+              border: "1px solid rgba(232,234,238,0.14)",
               bgcolor: "rgba(0,0,0,0.18)",
             }}
           >
@@ -543,12 +543,12 @@ export default function TruthPage() {
               <Chip
                 size="small"
                 label={t("p1Auth", { n: p1Signals.authEdges })}
-                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+                sx={{ bgcolor: "rgba(154,158,168,0.12)", color: "#B4B7BE" }}
               />
               <Chip
                 size="small"
                 label={t("p1Identity", { n: p1Signals.identityNodes ?? 0 })}
-                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+                sx={{ bgcolor: "rgba(154,158,168,0.12)", color: "#B4B7BE" }}
               />
               <Chip
                 size="small"
@@ -573,7 +573,7 @@ export default function TruthPage() {
                   denied: p1Signals.isolationDenied ?? 0,
                   bound: p1Signals.isolationBound ?? 0,
                 })}
-                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+                sx={{ bgcolor: "rgba(154,158,168,0.12)", color: "#B4B7BE" }}
               />
               <Chip
                 size="small"
@@ -581,7 +581,7 @@ export default function TruthPage() {
                   n: p1Signals.packageNodes ?? 0,
                   adv: p1Signals.advisoryIncidents ?? 0,
                 })}
-                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+                sx={{ bgcolor: "rgba(154,158,168,0.12)", color: "#B4B7BE" }}
               />
               <Chip
                 size="small"
@@ -601,12 +601,12 @@ export default function TruthPage() {
               <Chip
                 size="small"
                 label={t("p1Decisions", { n: p1Signals.decisionNodes })}
-                sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }}
+                sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#DCDDE1" }}
               />
               <Chip
                 size="small"
                 label={t("p1DeployNodes", { n: p1Signals.deploymentNodes ?? 0 })}
-                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+                sx={{ bgcolor: "rgba(154,158,168,0.12)", color: "#B4B7BE" }}
               />
               <Chip
                 size="small"
@@ -614,7 +614,7 @@ export default function TruthPage() {
                   present: p1Signals.productionPresent,
                   missing: p1Signals.productionMissing,
                 })}
-                sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }}
+                sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#DCDDE1" }}
               />
             </Stack>
             {p1Signals.lastDeploy ? (
@@ -649,8 +649,8 @@ export default function TruthPage() {
               p: 2.5,
               borderRadius: 2,
               background:
-                "linear-gradient(160deg, rgba(8,28,32,0.92), rgba(6,20,24,0.75))",
-              border: "1px solid rgba(62,200,190,0.22)",
+                "linear-gradient(160deg, rgba(18,21,28,0.92), rgba(14,17,22,0.75))",
+              border: "1px solid rgba(154,158,168,0.22)",
               boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
             }}
           >
@@ -699,8 +699,8 @@ export default function TruthPage() {
               {[
                 { label: t("critical"), value: critical, tone: "#E07A5F" },
                 { label: t("drifts"), value: drifts, tone: "#E0B15A" },
-                { label: t("analyzed"), value: analyzed, tone: "#3EC8BE" },
-                { label: t("verified"), value: verified, tone: "#7EC8C0" },
+                { label: t("analyzed"), value: analyzed, tone: "#9A9EA8" },
+                { label: t("verified"), value: verified, tone: "#B4B7BE" },
               ].map((cell, i) => (
                 <Box
                   key={cell.label}
@@ -739,8 +739,8 @@ export default function TruthPage() {
                 p: 2.25,
                 borderRadius: 2,
                 background:
-                  "linear-gradient(145deg, rgba(62,200,190,0.14), rgba(4,18,20,0.5))",
-                border: "1px solid rgba(62,200,190,0.28)",
+                  "linear-gradient(145deg, rgba(154,158,168,0.14), rgba(14,17,22,0.5))",
+                border: "1px solid rgba(154,158,168,0.28)",
                 minHeight: 180,
               }}
             >
@@ -774,13 +774,13 @@ export default function TruthPage() {
                     <Chip
                       size="small"
                       label={topFinding.claim}
-                      sx={{ bgcolor: "rgba(62,200,190,0.15)", color: "#B7EDE8" }}
+                      sx={{ bgcolor: "rgba(154,158,168,0.15)", color: "#B4B7BE" }}
                     />
                     <Chip
                       size="small"
                       label={topFinding.epistemicState}
                       variant="outlined"
-                      sx={{ borderColor: "rgba(232,244,242,0.25)", color: "#E8F4F2" }}
+                      sx={{ borderColor: "rgba(232,234,238,0.25)", color: "#DCDDE1" }}
                     />
                   </Stack>
                   <Typography variant="caption" sx={{ opacity: 0.7 }}>
@@ -802,7 +802,7 @@ export default function TruthPage() {
                       href="/observer"
                       size="small"
                       variant="contained"
-                      sx={{ bgcolor: "#E8F4F2", color: "#041214", fontWeight: 700 }}
+                      sx={{ bgcolor: "#DCDDE1", color: "#12141A", fontWeight: 700 }}
                     >
                       {t("investigate")}
                     </Button>
@@ -811,7 +811,7 @@ export default function TruthPage() {
                       variant="outlined"
                       disabled={!activeId || proposeFix.isPending}
                       onClick={() => proposeFix.mutate(topFinding)}
-                      sx={{ borderColor: "rgba(232,244,242,0.35)", color: "#E8F4F2" }}
+                      sx={{ borderColor: "rgba(232,234,238,0.35)", color: "#DCDDE1" }}
                     >
                       {proposeFix.isPending ? t("proposing") : t("proposeFix")}
                     </Button>
@@ -820,7 +820,7 @@ export default function TruthPage() {
                       href="/patches"
                       size="small"
                       variant="text"
-                      sx={{ color: "#3EC8BE" }}
+                      sx={{ color: "#9A9EA8" }}
                     >
                       {t("openPatches")}
                     </Button>
@@ -829,7 +829,7 @@ export default function TruthPage() {
                       href="/readiness"
                       size="small"
                       variant="text"
-                      sx={{ color: "#3EC8BE" }}
+                      sx={{ color: "#9A9EA8" }}
                     >
                       {t("verify")}
                     </Button>
@@ -875,7 +875,7 @@ export default function TruthPage() {
                   alignItems={{ sm: "center" }}
                   sx={{
                     py: 1,
-                    borderBottom: "1px solid rgba(232,244,242,0.1)",
+                    borderBottom: "1px solid rgba(232,234,238,0.1)",
                   }}
                 >
                   <Typography variant="caption" sx={{ opacity: 0.65, minWidth: 160 }}>
@@ -884,13 +884,13 @@ export default function TruthPage() {
                   <Chip
                     size="small"
                     label={h.riskBand}
-                    sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }}
+                    sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#DCDDE1" }}
                   />
                   <Chip
                     size="small"
                     label={h.trigger}
                     variant="outlined"
-                    sx={{ borderColor: "rgba(232,244,242,0.2)", color: "#E8F4F2" }}
+                    sx={{ borderColor: "rgba(232,234,238,0.2)", color: "#DCDDE1" }}
                   />
                   <Typography variant="body2" sx={{ opacity: 0.85 }}>
                     {h.topFindingTitle ?? t("historyEmptyTitle")}

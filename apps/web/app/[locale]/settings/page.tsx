@@ -174,7 +174,7 @@ export default function SettingsPage() {
             <Avatar
               src={me.data.user.avatarUrl ?? undefined}
               alt=""
-              sx={{ width: 56, height: 56, bgcolor: "#3EC8BE", color: "#041214" }}
+              sx={{ width: 56, height: 56, bgcolor: "#9A9EA8", color: "#12141A" }}
             >
               {(me.data.user.displayName ?? me.data.user.email).slice(0, 1).toUpperCase()}
             </Avatar>

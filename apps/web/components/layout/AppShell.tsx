@@ -23,8 +23,41 @@ import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
+import { atlasChrome as c } from "@/styles/palette";
 
 const DRAWER_WIDTH = 248;
+
+type NavTone = "dark" | "light";
+
+/** Same glass as the small-screen top bar — drawer must not flip color when opened. */
+const navChrome = {
+  dark: {
+    bgcolor: c.glassSoft,
+    border: `1px solid ${c.border}`,
+    color: c.text,
+    textMuted: "rgba(232,234,238,0.75)",
+    textSoft: "rgba(232,234,238,0.85)",
+    accent: c.accent,
+    chrome: c.chrome,
+    brand: c.text,
+    selectedBg: c.selected,
+    hoverBg: c.hover,
+    outlineBorder: "rgba(154,158,168,0.45)",
+  },
+  light: {
+    bgcolor: "rgba(241, 242, 244, 0.94)",
+    border: "1px solid rgba(26, 28, 34, 0.14)",
+    color: c.textOnLight,
+    textMuted: "rgba(26, 28, 34, 0.58)",
+    textSoft: "rgba(26, 28, 34, 0.7)",
+    accent: c.steelMid,
+    chrome: c.textSecondaryOnLight,
+    brand: c.textOnLight,
+    selectedBg: "rgba(42, 46, 54, 0.12)",
+    hoverBg: "rgba(42, 46, 54, 0.07)",
+    outlineBorder: "rgba(42, 46, 54, 0.28)",
+  },
+} as const;
 
 type NavKey =
   | "dashboard"
@@ -211,228 +244,324 @@ export function AppShell({ children }: { children: ReactNode }) {
     main?.scrollIntoView({ block: "start" });
   };
 
-  const nav = (opts: { mobile: boolean }) => (
-    <>
-      <Stack spacing={0.5} sx={{ px: 1.5, mb: 3 }}>
-        <Typography
-          component={Link}
-          href="/"
-          onClick={opts.mobile ? () => setNavOpen(false) : undefined}
-          variant="h5"
+  const brandMark = (
+    href: string,
+    opts?: { onClick?: () => void; size?: "sm" | "md"; tone?: NavTone },
+  ) => {
+    const large = opts?.size !== "sm";
+    const tone = navChrome[opts?.tone ?? "dark"];
+    return (
+      <Typography
+        component={Link}
+        href={href}
+        onClick={opts?.onClick}
+        aria-label={t("brand.name")}
+        dir="ltr"
+        sx={{
+          fontFamily: '"Unbounded", "Syne", sans-serif',
+          fontWeight: 700,
+          letterSpacing: "-0.04em",
+          lineHeight: 0.95,
+          color: tone.brand,
+          textDecoration: "none",
+          display: "inline-flex",
+          alignItems: "baseline",
+          borderRadius: 1,
+          "&:focus-visible": {
+            outline: `3px solid ${c.accent}`,
+            outlineOffset: 2,
+          },
+        }}
+      >
+        <Box
+          component="span"
+          sx={{ fontSize: large ? "1.55rem" : "1.15rem", fontWeight: 800 }}
+        >
+          A
+        </Box>
+        <Box
+          component="span"
           sx={{
-            fontFamily: '"Fraunces", "Frank Ruhl Libre", serif',
-            letterSpacing: "-0.03em",
-            color: "inherit",
-            textDecoration: "none",
-            display: "inline-block",
-            borderRadius: 1,
-            "&:focus-visible": {
-              outline: "3px solid #C45C26",
-              outlineOffset: 2,
+            fontSize: large ? "1.05rem" : "0.88rem",
+            fontWeight: 600,
+            opacity: 0.92,
+          }}
+        >
+          rlet
+        </Box>
+        <Box
+          component="span"
+          sx={{
+            fontSize: large ? "1.45rem" : "1.1rem",
+            fontWeight: 800,
+            color: tone.accent,
+          }}
+        >
+          OS
+        </Box>
+      </Typography>
+    );
+  };
+
+  const langMenu = (menuId: string, opts?: { mobile?: boolean; tone?: NavTone }) => {
+    const tone = navChrome[opts?.tone ?? "dark"];
+    return (
+      <>
+        <IconButton
+          size="small"
+          onClick={(e) => setLangAnchor(e.currentTarget)}
+          aria-label={t("nav.languages")}
+          aria-haspopup="menu"
+          aria-expanded={langMenuOpen}
+          aria-controls={langMenuOpen ? menuId : undefined}
+          sx={{ color: tone.accent }}
+        >
+          <LanguageOutlinedIcon fontSize="small" />
+        </IconButton>
+        <Menu
+          id={menuId}
+          anchorEl={langAnchor}
+          open={langMenuOpen}
+          onClose={() => setLangAnchor(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          transformOrigin={{ vertical: "top", horizontal: "left" }}
+          PaperProps={{
+            sx: {
+              bgcolor: tone.bgcolor,
+              color: tone.color,
+              backdropFilter: "blur(12px)",
+              border: tone.border,
             },
           }}
         >
-          {t("brand.name")}
-        </Typography>
-        <Typography variant="caption" sx={{ opacity: 0.75 }}>
-          {t("brand.codename")} · {t("brand.tagline")}
-        </Typography>
-      </Stack>
+          {(["he", "en", "ar"] as const).map((code) => (
+            <MenuItem
+              key={code}
+              component={Link}
+              href={pathname}
+              locale={code}
+              selected={locale === code}
+              lang={code}
+              onClick={() => {
+                setLangAnchor(null);
+                if (opts?.mobile) setNavOpen(false);
+              }}
+              sx={{
+                color: tone.color,
+                "&.Mui-selected": {
+                  bgcolor: tone.selectedBg,
+                  color: tone.accent,
+                },
+              }}
+            >
+              {t(`a11y.lang.${code}`)}
+            </MenuItem>
+          ))}
+        </Menu>
+      </>
+    );
+  };
 
-      <Box component="nav" aria-label={t("nav.main")}>
-        {NAV_GROUPS.map((group) => (
-          <Box key={group.id} sx={{ mb: group.labelKey ? 1.5 : 0.5 }}>
-            {group.labelKey ? (
-              <Typography
-                variant="caption"
-                sx={{
-                  display: "block",
-                  px: 1.5,
-                  pt: 1,
-                  pb: 0.5,
-                  opacity: 0.65,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  fontSize: 11,
-                }}
-              >
-                {t(`nav.${group.labelKey}`)}
-              </Typography>
-            ) : null}
-            <List dense disablePadding>
-              {group.items.map((key) => {
-                const href = PATHS[key];
-                const selected = isNavSelected(key, pathname);
-                return (
-                  <ListItemButton
-                    key={key}
-                    component={Link}
-                    href={href}
-                    selected={selected}
-                    aria-current={selected ? "page" : undefined}
-                    onClick={opts.mobile ? () => setNavOpen(false) : undefined}
-                    sx={{
-                      borderRadius: 2,
-                      mb: 0.5,
-                      pl: group.labelKey ? 2.5 : 1.5,
-                      color: "inherit",
-                      "&.Mui-selected": {
-                        backgroundColor: "rgba(196, 92, 38, 0.28)",
-                      },
-                      "&:hover": {
-                        backgroundColor: "rgba(255,255,255,0.08)",
-                      },
-                    }}
-                  >
-                    <ListItemText
-                      primary={t(`nav.${key}`)}
-                      primaryTypographyProps={{ fontSize: { xs: 13, sm: 14 } }}
-                    />
-                  </ListItemButton>
-                );
-              })}
-            </List>
-          </Box>
-        ))}
-      </Box>
-
-      <Stack spacing={1} sx={{ mt: "auto", px: 1, pt: 3 }}>
-        {showUpgradeCta ? (
-          <Button
-            component={Link}
-            href="/plan"
-            size="small"
-            variant="contained"
-            color="secondary"
-            onClick={opts.mobile ? () => setNavOpen(false) : undefined}
-            sx={{ fontWeight: 700 }}
+  const nav = (opts: { mobile: boolean; tone?: NavTone }) => {
+    const tone = navChrome[opts.tone ?? "dark"];
+    return (
+      <>
+        <Stack spacing={0.75} sx={{ px: 1.5, mb: 3 }}>
+          {brandMark("/", {
+            onClick: opts.mobile ? () => setNavOpen(false) : undefined,
+            tone: opts.tone ?? "dark",
+          })}
+          <Typography
+            variant="caption"
+            sx={{ opacity: 0.7, textAlign: "start", color: tone.textMuted }}
           >
-            {t("nav.upgradePro")}
-          </Button>
-        ) : null}
-        {meQuery.data?.user ? (
-          <Box>
-            <Typography variant="caption" sx={{ opacity: 0.8, display: "block" }}>
-              {meQuery.data.user.displayName ?? meQuery.data.user.email}
-            </Typography>
+            {t("brand.codename")} · {t("brand.tagline")}
+          </Typography>
+        </Stack>
+
+        <Box component="nav" aria-label={t("nav.main")}>
+          {NAV_GROUPS.map((group) => (
+            <Box key={group.id} sx={{ mb: group.labelKey ? 1.5 : 0.5 }}>
+              {group.labelKey ? (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: "block",
+                    px: 1.5,
+                    pt: 1,
+                    pb: 0.5,
+                    color: tone.accent,
+                    opacity: 0.9,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    fontSize: 11,
+                    fontWeight: 650,
+                  }}
+                >
+                  {t(`nav.${group.labelKey}`)}
+                </Typography>
+              ) : null}
+              <List dense disablePadding>
+                {group.items.map((key) => {
+                  const href = PATHS[key];
+                  const selected = isNavSelected(key, pathname);
+                  return (
+                    <ListItemButton
+                      key={key}
+                      component={Link}
+                      href={href}
+                      selected={selected}
+                      aria-current={selected ? "page" : undefined}
+                      onClick={opts.mobile ? () => setNavOpen(false) : undefined}
+                      sx={{
+                        borderRadius: 2,
+                        mb: 0.5,
+                        pl: group.labelKey ? 2.5 : 1.5,
+                        color: tone.color,
+                        "&.Mui-selected": {
+                          backgroundColor: tone.selectedBg,
+                          color: tone.accent,
+                        },
+                        "&.Mui-selected .MuiListItemText-primary": {
+                          fontWeight: 700,
+                          color: tone.accent,
+                        },
+                        "&:hover": {
+                          backgroundColor: tone.hoverBg,
+                        },
+                      }}
+                    >
+                      <ListItemText
+                        primary={t(`nav.${key}`)}
+                        primaryTypographyProps={{
+                          fontSize: { xs: 13, sm: 14 },
+                          color: "inherit",
+                        }}
+                      />
+                    </ListItemButton>
+                  );
+                })}
+              </List>
+            </Box>
+          ))}
+        </Box>
+
+        <Stack spacing={1} sx={{ mt: "auto", px: 1, pt: 3 }}>
+          {showUpgradeCta ? (
             <Button
-              size="small"
-              color="secondary"
-              onClick={() => void logout()}
-              sx={{ mt: 0.5, color: "#F4F7F5" }}
-            >
-              {t("auth.logout")}
-            </Button>
-            {meQuery.data.user.role === "admin" ? (
-              <Button
-                size="small"
-                href="/admin"
-                sx={{ color: "#F4F7F5", display: "block" }}
-              >
-                {t("nav.admin")}
-              </Button>
-            ) : null}
-            <Button
-              size="small"
-              href="/investors"
-              sx={{ color: "#F4F7F5", display: "block" }}
-            >
-              {t("dashboard.investors")}
-            </Button>
-          </Box>
-        ) : (
-          <Stack spacing={1}>
-            <Button
+              component={Link}
+              href="/plan"
               size="small"
               variant="contained"
-              color="secondary"
-              onClick={() => {
-                if (opts.mobile) setNavOpen(false);
-                window.location.assign(`/${locale}/welcome`);
-              }}
-              sx={{ fontWeight: 700 }}
-            >
-              {t("nav.welcome")}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="secondary"
-              onClick={() => {
-                if (opts.mobile) setNavOpen(false);
-                window.location.assign(`/${locale}/auth/login`);
+              onClick={opts.mobile ? () => setNavOpen(false) : undefined}
+              sx={{
+                fontWeight: 700,
+                bgcolor: c.accent,
+                color: c.onAccent,
+                "&:hover": { bgcolor: c.accentHover },
               }}
             >
-              {t("auth.login")}
+              {t("nav.upgradePro")}
             </Button>
-          </Stack>
-        )}
-
-        <Stack
-          direction="row"
-          spacing={1}
-          role="group"
-          aria-label={t("nav.languages")}
-          alignItems="center"
-        >
-          <IconButton
-            size="small"
-            onClick={(e) => setLangAnchor(e.currentTarget)}
-            aria-label={t("nav.languages")}
-            aria-haspopup="menu"
-            aria-expanded={langMenuOpen}
-            aria-controls={langMenuOpen ? "atlas-lang-menu" : undefined}
-            sx={{ color: "#F4F7F5" }}
-          >
-            <LanguageOutlinedIcon fontSize="small" />
-          </IconButton>
-          <Menu
-            id="atlas-lang-menu"
-            anchorEl={langAnchor}
-            open={langMenuOpen}
-            onClose={() => setLangAnchor(null)}
-            anchorOrigin={{ vertical: "top", horizontal: isRtl ? "left" : "right" }}
-            transformOrigin={{ vertical: "bottom", horizontal: isRtl ? "left" : "right" }}
-          >
-            {(["he", "en", "ar"] as const).map((code) => (
-              <MenuItem
-                key={code}
-                component={Link}
-                href={pathname}
-                locale={code}
-                selected={locale === code}
-                lang={code}
+          ) : null}
+          {meQuery.data?.user ? (
+            <Box>
+              <Typography
+                variant="caption"
+                sx={{ opacity: 0.8, display: "block", color: tone.textSoft }}
+              >
+                {meQuery.data.user.displayName ?? meQuery.data.user.email}
+              </Typography>
+              <Button
+                size="small"
+                onClick={() => void logout()}
+                sx={{ mt: 0.5, color: tone.accent }}
+              >
+                {t("auth.logout")}
+              </Button>
+              {meQuery.data.user.role === "admin" ? (
+                <Button
+                  size="small"
+                  href="/admin"
+                  sx={{ color: tone.color, display: "block" }}
+                >
+                  {t("nav.admin")}
+                </Button>
+              ) : null}
+              <Button
+                size="small"
+                href="/investors"
+                sx={{ color: tone.chrome, display: "block" }}
+              >
+                {t("dashboard.investors")}
+              </Button>
+            </Box>
+          ) : (
+            <Stack spacing={1}>
+              <Button
+                size="small"
+                variant="contained"
                 onClick={() => {
-                  setLangAnchor(null);
                   if (opts.mobile) setNavOpen(false);
+                  window.location.assign(`/${locale}/welcome`);
+                }}
+                sx={{
+                  fontWeight: 700,
+                  bgcolor: c.accent,
+                  color: c.onAccent,
+                  "&:hover": { bgcolor: c.accentHover },
                 }}
               >
-                {t(`a11y.lang.${code}`)}
-              </MenuItem>
-            ))}
-          </Menu>
+                {t("nav.welcome")}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  if (opts.mobile) setNavOpen(false);
+                  window.location.assign(`/${locale}/auth/login`);
+                }}
+                sx={{
+                  borderColor: tone.outlineBorder,
+                  color: tone.color,
+                }}
+              >
+                {t("auth.login")}
+              </Button>
+            </Stack>
+          )}
+          <Box sx={{ pt: 1, display: { xs: "none", md: "block" } }}>
+            {langMenu("atlas-lang-menu", {
+              mobile: opts.mobile,
+              tone: opts.tone ?? "dark",
+            })}
+          </Box>
         </Stack>
-      </Stack>
-    </>
-  );
+      </>
+    );
+  };
 
-  const drawerPaperSx = {
-    width: DRAWER_WIDTH,
-    maxWidth: "100vw",
-    border: 0,
-    // Solid fallback + gradient (do NOT set backgroundImage: "none" — it wipes the green).
-    backgroundColor: "#0F3D3E",
-    backgroundImage:
-      "linear-gradient(180deg, rgba(15,61,62,0.98) 0%, rgba(20,40,42,1) 100%)",
-    boxShadow: "none",
-    color: "#F4F7F5",
-    py: 2.5,
-    px: 1.5,
-    display: "flex",
-    flexDirection: "column" as const,
-    overflowX: "hidden" as const,
-    "--Paper-shadow": "none",
-    "--Paper-overlay": "none",
+  const drawerPaperSx = (tone: NavTone) => {
+    const chrome = navChrome[tone];
+    return {
+      width: DRAWER_WIDTH,
+      maxWidth: "100vw",
+      border: 0,
+      borderInlineEnd: chrome.border,
+      backgroundColor: chrome.bgcolor,
+      backgroundImage: "none",
+      backdropFilter: "blur(18px) saturate(1.15)",
+      WebkitBackdropFilter: "blur(18px) saturate(1.15)",
+      boxShadow: "none",
+      color: chrome.color,
+      py: 2.5,
+      px: 1.5,
+      display: "flex",
+      flexDirection: "column" as const,
+      overflowX: "hidden" as const,
+      "--Paper-shadow": "none",
+      "--Paper-overlay": "none",
+    };
   };
 
   const drawerPaperProps = {
@@ -447,6 +576,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   if (isMarketing) {
+    const marketingTone = navChrome.dark;
     return (
       <Box
         sx={{
@@ -454,7 +584,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           width: "100%",
           maxWidth: "100%",
           overflowX: "clip",
-          bgcolor: "#050C0D",
+          bgcolor: c.ink,
         }}
       >
         <Box
@@ -470,25 +600,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             gap: 2,
             px: { xs: 2, md: 3 },
             py: 1.5,
-            bgcolor: "rgba(5,12,13,0.88)",
-            borderBottom: "1px solid rgba(62,200,190,0.22)",
-            backdropFilter: "blur(10px)",
+            bgcolor: marketingTone.bgcolor,
+            borderBottom: marketingTone.border,
+            backdropFilter: "blur(16px) saturate(1.1)",
+            WebkitBackdropFilter: "blur(16px) saturate(1.1)",
+            direction: "ltr",
           }}
         >
-          <Typography
-            component={Link}
-            href="/welcome"
-            sx={{
-              fontFamily: '"Syne", "Fraunces", sans-serif',
-              fontWeight: 700,
-              fontSize: "1.15rem",
-              color: "#E8F4F2",
-              textDecoration: "none",
-              letterSpacing: "-0.03em",
-            }}
-          >
-            {t("brand.name")}
-          </Typography>
+          {brandMark("/welcome", { size: "sm", tone: "dark" })}
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Stack
               direction="row"
@@ -500,7 +619,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 component={Link}
                 href="/plan"
                 size="small"
-                sx={{ color: "#E8A848", fontWeight: 650 }}
+                sx={{ color: marketingTone.chrome, fontWeight: 650 }}
               >
                 {t("landing.ctaPricing")}
               </Button>
@@ -510,10 +629,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 size="small"
                 variant="contained"
                 sx={{
-                  bgcolor: "#3EC8BE",
-                  color: "#041214",
+                  bgcolor: c.accent,
+                  color: c.onAccent,
                   fontWeight: 700,
-                  "&:hover": { bgcolor: "#5AD8CF" },
+                  "&:hover": { bgcolor: c.accentHover },
                 }}
               >
                 {t("auth.register")}
@@ -524,57 +643,42 @@ export function AppShell({ children }: { children: ReactNode }) {
                 size="small"
                 variant="outlined"
                 sx={{
-                  borderColor: "rgba(62,200,190,0.5)",
-                  color: "#E8F4F2",
+                  borderColor: marketingTone.outlineBorder,
+                  color: marketingTone.color,
                   fontWeight: 650,
                 }}
               >
                 {t("auth.login")}
               </Button>
             </Stack>
-            <IconButton
-              size="small"
-              onClick={(e) => setLangAnchor(e.currentTarget)}
-              aria-label={t("nav.languages")}
-              aria-haspopup="menu"
-              aria-expanded={langMenuOpen}
-              aria-controls={langMenuOpen ? "atlas-lang-menu-marketing" : undefined}
-              sx={{ color: "#E8F4F2" }}
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={0}
+              sx={{
+                color: marketingTone.color,
+                "& .MuiIconButton-root": {
+                  minWidth: 36,
+                  minHeight: 36,
+                  p: 0.5,
+                },
+              }}
             >
-              <LanguageOutlinedIcon fontSize="small" />
-            </IconButton>
-            <Menu
-              id="atlas-lang-menu-marketing"
-              anchorEl={langAnchor}
-              open={langMenuOpen}
-              onClose={() => setLangAnchor(null)}
-              anchorOrigin={{ vertical: "bottom", horizontal: isRtl ? "left" : "right" }}
-              transformOrigin={{ vertical: "top", horizontal: isRtl ? "left" : "right" }}
-            >
-              {(["he", "en", "ar"] as const).map((code) => (
-                <MenuItem
-                  key={code}
-                  component={Link}
-                  href={pathname}
-                  locale={code}
-                  selected={locale === code}
-                  lang={code}
-                  onClick={() => setLangAnchor(null)}
-                >
-                  {t(`a11y.lang.${code}`)}
-                </MenuItem>
-              ))}
-            </Menu>
-            <IconButton
-              size="small"
-              onClick={() => setNavOpen(true)}
-              aria-label={t("a11y.openMenu")}
-              aria-expanded={navOpen}
-              aria-controls={navId}
-              sx={{ color: "#E8F4F2", display: { xs: "inline-flex", md: "none" } }}
-            >
-              <MenuIcon />
-            </IconButton>
+              {langMenu("atlas-lang-menu-marketing", { tone: "dark" })}
+              <IconButton
+                size="small"
+                onClick={() => setNavOpen(true)}
+                aria-label={t("a11y.openMenu")}
+                aria-expanded={navOpen}
+                aria-controls={navId}
+                sx={{
+                  color: marketingTone.accent,
+                  display: { xs: "inline-flex", md: "none" },
+                }}
+              >
+                <MenuIcon />
+              </IconButton>
+            </Stack>
           </Stack>
         </Box>
         <Drawer
@@ -585,7 +689,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: "block", md: "none" },
-            [`& .MuiDrawer-paper`]: drawerPaperSx,
+            [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
           }}
           PaperProps={{
             ...drawerPaperProps,
@@ -606,7 +710,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               component={Link}
               href="/welcome"
               onClick={() => setNavOpen(false)}
-              sx={{ color: "#F4F7F5", justifyContent: "flex-start", fontWeight: 700 }}
+              sx={{
+                color: marketingTone.color,
+                justifyContent: "flex-start",
+                fontWeight: 700,
+              }}
             >
               {t("nav.welcome")}
             </Button>
@@ -614,7 +722,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               component={Link}
               href="/plan"
               onClick={() => setNavOpen(false)}
-              sx={{ color: "#E8A848", justifyContent: "flex-start" }}
+              sx={{ color: marketingTone.chrome, justifyContent: "flex-start" }}
             >
               {t("landing.ctaPricing")}
             </Button>
@@ -622,7 +730,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               component="a"
               href={`/${locale}/auth/register`}
               onClick={() => setNavOpen(false)}
-              sx={{ color: "#F4F7F5", justifyContent: "flex-start" }}
+              sx={{ color: marketingTone.color, justifyContent: "flex-start" }}
             >
               {t("auth.register")}
             </Button>
@@ -630,7 +738,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               component="a"
               href={`/${locale}/auth/login`}
               onClick={() => setNavOpen(false)}
-              sx={{ color: "#F4F7F5", justifyContent: "flex-start" }}
+              sx={{ color: marketingTone.color, justifyContent: "flex-start" }}
             >
               {t("auth.login")}
             </Button>
@@ -650,6 +758,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const appMobileTone = navChrome.light;
+
   return (
     <Box
       sx={{
@@ -665,7 +775,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {t("a11y.skipToContent")}
       </a>
 
-      {/* Mobile: overlay drawer opened by hamburger */}
+      {/* Mobile: same light chrome as top bar — no color flip when opened */}
       <Drawer
         variant="temporary"
         anchor={anchor}
@@ -674,7 +784,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: "block", md: "none" },
-          [`& .MuiDrawer-paper`]: drawerPaperSx,
+          [`& .MuiDrawer-paper`]: drawerPaperSx("light"),
         }}
         PaperProps={{
           ...drawerPaperProps,
@@ -690,7 +800,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <CloseIcon />
           </IconButton>
         </Stack>
-        {nav({ mobile: true })}
+        {nav({ mobile: true, tone: "light" })}
       </Drawer>
 
       {/* Desktop: permanent sidebar */}
@@ -702,11 +812,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           display: { xs: "none", md: "block" },
           width: DRAWER_WIDTH,
           flexShrink: 0,
-          [`& .MuiDrawer-paper`]: drawerPaperSx,
+          [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
         }}
         PaperProps={drawerPaperProps}
       >
-        {nav({ mobile: false })}
+        {nav({ mobile: false, tone: "dark" })}
       </Drawer>
 
       <Box
@@ -733,31 +843,48 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Stack
           direction="row"
           alignItems="center"
-          spacing={1}
-          sx={{ mb: 2, minWidth: 0, display: { xs: "flex", md: "none" } }}
+          justifyContent="space-between"
           component="header"
+          dir="ltr"
+          sx={{
+            mb: 2,
+            minWidth: 0,
+            display: { xs: "flex", md: "none" },
+            mx: { xs: -2, sm: -3 },
+            px: { xs: 2, sm: 3 },
+            py: 1.25,
+            bgcolor: appMobileTone.bgcolor,
+            borderBottom: appMobileTone.border,
+            backdropFilter: "blur(16px) saturate(1.1)",
+            WebkitBackdropFilter: "blur(16px) saturate(1.1)",
+          }}
         >
-          <IconButton
-            ref={menuButtonRef}
-            edge="start"
-            onClick={() => setNavOpen(true)}
-            aria-label={t("a11y.openMenu")}
-            aria-expanded={navOpen}
-            aria-controls={navId}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Typography
-            component="p"
-            fontWeight={700}
+          {brandMark("/", { size: "sm", tone: "light" })}
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0}
             sx={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              "& .MuiIconButton-root": {
+                minWidth: 36,
+                minHeight: 36,
+                p: 0.5,
+                color: appMobileTone.accent,
+              },
             }}
           >
-            {t("brand.name")}
-          </Typography>
+            {langMenu("atlas-lang-menu-mobile", { mobile: true, tone: "light" })}
+            <IconButton
+              ref={menuButtonRef}
+              edge="end"
+              onClick={() => setNavOpen(true)}
+              aria-label={t("a11y.openMenu")}
+              aria-expanded={navOpen}
+              aria-controls={navId}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Stack>
         </Stack>
         <AiCompanionBar />
         {children}

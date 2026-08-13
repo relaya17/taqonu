@@ -310,8 +310,8 @@ export default function DashboardPage() {
         <Box
           sx={{
             py: 3,
-            borderTop: "1px solid rgba(20,32,34,0.14)",
-            borderBottom: "1px solid rgba(20,32,34,0.14)",
+            borderTop: "1px solid rgba(26,31,42,0.14)",
+            borderBottom: "1px solid rgba(26,31,42,0.14)",
           }}
         >
           <Typography variant="overline" color="text.secondary">
@@ -371,7 +371,7 @@ export default function DashboardPage() {
                   key={b.id}
                   sx={{
                     py: 1,
-                    borderBottom: "1px solid rgba(20,32,34,0.08)",
+                    borderBottom: "1px solid rgba(26,31,42,0.08)",
                   }}
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
@@ -424,7 +424,7 @@ export default function DashboardPage() {
               sx={{
                 mt: 2,
                 p: 2,
-                bgcolor: "rgba(20,32,34,0.04)",
+                bgcolor: "rgba(26,31,42,0.04)",
                 overflow: "auto",
                 maxHeight: 320,
                 fontSize: 12,
