@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Button, Stack, Typography } from "@mui/material";
+import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
@@ -9,6 +10,7 @@ export function WelcomeLanding() {
   const t = useTranslations("landing");
   const locale = useLocale();
   const router = useRouter();
+  const [promoEnded, setPromoEnded] = useState(false);
 
   const goPlan = () => {
     router.push("/plan");
@@ -23,27 +25,36 @@ export function WelcomeLanding() {
         overflow: "clip",
       }}
     >
-      {/* Hero — one composition: brand, headline, line, CTAs, full-bleed reel */}
+      {/* Full-bleed cinematic promo — brand + CTAs; end-of-video = register/login */}
       <Box
         component="section"
         sx={{
           position: "relative",
           minHeight: { xs: "100svh", md: "100vh" },
-          display: "grid",
-          gridTemplateRows: { xs: "auto 1fr", md: "1fr" },
-          gridTemplateColumns: { xs: "1fr", md: "minmax(0, 0.95fr) minmax(0, 1.05fr)" },
+          overflow: "hidden",
         }}
       >
+        <ProductReel onPhaseChange={(p) => setPromoEnded(p === "ended")} />
+
         <Stack
           spacing={2.5}
           sx={{
             position: "relative",
             zIndex: 2,
             justifyContent: "center",
-            px: { xs: 2.5, sm: 4, md: 6 },
-            pt: { xs: 8, md: 10 },
-            pb: { xs: 4, md: 8 },
+            minHeight: { xs: "100svh", md: "100vh" },
+            px: { xs: 2.5, sm: 4, md: 7 },
+            pt: { xs: 10, md: 12 },
+            pb: { xs: 6, md: 10 },
             maxWidth: 560,
+            opacity: promoEnded ? 0 : 1,
+            pointerEvents: promoEnded ? "none" : "auto",
+            transition: "opacity 0.45s ease",
+            animation: "landingHeroIn 0.85s ease-out",
+            "@keyframes landingHeroIn": {
+              from: { opacity: 0, transform: "translateY(18px)" },
+              to: { opacity: 1, transform: "translateY(0)" },
+            },
           }}
         >
           <Typography
@@ -51,15 +62,10 @@ export function WelcomeLanding() {
             sx={{
               fontFamily: '"Syne", "Rubik", sans-serif',
               fontWeight: 700,
-              fontSize: { xs: "2.6rem", md: "3.4rem" },
+              fontSize: { xs: "2.75rem", md: "3.6rem" },
               letterSpacing: "-0.04em",
               lineHeight: 0.95,
               color: "#F2FBFA",
-              animation: "landingHeroIn 0.8s ease-out",
-              "@keyframes landingHeroIn": {
-                from: { opacity: 0, transform: "translateY(18px)" },
-                to: { opacity: 1, transform: "translateY(0)" },
-              },
             }}
           >
             {t("brand")}
@@ -79,7 +85,7 @@ export function WelcomeLanding() {
           </Typography>
           <Typography
             sx={{
-              color: "rgba(160, 190, 188, 0.9)",
+              color: "rgba(180, 210, 208, 0.9)",
               fontSize: "1.05rem",
               lineHeight: 1.5,
               maxWidth: 400,
@@ -90,7 +96,7 @@ export function WelcomeLanding() {
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ pt: 0.5 }}>
             <Button
               component="a"
-              href={`/${locale}/auth/login`}
+              href={`/${locale}/auth/register`}
               variant="contained"
               size="large"
               sx={{
@@ -101,10 +107,11 @@ export function WelcomeLanding() {
                 "&:hover": { bgcolor: "#5AD8CF" },
               }}
             >
-              {t("ctaStart")}
+              {t("ctaRegister")}
             </Button>
             <Button
-              onClick={goPlan}
+              component="a"
+              href={`/${locale}/auth/login`}
               variant="outlined"
               size="large"
               sx={{
@@ -117,23 +124,10 @@ export function WelcomeLanding() {
                 },
               }}
             >
-              {t("ctaPricing")}
+              {t("ctaLogin")}
             </Button>
           </Stack>
         </Stack>
-
-        <Box
-          sx={{
-            position: "relative",
-            minHeight: { xs: 300, md: "100%" },
-            borderInlineStart: {
-              xs: "none",
-              md: "1px solid rgba(62, 200, 190, 0.18)",
-            },
-          }}
-        >
-          <ProductReel />
-        </Box>
       </Box>
 
       {/* One job: why pay */}
@@ -254,11 +248,11 @@ export function WelcomeLanding() {
             </Typography>
             <Button
               component="a"
-              href={`/${locale}/auth/login`}
+              href={`/${locale}/auth/register`}
               variant="outlined"
               sx={{ color: "#E8F4F2", borderColor: "rgba(62,200,190,0.45)" }}
             >
-              {t("ctaStart")}
+              {t("ctaRegister")}
             </Button>
           </Box>
           <Box
@@ -304,20 +298,42 @@ export function WelcomeLanding() {
         >
           {t("closeTitle")}
         </Typography>
-        <Button
-          onClick={goPlan}
-          variant="contained"
-          size="large"
-          sx={{
-            bgcolor: "#E8A848",
-            color: "#1A1004",
-            fontWeight: 700,
-            px: 4,
-            "&:hover": { bgcolor: "#F0BC66" },
-          }}
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          justifyContent="center"
+          alignItems="center"
         >
-          {t("ctaPricing")}
-        </Button>
+          <Button
+            component="a"
+            href={`/${locale}/auth/register`}
+            variant="contained"
+            size="large"
+            sx={{
+              bgcolor: "#3EC8BE",
+              color: "#041214",
+              fontWeight: 700,
+              px: 4,
+              "&:hover": { bgcolor: "#5AD8CF" },
+            }}
+          >
+            {t("ctaRegister")}
+          </Button>
+          <Button
+            component="a"
+            href={`/${locale}/auth/login`}
+            variant="outlined"
+            size="large"
+            sx={{
+              borderColor: "rgba(62,200,190,0.5)",
+              color: "#E8F4F2",
+              fontWeight: 650,
+              px: 4,
+            }}
+          >
+            {t("ctaLogin")}
+          </Button>
+        </Stack>
       </Box>
     </Box>
   );

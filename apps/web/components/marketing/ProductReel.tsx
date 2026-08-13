@@ -1,12 +1,15 @@
 "use client";
 
-import { Box, Typography } from "@mui/material";
-import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { Box, Button, Stack, Typography } from "@mui/material";
+import { useCallback, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 
-const BEATS = ["verdict", "workbench", "cloud", "upgrade"] as const;
+/** Default cinematic promo — override with NEXT_PUBLIC_MARKETING_VIDEO_URL. */
+const DEFAULT_PROMO_VIDEO =
+  "https://res.cloudinary.com/dora8sxcb/video/upload/v1786636369/hailuo-2_3_CINEMATIC_VIDEO_SPECIFICATION__THE_INTELLIGENCE_BEHIND_THE_SYSTEM__1._Creati-0_xekane.mp4";
 
-const VIDEO_URL = process.env.NEXT_PUBLIC_MARKETING_VIDEO_URL?.trim() || "";
+const VIDEO_URL =
+  process.env.NEXT_PUBLIC_MARKETING_VIDEO_URL?.trim() || DEFAULT_PROMO_VIDEO;
 
 function isYouTube(url: string): boolean {
   return /youtube\.com|youtu\.be/.test(url);
@@ -16,168 +19,235 @@ function youTubeEmbed(url: string): string | null {
   try {
     const u = new URL(url);
     if (u.hostname.includes("youtu.be")) {
-      return `https://www.youtube.com/embed/${u.pathname.replace("/", "")}?rel=0`;
+      return `https://www.youtube.com/embed/${u.pathname.replace("/", "")}?rel=0&autoplay=1&mute=1`;
     }
     const id = u.searchParams.get("v");
-    return id ? `https://www.youtube.com/embed/${id}?rel=0` : null;
+    return id
+      ? `https://www.youtube.com/embed/${id}?rel=0&autoplay=1&mute=1`
+      : null;
   } catch {
     return null;
   }
 }
 
-/** Marketing hero media — real video when configured, else product story reel. */
-export function ProductReel() {
+type PromoPhase = "playing" | "ended";
+
+/** Full-bleed marketing promo — at video end, register / login CTAs. */
+export function ProductReel({
+  onPhaseChange,
+}: {
+  onPhaseChange?: (phase: PromoPhase) => void;
+}) {
   const t = useTranslations("landing");
-  const [beat, setBeat] = useState(0);
+  const locale = useLocale();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [phase, setPhase] = useState<PromoPhase>("playing");
+  const [muted, setMuted] = useState(true);
 
-  useEffect(() => {
-    if (VIDEO_URL) return;
-    const id = window.setInterval(() => {
-      setBeat((b) => (b + 1) % BEATS.length);
-    }, 3200);
-    return () => window.clearInterval(id);
-  }, []);
+  const setPromoPhase = useCallback(
+    (next: PromoPhase) => {
+      setPhase(next);
+      onPhaseChange?.(next);
+    },
+    [onPhaseChange],
+  );
 
-  const key = BEATS[beat]!;
-  const yt = VIDEO_URL && isYouTube(VIDEO_URL) ? youTubeEmbed(VIDEO_URL) : null;
+  const replay = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    setPromoPhase("playing");
+    el.currentTime = 0;
+    void el.play().catch(() => {
+      /* autoplay may still be blocked after user gesture */
+    });
+  };
 
-  if (VIDEO_URL) {
-    return (
-      <Box
-        sx={{
-          position: "relative",
-          width: "100%",
-          height: "100%",
-          minHeight: { xs: 280, md: 420 },
-          overflow: "hidden",
-          bgcolor: "#061012",
-        }}
-      >
-        {yt ? (
-          <Box
-            component="iframe"
-            title={t("reelAria")}
-            src={yt}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            sx={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              border: 0,
-            }}
-          />
-        ) : (
-          <Box
-            component="video"
-            src={VIDEO_URL}
-            controls
-            playsInline
-            preload="metadata"
-            aria-label={t("reelAria")}
-            sx={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        )}
-      </Box>
-    );
-  }
+  const yt = isYouTube(VIDEO_URL) ? youTubeEmbed(VIDEO_URL) : null;
 
   return (
     <Box
-      role="img"
-      aria-label={t("reelAria")}
       sx={{
-        position: "relative",
+        position: "absolute",
+        inset: 0,
         width: "100%",
         height: "100%",
-        minHeight: { xs: 280, md: 420 },
         overflow: "hidden",
-        background:
-          "radial-gradient(ellipse at 30% 20%, rgba(62, 200, 190, 0.22), transparent 55%), radial-gradient(ellipse at 80% 70%, rgba(232, 168, 72, 0.14), transparent 50%), linear-gradient(160deg, #061012 0%, #0C1E22 45%, #0A1618 100%)",
-        "&::before": {
-          content: '""',
-          position: "absolute",
-          inset: 0,
-          backgroundImage:
-            "linear-gradient(rgba(126,184,185,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(126,184,185,0.06) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-          maskImage:
-            "radial-gradient(ellipse at center, black 35%, transparent 78%)",
-          pointerEvents: "none",
-        },
+        bgcolor: "#040A0B",
       }}
     >
+      {yt ? (
+        <Box
+          component="iframe"
+          title={t("reelAria")}
+          src={yt}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          sx={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            border: 0,
+          }}
+        />
+      ) : (
+        <Box
+          component="video"
+          ref={videoRef}
+          src={VIDEO_URL}
+          autoPlay
+          muted={muted}
+          playsInline
+          preload="auto"
+          aria-label={t("reelAria")}
+          onEnded={() => setPromoPhase("ended")}
+          sx={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+      )}
+
+      {/* Atmosphere veil — keeps brand readable without sticking cards on media */}
       <Box
         sx={{
           position: "absolute",
           inset: 0,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "flex-end",
-          p: { xs: 2.5, md: 4 },
-          gap: 1.5,
+          pointerEvents: "none",
+          background:
+            phase === "ended"
+              ? "linear-gradient(180deg, rgba(4,10,11,0.55) 0%, rgba(4,10,11,0.88) 55%, rgba(4,10,11,0.96) 100%)"
+              : "linear-gradient(90deg, rgba(4,10,11,0.72) 0%, rgba(4,10,11,0.35) 42%, rgba(4,10,11,0.15) 100%), linear-gradient(180deg, rgba(4,10,11,0.35) 0%, transparent 28%, rgba(4,10,11,0.55) 100%)",
+          transition: "background 0.6s ease",
         }}
-      >
-        <Typography
-          variant="caption"
-          sx={{ color: "rgba(160,190,188,0.75)", letterSpacing: "0.04em" }}
-        >
-          {t("reelFallbackNote")}
-        </Typography>
-        <Typography
-          key={key}
+      />
+
+      {phase === "playing" && !yt ? (
+        <Button
+          size="small"
+          onClick={() => {
+            setMuted((m) => {
+              const next = !m;
+              if (videoRef.current) videoRef.current.muted = next;
+              return next;
+            });
+          }}
           sx={{
-            fontFamily: '"Syne", "Fraunces", sans-serif',
-            fontWeight: 700,
-            fontSize: { xs: "1.35rem", md: "1.85rem" },
+            position: "absolute",
+            bottom: { xs: 16, md: 24 },
+            insetInlineEnd: { xs: 16, md: 24 },
+            zIndex: 3,
             color: "#E8F4F2",
-            letterSpacing: "-0.03em",
-            maxWidth: 420,
-            animation: "landingFadeUp 0.55s ease-out",
-            "@keyframes landingFadeUp": {
-              from: { opacity: 0, transform: "translateY(14px)" },
+            bgcolor: "rgba(4,10,11,0.55)",
+            border: "1px solid rgba(62,200,190,0.35)",
+            fontWeight: 600,
+            "&:hover": { bgcolor: "rgba(4,10,11,0.75)" },
+          }}
+        >
+          {muted ? t("promoUnmute") : t("promoMute")}
+        </Button>
+      ) : null}
+
+      {phase === "ended" ? (
+        <Stack
+          spacing={2.5}
+          alignItems="center"
+          justifyContent="center"
+          sx={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 4,
+            px: 3,
+            textAlign: "center",
+            animation: "promoEndIn 0.55s ease-out",
+            "@keyframes promoEndIn": {
+              from: { opacity: 0, transform: "translateY(18px)" },
               to: { opacity: 1, transform: "translateY(0)" },
             },
           }}
         >
-          {t(`reel.${key}.title`)}
-        </Typography>
-        <Typography
-          key={`${key}-sub`}
-          sx={{
-            color: "rgba(180, 210, 208, 0.88)",
-            fontSize: { xs: "0.95rem", md: "1.05rem" },
-            maxWidth: 440,
-            lineHeight: 1.45,
-            animation: "landingFadeUp 0.7s ease-out",
-          }}
-        >
-          {t(`reel.${key}.body`)}
-        </Typography>
-
-        <Box sx={{ display: "flex", gap: 0.75, mt: 1 }}>
-          {BEATS.map((_, i) => (
-            <Box
-              key={i}
+          <Typography
+            sx={{
+              fontFamily: '"Syne", "Rubik", sans-serif',
+              fontWeight: 700,
+              fontSize: { xs: "2rem", md: "2.75rem" },
+              letterSpacing: "-0.04em",
+              color: "#F2FBFA",
+            }}
+          >
+            {t("brand")}
+          </Typography>
+          <Typography
+            sx={{
+              fontFamily: '"Syne", sans-serif',
+              fontWeight: 650,
+              fontSize: { xs: "1.25rem", md: "1.55rem" },
+              color: "rgba(200,230,226,0.95)",
+              maxWidth: 420,
+            }}
+          >
+            {t("promoEndTitle")}
+          </Typography>
+          <Typography
+            sx={{
+              color: "rgba(170,200,198,0.9)",
+              maxWidth: 380,
+              lineHeight: 1.5,
+            }}
+          >
+            {t("promoEndBody")}
+          </Typography>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.5}
+            sx={{ pt: 1, width: { xs: "100%", sm: "auto" } }}
+          >
+            <Button
+              component="a"
+              href={`/${locale}/auth/register`}
+              variant="contained"
+              size="large"
               sx={{
-                height: 3,
-                flex: 1,
-                maxWidth: 56,
-                borderRadius: 1,
-                bgcolor: i === beat ? "#3EC8BE" : "rgba(126, 184, 185, 0.25)",
-                transition: "background-color 0.3s ease",
+                bgcolor: "#3EC8BE",
+                color: "#041214",
+                fontWeight: 700,
+                px: 3.5,
+                "&:hover": { bgcolor: "#5AD8CF" },
               }}
-            />
-          ))}
-        </Box>
-      </Box>
+            >
+              {t("ctaRegister")}
+            </Button>
+            <Button
+              component="a"
+              href={`/${locale}/auth/login`}
+              variant="outlined"
+              size="large"
+              sx={{
+                borderColor: "rgba(62,200,190,0.55)",
+                color: "#E8F4F2",
+                fontWeight: 650,
+                px: 3.5,
+                "&:hover": {
+                  borderColor: "#3EC8BE",
+                  bgcolor: "rgba(62,200,190,0.08)",
+                },
+              }}
+            >
+              {t("ctaLogin")}
+            </Button>
+          </Stack>
+          <Button
+            onClick={replay}
+            size="small"
+            sx={{ color: "rgba(160,190,188,0.9)", mt: 0.5 }}
+          >
+            {t("ctaReplay")}
+          </Button>
+        </Stack>
+      ) : null}
     </Box>
   );
 }

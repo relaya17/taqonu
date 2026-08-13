@@ -476,7 +476,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
             <Button
               component="a"
-              href={`/${locale}/auth/login`}
+              href={`/${locale}/auth/register`}
               size="small"
               variant="contained"
               sx={{
@@ -484,6 +484,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 color: "#041214",
                 fontWeight: 700,
                 "&:hover": { bgcolor: "#5AD8CF" },
+              }}
+            >
+              {t("auth.register")}
+            </Button>
+            <Button
+              component="a"
+              href={`/${locale}/auth/login`}
+              size="small"
+              variant="outlined"
+              sx={{
+                borderColor: "rgba(62,200,190,0.5)",
+                color: "#E8F4F2",
+                fontWeight: 650,
               }}
             >
               {t("auth.login")}
