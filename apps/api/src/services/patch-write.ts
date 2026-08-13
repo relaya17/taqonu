@@ -20,8 +20,10 @@ import { atlasMetrics } from "../routes/metrics.js";
 export function isAutoRemediationDraft(patch: PatchArtifact): boolean {
   return (
     patch.createdBy === "atlas-auto-remediation" ||
+    patch.createdBy === "atlas-truth-remediation" ||
     Boolean(patch.sourceIssueId) ||
-    patch.title.startsWith("AUTO_FIX:")
+    patch.title.startsWith("AUTO_FIX:") ||
+    patch.title.startsWith("TRUTH_FIX:")
   );
 }
 

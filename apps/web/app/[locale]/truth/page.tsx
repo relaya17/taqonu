@@ -200,6 +200,26 @@ export default function TruthPage() {
     },
   });
 
+  const proposeFix = useMutation({
+    mutationFn: (finding: Finding) =>
+      apiPost<{ draft: { patch: { id: string }; applyBlocked: boolean }; note: string }>(
+        "/api/v1/remediation/from-truth",
+        {
+          projectId: activeId,
+          finding: {
+            id: finding.id,
+            title: finding.title,
+            detail: finding.detail,
+            riskBand: finding.riskBand,
+            claim: finding.claim,
+            epistemicState: finding.epistemicState,
+            evidenceRefs: finding.evidenceRefs ?? [],
+            category: finding.category,
+          },
+        },
+      ),
+  });
+
   const result = cycle.data;
   const counters = result?.counters ?? state.data?.counters;
   const history = result?.history ?? state.data?.history ?? [];
@@ -381,6 +401,21 @@ export default function TruthPage() {
         {promote.isError ? (
           <Alert severity="error">
             {promote.error instanceof Error ? promote.error.message : t("error")}
+          </Alert>
+        ) : null}
+        {proposeFix.isError ? (
+          <Alert severity="error">
+            {proposeFix.error instanceof Error
+              ? proposeFix.error.message
+              : t("proposeError")}
+          </Alert>
+        ) : null}
+        {proposeFix.isSuccess ? (
+          <Alert severity="success">
+            {proposeFix.data.note}{" "}
+            <Button component={Link} href="/patches" size="small" sx={{ ml: 1 }}>
+              {t("openPatches")}
+            </Button>
           </Alert>
         ) : null}
         {linkError ? (
@@ -687,13 +722,22 @@ export default function TruthPage() {
                       {t("investigate")}
                     </Button>
                     <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={!activeId || proposeFix.isPending}
+                      onClick={() => proposeFix.mutate(topFinding)}
+                      sx={{ borderColor: "rgba(232,244,242,0.35)", color: "#E8F4F2" }}
+                    >
+                      {proposeFix.isPending ? t("proposing") : t("proposeFix")}
+                    </Button>
+                    <Button
                       component={Link}
                       href="/patches"
                       size="small"
-                      variant="outlined"
-                      sx={{ borderColor: "rgba(232,244,242,0.35)", color: "#E8F4F2" }}
+                      variant="text"
+                      sx={{ color: "#3EC8BE" }}
                     >
-                      {t("proposeFix")}
+                      {t("openPatches")}
                     </Button>
                     <Button
                       component={Link}

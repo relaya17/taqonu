@@ -64,8 +64,10 @@ export function isAutoApplyEligiblePatch(patch: PatchArtifact): boolean {
   return (
     patch.risk === "LOW" &&
     (patch.createdBy === "atlas-auto-remediation" ||
+      patch.createdBy === "atlas-truth-remediation" ||
       Boolean(patch.sourceIssueId) ||
-      patch.title.startsWith("AUTO_FIX:")) &&
+      patch.title.startsWith("AUTO_FIX:") ||
+      patch.title.startsWith("TRUTH_FIX:")) &&
     patch.status !== "APPLIED" &&
     patch.status !== "ROLLED_BACK" &&
     patch.status !== "REJECTED"

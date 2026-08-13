@@ -8,6 +8,7 @@ export * from "./constitution-runner.js";
 export * from "./constitution-detectors.js";
 export * from "./admin-necessity.js";
 export * from "./auto-remediation.js";
+export * from "./truth-remediation.js";
 export * from "./legal-media-review.js";
 export * from "./sarif-ingest.js";
 export * from "./workspace-browser.js";

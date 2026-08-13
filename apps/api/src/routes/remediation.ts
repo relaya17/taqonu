@@ -15,6 +15,7 @@ import {
 } from "../services/patch-write.js";
 import {
   autoApplyLowRemediations,
+  proposeTruthFindingRemediation,
   shouldAutoApplyLow,
   verifyAppliedRemediation,
 } from "../services/remediation-pipeline.js";
@@ -123,6 +124,51 @@ export async function registerRemediationRoutes(
       patch: existing,
       workspaceRoot: body.workspaceRoot ?? null,
       userId: user.id,
+    });
+  });
+
+  app.post("/api/v1/remediation/from-truth", async (request, reply) => {
+    requireSignedInForWrite(app, request);
+    const body = z
+      .object({
+        projectId: uuidSchema,
+        finding: z.object({
+          id: z.string().min(1).max(200),
+          title: z.string().min(1).max(300),
+          detail: z.string().max(8000).default(""),
+          riskBand: z.string().min(1).max(40),
+          claim: z.string().max(80).optional(),
+          epistemicState: z.string().max(80).optional(),
+          evidenceRefs: z.array(z.string().max(500)).max(40).optional(),
+          category: z.string().max(80).optional(),
+        }),
+      })
+      .parse(request.body ?? {});
+    const draft = proposeTruthFindingRemediation({
+      projectId: body.projectId,
+      finding: {
+        id: body.finding.id,
+        title: body.finding.title,
+        detail: body.finding.detail,
+        riskBand: body.finding.riskBand,
+        ...(body.finding.claim !== undefined ? { claim: body.finding.claim } : {}),
+        ...(body.finding.epistemicState !== undefined
+          ? { epistemicState: body.finding.epistemicState }
+          : {}),
+        ...(body.finding.evidenceRefs !== undefined
+          ? { evidenceRefs: body.finding.evidenceRefs }
+          : {}),
+        ...(body.finding.category !== undefined
+          ? { category: body.finding.category }
+          : {}),
+      },
+    });
+    return reply.status(201).send({
+      draft,
+      note: draft.applyBlocked
+        ? "HIGH/CRITICAL recommendation only — apply stays blocked"
+        : "Draft ready — Approve then Apply (or LOW gated auto-apply)",
+      next: "/patches",
     });
   });
 

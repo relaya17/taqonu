@@ -4,10 +4,13 @@
  */
 import {
   draftAutoRemediations,
+  draftTruthFindingRemediation,
   isAutoApplyEligiblePatch,
   verifyRemediationApply,
   type AutoRemediationDraft,
   type RemediationVerifyResult,
+  type TruthFindingProposeInput,
+  type TruthRemediationDraft,
 } from "@atlas/code-intelligence";
 import {
   AtlasError,
@@ -195,4 +198,48 @@ export function summarizeDrafts(drafts: readonly AutoRemediationDraft[]) {
     autoApplyEligible: d.autoApplyEligible,
     status: d.patch.status,
   }));
+}
+
+/** TRUTH-10 · 1.1 — propose→approve→apply→verify entry from Truth findings. */
+export function proposeTruthFindingRemediation(input: {
+  readonly projectId: string;
+  readonly finding: TruthFindingProposeInput;
+  readonly envGoldenRoot?: string | null;
+}): TruthRemediationDraft {
+  const linked = osStore.getWorkspaceRoot(input.projectId);
+  if (!linked) {
+    throw new AtlasError(
+      "VALIDATION_ERROR",
+      "Link a local workspaceRoot on this project before proposing Truth remediations",
+      { statusCode: 400 },
+    );
+  }
+  const draft = draftTruthFindingRemediation({
+    projectId: input.projectId,
+    workspaceRoot: linked,
+    finding: input.finding,
+    existingSourceIssueIds: openRemediationSourceIssueIds(input.projectId),
+  });
+  if (!draft) {
+    throw new AtlasError(
+      "CONFLICT",
+      "A remediation draft already exists for this Truth finding",
+      { statusCode: 409 },
+    );
+  }
+  osStore.upsertPatch(draft.patch);
+  appendDomainEvent({
+    type: "patch.proposed",
+    projectId: draft.patch.projectId,
+    epistemicState: "PROPOSED",
+    payload: {
+      kind: "truth-remediation",
+      patchId: draft.patch.id,
+      findingId: draft.findingId,
+      risk: draft.patch.risk,
+      applyBlocked: draft.applyBlocked,
+      title: draft.patch.title,
+    },
+  });
+  return draft;
 }
