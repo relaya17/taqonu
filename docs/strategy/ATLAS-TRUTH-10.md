@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (P1.3 deploy → graph)  
+**עדכון אחרון:** 2026-08-13 (רשימה: Admin Oracle / Command Agent)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -75,6 +75,57 @@
 | 2.3 | Patent landscape / Trademark Atlas | `OPEN` — משפטי, לא קוד |
 | 2.4 | Pricing experiments (repos/seats) | `PARTIAL` — freemium usage היום |
 | 2.5 | Case studies + Seed narrative | `OPEN` |
+| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `OPEN` — ראה סעיף **A1** למטה |
+
+---
+
+## A1 — Admin Oracle / Command Agent (חזון מוצר)
+
+**שם לזכור:** `Admin Oracle` · `Command Agent`  
+**מטרה:** סוכן אחד שעליו מושתת לוח הבקרה באדמין — מנהל את הדשבורד, מזהה בעיות, ומבצע ניטור + תיקון **רק עם ראיות ומקורות מורשים**.
+
+> זה **לא** “AI שעושה הכול בלי בקרה”.  
+> זה **מנבא תפעולי** על Graph + Evidence: מקבל עדכונים שוטפים → מדרג סיכון → מתריע / מציע / מתקן תחת שערים.
+
+### מה הסוכן עושה
+
+| תפקיד | פירוט |
+|---|---|
+| **מנהל לוח הבקרה** | UI אדמין יוקרתי אחד: בריאות מערכת, באגים, גרסאות, פריסות, סייבר, תור פעולות |
+| **מזהה** | באגים · רגרסיות · גרסאות לא יציבות · קריסות · כשלי deploy · סטיות התנהגות |
+| **מנטר** | Continuous observe + alerts; תור יומי של חריגות |
+| **מתקן / מעדכן אותך** | Propose→Approve→Apply לתיקונים בטוחים; HIGH/CRITICAL = התראה + המלצה (לא auto-prod בלי אישור) |
+| **סייבר הגנתי** | Threat intel ממקורות **מאומתים ומורשים בלבד** (CVE/NVD/CISA/vendor advisories / חוקים ורגולציה שפורסמו) — **לא** התקפה, סריקה לא מורשית, או כלי פריצה |
+| **בריפינג הייטק יומי** | עדכון יומי מ־allowlist: חידושים, שינויי גרסאות קריטיות, advisories — עם לינק + epistemic label |
+
+### מקורות מורשים (Allowlist — חובה)
+
+- Atlas Truth / Observer / Graph / Deploy feeds / GitHub Check Runs (פנימי)  
+- CVE / NVD / CISA / vendor security advisories  
+- Release notes רשמיים (Node, Next, React, Postgres, וכו׳ לפי stack של הלקוח)  
+- מסמכי חוק/רגולציה רשמיים שצוינו ב־allowlist (לא גלישה חופשית לאינטרנט)  
+- **אסור:** מקורות אנונימיים, “טיפים לפריצה”, סקריפטים התקפיים, למידה חוצת־tenant על קוד לקוחות  
+
+### שערים (Gates)
+
+1. כל טענה חזקה דורשת `evidenceRefs`.  
+2. תיקון אוטומטי רק LOW (כמו היום) + WRITE session; אחרת Propose.  
+3. פעולות סייבר = **הגנה/התראה/הקשחה** בלבד.  
+4. Admin surface לפי [`admin-necessity.md`](./admin-necessity.md) — לא לבנות `/admin` סתם.
+
+### פירוק ביצוע (אחרי P1 יציב / עם DP)
+
+| # | משימה | סטטוס |
+|---:|---|---|
+| A1.1 | מסך Admin Command Center (premium dashboard shell) | `OPEN` |
+| A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `OPEN` |
+| A1.3 | Version instability detector (deps/runtime/EOL) | `OPEN` |
+| A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `OPEN` |
+| A1.5 | Defensive cyber feed → findings על Graph (CVE↔deps) | `OPEN` |
+| A1.6 | Full automation loop עם audit trail (מי אישר / מה הוחל) | `OPEN` |
+| A1.7 | “מנבא” digest: בוקר אחד — סיכום + Top 3 actions | `OPEN` |
+
+**תלות:** P0 DONE · P1.1 remediation · P1.3 production · G5 security review לפני automation רחבה.
 
 ---
 
@@ -135,6 +186,7 @@ Sprint C
 | 2026-08-13 | **P1.5 messaging:** isolation claim in README + DP Early Access; richer Truth P1 chips |
 | 2026-08-13 | **P1.1:** Truth Propose fix → `TRUTH_FIX` note draft (approve→apply→verify; HIGH blocked) |
 | 2026-08-13 | **P1.3:** Vercel/Render deploy → `.atlas/production/deploys.json` → DEPLOYMENT nodes + Truth finding |
+| 2026-08-13 | **A1 נוסף לרשימה:** Admin Oracle / Command Agent — לוח בקרה + ניטור + בריפינג + סייבר הגנתי ממקורות מורשים |
 
 ---
 
@@ -150,5 +202,6 @@ Sprint C
 | Snapshots API | `GET /api/v1/projects/:id/observer/snapshots` |
 | Health (ישן/מקביל) | `apps/web/app/[locale]/health` |
 | Truth dashboard | `apps/web/app/[locale]/truth` |
+| Admin Oracle (חזון) | סעיף **A1** במסמך זה · [`admin-necessity.md`](./admin-necessity.md) |
 | Design partners | `docs/strategy/design-partner-playbook.md` |
 | TRUTH-10 Early Access (G1) | `docs/strategy/design-partner-truth10-early-access.md` |

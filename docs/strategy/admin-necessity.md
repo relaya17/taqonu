@@ -63,3 +63,15 @@ Implementation: `packages/code-intelligence/src/admin-necessity.ts` + detectors 
 This is **Omission Detector** territory: notice what the founder forgot
 **and** refuse unnecessary complexity. Same spirit as local connectors with
 **explicit project permissions** — power without default sprawl.
+
+## Future: Admin Oracle / Command Agent
+
+Product roadmap item **A1** in [`ATLAS-TRUTH-10.md`](./ATLAS-TRUTH-10.md):
+
+- Premium admin command center managed by one grounded agent  
+- Detect bugs / unstable versions / crashes / deploy failures  
+- Daily allowlisted hi-tech + defensive cyber briefs (CVE/CISA/vendors/law)  
+- Automate propose→approve→apply with evidence; never unauthorized offense  
+
+Do **not** scaffold this agent into customer apps by default — only when
+admin necessity = YES and Atlas itself needs an ops console.
