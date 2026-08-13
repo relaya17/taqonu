@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidSchema } from "@atlas/shared";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 import {
   executeBugIngest,
   executeObserveCycle,
@@ -22,8 +23,8 @@ export async function registerObserverRoutes(
   });
 
   app.post("/api/v1/projects/:id/observe-cycle", async (request, reply) => {
-    requireSignedInForWrite(app, request);
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    assertProjectWriteAccess(app, request, projectId);
     const body =
       typeof request.body === "object" && request.body
         ? { ...(request.body as Record<string, unknown>), projectId }
@@ -57,8 +58,8 @@ export async function registerObserverRoutes(
   });
 
   app.put("/api/v1/projects/:id/observer/expected", async (request, reply) => {
-    requireSignedInForWrite(app, request);
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    assertProjectWriteAccess(app, request, projectId);
     const result = putExpectedBehaviorModel({
       projectId,
       body: request.body,

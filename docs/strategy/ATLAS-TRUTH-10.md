@@ -3,9 +3,9 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (**Sentinel S1 = 10/10 product bar** · Truth+Graph+Verify)  
+**עדכון אחרון:** 2026-08-13 (**G5 + P1.2/P1.5 + Sentinel depth**)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)  
-**סטטוס מוצר (MVP Proof):** P0 `DONE` · Sentinel S1.1–S1.6 `DONE`/`PARTIAL→closed` · S1.7 `DEFERRED` · GTM = human
+**סטטוס מוצר (MVP Proof):** P0 `DONE` · Sentinel S1 `DONE` · G5 `DONE` · P1.2/P1.5 `DONE` · GTM G3–G4 = human
 
 > **חוק מוצר:** No evidence = no strong claim.  
 > **Loop:** Change → Impact → Evidence → Risk → Verification  
@@ -58,12 +58,12 @@
 
 | # | משימה | סטטוס |
 |---:|---|---|
-| 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — **Truth → `TRUTH_FIX` draft** (`POST /remediation/from-truth`); HIGH blocked; לא prod auto |
-| 1.2 | Security Graph (identity→API→data) | `PARTIAL` — `IDENTITY` / `DATA_STORE` + API edges; לא policy engine מלא |
-| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — probes + **deploy events → DEPLOYMENT graph** + Truth; לא APM חי |
-| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + **DECIDED_BY** + top finding ב־`/truth` |
-| 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — claim על `/truth` + README + DP pack; audit controls עדיין חלשים |
-| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + **Atlas Truth Check Run** (דורש `checks:write` באפליקציית GitHub) |
+| 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — Truth/Sentinel propose + gates; HIGH blocked; לא prod auto |
+| 1.2 | Security Graph (identity→API→data) | `DONE` — IDENTITY/DATA_STORE + **policy**: EXPOSES_DATA requires AUTHENTICATED_BY |
+| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — probes + deploy events → DEPLOYMENT graph + Truth; לא APM חי |
+| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + DECIDED_BY + top finding ב־`/truth` |
+| 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `DONE` — owner bind + denied audit + Truth isolation chips |
+| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + Check Run + **CI secret scan** |
 
 ---
 
@@ -215,7 +215,7 @@ DISCOVER → ANALYZE → RISK SCORE → COLLECT EVIDENCE
 | G2 | Early Access agreement + feedback loop | `PARTIAL` — playbook + Truth-10 Early Access |
 | G3 | Willingness-to-pay interviews | `OPEN` |
 | G4 | Paid Beta | `OPEN` |
-| G5 | Security hardening review לפני scale | `OPEN` |
+| G5 | Security hardening review לפני scale | `DONE` — project ownership writes · isolation audit · CI secret scan · graph policy · expanded advisories |
 
 ---
 
@@ -231,7 +231,7 @@ DISCOVER → ANALYZE → RISK SCORE → COLLECT EVIDENCE
 6. אין “AI חזק בלי ראיה” ב־UI הראשי.  
 7. **Sentinel:** observe cycle מזרים SECURITY findings + PACKAGE/advisory graph + Truth chips + verify engine נפרד.
 
-**סטטוס:** ✅ TRUTH-10 MVP Proof + Sentinel S1 product bar = **10/10** (GTM G3–G5 ו־S1.7 = מחוץ לבר הקוד).
+**סטטוס:** ✅ TRUTH-10 MVP Proof + Sentinel + **G5 hardening** + Security Graph policy + isolation controls = **10/10 engineering bar** (G3–G4 sales + S1.7 packs = מחוץ לבר הקוד).
 
 ---
 
@@ -275,6 +275,7 @@ Sprint C
 | 2026-08-13 | **S1.1/S1.3/S1.6:** secret detect + authz regression · `/sentinel` · nav · agent Sentinel knowledge |
 | 2026-08-13 | **S1.2/S1.4/S1.5:** deps advisories · config heuristics · propose + verify re-scan |
 | 2026-08-13 | **Sentinel 10/10:** cycle ingest · Graph PACKAGE/INCIDENT · Temporal AuthZ baseline · Truth surface · verify engine |
+| 2026-08-13 | **G5/P1.2/P1.5:** project ownership writes · isolation audit · Security Graph policy · CI secret scan · expanded advisories |
 
 ---
 

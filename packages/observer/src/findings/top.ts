@@ -15,6 +15,7 @@ export function isTruthPriorityFinding(f: {
 }): boolean {
   if (f.id.startsWith("behavior-")) return true;
   if (f.id.startsWith("adr-conflict-")) return true;
+  if (f.id.startsWith("security-policy-") && f.riskBand !== "LOW") return true;
   if (f.id.startsWith("sentinel:") && f.riskBand !== "LOW") return true;
   if (f.id === "sentinel-posture" && f.riskBand !== "LOW") return true;
   if (f.id === "security-graph" && f.riskBand !== "LOW") return true;

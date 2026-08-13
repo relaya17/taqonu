@@ -26,6 +26,7 @@ import {
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { defaultGoldenRoot } from "./golden-root.js";
+import { isolationAuditSummary } from "./project-access.js";
 
 export function resolveObserverWorkspace(input: {
   projectId?: string | null;
@@ -215,7 +216,12 @@ export function readObserverState(input: {
     const genome = loadGenome(resolved.workspaceRoot);
     const expected = loadExpectedBehavior(resolved.workspaceRoot);
     const drifts = verifyAgainstExpected(expected, genome?.apis ?? []);
-    const p1Signals = collectP1TruthSignals(resolved.workspaceRoot, drifts);
+    const isolation = isolationAuditSummary();
+    const p1Signals = collectP1TruthSignals(resolved.workspaceRoot, drifts, {
+      denied: isolation.denied,
+      bound: isolation.bound,
+      total: isolation.total,
+    });
     return {
       workspaceRoot: resolved.workspaceRoot,
       projectId: resolved.projectId,
@@ -272,6 +278,9 @@ export function readObserverState(input: {
         sentinelAuthz: 0,
         sentinelDeps: 0,
         sentinelConfig: 0,
+        isolationDenied: 0,
+        isolationBound: 0,
+        isolationAuditTotal: 0,
         lastDeploy: null as null | {
           provider: string;
           environment: string;

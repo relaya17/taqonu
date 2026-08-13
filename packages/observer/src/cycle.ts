@@ -35,6 +35,7 @@ import { detectAdrConflicts } from "./memory/adr-conflict.js";
 import { selectTopTruthFinding } from "./findings/top.js";
 import { runSentinelScan } from "./security/scan.js";
 import { mergeSentinelIntoGraph } from "./security/graph-ingest.js";
+import { evaluateSecurityGraphPolicy } from "./security/graph-policy.js";
 
 function claimToEpistemic(
   claim: ObserverFinding["claim"],
@@ -156,6 +157,20 @@ export function runObserveCycle(input: {
       ],
     });
   }
+
+  for (const policy of evaluateSecurityGraphPolicy(graph)) {
+    findings.push({
+      id: policy.id,
+      title: policy.title,
+      detail: policy.detail,
+      claim: policy.claim,
+      epistemicState: policy.epistemicState,
+      riskBand: policy.severity,
+      category: "SECURITY",
+      evidenceRefs: [...policy.evidenceRefs],
+    });
+  }
+
   if (decisions > 0) {
     findings.push({
       id: "engineering-memory-graph",

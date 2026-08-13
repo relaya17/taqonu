@@ -32,3 +32,9 @@ jobs:
           ATLAS_SKIP_METRICS_LOG: "1"
           NODE_ENV: test
         run: pnpm --filter @atlas/api exec tsx src/scripts/ci-eval-gate.ts
+      - name: Atlas CI secret scan (blocking)
+        env:
+          ATLAS_SKIP_AUDIT_LOG: "1"
+          ATLAS_SKIP_METRICS_LOG: "1"
+          NODE_ENV: test
+        run: pnpm --filter @atlas/api exec tsx src/scripts/ci-secrets-scan.ts

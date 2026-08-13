@@ -8,8 +8,6 @@ import {
 } from "@atlas/shared";
 import { tryPersistProjectToSupabase } from "@atlas/database";
 import { z } from "zod";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { osStore } from "../store/os-store.js";
 import {
   assertCloudSlotAvailable,
@@ -17,6 +15,11 @@ import {
 } from "../services/plan-quota.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import {
+  assertProjectWriteAccess,
+  assertSafeWorkspaceRoot,
+  bindProjectOwner,
+} from "../services/project-access.js";
 import {
   buildCentralOpinion,
   buildCentralOpinionPdfBytes,
@@ -65,25 +68,15 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   /** Explicit local folder permission — Atlas never scans whole disk. */
   app.put("/api/v1/projects/:id/workspace-root", async (request) => {
-    requireSignedInForWrite(app, request);
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    assertProjectWriteAccess(app, request, params.id);
     const body = z
       .object({
         workspaceRoot: z.string().min(1).max(1000).nullable(),
       })
       .parse(request.body);
-    const project = osStore.getProject(params.id);
-    if (!project) {
-      throw new AtlasError("NOT_FOUND", "Project not found");
-    }
     if (body.workspaceRoot) {
-      const root = resolve(body.workspaceRoot);
-      if (!existsSync(root)) {
-        throw new AtlasError(
-          "VALIDATION_ERROR",
-          `workspaceRoot not found: ${root}`,
-        );
-      }
+      const root = assertSafeWorkspaceRoot(body.workspaceRoot);
       osStore.setWorkspaceRoot(params.id, root);
       return {
         projectId: params.id,
@@ -100,6 +93,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post("/api/v1/projects", async (request, reply) => {
+    const user = requireSignedInForWrite(app, request);
     const body = createProjectSchema.parse(request.body);
     const now = new Date().toISOString();
     const existing = osStore.getProjectBySlug(body.slug);
@@ -117,6 +111,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       updatedAt: now,
     });
     osStore.upsertProject(project);
+    bindProjectOwner(project.id, user.id, "bound_on_create");
 
     let cloudProjectId: string | null = null;
     let cloudSyncedAt: string | null = null;

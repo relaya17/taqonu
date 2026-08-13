@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 import {
   approvePatchArtifact,
   applyApprovedPatch,
@@ -128,7 +129,6 @@ export async function registerRemediationRoutes(
   });
 
   app.post("/api/v1/remediation/from-truth", async (request, reply) => {
-    requireSignedInForWrite(app, request);
     const body = z
       .object({
         projectId: uuidSchema,
@@ -144,6 +144,7 @@ export async function registerRemediationRoutes(
         }),
       })
       .parse(request.body ?? {});
+    assertProjectWriteAccess(app, request, body.projectId);
     const draft = proposeTruthFindingRemediation({
       projectId: body.projectId,
       finding: {

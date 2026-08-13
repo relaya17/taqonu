@@ -81,3 +81,6 @@ export type {
 export { mergeSentinelIntoGraph } from "./security/graph-ingest.js";
 export { verifySentinelFinding } from "./security/verify.js";
 export type { SentinelVerifyResult } from "./security/verify.js";
+export { evaluateSecurityGraphPolicy } from "./security/graph-policy.js";
+export type { SecurityGraphPolicyFinding } from "./security/graph-policy.js";
+export { runCiSecretScan } from "./security/ci-secrets-scan.js";

@@ -30,6 +30,9 @@ export interface P1TruthSignals {
   sentinelAuthz: number;
   sentinelDeps: number;
   sentinelConfig: number;
+  isolationDenied: number;
+  isolationBound: number;
+  isolationAuditTotal: number;
   lastDeploy: {
     provider: string;
     environment: string;
@@ -41,6 +44,11 @@ export interface P1TruthSignals {
 export function collectP1TruthSignals(
   workspaceRoot: string,
   behaviorDiffs: BehaviorDifference[] = [],
+  isolation?: {
+    readonly denied: number;
+    readonly bound: number;
+    readonly total: number;
+  },
 ): P1TruthSignals {
   const graph = loadSoftwareKnowledgeGraph(workspaceRoot);
   const authEdges =
@@ -93,6 +101,9 @@ export function collectP1TruthSignals(
     sentinelAuthz: last.counts.authz,
     sentinelDeps: last.counts.dependencies,
     sentinelConfig: last.counts.config,
+    isolationDenied: isolation?.denied ?? 0,
+    isolationBound: isolation?.bound ?? 0,
+    isolationAuditTotal: isolation?.total ?? 0,
     lastDeploy: deploy.last
       ? {
           provider: deploy.last.provider,

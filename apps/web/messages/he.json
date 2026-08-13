@@ -1223,6 +1223,7 @@
     "p1Identity": "זהות {n}",
     "p1Sensitive": "קצוות רגישים {n}",
     "p1Sentinel": "Sentinel {posture} · קריטי {critical} · גבוה {high}",
+    "p1Isolation": "בידוד denied {denied} · bound {bound}",
     "p1Packages": "חבילות {n} · advisories {adv}",
     "p1Data": "מאגרי נתונים {n}",
     "p1Adr": "קונפליקטי ADR {n}",

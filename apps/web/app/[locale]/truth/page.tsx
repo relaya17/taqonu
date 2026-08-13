@@ -176,6 +176,9 @@ export default function TruthPage() {
           sentinelAuthz?: number;
           sentinelDeps?: number;
           sentinelConfig?: number;
+          isolationDenied?: number;
+          isolationBound?: number;
+          isolationAuditTotal?: number;
           lastDeploy?: {
             provider: string;
             environment: string;
@@ -563,6 +566,14 @@ export default function TruthPage() {
                 component={Link}
                 href="/sentinel"
                 clickable
+              />
+              <Chip
+                size="small"
+                label={t("p1Isolation", {
+                  denied: p1Signals.isolationDenied ?? 0,
+                  bound: p1Signals.isolationBound ?? 0,
+                })}
+                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
               />
               <Chip
                 size="small"

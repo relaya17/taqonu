@@ -9,13 +9,14 @@ import { runSentinelScan, verifySentinelFinding } from "@atlas/observer";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { resolveObserverWorkspace } from "../services/observe-cycle.js";
 import { proposeTruthFindingRemediation } from "../services/remediation-pipeline.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 
 export async function registerSentinelRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/projects/:id/sentinel/scan", async (request, reply) => {
-    requireSignedInForWrite(app, request);
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    assertProjectWriteAccess(app, request, projectId);
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000).optional() })
       .parse(request.body ?? {});
@@ -50,10 +51,9 @@ export async function registerSentinelRoutes(
     };
   });
 
-  /** S1.5 seed — propose remediation draft (HIGH/CRITICAL apply stays blocked). */
   app.post("/api/v1/projects/:id/sentinel/propose", async (request, reply) => {
-    requireSignedInForWrite(app, request);
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    assertProjectWriteAccess(app, request, projectId);
     const body = z
       .object({
         findingId: z.string().min(1).max(200),
@@ -95,10 +95,9 @@ export async function registerSentinelRoutes(
     });
   });
 
-  /** S1.5 — verify via separate Sentinel engine (re-scan + advisory/auth checks). */
   app.post("/api/v1/projects/:id/sentinel/verify", async (request, reply) => {
-    requireSignedInForWrite(app, request);
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    assertProjectWriteAccess(app, request, projectId);
     const body = z
       .object({
         findingId: z.string().min(1).max(200),

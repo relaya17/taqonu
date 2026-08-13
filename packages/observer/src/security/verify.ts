@@ -14,6 +14,7 @@ export interface SentinelVerifyResult {
   readonly posture: SentinelScanResult["posture"];
   readonly summary: string;
   readonly scannedAt: string;
+  readonly strength: "strong" | "basic" | "failed";
   readonly evidenceRefs: readonly string[];
   readonly claim: "OBSERVED";
   readonly checks: readonly {
@@ -138,7 +139,15 @@ export function verifySentinelFinding(
     .filter((c) => c.id !== "authz-security-test-marker")
     .every((c) => c.passed);
   const soft = checks.find((c) => c.id === "authz-security-test-marker");
-  const verified = hardOk;
+  const strict =
+    process.env.ATLAS_STRICT_SENTINEL_VERIFY === "1" &&
+    findingId.startsWith("authz-");
+  const verified = hardOk && (!strict || Boolean(soft?.passed));
+  const strength: "strong" | "basic" | "failed" = !verified
+    ? "failed"
+    : soft?.passed || isDep
+      ? "strong"
+      : "basic";
 
   return {
     findingId,
@@ -147,19 +156,21 @@ export function verifySentinelFinding(
     posture: scan.posture,
     summary: scan.summary,
     scannedAt: scan.scannedAt,
+    strength,
     evidenceRefs: still
       ? [...still.evidenceRefs]
       : [
           `verify:absent:${findingId}`,
           `scan:${scan.scannedAt}`,
+          `strength:${strength}`,
           ...checks.map((c) => `${c.id}:${c.passed ? "pass" : "fail"}`),
         ],
     claim: "OBSERVED",
     checks,
     note: verified
-      ? soft && !soft.passed
-        ? "Verified by re-scan — add auth regression test for stronger evidence"
+      ? strength === "basic"
+        ? "Verified by re-scan (basic) — add auth regression tests for strong verify"
         : "Verification passed (separate Sentinel engine — not AI self-check)"
-      : "Verification failed — finding still present or advisory still matched",
+      : "Verification failed — finding still present, advisory matched, or strict auth-test missing",
   };
 }
