@@ -61,7 +61,7 @@
 | 1.2 | Security Graph (identity→API→data) | `PARTIAL` — `IDENTITY` / `DATA_STORE` + API edges; לא policy engine מלא |
 | 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — repo probes + deploy→observe + **Truth strip**; לא APM חי |
 | 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + **DECIDED_BY** + top finding ב־`/truth` |
-| 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — claim על `/truth` + BYO; audit controls עדיין חלשים |
+| 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — claim על `/truth` + README + DP pack; audit controls עדיין חלשים |
 | 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + **Atlas Truth Check Run** (דורש `checks:write` באפליקציית GitHub) |
 
 ---
@@ -132,6 +132,7 @@ Sprint C
 | 2026-08-13 | **P1 surface:** `/truth` מציג Security/ADR/Production signals; top finding כולל adr-conflict; isolation claim |
 | 2026-08-13 | **P1.6:** webhook → observe → GitHub Check Run `Atlas Truth` (`checks:write`) |
 | 2026-08-13 | **P1.2/1.4:** IDENTITY + DATA_STORE chain; DECIDED_BY API↔ADR; put() dedupe |
+| 2026-08-13 | **P1.5 messaging:** isolation claim in README + DP Early Access; richer Truth P1 chips |
 
 ---
 

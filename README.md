@@ -4,6 +4,9 @@
 > Know what your software actually does. Know what is verified. Know what is
 > risky. And let AI fix it — safely.
 
+**Isolation:** customer code stays in your workspace / BYO storage — Atlas does not
+train across tenants. Living roadmap: [`docs/strategy/ATLAS-TRUTH-10.md`](docs/strategy/ATLAS-TRUTH-10.md).
+
 | Layer | Name | Version |
 | --- | --- | --- |
 | Monorepo | **atlas** | **0.1.0** |

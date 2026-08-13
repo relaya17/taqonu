@@ -157,6 +157,9 @@ export default function TruthPage() {
           authEdges: number;
           sensitiveEdges: number;
           decisionNodes: number;
+          decidedByEdges?: number;
+          identityNodes?: number;
+          dataStoreNodes?: number;
           adrConflicts: number;
           productionPresent: number;
           productionMissing: number;
@@ -466,12 +469,27 @@ export default function TruthPage() {
               />
               <Chip
                 size="small"
+                label={t("p1Identity", { n: p1Signals.identityNodes ?? 0 })}
+                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+              />
+              <Chip
+                size="small"
                 label={t("p1Sensitive", { n: p1Signals.sensitiveEdges })}
                 sx={{ bgcolor: "rgba(224,122,95,0.15)", color: "#F2C4B8" }}
               />
               <Chip
                 size="small"
+                label={t("p1Data", { n: p1Signals.dataStoreNodes ?? 0 })}
+                sx={{ bgcolor: "rgba(224,122,95,0.15)", color: "#F2C4B8" }}
+              />
+              <Chip
+                size="small"
                 label={t("p1Adr", { n: p1Signals.adrConflicts })}
+                sx={{ bgcolor: "rgba(224,177,90,0.15)", color: "#F0D7A0" }}
+              />
+              <Chip
+                size="small"
+                label={t("p1Decided", { n: p1Signals.decidedByEdges ?? 0 })}
                 sx={{ bgcolor: "rgba(224,177,90,0.15)", color: "#F0D7A0" }}
               />
               <Chip

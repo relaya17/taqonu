@@ -18,6 +18,13 @@ Primary surfaces for partners:
 | System Health | `/health` | Constitution / audit |
 | Readiness | `/readiness` | Certificate / verdict |
 
+## Isolation (non-negotiable claim)
+
+- Partner code stays in **their** linked workspace / BYO storage.
+- Atlas does **not** train models on customer code across tenants.
+- Findings and counters may be aggregated anonymously only with permission.
+- See Truth UI isolation note + `docs/strategy/byo-storage.md`.
+
 ## Offer (what they get)
 
 - Atlas Early Access (no invoice for the pilot week)

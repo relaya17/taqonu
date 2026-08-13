@@ -7,6 +7,9 @@ export interface P1TruthSignals {
   authEdges: number;
   sensitiveEdges: number;
   decisionNodes: number;
+  decidedByEdges: number;
+  identityNodes: number;
+  dataStoreNodes: number;
   adrConflicts: number;
   productionPresent: number;
   productionMissing: number;
@@ -24,6 +27,12 @@ export function collectP1TruthSignals(
     graph?.edges.filter((e) => e.type === "EXPOSES_DATA").length ?? 0;
   const decisionNodes =
     graph?.nodes.filter((n) => n.type === "DECISION").length ?? 0;
+  const decidedByEdges =
+    graph?.edges.filter((e) => e.type === "DECIDED_BY").length ?? 0;
+  const identityNodes =
+    graph?.nodes.filter((n) => n.type === "IDENTITY").length ?? 0;
+  const dataStoreNodes =
+    graph?.nodes.filter((n) => n.type === "DATA_STORE").length ?? 0;
   const adrConflicts = detectAdrConflicts(workspaceRoot, behaviorDiffs).length;
   const prod = detectProductionSignals(workspaceRoot);
   const missing = prod.filter((s) => !s.present);
@@ -31,6 +40,9 @@ export function collectP1TruthSignals(
     authEdges,
     sensitiveEdges,
     decisionNodes,
+    decidedByEdges,
+    identityNodes,
+    dataStoreNodes,
     adrConflicts,
     productionPresent: prod.filter((s) => s.present).length,
     productionMissing: missing.length,
