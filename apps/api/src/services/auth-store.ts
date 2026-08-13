@@ -4,6 +4,11 @@ import { dirname, resolve } from "node:path";
 import type { AuthUser, UserRole } from "@atlas/shared";
 import { authUserSchema } from "@atlas/shared";
 import { findRepoRoot } from "./repo-root.js";
+import {
+  isAuthSessionActive,
+  recordAuthSession,
+  touchAuthSession,
+} from "./auth-sessions.js";
 
 interface StoredUser {
   id: string;
@@ -16,6 +21,10 @@ interface StoredUser {
   salt: string | null;
   avatarUrl: string | null;
   createdAt: string;
+  updatedAt: string;
+  emailVerifiedAt: string | null;
+  disabledAt: string | null;
+  passwordChangedAt: string | null;
 }
 
 interface AuthFile {
@@ -28,11 +37,39 @@ function authPath(): string {
   return resolve(findRepoRoot(), ".atlas", "users.json");
 }
 
+function normalizeUser(raw: Partial<StoredUser> & Pick<StoredUser, "id" | "email">): StoredUser {
+  const createdAt = raw.createdAt ?? new Date().toISOString();
+  return {
+    id: raw.id,
+    email: raw.email,
+    displayName: raw.displayName ?? null,
+    role: raw.role === "admin" ? "admin" : "user",
+    locale: raw.locale === "en" || raw.locale === "ar" ? raw.locale : "he",
+    provider:
+      raw.provider === "google" ||
+      raw.provider === "github" ||
+      raw.provider === "apple" ||
+      raw.provider === "email" ||
+      raw.provider === "local"
+        ? raw.provider
+        : "local",
+    passwordHash: raw.passwordHash ?? null,
+    salt: raw.salt ?? null,
+    avatarUrl: raw.avatarUrl ?? null,
+    createdAt,
+    updatedAt: raw.updatedAt ?? createdAt,
+    emailVerifiedAt: raw.emailVerifiedAt ?? null,
+    disabledAt: raw.disabledAt ?? null,
+    passwordChangedAt: raw.passwordChangedAt ?? null,
+  };
+}
+
 function load(): AuthFile {
   const path = authPath();
   if (!existsSync(path)) return { users: [] };
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as AuthFile;
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as AuthFile;
+    return { users: (parsed.users ?? []).map((u) => normalizeUser(u)) };
   } catch {
     return { users: [] };
   }
@@ -58,6 +95,10 @@ export function toPublicUser(user: StoredUser): AuthUser {
     provider: user.provider,
     avatarUrl: user.avatarUrl,
     createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    emailVerified: Boolean(user.emailVerifiedAt) || user.provider !== "local",
+    disabled: Boolean(user.disabledAt),
+    hasPassword: Boolean(user.passwordHash && user.salt),
   });
 }
 
@@ -90,6 +131,7 @@ export function createLocalUser(input: {
   const isAdmin =
     Boolean(input.adminEmail) &&
     input.adminEmail!.trim().toLowerCase() === email;
+  const now = new Date().toISOString();
   const user: StoredUser = {
     id: crypto.randomUUID(),
     email,
@@ -100,7 +142,11 @@ export function createLocalUser(input: {
     passwordHash: hashPassword(input.password, salt),
     salt: salt.toString("hex"),
     avatarUrl: null,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+    emailVerifiedAt: null,
+    disabledAt: null,
+    passwordChangedAt: now,
   };
   // First user always admin for personal instance bootstrap
   if (file.users.length === 0) {
@@ -114,6 +160,7 @@ export function createLocalUser(input: {
 export function verifyLocalPassword(email: string, password: string): AuthUser | null {
   const user = findUserByEmail(email);
   if (!user?.passwordHash || !user.salt) return null;
+  if (user.disabledAt) return null;
   const salt = Buffer.from(user.salt, "hex");
   const hash = hashPassword(password, salt);
   const a = Buffer.from(hash, "hex");
@@ -163,6 +210,10 @@ export function upsertOAuthUser(input: {
     existing.provider = input.provider;
     existing.displayName = input.displayName ?? existing.displayName;
     existing.avatarUrl = input.avatarUrl ?? existing.avatarUrl;
+    existing.updatedAt = new Date().toISOString();
+    if (!existing.emailVerifiedAt) {
+      existing.emailVerifiedAt = existing.updatedAt;
+    }
     if (
       input.adminEmail &&
       input.adminEmail.trim().toLowerCase() === email
@@ -175,6 +226,7 @@ export function upsertOAuthUser(input: {
   const isAdmin =
     Boolean(input.adminEmail) &&
     input.adminEmail!.trim().toLowerCase() === email;
+  const now = new Date().toISOString();
   const user: StoredUser = {
     id: input.id ?? crypto.randomUUID(),
     email,
@@ -185,7 +237,11 @@ export function upsertOAuthUser(input: {
     passwordHash: null,
     salt: null,
     avatarUrl: input.avatarUrl ?? null,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+    emailVerifiedAt: now,
+    disabledAt: null,
+    passwordChangedAt: null,
   };
   file.users.push(user);
   save(file);
@@ -219,8 +275,180 @@ export function setLocalUserRole(userId: string, role: UserRole): AuthUser | nul
   if (!existing) return null;
   if (existing.role === role) return toPublicUser(existing);
   existing.role = role;
+  existing.updatedAt = new Date().toISOString();
   save(file);
   return toPublicUser(existing);
+}
+
+export function updateLocalUserProfile(
+  userId: string,
+  patch: {
+    displayName?: string | null;
+    locale?: "he" | "en" | "ar";
+    avatarUrl?: string | null;
+  },
+): AuthUser | null {
+  const file = load();
+  const existing = file.users.find((u) => u.id === userId);
+  if (!existing || existing.disabledAt) return null;
+  if (patch.displayName !== undefined) {
+    const name = patch.displayName?.trim() || null;
+    existing.displayName = name;
+  }
+  if (patch.locale) existing.locale = patch.locale;
+  if (patch.avatarUrl !== undefined) {
+    existing.avatarUrl = patch.avatarUrl?.trim() || null;
+  }
+  existing.updatedAt = new Date().toISOString();
+  save(file);
+  return toPublicUser(existing);
+}
+
+export function changeLocalPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): AuthUser | null {
+  const file = load();
+  const existing = file.users.find((u) => u.id === userId);
+  if (!existing?.passwordHash || !existing.salt || existing.disabledAt) return null;
+  const salt = Buffer.from(existing.salt, "hex");
+  const currentHash = hashPassword(currentPassword, salt);
+  const a = Buffer.from(currentHash, "hex");
+  const b = Buffer.from(existing.passwordHash, "hex");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const nextSalt = randomBytes(16);
+  existing.salt = nextSalt.toString("hex");
+  existing.passwordHash = hashPassword(newPassword, nextSalt);
+  existing.passwordChangedAt = new Date().toISOString();
+  existing.updatedAt = existing.passwordChangedAt;
+  save(file);
+  return toPublicUser(existing);
+}
+
+export function setLocalPasswordByEmail(
+  email: string,
+  newPassword: string,
+): AuthUser | null {
+  const file = load();
+  const normalized = email.trim().toLowerCase();
+  const existing = file.users.find((u) => u.email === normalized);
+  if (!existing || existing.disabledAt) return null;
+  const nextSalt = randomBytes(16);
+  existing.salt = nextSalt.toString("hex");
+  existing.passwordHash = hashPassword(newPassword, nextSalt);
+  existing.passwordChangedAt = new Date().toISOString();
+  existing.updatedAt = existing.passwordChangedAt;
+  if (existing.provider === "google" || existing.provider === "github" || existing.provider === "apple") {
+    // Keep OAuth provider; password becomes an additional local factor.
+  } else {
+    existing.provider = "local";
+  }
+  if (!existing.emailVerifiedAt) {
+    existing.emailVerifiedAt = existing.updatedAt;
+  }
+  save(file);
+  return toPublicUser(existing);
+}
+
+export function setUserDisabled(
+  userId: string,
+  disabled: boolean,
+): AuthUser | null {
+  const file = load();
+  const existing = file.users.find((u) => u.id === userId);
+  if (!existing) return null;
+  existing.disabledAt = disabled ? new Date().toISOString() : null;
+  existing.updatedAt = new Date().toISOString();
+  save(file);
+  return toPublicUser(existing);
+}
+
+export function deleteLocalUser(userId: string): boolean {
+  const file = load();
+  const before = file.users.length;
+  file.users = file.users.filter((u) => u.id !== userId);
+  if (file.users.length === before) return false;
+  save(file);
+  return true;
+}
+
+export function markEmailVerified(userId: string): AuthUser | null {
+  const file = load();
+  const existing = file.users.find((u) => u.id === userId);
+  if (!existing) return null;
+  existing.emailVerifiedAt = new Date().toISOString();
+  existing.updatedAt = existing.emailVerifiedAt;
+  save(file);
+  return toPublicUser(existing);
+}
+
+export function signSession(
+  userId: string,
+  secret: string,
+  ttlSeconds = 60 * 60 * 24 * 14,
+  meta?: { userAgent?: string | null; ip?: string | null },
+): { token: string; expiresAt: string; sessionId: string } {
+  const expiresAtMs = Date.now() + ttlSeconds * 1000;
+  const sessionId = crypto.randomUUID();
+  const payload = Buffer.from(
+    JSON.stringify({ sub: userId, exp: expiresAtMs, sid: sessionId }),
+    "utf8",
+  ).toString("base64url");
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
+  const expiresAt = new Date(expiresAtMs).toISOString();
+  recordAuthSession({
+    id: sessionId,
+    userId,
+    expiresAt,
+    userAgent: meta?.userAgent ?? null,
+    ip: meta?.ip ?? null,
+  });
+  return {
+    token: `${payload}.${sig}`,
+    expiresAt,
+    sessionId,
+  };
+}
+
+export function verifySession(
+  token: string | undefined,
+  secret: string,
+): string | null {
+  return peekSession(token, secret)?.userId ?? null;
+}
+
+/** Validate HMAC + expiry + session registry; return subject and real cookie expiry. */
+export function peekSession(
+  token: string | undefined,
+  secret: string,
+): { userId: string; expiresAt: string; sessionId: string | null } | null {
+  if (!token || !token.includes(".")) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as { sub?: string; exp?: number; sid?: string };
+    if (!data.sub || !data.exp || Date.now() > data.exp) return null;
+    if (data.sid) {
+      if (!isAuthSessionActive(data.sid)) return null;
+      touchAuthSession(data.sid);
+    }
+    const stored = findUserById(data.sub);
+    if (stored?.disabledAt) return null;
+    return {
+      userId: data.sub,
+      expiresAt: new Date(data.exp).toISOString(),
+      sessionId: data.sid ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -251,9 +479,11 @@ export function mirrorAuthUserLocally(input: {
     if (input.locale) existing.locale = input.locale;
     if (input.provider) existing.provider = input.provider;
     if (input.avatarUrl !== undefined) existing.avatarUrl = input.avatarUrl;
+    existing.updatedAt = new Date().toISOString();
     save(file);
     return toPublicUser(existing);
   }
+  const now = new Date().toISOString();
   const user: StoredUser = {
     id: input.id,
     email,
@@ -264,59 +494,13 @@ export function mirrorAuthUserLocally(input: {
     passwordHash: null,
     salt: null,
     avatarUrl: input.avatarUrl ?? null,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+    emailVerifiedAt: now,
+    disabledAt: null,
+    passwordChangedAt: null,
   };
   file.users.push(user);
   save(file);
   return toPublicUser(user);
-}
-
-export function signSession(
-  userId: string,
-  secret: string,
-  ttlSeconds = 60 * 60 * 24 * 14,
-): { token: string; expiresAt: string } {
-  const expiresAtMs = Date.now() + ttlSeconds * 1000;
-  const payload = Buffer.from(
-    JSON.stringify({ sub: userId, exp: expiresAtMs }),
-    "utf8",
-  ).toString("base64url");
-  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
-  return {
-    token: `${payload}.${sig}`,
-    expiresAt: new Date(expiresAtMs).toISOString(),
-  };
-}
-
-export function verifySession(
-  token: string | undefined,
-  secret: string,
-): string | null {
-  return peekSession(token, secret)?.userId ?? null;
-}
-
-/** Validate HMAC + expiry; return subject and real cookie expiry (does not mint a new token). */
-export function peekSession(
-  token: string | undefined,
-  secret: string,
-): { userId: string; expiresAt: string } | null {
-  if (!token || !token.includes(".")) return null;
-  const [payload, sig] = token.split(".");
-  if (!payload || !sig) return null;
-  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  try {
-    const data = JSON.parse(
-      Buffer.from(payload, "base64url").toString("utf8"),
-    ) as { sub?: string; exp?: number };
-    if (!data.sub || !data.exp || Date.now() > data.exp) return null;
-    return {
-      userId: data.sub,
-      expiresAt: new Date(data.exp).toISOString(),
-    };
-  } catch {
-    return null;
-  }
 }

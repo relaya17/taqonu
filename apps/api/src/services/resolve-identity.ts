@@ -52,6 +52,9 @@ function buildUserFromAuthClaims(
   const local =
     findUserById(claims.sub) ??
     (claims.email ? findUserByEmail(claims.email) : undefined);
+  if (local?.disabledAt) {
+    throw new Error("ACCOUNT_DISABLED");
+  }
   const email = (claims.email ?? local?.email ?? "").trim().toLowerCase();
   const provider = claims.provider ?? local?.provider ?? ("email" as const);
   const user = authUserSchema.parse({
@@ -66,6 +69,10 @@ function buildUserFromAuthClaims(
     provider,
     avatarUrl: claims.avatarUrl ?? local?.avatarUrl ?? null,
     createdAt: local?.createdAt ?? new Date().toISOString(),
+    updatedAt: local?.updatedAt,
+    emailVerified: Boolean(local?.emailVerifiedAt) || provider !== "local",
+    disabled: false,
+    hasPassword: Boolean(local?.passwordHash && local?.salt),
   });
   // Keep offline store warm so stub mode / Auth-down still has a row —
   // only write when missing or role/id drift.
@@ -102,15 +109,20 @@ export function resolveUserFromSupabaseAccessToken(
   if (claims.expiresAt !== null && claims.expiresAt <= Date.now()) return null;
 
   const local = findUserById(claims.sub);
+  if (local?.disabledAt) return null;
   const role: UserRole = claims.atlasRole ?? local?.role ?? "user";
   if (claims.atlasRole && local && local.role !== claims.atlasRole) {
     setLocalUserRole(claims.sub, claims.atlasRole);
   }
-  const user = buildUserFromAuthClaims(claims, role);
-  const expiresAt = claims.expiresAt
-    ? new Date(claims.expiresAt).toISOString()
-    : new Date(Date.now() + 3600_000).toISOString();
-  return { user, expiresAt };
+  try {
+    const user = buildUserFromAuthClaims(claims, role);
+    const expiresAt = claims.expiresAt
+      ? new Date(claims.expiresAt).toISOString()
+      : new Date(Date.now() + 3600_000).toISOString();
+    return { user, expiresAt };
+  } catch {
+    return null;
+  }
 }
 
 function resolveFromLocalSession(
@@ -121,7 +133,7 @@ function resolveFromLocalSession(
   const peeked = peekSession(token, app.atlasEnv.COOKIE_SECRET);
   if (!peeked) return null;
   const stored = findUserById(peeked.userId);
-  if (!stored) return null;
+  if (!stored || stored.disabledAt) return null;
   const user = toPublicUser(stored);
   return {
     user,

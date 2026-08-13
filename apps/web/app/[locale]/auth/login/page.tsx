@@ -125,6 +125,9 @@ export default function LoginPage() {
           <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>
             {t("login")}
           </Button>
+          <Typography variant="body2" sx={{ textAlign: "center" }}>
+            <Link href="/auth/forgot">{t("forgotLink")}</Link>
+          </Typography>
         </Stack>
       </Box>
 

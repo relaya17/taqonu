@@ -1,24 +1,50 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   AtlasError,
+  adminUpdateUserSchema,
+  authDeviceSessionSchema,
   authProvidersSchema,
   authSessionDetailSchema,
   authSessionStateSchema,
   capabilitiesForRole,
+  changePasswordSchema,
+  deleteAccountSchema,
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
+  revokeSessionSchema,
+  updateProfileSchema,
 } from "@atlas/shared";
 import { isLiveSupabase } from "@atlas/database";
 import {
+  changeLocalPassword,
   createLocalUser,
+  deleteLocalUser,
+  findUserByEmail,
   listUsers,
+  peekSession,
   rekeyLocalUserId,
+  setLocalPasswordByEmail,
   setLocalUserRole,
+  setUserDisabled,
   signSession,
+  updateLocalUserProfile,
   upsertOAuthUser,
   verifyLocalPassword,
 } from "../services/auth-store.js";
-import { requireAdmin } from "../middleware/auth-guards.js";
+import { assertAuthRateLimit } from "../services/auth-rate-limit.js";
+import {
+  consumePasswordResetToken,
+  createPasswordResetToken,
+} from "../services/auth-reset.js";
+import {
+  listAuthSessionsForUser,
+  revokeAllAuthSessionsForUser,
+  revokeAuthSession,
+  revokeOtherAuthSessions,
+} from "../services/auth-sessions.js";
+import { requireAdmin, requireUser } from "../middleware/auth-guards.js";
 import {
   finalizeIdentityReconciliation,
   readAccessTokenClaims,
@@ -48,6 +74,44 @@ function sessionCookie(token: string, maxAgeSec: number): string {
 
 function clearCookie(): string {
   return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+function clientMeta(request: FastifyRequest): {
+  userAgent: string | null;
+  ip: string | null;
+} {
+  const ua = request.headers["user-agent"];
+  return {
+    userAgent: typeof ua === "string" ? ua.slice(0, 300) : null,
+    ip: request.ip ?? null,
+  };
+}
+
+function rateOrThrow(key: string, limit: number, windowMs: number): void {
+  try {
+    assertAuthRateLimit({ key, limit, windowMs });
+  } catch {
+    throw new AtlasError("RATE_LIMITED", "Too many attempts — try again later", {
+      statusCode: 429,
+    });
+  }
+}
+
+function currentSessionId(
+  app: FastifyInstance,
+  request: FastifyRequest,
+): string | null {
+  const raw = request.headers.cookie;
+  if (!raw) return null;
+  const parts = raw.split(";").map((p) => p.trim());
+  for (const part of parts) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    if (part.slice(0, idx) !== COOKIE) continue;
+    const token = decodeURIComponent(part.slice(idx + 1));
+    return peekSession(token, app.atlasEnv.COOKIE_SECRET)?.sessionId ?? null;
+  }
+  return null;
 }
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -107,6 +171,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/auth/register", async (request, reply) => {
+    rateOrThrow(`register:${request.ip}`, 8, 60_000);
     const body = registerSchema.parse(request.body);
     try {
       const user = createLocalUser({
@@ -118,10 +183,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           ? { adminEmail: app.atlasEnv.ATLAS_ADMIN_EMAIL }
           : {}),
       });
-      const { token, expiresAt } = signSession(
+      const { token, expiresAt, sessionId } = signSession(
         user.id,
         app.atlasEnv.COOKIE_SECRET,
         SESSION_MAX_AGE_SEC,
+        clientMeta(request),
       );
       const cookies = [sessionCookie(token, SESSION_MAX_AGE_SEC)];
       // Mirror into Supabase Auth (same id + atlas_role) so SaaS path uses
@@ -148,6 +214,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           role: user.role,
           capabilities: [...capabilitiesForRole(user.role)],
           expiresAt,
+          sessionId,
         }),
       );
     } catch (error) {
@@ -161,9 +228,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/auth/login", async (request, reply) => {
+    rateOrThrow(`login:${request.ip}`, 20, 60_000);
     const body = loginSchema.parse(request.body);
     let user = verifyLocalPassword(body.email, body.password);
     if (!user) {
+      const existing = findUserByEmail(body.email);
+      if (existing?.disabledAt) {
+        throw new AtlasError("FORBIDDEN", "Account disabled", { statusCode: 403 });
+      }
       throw new AtlasError("UNAUTHORIZED", "Invalid email or password", {
         statusCode: 401,
       });
@@ -240,10 +312,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         }
       }
     }
-    const { token, expiresAt } = signSession(
+    const { token, expiresAt, sessionId } = signSession(
       user.id,
       app.atlasEnv.COOKIE_SECRET,
       SESSION_MAX_AGE_SEC,
+      clientMeta(request),
     );
     const cookies = [sessionCookie(token, SESSION_MAX_AGE_SEC)];
     if (sbSession) cookies.push(serializeSupabaseSessionCookie(sbSession));
@@ -254,6 +327,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       role: user.role,
       capabilities: [...capabilitiesForRole(user.role)],
       expiresAt,
+      sessionId,
     });
   });
 
@@ -334,10 +408,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         toId: effectiveUser.id,
       });
     }
-    const { token, expiresAt } = signSession(
+    const { token, expiresAt, sessionId } = signSession(
       effectiveUser.id,
       app.atlasEnv.COOKIE_SECRET,
       SESSION_MAX_AGE_SEC,
+      clientMeta(request),
     );
     const cookies = [sessionCookie(token, SESSION_MAX_AGE_SEC)];
     // Browser already authenticated against Supabase for OAuth — reuse that
@@ -358,13 +433,234 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       role: effectiveUser.role,
       capabilities: [...capabilitiesForRole(effectiveUser.role)],
       expiresAt,
+      sessionId,
     });
+  });
+
+  app.patch("/api/v1/auth/profile", async (request) => {
+    const user = requireUser(app, request);
+    const body = updateProfileSchema.parse(request.body ?? {});
+    const updated = updateLocalUserProfile(user.id, {
+      ...(body.displayName !== undefined ? { displayName: body.displayName } : {}),
+      ...(body.locale !== undefined ? { locale: body.locale } : {}),
+      ...(body.avatarUrl !== undefined ? { avatarUrl: body.avatarUrl } : {}),
+    });
+    if (!updated) {
+      throw new AtlasError("NOT_FOUND", "User not found", { statusCode: 404 });
+    }
+    await syncSupabaseAuthRole(app.atlasEnv, {
+      id: updated.id,
+      role: updated.role,
+      email: updated.email,
+      displayName: updated.displayName,
+      locale: updated.locale,
+      provider: updated.provider,
+      avatarUrl: updated.avatarUrl ?? null,
+    });
+    return { user: updated };
+  });
+
+  app.post("/api/v1/auth/password/change", async (request) => {
+    const user = requireUser(app, request);
+    rateOrThrow(`pwchange:${user.id}`, 8, 60_000);
+    const body = changePasswordSchema.parse(request.body);
+    const updated = changeLocalPassword(
+      user.id,
+      body.currentPassword,
+      body.newPassword,
+    );
+    if (!updated) {
+      throw new AtlasError("UNAUTHORIZED", "Current password incorrect", {
+        statusCode: 401,
+      });
+    }
+    await ensureSupabaseAuthUser(app.atlasEnv, {
+      id: updated.id,
+      email: updated.email,
+      password: body.newPassword,
+      role: updated.role,
+      displayName: updated.displayName,
+      locale: updated.locale,
+      provider: updated.provider,
+    });
+    return { ok: true, user: updated };
+  });
+
+  app.post("/api/v1/auth/password/forgot", async (request) => {
+    rateOrThrow(`forgot:${request.ip}`, 8, 60_000);
+    const body = forgotPasswordSchema.parse(request.body);
+    const existing = findUserByEmail(body.email);
+    // Always opaque success to avoid account enumeration.
+    const base = {
+      ok: true as const,
+      message: "If that email exists, a reset token was issued.",
+    };
+    if (!existing || existing.disabledAt) return base;
+    const { token, expiresAt } = createPasswordResetToken(existing.email);
+    const expose =
+      process.env.NODE_ENV !== "production" ||
+      process.env.ATLAS_EXPOSE_RESET_TOKEN === "1";
+    return expose
+      ? { ...base, resetToken: token, expiresAt, email: existing.email }
+      : base;
+  });
+
+  app.post("/api/v1/auth/password/reset", async (request, reply) => {
+    rateOrThrow(`reset:${request.ip}`, 10, 60_000);
+    const body = resetPasswordSchema.parse(request.body);
+    const consumed = consumePasswordResetToken(body.token);
+    if (!consumed) {
+      throw new AtlasError("UNAUTHORIZED", "Invalid or expired reset token", {
+        statusCode: 401,
+      });
+    }
+    const updated = setLocalPasswordByEmail(consumed.email, body.newPassword);
+    if (!updated) {
+      throw new AtlasError("NOT_FOUND", "User not found", { statusCode: 404 });
+    }
+    revokeAllAuthSessionsForUser(updated.id);
+    await ensureSupabaseAuthUser(app.atlasEnv, {
+      id: updated.id,
+      email: updated.email,
+      password: body.newPassword,
+      role: updated.role,
+      displayName: updated.displayName,
+      locale: updated.locale,
+      provider: updated.provider,
+    });
+    const { token, expiresAt, sessionId } = signSession(
+      updated.id,
+      app.atlasEnv.COOKIE_SECRET,
+      SESSION_MAX_AGE_SEC,
+      clientMeta(request),
+    );
+    const cookies = [sessionCookie(token, SESSION_MAX_AGE_SEC)];
+    const sbSession = await signInSupabaseUser(app.atlasEnv, {
+      email: updated.email,
+      password: body.newPassword,
+    });
+    if (sbSession) cookies.push(serializeSupabaseSessionCookie(sbSession));
+    reply.header("Set-Cookie", cookies);
+    return authSessionDetailSchema.parse({
+      authenticated: true,
+      user: updated,
+      role: updated.role,
+      capabilities: [...capabilitiesForRole(updated.role)],
+      expiresAt,
+      sessionId,
+    });
+  });
+
+  app.get("/api/v1/auth/sessions", async (request) => {
+    const user = requireUser(app, request);
+    const current = currentSessionId(app, request);
+    const items = listAuthSessionsForUser(user.id).map((s) =>
+      authDeviceSessionSchema.parse({
+        id: s.id,
+        createdAt: s.createdAt,
+        lastSeenAt: s.lastSeenAt,
+        expiresAt: s.expiresAt,
+        userAgent: s.userAgent,
+        ip: s.ip,
+        current: current === s.id,
+      }),
+    );
+    return { items, total: items.length, currentSessionId: current };
+  });
+
+  app.post("/api/v1/auth/sessions/revoke", async (request) => {
+    const user = requireUser(app, request);
+    const body = revokeSessionSchema.parse(request.body);
+    const ok = revokeAuthSession(user.id, body.sessionId);
+    if (!ok) {
+      throw new AtlasError("NOT_FOUND", "Session not found", { statusCode: 404 });
+    }
+    return { ok: true };
+  });
+
+  app.post("/api/v1/auth/sessions/revoke-others", async (request) => {
+    const user = requireUser(app, request);
+    const current = currentSessionId(app, request);
+    const revoked = revokeOtherAuthSessions(user.id, current);
+    return { ok: true, revoked };
+  });
+
+  app.delete("/api/v1/auth/account", async (request, reply) => {
+    const user = requireUser(app, request);
+    rateOrThrow(`delete:${user.id}`, 5, 60_000);
+    const body = deleteAccountSchema.parse(request.body ?? {});
+    if (user.hasPassword) {
+      if (!body.password || !verifyLocalPassword(user.email, body.password)) {
+        throw new AtlasError("UNAUTHORIZED", "Password required to delete account", {
+          statusCode: 401,
+        });
+      }
+    } else if (
+      !body.confirmEmail ||
+      body.confirmEmail.trim().toLowerCase() !== user.email
+    ) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "confirmEmail must match your account email",
+      );
+    }
+    revokeAllAuthSessionsForUser(user.id);
+    deleteLocalUser(user.id);
+    reply.header("Set-Cookie", [clearCookie(), clearSupabaseSessionCookie()]);
+    return { ok: true };
   });
 
   app.get("/api/v1/admin/users", async (request) => {
     requireAdmin(app, request);
     const users = listUsers();
     return { items: users, total: users.length };
+  });
+
+  app.patch("/api/v1/admin/users/:id", async (request) => {
+    const admin = requireAdmin(app, request);
+    const { id } = request.params as { id: string };
+    const body = adminUpdateUserSchema.parse(request.body ?? {});
+    if (id === admin.id && body.disabled === true) {
+      throw new AtlasError("VALIDATION_ERROR", "Cannot disable your own admin account");
+    }
+    if (id === admin.id && body.role === "user") {
+      throw new AtlasError("VALIDATION_ERROR", "Cannot demote your own admin account");
+    }
+    let updated = listUsers().find((u) => u.id === id) ?? null;
+    if (!updated) {
+      throw new AtlasError("NOT_FOUND", "User not found", { statusCode: 404 });
+    }
+    if (body.role !== undefined) {
+      updated = setLocalUserRole(id, body.role) ?? updated;
+      await syncSupabaseAuthRole(app.atlasEnv, {
+        id: updated.id,
+        role: updated.role,
+        email: updated.email,
+        displayName: updated.displayName,
+        locale: updated.locale,
+        provider: updated.provider,
+        avatarUrl: updated.avatarUrl ?? null,
+      });
+    }
+    if (body.disabled !== undefined) {
+      updated = setUserDisabled(id, body.disabled) ?? updated;
+      if (body.disabled) revokeAllAuthSessionsForUser(id);
+    }
+    return { user: updated };
+  });
+
+  app.delete("/api/v1/admin/users/:id", async (request) => {
+    const admin = requireAdmin(app, request);
+    const { id } = request.params as { id: string };
+    if (id === admin.id) {
+      throw new AtlasError("VALIDATION_ERROR", "Cannot delete your own admin account");
+    }
+    revokeAllAuthSessionsForUser(id);
+    const ok = deleteLocalUser(id);
+    if (!ok) {
+      throw new AtlasError("NOT_FOUND", "User not found", { statusCode: 404 });
+    }
+    return { ok: true };
   });
 
   app.get("/api/v1/admin/overview", async (request) => {

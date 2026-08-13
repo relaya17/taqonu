@@ -5,6 +5,7 @@ export type AtlasErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "QUOTA_EXCEEDED"
+  | "RATE_LIMITED"
   | "APPROVAL_REQUIRED"
   | "SECRET_DETECTED"
   | "POLICY_VIOLATION"
@@ -52,6 +53,8 @@ function defaultStatus(code: AtlasErrorCode): number {
       return 409;
     case "QUOTA_EXCEEDED":
       return 402;
+    case "RATE_LIMITED":
+      return 429;
     case "WEBHOOK_INVALID":
       return 401;
     case "CONFIG_ERROR":
