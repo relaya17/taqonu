@@ -43,14 +43,17 @@ test.describe("A11y smoke (EN)", () => {
     await expect(openMenu).toHaveAttribute("aria-expanded", "false");
 
     await openMenu.click();
+    // MUI temporary Drawer modals aria-hide the rest of the page (incl. hamburger).
     const mobileDrawer = page.locator(".MuiDrawer-modal .MuiDrawer-paper");
     await expect(mobileDrawer).toBeVisible({ timeout: 15_000 });
     await expect(
       mobileDrawer.getByRole("navigation", { name: /main navigation/i }),
     ).toBeVisible();
-    await expect(openMenu).toHaveAttribute("aria-expanded", "true");
+    const closeMenu = page.getByRole("button", { name: /close menu/i });
+    await expect(closeMenu).toBeVisible();
+    await closeMenu.click();
 
-    await page.getByRole("button", { name: /close menu/i }).click();
+    await expect(openMenu).toBeVisible({ timeout: 15_000 });
     await expect(openMenu).toHaveAttribute("aria-expanded", "false");
   });
 
