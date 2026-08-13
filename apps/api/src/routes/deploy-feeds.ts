@@ -113,10 +113,25 @@ export async function registerDeployFeedRoutes(
     osStore.addEvidence(body.projectId, records);
 
     const snapshot = runStateReconciliation(body.projectId);
+    let observeCycleId: string | null = null;
+    try {
+      const { tryContinuousObserve } = await import(
+        "../services/observe-cycle.js"
+      );
+      const observed = tryContinuousObserve({
+        projectId: body.projectId,
+        envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+        trigger: "deploy",
+      });
+      observeCycleId = observed?.id ?? null;
+    } catch {
+      /* best-effort */
+    }
     return reply.status(201).send({
       feed: summarized,
       evidenceIds: records.map((r) => r.id),
       snapshot,
+      observeCycleId,
       note: "Vercel deployment metadata only — no tokens accepted; DEPLOYMENT slice updated.",
     });
   });
@@ -192,10 +207,25 @@ export async function registerDeployFeedRoutes(
     osStore.addEvidence(body.projectId, records);
 
     const snapshot = runStateReconciliation(body.projectId);
+    let observeCycleId: string | null = null;
+    try {
+      const { tryContinuousObserve } = await import(
+        "../services/observe-cycle.js"
+      );
+      const observed = tryContinuousObserve({
+        projectId: body.projectId,
+        envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+        trigger: "deploy",
+      });
+      observeCycleId = observed?.id ?? null;
+    } catch {
+      /* best-effort */
+    }
     return reply.status(201).send({
       feed: summarized,
       evidenceIds: records.map((r) => r.id),
       snapshot,
+      observeCycleId,
       note: "Render deployment metadata only — no tokens accepted; DEPLOYMENT slice updated.",
     });
   });

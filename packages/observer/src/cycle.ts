@@ -25,6 +25,8 @@ import {
 import { impactBoostForFlow, scoreRiskWithGraph } from "./risk/graph-aware.js";
 import { bumpTruthCounters, loadTruthCounters } from "./metrics/counters.js";
 import { appendCycleHistory, listCycleHistory } from "./history/cycles.js";
+import { detectProductionSignals } from "./production/signals.js";
+import { detectAdrConflicts } from "./memory/adr-conflict.js";
 
 function claimToEpistemic(
   claim: ObserverFinding["claim"],
@@ -144,6 +146,35 @@ export function runObserveCycle(input: {
       riskBand: "LOW",
       category: "GENOME",
       evidenceRefs: [`DECISION×${decisions}`],
+    });
+  }
+
+  const prodSignals = detectProductionSignals(input.workspaceRoot);
+  const missingProd = prodSignals.filter((s) => !s.present);
+  findings.push({
+    id: "production-intelligence",
+    title: "Production intelligence coverage",
+    detail: `Present: ${prodSignals.filter((s) => s.present).map((s) => s.title).join(", ") || "none"}. Missing: ${missingProd.map((s) => s.title).join(", ") || "none"}.`,
+    claim: missingProd.length ? "INFERRED" : "OBSERVED",
+    epistemicState: missingProd.length ? "INFERRED" : "OBSERVED",
+    riskBand: missingProd.length >= 3 ? "MEDIUM" : "LOW",
+    category: "GENOME",
+    evidenceRefs: prodSignals.map(
+      (s) => `${s.id}:${s.present ? "PRESENT" : "MISSING"}`,
+    ),
+  });
+
+  for (const conflict of detectAdrConflicts(input.workspaceRoot, behaviorDiffs)) {
+    findings.push({
+      id: `adr-conflict-${conflict.adrPath}-${conflict.flowId}`.slice(0, 180),
+      title: conflict.title,
+      detail: conflict.detail,
+      claim: "INFERRED",
+      epistemicState: "INFERRED",
+      riskBand: "HIGH",
+      category: "BEHAVIOR",
+      flowId: conflict.flowId,
+      evidenceRefs: [conflict.adrPath, ...conflict.matchedTerms],
     });
   }
 
