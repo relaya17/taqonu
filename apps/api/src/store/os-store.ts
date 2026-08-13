@@ -927,6 +927,15 @@ class OsStore {
     return this.byoCloudBindings.get(ownerId) ?? null;
   }
 
+  countConnectedByoCloudBindings(): number {
+    this.ensureLoaded();
+    let n = 0;
+    for (const binding of this.byoCloudBindings.values()) {
+      if (binding.status === "connected") n += 1;
+    }
+    return n;
+  }
+
   setByoCloudBinding(ownerId: string, binding: StoredByoCloudBinding): void {
     this.ensureLoaded();
     this.byoCloudBindings.set(ownerId, binding);

@@ -102,7 +102,7 @@ Atlas gives: **what is verified, what isn’t, what’s dangerous — and the Ev
 | Production Readiness | `/he/readiness` |
 | Partners | `/he/partners` |
 | System Health | `/he/health` |
-| Admin (separate) | `/admin` · `/admin/login` |
+| Admin (separate) | `/admin` · `/admin/login` · Command Center (watchdog / knowledge / automation) |
 | Investors deck | `/investors` |
 
 ### Three product pillars

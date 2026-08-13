@@ -24,11 +24,13 @@ import { apiPost } from "@/lib/api";
 const WIDTH = 240;
 
 const LINKS = [
-  { href: "/admin", label: "לוח בקרה" },
+  { href: "/admin", label: "מרכז פיקוד" },
   { href: "/admin/users", label: "משתמשים" },
   { href: "/admin/leads", label: "לידים" },
   { href: "/admin/login", label: "התחברות אדמין" },
-  { href: "/investors", label: "דף משקיעים" },
+  { href: "/he/plan", label: "מחירים / BYO" },
+  { href: "/he/welcome", label: "דף נחיתה" },
+  { href: "/investors", label: "משקיעים" },
   { href: "/he", label: "חזרה ל-ArletOS" },
 ] as const;
 
@@ -47,13 +49,20 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <Typography
         sx={{
           px: 2,
-          mb: 2,
-          fontFamily: '"Frank Ruhl Libre", serif',
+          mb: 0.5,
+          fontFamily: '"Syne", "Frank Ruhl Libre", serif',
           fontWeight: 700,
-          fontSize: "1.25rem",
+          fontSize: "1.35rem",
+          letterSpacing: "-0.03em",
         }}
       >
-        ArletOS Admin
+        ArletOS Command
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{ px: 2, mb: 2, display: "block", opacity: 0.7 }}
+      >
+        ניטור · ידע · אוטומציה
       </Typography>
       <List dense>
         {LINKS.map((link) => {
@@ -142,8 +151,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
               width: WIDTH,
               maxWidth: "100vw",
               border: 0,
-              background: "linear-gradient(180deg, #0F3D3E 0%, #14282A 100%)",
+              background:
+                "linear-gradient(180deg, #061214 0%, #0C1E22 45%, #14282A 100%)",
               color: "#F4F7F5",
+              borderInlineStart: "1px solid rgba(62,200,190,0.2)",
               overflowX: "hidden",
             },
           }}

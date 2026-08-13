@@ -356,6 +356,11 @@ export default function ProjectsPage() {
             {t("quotaSell")}
           </Alert>
         ) : null}
+        {!canUpload ? (
+          <Alert severity="info" sx={{ mt: 1.5 }}>
+            {t("uploadCloudDisabledHint")}
+          </Alert>
+        ) : null}
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.5 }}>
           <EpistemicChip
             state={portfolioQuery.data?.epistemicState ?? "UNKNOWN"}

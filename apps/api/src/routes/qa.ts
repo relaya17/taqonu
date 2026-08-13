@@ -409,6 +409,10 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     rememberProcessAuditId(document.id);
     const memory = syncProcessAuditToMemory(document);
     recordProcessAuditUsage();
+    osStore.setMeta(
+      "admin.processAudit.last",
+      JSON.stringify({ at: document.completedAt, auditId: document.id }),
+    );
 
     osStore.recordEvent({
       type: "qa.process_audit.completed",

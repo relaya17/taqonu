@@ -445,10 +445,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               {t("nav.plan")}
             </Button>
             <Button
-              component={Link}
-              href="/auth/login"
               size="small"
               variant="contained"
+              onClick={() => {
+                window.location.assign(`/${locale}/auth/login`);
+              }}
               sx={{
                 bgcolor: "#3EC8BE",
                 color: "#041214",

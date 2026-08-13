@@ -409,6 +409,7 @@
     "uploadCloud": "Upload to cloud",
     "cloudSynced": "In cloud",
     "localOnly": "Local only",
+    "uploadCloudDisabledHint": "Atlas evidence-mirror upload is blocked on Free (0 slots). Connect Cloudflare BYO for your data, or upgrade to Pro for an optional mirror.",
     "quotaBlocked": "Cloud quota full — upgrade on Plan",
     "quotaSell": "Free = your Cloudflare for data + limited Atlas usage. Upgrade Pro for higher ceilings.",
     "viewPlan": "View pricing",
@@ -570,8 +571,8 @@
         "body": "Patches go Propose → Approve → Apply. Humans stay in control."
       },
       "scale": {
-        "title": "Freemium that grows with you",
-        "body": "Local projects unlimited. Cloud slots and quotas expand on Pro."
+        "title": "Usage freemium on your cloud",
+        "body": "Data stays on your Cloudflare free tier. Atlas meters audits, eval, and agent — we do not host your projects for free."
       }
     },
     "pricingTitle": "Usage freemium — not hosted storage",

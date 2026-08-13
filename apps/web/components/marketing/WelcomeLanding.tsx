@@ -2,11 +2,19 @@
 
 import { Box, Button, Stack, Typography } from "@mui/material";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/routing";
+import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
 
 export function WelcomeLanding() {
   const t = useTranslations("landing");
+  const router = useRouter();
+
+  const goLogin = () => {
+    router.push("/auth/login");
+  };
+  const goPlan = () => {
+    router.push("/plan");
+  };
 
   return (
     <Box
@@ -82,8 +90,7 @@ export function WelcomeLanding() {
           </Typography>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ pt: 0.5 }}>
             <Button
-              component={Link}
-              href="/auth/login"
+              onClick={goLogin}
               variant="contained"
               size="large"
               sx={{
@@ -97,8 +104,7 @@ export function WelcomeLanding() {
               {t("ctaStart")}
             </Button>
             <Button
-              component={Link}
-              href="/plan"
+              onClick={goPlan}
               variant="outlined"
               size="large"
               sx={{
@@ -246,7 +252,7 @@ export function WelcomeLanding() {
             <Typography sx={{ color: "rgba(170, 200, 198, 0.9)", mb: 2 }}>
               {t("freeDetail")}
             </Typography>
-            <Button component={Link} href="/auth/login" variant="outlined" sx={{ color: "#E8F4F2", borderColor: "rgba(62,200,190,0.45)" }}>
+            <Button onClick={goLogin} variant="outlined" sx={{ color: "#E8F4F2", borderColor: "rgba(62,200,190,0.45)" }}>
               {t("ctaStart")}
             </Button>
           </Box>
@@ -264,8 +270,7 @@ export function WelcomeLanding() {
               {t("proDetail")}
             </Typography>
             <Button
-              component={Link}
-              href="/plan"
+              onClick={goPlan}
               variant="contained"
               sx={{ bgcolor: "#3EC8BE", color: "#041214", fontWeight: 700, "&:hover": { bgcolor: "#5AD8CF" } }}
             >
@@ -295,8 +300,7 @@ export function WelcomeLanding() {
           {t("closeTitle")}
         </Typography>
         <Button
-          component={Link}
-          href="/plan"
+          onClick={goPlan}
           variant="contained"
           size="large"
           sx={{
