@@ -60,10 +60,17 @@ describe("durable knowledge corpus", () => {
       path,
     );
 
-    const hydrated = hydrateKnowledgeCorpus({ path, enablePersist: true });
+    const hydrated = hydrateKnowledgeCorpus({
+      path,
+      enablePersist: true,
+      force: true,
+    });
     expect(hydrated.source).toBe("persisted");
-    expect(listKnowledgeCorpus()).toHaveLength(1);
-    expect(listKnowledgeCorpus()[0]?.title).toMatch(/Durable webhook/);
+    // Persisted docs win as base; verified-tech seed entries merge in when missing.
+    const corpus = listKnowledgeCorpus();
+    expect(corpus.some((d) => d.id === "kf_custom")).toBe(true);
+    expect(corpus[0]?.title).toMatch(/Durable webhook/);
+    expect(corpus.length).toBeGreaterThan(1);
 
     const doc = ingestKnowledgeDocument({
       title: "Second durable chunk",
@@ -74,8 +81,9 @@ describe("durable knowledge corpus", () => {
     expect(doc.id.startsWith("kf_")).toBe(true);
 
     const reloaded = loadPersistedCorpus(path);
-    expect(reloaded?.documents.length).toBe(2);
+    expect(reloaded?.documents.some((d) => d.id === "kf_custom")).toBe(true);
     expect(reloaded?.documents.some((d) => d.id === doc.id)).toBe(true);
+    expect((reloaded?.documents.length ?? 0) >= 2).toBe(true);
 
     const search = searchKnowledgeFabric({
       query: "webhook idempotency",
