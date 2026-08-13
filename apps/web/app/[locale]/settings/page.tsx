@@ -42,6 +42,7 @@ interface DeviceSession {
 
 export default function SettingsPage() {
   const t = useTranslations("settings");
+  const locale = useLocale();
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState("");
   const [locale, setLocale] = useState<"he" | "en" | "ar">("he");
@@ -141,7 +142,7 @@ export default function SettingsPage() {
         confirmEmail: deleteEmail || undefined,
       }),
     onSuccess: () => {
-      window.location.href = "/he/welcome";
+      window.location.href = `/${locale}/welcome`;
     },
   });
 
