@@ -189,8 +189,8 @@ export default function AdminHomePage() {
           מרכז פיקוד · {command.data?.platform.name ?? "ArletOS"}
         </Typography>
         <Typography sx={{ mt: 1, color: "rgba(180,210,208,0.9)", maxWidth: 640 }}>
-          אוטומציה · גרף ידע · ניטור פרואקטיבי לפני שהתקלות מגיעות למשתמש · מדיניות
-          מקורות מאומתים
+          Admin Oracle מנהל את הלוח — אוטומציה · גרף ידע · ניטור פרואקטיבי · מקורות
+          מאומתים בלבד · סייבר הגנתי
         </Typography>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
           <Chip
@@ -248,6 +248,9 @@ export default function AdminHomePage() {
         </Button>
         <Button variant="outlined" onClick={() => downloadVerifiedSourcesPack("markdown")}>
           מקורות Markdown
+        </Button>
+        <Button component={Link} href="/admin/oracle" variant="outlined">
+          Admin Oracle
         </Button>
         <Button component={Link} href="/admin/users" variant="text">
           משתמשים

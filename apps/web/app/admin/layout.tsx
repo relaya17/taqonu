@@ -4,9 +4,9 @@ import { AdminProviders } from "@/components/admin/AdminProviders";
 import { AdminShell } from "@/components/admin/AdminShell";
 
 export const metadata = {
-  title: "ArletOS Command Center",
+  title: "ArletOS Admin Oracle",
   description:
-    "Admin command center — proactive monitoring, knowledge graph, automation",
+    "Admin Oracle command center — proactive monitoring, allowlisted intel, gated automation",
 };
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

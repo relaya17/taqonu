@@ -12,6 +12,7 @@ import {
   runPlatformWatchdog,
   type WatchdogReport,
 } from "../services/platform-watchdog.js";
+import { buildAdminOracleShell } from "../services/admin-oracle.js";
 import { osStore } from "../store/os-store.js";
 
 export async function registerAdminOpsRoutes(
@@ -23,6 +24,7 @@ export async function registerAdminOpsRoutes(
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     const { tier } = resolveTier(app.atlasEnv, ownerId);
     const watchdog = runPlatformWatchdog({ tier, ownerId });
+    const oracle = buildAdminOracleShell({ locale: "he" });
 
     return {
       platform: {
@@ -33,7 +35,18 @@ export async function registerAdminOpsRoutes(
       },
       tier,
       watchdog,
+      oracle,
       generatedAt: watchdog.generatedAt,
+    };
+  });
+
+  app.get("/api/v1/admin/oracle", async (request) => {
+    requireAdmin(app, request);
+    const oracle = buildAdminOracleShell({ locale: "he" });
+    return {
+      oracle,
+      generatedAt: new Date().toISOString(),
+      note: "TRUTH-10 A1 shell — persona, allowlist, brief scaffold. Live ingest = A1.4+.",
     };
   });
 

@@ -25,9 +25,11 @@ const WIDTH = 240;
 
 const LINKS = [
   { href: "/admin", label: "מרכז פיקוד" },
+  { href: "/admin/oracle", label: "Admin Oracle" },
   { href: "/admin/users", label: "משתמשים" },
   { href: "/admin/leads", label: "לידים" },
   { href: "/admin/login", label: "התחברות אדמין" },
+  { href: "/he/truth", label: "ATLAS HEALTH" },
   { href: "/he/plan", label: "מחירים / BYO" },
   { href: "/he/welcome", label: "דף נחיתה" },
   { href: "/investors", label: "משקיעים" },
@@ -56,13 +58,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
           letterSpacing: "-0.03em",
         }}
       >
-        ArletOS Command
+        ArletOS Oracle
       </Typography>
       <Typography
         variant="caption"
         sx={{ px: 2, mb: 2, display: "block", opacity: 0.7 }}
       >
-        ניטור · ידע · אוטומציה
+        ניטור · ידע · סייבר הגנתי · אוטומציה
       </Typography>
       <List dense>
         {LINKS.map((link) => {

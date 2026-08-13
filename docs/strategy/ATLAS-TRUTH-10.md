@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (רשימה: Admin Oracle / Command Agent)  
+**עדכון אחרון:** 2026-08-13 (A1.1 Admin Oracle shell)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -75,7 +75,7 @@
 | 2.3 | Patent landscape / Trademark Atlas | `OPEN` — משפטי, לא קוד |
 | 2.4 | Pricing experiments (repos/seats) | `PARTIAL` — freemium usage היום |
 | 2.5 | Case studies + Seed narrative | `OPEN` |
-| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `OPEN` — ראה סעיף **A1** למטה |
+| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1.1 shell חי; A1.2–A1.7 OPEN |
 
 ---
 
@@ -117,7 +117,7 @@
 
 | # | משימה | סטטוס |
 |---:|---|---|
-| A1.1 | מסך Admin Command Center (premium dashboard shell) | `OPEN` |
+| A1.1 | מסך Admin Command Center (premium dashboard shell) | `PARTIAL` — `/admin` + **`/admin/oracle`** + `GET /api/v1/admin/oracle` |
 | A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `OPEN` |
 | A1.3 | Version instability detector (deps/runtime/EOL) | `OPEN` |
 | A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `OPEN` |
@@ -187,6 +187,7 @@ Sprint C
 | 2026-08-13 | **P1.1:** Truth Propose fix → `TRUTH_FIX` note draft (approve→apply→verify; HIGH blocked) |
 | 2026-08-13 | **P1.3:** Vercel/Render deploy → `.atlas/production/deploys.json` → DEPLOYMENT nodes + Truth finding |
 | 2026-08-13 | **A1 נוסף לרשימה:** Admin Oracle / Command Agent — לוח בקרה + ניטור + בריפינג + סייבר הגנתי ממקורות מורשים |
+| 2026-08-13 | **A1.1:** `/admin/oracle` shell + API persona/allowlist/brief scaffold |
 
 ---
 
@@ -202,6 +203,6 @@ Sprint C
 | Snapshots API | `GET /api/v1/projects/:id/observer/snapshots` |
 | Health (ישן/מקביל) | `apps/web/app/[locale]/health` |
 | Truth dashboard | `apps/web/app/[locale]/truth` |
-| Admin Oracle (חזון) | סעיף **A1** במסמך זה · [`admin-necessity.md`](./admin-necessity.md) |
+| Admin Oracle (חזון + shell) | `/admin/oracle` · `GET /api/v1/admin/oracle` · סעיף **A1** |
 | Design partners | `docs/strategy/design-partner-playbook.md` |
 | TRUTH-10 Early Access (G1) | `docs/strategy/design-partner-truth10-early-access.md` |
