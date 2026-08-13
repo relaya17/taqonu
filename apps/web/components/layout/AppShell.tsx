@@ -9,20 +9,20 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  Menu,
+  MenuItem,
   Stack,
   Typography,
   Button,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
-import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
-import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
+import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
-import { useColorMode } from "@/components/providers/ColorModeProvider";
 
 const DRAWER_WIDTH = 248;
 
@@ -151,16 +151,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const locale = useLocale();
   const pathname = usePathname();
   const isRtl = locale === "he" || locale === "ar";
-  const { mode, toggleMode } = useColorMode();
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Small screens: closed by default; hamburger opens overlay drawer. */
   const [navOpen, setNavOpen] = useState(false);
+  const [langAnchor, setLangAnchor] = useState<null | HTMLElement>(null);
   const navId = useId();
   const anchor = isRtl ? "right" : "left";
+  const langMenuOpen = Boolean(langAnchor);
 
   useEffect(() => {
     setNavOpen(false);
+    setLangAnchor(null);
   }, [pathname]);
 
   const meQuery = useQuery({
@@ -339,17 +341,31 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
           </Box>
         ) : (
-          <Button
-            size="small"
-            variant="outlined"
-            color="secondary"
-            onClick={() => {
-              if (opts.mobile) setNavOpen(false);
-              window.location.assign(`/${locale}/auth/login`);
-            }}
-          >
-            {t("auth.login")}
-          </Button>
+          <Stack spacing={1}>
+            <Button
+              size="small"
+              variant="contained"
+              color="secondary"
+              onClick={() => {
+                if (opts.mobile) setNavOpen(false);
+                window.location.assign(`/${locale}/welcome`);
+              }}
+              sx={{ fontWeight: 700 }}
+            >
+              {t("nav.welcome")}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              color="secondary"
+              onClick={() => {
+                if (opts.mobile) setNavOpen(false);
+                window.location.assign(`/${locale}/auth/login`);
+              }}
+            >
+              {t("auth.login")}
+            </Button>
+          </Stack>
         )}
 
         <Stack
@@ -361,35 +377,40 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <IconButton
             size="small"
-            onClick={toggleMode}
-            aria-label={
-              mode === "dark" ? t("a11y.themeLight") : t("a11y.themeDark")
-            }
+            onClick={(e) => setLangAnchor(e.currentTarget)}
+            aria-label={t("nav.languages")}
+            aria-haspopup="menu"
+            aria-expanded={langMenuOpen}
+            aria-controls={langMenuOpen ? "atlas-lang-menu" : undefined}
             sx={{ color: "#F4F7F5" }}
           >
-            {mode === "dark" ? (
-              <LightModeOutlinedIcon fontSize="small" />
-            ) : (
-              <DarkModeOutlinedIcon fontSize="small" />
-            )}
+            <LanguageOutlinedIcon fontSize="small" />
           </IconButton>
-          {(["he", "en", "ar"] as const).map((code) => (
-            <Button
-              key={code}
-              component={Link}
-              href={pathname}
-              locale={code}
-              size="small"
-              variant={locale === code ? "contained" : "outlined"}
-              color="secondary"
-              aria-pressed={locale === code}
-              aria-label={t(`a11y.lang.${code}`)}
-              lang={code}
-              sx={{ minWidth: 44, px: 1.2 }}
-            >
-              {code.toUpperCase()}
-            </Button>
-          ))}
+          <Menu
+            id="atlas-lang-menu"
+            anchorEl={langAnchor}
+            open={langMenuOpen}
+            onClose={() => setLangAnchor(null)}
+            anchorOrigin={{ vertical: "top", horizontal: isRtl ? "left" : "right" }}
+            transformOrigin={{ vertical: "bottom", horizontal: isRtl ? "left" : "right" }}
+          >
+            {(["he", "en", "ar"] as const).map((code) => (
+              <MenuItem
+                key={code}
+                component={Link}
+                href={pathname}
+                locale={code}
+                selected={locale === code}
+                lang={code}
+                onClick={() => {
+                  setLangAnchor(null);
+                  if (opts.mobile) setNavOpen(false);
+                }}
+              >
+                {t(`a11y.lang.${code}`)}
+              </MenuItem>
+            ))}
+          </Menu>
         </Stack>
       </Stack>
     </>
@@ -399,9 +420,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     width: DRAWER_WIDTH,
     maxWidth: "100vw",
     border: 0,
-    background:
-      "linear-gradient(180deg, rgba(15,61,62,0.96) 0%, rgba(20,40,42,0.98) 100%)",
-    backgroundImage: "none",
+    // Solid fallback + gradient (do NOT set backgroundImage: "none" — it wipes the green).
+    backgroundColor: "#0F3D3E",
+    backgroundImage:
+      "linear-gradient(180deg, rgba(15,61,62,0.98) 0%, rgba(20,40,42,1) 100%)",
     boxShadow: "none",
     color: "#F4F7F5",
     py: 2.5,
@@ -468,76 +490,152 @@ export function AppShell({ children }: { children: ReactNode }) {
             {t("brand.name")}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{ display: { xs: "none", md: "flex" } }}
+            >
+              <Button
+                component={Link}
+                href="/plan"
+                size="small"
+                sx={{ color: "#E8A848", fontWeight: 650 }}
+              >
+                {t("landing.ctaPricing")}
+              </Button>
+              <Button
+                component="a"
+                href={`/${locale}/auth/register`}
+                size="small"
+                variant="contained"
+                sx={{
+                  bgcolor: "#3EC8BE",
+                  color: "#041214",
+                  fontWeight: 700,
+                  "&:hover": { bgcolor: "#5AD8CF" },
+                }}
+              >
+                {t("auth.register")}
+              </Button>
+              <Button
+                component="a"
+                href={`/${locale}/auth/login`}
+                size="small"
+                variant="outlined"
+                sx={{
+                  borderColor: "rgba(62,200,190,0.5)",
+                  color: "#E8F4F2",
+                  fontWeight: 650,
+                }}
+              >
+                {t("auth.login")}
+              </Button>
+            </Stack>
+            <IconButton
+              size="small"
+              onClick={(e) => setLangAnchor(e.currentTarget)}
+              aria-label={t("nav.languages")}
+              aria-haspopup="menu"
+              aria-expanded={langMenuOpen}
+              aria-controls={langMenuOpen ? "atlas-lang-menu-marketing" : undefined}
+              sx={{ color: "#E8F4F2" }}
+            >
+              <LanguageOutlinedIcon fontSize="small" />
+            </IconButton>
+            <Menu
+              id="atlas-lang-menu-marketing"
+              anchorEl={langAnchor}
+              open={langMenuOpen}
+              onClose={() => setLangAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: isRtl ? "left" : "right" }}
+              transformOrigin={{ vertical: "top", horizontal: isRtl ? "left" : "right" }}
+            >
+              {(["he", "en", "ar"] as const).map((code) => (
+                <MenuItem
+                  key={code}
+                  component={Link}
+                  href={pathname}
+                  locale={code}
+                  selected={locale === code}
+                  lang={code}
+                  onClick={() => setLangAnchor(null)}
+                >
+                  {t(`a11y.lang.${code}`)}
+                </MenuItem>
+              ))}
+            </Menu>
+            <IconButton
+              size="small"
+              onClick={() => setNavOpen(true)}
+              aria-label={t("a11y.openMenu")}
+              aria-expanded={navOpen}
+              aria-controls={navId}
+              sx={{ color: "#E8F4F2", display: { xs: "inline-flex", md: "none" } }}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Stack>
+        </Box>
+        <Drawer
+          variant="temporary"
+          anchor={anchor}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: "block", md: "none" },
+            [`& .MuiDrawer-paper`]: drawerPaperSx,
+          }}
+          PaperProps={{
+            ...drawerPaperProps,
+            id: navId,
+          }}
+        >
+          <Stack direction="row" justifyContent="flex-end" sx={{ px: 0.5, pt: 0.5 }}>
+            <IconButton
+              aria-label={t("a11y.closeMenu")}
+              onClick={() => setNavOpen(false)}
+              sx={{ color: "inherit" }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+          <Stack spacing={1} sx={{ px: 1.5, py: 1 }}>
             <Button
               component={Link}
-              href="/"
-              size="small"
-              sx={{ color: "#E8F4F2", fontWeight: 650 }}
+              href="/welcome"
+              onClick={() => setNavOpen(false)}
+              sx={{ color: "#F4F7F5", justifyContent: "flex-start", fontWeight: 700 }}
             >
-              {t("nav.dashboard")}
-            </Button>
-            <Button
-              component={Link}
-              href="/truth"
-              size="small"
-              sx={{ color: "#E8F4F2", fontWeight: 650 }}
-            >
-              {t("nav.truth")}
+              {t("nav.welcome")}
             </Button>
             <Button
               component={Link}
               href="/plan"
-              size="small"
-              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+              onClick={() => setNavOpen(false)}
+              sx={{ color: "#E8A848", justifyContent: "flex-start" }}
             >
-              {t("nav.plan")}
+              {t("landing.ctaPricing")}
             </Button>
             <Button
               component="a"
               href={`/${locale}/auth/register`}
-              size="small"
-              variant="contained"
-              sx={{
-                bgcolor: "#3EC8BE",
-                color: "#041214",
-                fontWeight: 700,
-                "&:hover": { bgcolor: "#5AD8CF" },
-              }}
+              onClick={() => setNavOpen(false)}
+              sx={{ color: "#F4F7F5", justifyContent: "flex-start" }}
             >
               {t("auth.register")}
             </Button>
             <Button
               component="a"
               href={`/${locale}/auth/login`}
-              size="small"
-              variant="outlined"
-              sx={{
-                borderColor: "rgba(62,200,190,0.5)",
-                color: "#E8F4F2",
-                fontWeight: 650,
-              }}
+              onClick={() => setNavOpen(false)}
+              sx={{ color: "#F4F7F5", justifyContent: "flex-start" }}
             >
               {t("auth.login")}
             </Button>
-            {(["he", "en", "ar"] as const).map((code) => (
-              <Button
-                key={code}
-                component={Link}
-                href={pathname}
-                locale={code}
-                size="small"
-                variant={locale === code ? "contained" : "text"}
-                sx={{
-                  minWidth: 36,
-                  color: locale === code ? "#041214" : "#E8F4F2",
-                  bgcolor: locale === code ? "#3EC8BE" : "transparent",
-                }}
-              >
-                {code.toUpperCase()}
-              </Button>
-            ))}
           </Stack>
-        </Box>
+        </Drawer>
         <Box
           component="main"
           id="main-content"
@@ -628,6 +726,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           overflowX: "clip",
           p: { xs: 2, sm: 3, md: 4 },
           outline: "none",
+          // App content: reading-start (right in RTL), never page-centered.
+          textAlign: "start",
         }}
       >
         <Stack

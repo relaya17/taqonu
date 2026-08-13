@@ -621,67 +621,67 @@
   "landing": {
     "brand": "ArletOS",
     "headline": "Know what your software actually does — before you ship.",
-    "subhead": "Evidence, readiness, and governed AI fixes for teams that refuse guesswork.",
+    "subhead": "Clear evidence and readiness, with AI that stays under your control.",
     "ctaStart": "Start free",
     "ctaRegister": "Sign up",
     "ctaLogin": "Log in",
-    "ctaApp": "Open app",
+    "ctaApp": "Open product",
     "ctaPricing": "See pricing",
     "ctaUpgrade": "Go Pro",
-    "promoEndTitle": "Ready — come inside.",
-    "promoEndBody": "The intelligence behind the system is live. Sign up or log in and start with evidence, not guesswork.",
-    "promoErrorTitle": "Promo unavailable — continue anyway.",
-    "promoErrorBody": "Sign up, log in, or open the app directly.",
+    "promoEndTitle": "Ready to begin?",
+    "promoEndBody": "Sign up or log in — and continue with evidence, not guesswork.",
+    "promoErrorTitle": "Video unavailable — continue anyway.",
+    "promoErrorBody": "You can sign up or log in now.",
     "promoUnmute": "Unmute",
     "promoMute": "Mute",
     "promoSkip": "Skip",
     "ctaReplay": "Play again",
-    "reelAria": "Cinematic promo: the intelligence behind the system",
-    "reelFallbackNote": "Product story (set NEXT_PUBLIC_MARKETING_VIDEO_URL to override the promo)",
+    "reelAria": "ArletOS introduction video",
+    "reelFallbackNote": "Product introduction video",
     "reel": {
       "verdict": {
-        "title": "Release verdict in one glance",
-        "body": "READY · CONDITIONAL · BLOCKED — with evidence, not vibes."
+        "title": "Release readiness at a glance",
+        "body": "See what is ready, what needs care, and what blocks — with evidence."
       },
       "workbench": {
-        "title": "Workbench beside the agent",
-        "body": "Files, code, cloud consoles, and chat — one session while Atlas works."
+        "title": "Everything in one place",
+        "body": "Files, code, and cloud — next to your work."
       },
       "cloud": {
-        "title": "Cloud services in the middle pane",
-        "body": "Vercel, Render, AWS, Azure, GCP and more — open next to the agent."
+        "title": "Connected to your cloud",
+        "body": "The services you already use — inside the flow."
       },
       "upgrade": {
-        "title": "Free usage. Your Cloudflare holds the data.",
-        "body": "Atlas meters product usage. Storage stays on your external free cloud."
+        "title": "Start free",
+        "body": "Your data stays with you. Pay only as usage grows."
       }
     },
-    "whyTitle": "Why teams pay",
-    "whyBody": "Not another chatbot. A truth layer that turns AI coding noise into verified engineering decisions.",
+    "whyTitle": "Why it is different",
+    "whyBody": "Not another chatbot. A layer that verifies decisions — before production.",
     "pillars": {
       "truth": {
         "title": "Truth over demos",
-        "body": "Claims need evidence. Unknown stays labeled unknown."
+        "body": "Every claim needs evidence. What is unknown stays labeled unknown."
       },
       "govern": {
         "title": "AI that asks before it writes",
-        "body": "Patches go Propose → Approve → Apply. Humans stay in control."
+        "body": "Propose, approve, then apply. You stay in control."
       },
       "scale": {
-        "title": "Usage freemium on your cloud",
-        "body": "Data stays on your Cloudflare free tier. Atlas meters audits, eval, and agent — we do not host your projects for free."
+        "title": "Your data stays yours",
+        "body": "Storage on your cloud. You pay for product usage, not for hosting with us."
       }
     },
-    "pricingTitle": "Usage freemium — not hosted storage",
-    "pricingBody": "You keep data on Cloudflare free. Atlas meters audits, eval, and agent usage.",
+    "pricingTitle": "Simple and clear",
+    "pricingBody": "Start free. Upgrade when you need more usage.",
     "freeName": "Free",
-    "freeDetail": "Your Cloudflare free tier for data · limited Atlas usage · no Atlas-hosted project storage.",
+    "freeDetail": "Quick start · basic usage · your data stays with you.",
     "proName": "Pro",
-    "proDetail": "Higher Atlas usage ceilings · optional evidence mirror · Stripe checkout.",
-    "closeTitle": "Ready when your stack is.",
-    "seoTitle": "ArletOS · Atlas — Engineering truth layer for AI-native teams",
-    "seoDescription": "ArletOS (Atlas) is the engineering evidence and readiness platform: release verdicts, governed AI patches, E2E process audits, and BYO Cloudflare storage — freemium on Atlas usage, not hosted slots.",
-    "seoKeywords": "engineering readiness, AI governance, evidence graph, release verdict, SaaS freemium, Atlas, ArletOS, continuous audit, QA intelligence"
+    "proDetail": "More usage · advanced tools · full support.",
+    "closeTitle": "Ready when you are.",
+    "seoTitle": "ArletOS — Know what your software actually does",
+    "seoDescription": "ArletOS helps teams verify release readiness with evidence — before production.",
+    "seoKeywords": "release readiness, evidence, AI governance, ArletOS, Atlas"
   },
   "conflicts": {
     "title": "Conflicts",

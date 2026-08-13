@@ -7,7 +7,6 @@ import {
   Button,
   Chip,
   Collapse,
-  IconButton,
   List,
   ListItemButton,
   ListItemText,
@@ -16,17 +15,12 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
-  Tooltip,
   Typography,
-  useTheme,
 } from "@mui/material";
-import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
-import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
-import { useColorMode } from "@/components/providers/ColorModeProvider";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface Project {
@@ -84,7 +78,6 @@ function TreeBranch({
   onSelect: (path: string, kind: "dir" | "file") => void;
 }): ReactNode {
   const [open, setOpen] = useState(depth < 2);
-  const theme = useTheme();
   if (node.kind === "file") {
     return (
       <ListItemButton
@@ -95,11 +88,9 @@ function TreeBranch({
           pl: 1.5 + depth * 1.25,
           borderRadius: 1.5,
           mx: 0.5,
+          color: "#E8F0F0",
           "&.Mui-selected": {
-            bgcolor:
-              theme.palette.mode === "dark"
-                ? "rgba(126,184,185,0.18)"
-                : "rgba(15,61,62,0.1)",
+            bgcolor: "rgba(126,184,185,0.18)",
           },
         }}
       >
@@ -115,7 +106,7 @@ function TreeBranch({
       <ListItemButton
         dense
         onClick={() => setOpen((v) => !v)}
-        sx={{ pl: 1.5 + depth * 1.25, borderRadius: 1.5, mx: 0.5 }}
+        sx={{ pl: 1.5 + depth * 1.25, borderRadius: 1.5, mx: 0.5, color: "#E8F0F0" }}
       >
         <ListItemText
           primary={`${open ? "▾" : "▸"} ${node.name || "/"}`}
@@ -145,9 +136,6 @@ function TreeBranch({
 
 export default function StudioPage() {
   const t = useTranslations("studio");
-  const theme = useTheme();
-  const { mode, toggleMode } = useColorMode();
-  const dark = mode === "dark";
 
   const [projectId, setProjectId] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -155,18 +143,10 @@ export default function StudioPage() {
   const [intent, setIntent] = useState<StudioIntent>("propose");
   const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
 
-  const panelBorder =
-    theme.palette.mode === "dark"
-      ? "1px solid rgba(232,240,240,0.12)"
-      : "1px solid rgba(20,32,34,0.12)";
-  const panelBg =
-    theme.palette.mode === "dark"
-      ? "rgba(19,32,34,0.92)"
-      : "rgba(247,250,248,0.92)";
-  const codeBg =
-    theme.palette.mode === "dark"
-      ? "rgba(8,16,17,0.9)"
-      : "rgba(15,61,62,0.05)";
+  // Studio-only dark surface — does not flip the rest of the app.
+  const panelBorder = "1px solid rgba(232,240,240,0.12)";
+  const panelBg = "rgba(19,32,34,0.92)";
+  const codeBg = "rgba(8,16,17,0.9)";
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -244,44 +224,48 @@ export default function StudioPage() {
         : null;
 
   return (
+    <Box
+      sx={{
+        mx: { xs: -2, sm: -3, md: -4 },
+        px: { xs: 2, sm: 3, md: 4 },
+        py: { xs: 2, md: 2.5 },
+        minHeight: "70vh",
+        borderRadius: { xs: 0, md: 3 },
+        color: "#E8F0F0",
+        textAlign: "start",
+        background: `
+          radial-gradient(900px 420px at 8% -10%, rgba(126,184,185,0.16), transparent 55%),
+          linear-gradient(165deg, #0B1415 0%, #101C1E 50%, #0F1A1B 100%)
+        `,
+      }}
+    >
     <Stack spacing={2.5} sx={{ maxWidth: 1240, width: "100%", minWidth: 0 }}>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={2}
         alignItems={{ sm: "flex-start" }}
-        justifyContent="space-between"
+        justifyContent="flex-start"
       >
         <Box sx={{ minWidth: 0 }}>
           <Typography
             variant="h1"
-            sx={{ fontSize: { xs: "1.75rem", md: "2.35rem" } }}
+            sx={{ fontSize: { xs: "1.75rem", md: "2.35rem" }, color: "#F2FBFA" }}
           >
             {t("title")}
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 640 }}>
+          <Typography sx={{ mt: 1, maxWidth: 640, color: "rgba(155,176,178,0.95)" }}>
             {t("subtitle")}
           </Typography>
         </Box>
-        <Tooltip title={dark ? t("themeLight") : t("themeDark")}>
-          <IconButton
-            onClick={toggleMode}
-            aria-label={dark ? t("themeLight") : t("themeDark")}
-            sx={{
-              border: panelBorder,
-              bgcolor: panelBg,
-              alignSelf: { xs: "flex-start", sm: "center" },
-            }}
-          >
-            {dark ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}
-          </IconButton>
-        </Tooltip>
       </Stack>
 
       <Alert
         severity="info"
         sx={{
           borderRadius: 2,
-          bgcolor: dark ? "rgba(126,184,185,0.08)" : undefined,
+          bgcolor: "rgba(126,184,185,0.08)",
+          color: "#E8F0F0",
+          "& .MuiAlert-icon": { color: "#7EB8B9" },
         }}
       >
         {t("agentPolicy")}
@@ -298,7 +282,16 @@ export default function StudioPage() {
           saveNote.reset();
         }}
         helperText={t("projectHelp")}
-        sx={{ maxWidth: 480 }}
+        sx={{
+          maxWidth: 480,
+          "& .MuiOutlinedInput-root": {
+            color: "#E8F0F0",
+            bgcolor: "rgba(255,255,255,0.04)",
+            "& fieldset": { borderColor: "rgba(232,240,240,0.2)" },
+          },
+          "& .MuiInputLabel-root": { color: "rgba(232,240,240,0.7)" },
+          "& .MuiFormHelperText-root": { color: "#9BB0B2" },
+        }}
       >
         {projects.map((p) => (
           <MenuItem key={p.id} value={p.id}>
@@ -355,9 +348,7 @@ export default function StudioPage() {
               overflow: "auto",
               maxHeight: { xs: 300, md: 680 },
               bgcolor: panelBg,
-              boxShadow: dark
-                ? "0 12px 40px rgba(0,0,0,0.35)"
-                : "0 10px 30px rgba(15,61,62,0.08)",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
             }}
           >
             <Stack
@@ -374,13 +365,13 @@ export default function StudioPage() {
                 zIndex: 1,
               }}
             >
-              <Typography variant="subtitle2" fontWeight={700}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ color: "#E8F0F0" }}>
                 {t("tree")}
               </Typography>
               {treeQuery.data?.truncated ? (
                 <Chip size="small" label={t("truncated")} />
               ) : null}
-              <Chip size="small" variant="outlined" label={t("readOnly")} />
+              <Chip size="small" variant="outlined" label={t("readOnly")} sx={{ color: "#9BB0B2", borderColor: "rgba(232,240,240,0.25)" }} />
             </Stack>
             {treeQuery.data ? (
               <List dense disablePadding sx={{ py: 0.75 }}>
@@ -394,7 +385,7 @@ export default function StudioPage() {
                 />
               </List>
             ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+              <Typography variant="body2" sx={{ p: 2, color: "#9BB0B2" }}>
                 {treeQuery.isLoading ? t("loadingTree") : t("emptyTree")}
               </Typography>
             )}
@@ -411,9 +402,7 @@ export default function StudioPage() {
                 display: "flex",
                 flexDirection: "column",
                 bgcolor: panelBg,
-                boxShadow: dark
-                  ? "0 12px 40px rgba(0,0,0,0.35)"
-                  : "0 10px 30px rgba(15,61,62,0.08)",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
               }}
             >
               <Stack
@@ -474,13 +463,11 @@ export default function StudioPage() {
                 borderRadius: 3,
                 p: 2.25,
                 bgcolor: panelBg,
-                boxShadow: dark
-                  ? "0 12px 40px rgba(0,0,0,0.28)"
-                  : "0 10px 30px rgba(15,61,62,0.06)",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
               }}
             >
-              <Typography fontWeight={700}>{t("askTitle")}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              <Typography fontWeight={700} sx={{ color: "#E8F0F0" }}>{t("askTitle")}</Typography>
+              <Typography variant="body2" sx={{ mt: 0.5, color: "#9BB0B2" }}>
                 {t("askHelp")}
               </Typography>
 
@@ -616,5 +603,6 @@ export default function StudioPage() {
         </Box>
       ) : null}
     </Stack>
+    </Box>
   );
 }

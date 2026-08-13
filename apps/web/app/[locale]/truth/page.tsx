@@ -337,7 +337,7 @@ export default function TruthPage() {
         borderRadius: { xs: 0, md: 3 },
       }}
     >
-      <Stack spacing={3} sx={{ maxWidth: 980, mx: "auto" }}>
+      <Stack spacing={3} sx={{ maxWidth: 980, width: "100%" }}>
         <Box
           sx={{
             animation: "truthFade 800ms both",

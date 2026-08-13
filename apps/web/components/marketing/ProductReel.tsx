@@ -226,11 +226,11 @@ export function ProductReel({
             </Button>
             <Button
               component="a"
-              href={`/${locale}`}
+              href={`/${locale}/plan`}
               size="large"
-              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+              sx={{ color: "#E8A848", fontWeight: 650 }}
             >
-              {t("ctaApp")}
+              {t("ctaPricing")}
             </Button>
           </Stack>
           {phase === "ended" ? (

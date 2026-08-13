@@ -23,16 +23,7 @@ interface ColorModeContextValue {
 const ColorModeContext = createContext<ColorModeContextValue | null>(null);
 
 function readStoredMode(): AtlasColorMode {
-  if (typeof window === "undefined") return "light";
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === "dark" || raw === "light") return raw;
-    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      return "dark";
-    }
-  } catch {
-    // ignore
-  }
+  // App chrome stays light; Studio owns its own dark surface.
   return "light";
 }
 

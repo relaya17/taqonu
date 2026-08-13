@@ -23,9 +23,9 @@ export function WelcomeLanding() {
         bgcolor: "#050C0D",
         color: "#E8F4F2",
         overflow: "clip",
+        textAlign: "center",
       }}
     >
-      {/* Full-bleed cinematic promo — brand + CTAs stay readable over video */}
       <Box
         component="section"
         sx={{
@@ -40,6 +40,7 @@ export function WelcomeLanding() {
 
         <Stack
           spacing={2.5}
+          alignItems="center"
           sx={{
             position: "relative",
             zIndex: 2,
@@ -49,7 +50,7 @@ export function WelcomeLanding() {
             pt: { xs: 10, md: 12 },
             pb: { xs: 6, md: 10 },
             maxWidth: 560,
-            // Keep copy visible while playing; end overlay owns the close
+            mx: "auto",
             opacity: promoEnded ? 0 : 1,
             visibility: promoEnded ? "hidden" : "visible",
             pointerEvents: promoEnded ? "none" : "auto",
@@ -78,7 +79,7 @@ export function WelcomeLanding() {
               fontSize: { xs: "1.25rem", md: "1.45rem" },
               letterSpacing: "-0.02em",
               color: "#E8F4F2",
-              maxWidth: 420,
+              maxWidth: 440,
               textShadow: "0 1px 16px rgba(0,0,0,0.5)",
             }}
           >
@@ -95,7 +96,12 @@ export function WelcomeLanding() {
           >
             {t("subhead")}
           </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ pt: 0.5 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.5}
+            justifyContent="center"
+            sx={{ pt: 0.5 }}
+          >
             <Button
               component="a"
               href={`/${locale}/auth/register`}
@@ -131,17 +137,16 @@ export function WelcomeLanding() {
             </Button>
             <Button
               component="a"
-              href={`/${locale}`}
+              href={`/${locale}/plan`}
               size="large"
-              sx={{ color: "#3EC8BE", fontWeight: 650 }}
+              sx={{ color: "#E8A848", fontWeight: 650 }}
             >
-              {t("ctaApp")}
+              {t("ctaPricing")}
             </Button>
           </Stack>
         </Stack>
       </Box>
 
-      {/* One job: why pay */}
       <Box
         component="section"
         sx={{
@@ -160,7 +165,8 @@ export function WelcomeLanding() {
             fontSize: { xs: "1.6rem", md: "2rem" },
             letterSpacing: "-0.03em",
             mb: 1.5,
-            maxWidth: 640,
+            maxWidth: 560,
+            mx: "auto",
           }}
         >
           {t("whyTitle")}
@@ -169,14 +175,15 @@ export function WelcomeLanding() {
           sx={{
             color: "rgba(170, 200, 198, 0.88)",
             fontSize: "1.1rem",
-            maxWidth: 560,
+            maxWidth: 520,
+            mx: "auto",
             lineHeight: 1.55,
             mb: 4,
           }}
         >
           {t("whyBody")}
         </Typography>
-        <Stack spacing={3} sx={{ maxWidth: 720 }}>
+        <Stack spacing={3} sx={{ maxWidth: 520, mx: "auto" }}>
           {(["truth", "govern", "scale"] as const).map((k) => (
             <Box key={k}>
               <Typography
@@ -190,7 +197,7 @@ export function WelcomeLanding() {
               >
                 {t(`pillars.${k}.title`)}
               </Typography>
-              <Typography sx={{ color: "rgba(170, 200, 198, 0.85)", maxWidth: 520 }}>
+              <Typography sx={{ color: "rgba(170, 200, 198, 0.85)", lineHeight: 1.5 }}>
                 {t(`pillars.${k}.body`)}
               </Typography>
             </Box>
@@ -198,7 +205,6 @@ export function WelcomeLanding() {
         </Stack>
       </Box>
 
-      {/* One job: pricing tease */}
       <Box
         component="section"
         sx={{
@@ -215,6 +221,8 @@ export function WelcomeLanding() {
             fontSize: { xs: "1.6rem", md: "2rem" },
             letterSpacing: "-0.03em",
             mb: 1,
+            maxWidth: 560,
+            mx: "auto",
           }}
         >
           {t("pricingTitle")}
@@ -224,6 +232,7 @@ export function WelcomeLanding() {
             color: "rgba(170, 200, 198, 0.88)",
             mb: 4,
             maxWidth: 480,
+            mx: "auto",
           }}
         >
           {t("pricingBody")}
@@ -233,8 +242,10 @@ export function WelcomeLanding() {
           spacing={0}
           sx={{
             border: "1px solid rgba(62, 200, 190, 0.22)",
-            maxWidth: 720,
+            maxWidth: 640,
+            mx: "auto",
             overflow: "hidden",
+            textAlign: "start",
           }}
         >
           <Box
@@ -296,7 +307,6 @@ export function WelcomeLanding() {
           px: { xs: 2.5, sm: 4, md: 6 },
           py: { xs: 5, md: 7 },
           borderTop: "1px solid rgba(62, 200, 190, 0.14)",
-          textAlign: "center",
         }}
       >
         <Typography
@@ -305,6 +315,8 @@ export function WelcomeLanding() {
             fontWeight: 700,
             fontSize: { xs: "1.4rem", md: "1.75rem" },
             mb: 2,
+            maxWidth: 480,
+            mx: "auto",
           }}
         >
           {t("closeTitle")}

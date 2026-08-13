@@ -4,38 +4,39 @@ import { createTheme, type Theme } from "@mui/material/styles";
 
 export type AtlasColorMode = "light" | "dark";
 
+/** App chrome stays mint-cream; Studio paints its own dark surface. */
+const CREAM = "#EEF5F0";
+const PAPER = "#F8FCF9";
+
 export function createAtlasTheme(
   direction: "rtl" | "ltr",
-  mode: AtlasColorMode = "light",
+  _mode: AtlasColorMode = "light",
 ): Theme {
-  const dark = mode === "dark";
-
+  // Global UI is always light. Dark is scoped to Studio only.
   return createTheme({
     direction,
-    // cssVariables add client-only Paper CSS vars (--Paper-overlay) that trip
-    // Next.js hydration "1 Issue" in dev; palette.mode is enough for theming.
     cssVariables: false,
     palette: {
-      mode,
+      mode: "light",
       primary: {
-        main: dark ? "#7EB8B9" : "#0F3D3E",
-        contrastText: dark ? "#0A1C1D" : "#F4F7F5",
+        main: "#0F3D3E",
+        contrastText: "#F4F7F5",
       },
       secondary: {
-        main: dark ? "#E08A5C" : "#C45C26",
+        main: "#C45C26",
       },
       background: {
-        default: dark ? "#0B1415" : "#E8EEF0",
-        paper: dark ? "#132022" : "#F7FAF8",
+        default: CREAM,
+        paper: PAPER,
       },
       text: {
-        primary: dark ? "#E8F0F0" : "#142022",
-        secondary: dark ? "#9BB0B2" : "#3D5557",
+        primary: "#142822",
+        secondary: "#3D5A52",
       },
-      divider: dark ? "rgba(232,240,240,0.12)" : "rgba(20,32,34,0.12)",
-      success: { main: dark ? "#3D9B6E" : "#1F7A4D" },
-      warning: { main: dark ? "#D4A017" : "#B7791F" },
-      error: { main: dark ? "#E05A4F" : "#B42318" },
+      divider: "rgba(20, 40, 34, 0.12)",
+      success: { main: "#1F7A4D" },
+      warning: { main: "#B7791F" },
+      error: { main: "#B42318" },
     },
     typography: {
       fontFamily:
@@ -74,15 +75,17 @@ export function createAtlasTheme(
           html: {
             maxWidth: "100%",
             overflowX: "clip",
-            colorScheme: mode,
+            colorScheme: "light",
           },
           body: {
-            backgroundImage: dark
-              ? "radial-gradient(circle at 14% 8%, rgba(126, 184, 185, 0.14), transparent 40%), radial-gradient(circle at 90% 0%, rgba(224, 138, 92, 0.1), transparent 38%), linear-gradient(180deg, #0B1415 0%, #0F1A1B 100%)"
-              : "radial-gradient(circle at 12% 10%, rgba(196, 92, 38, 0.12), transparent 36%), radial-gradient(circle at 88% 0%, rgba(15, 61, 62, 0.16), transparent 42%), linear-gradient(180deg, #E8EEF0 0%, #D9E4E6 100%)",
+            backgroundColor: CREAM,
+            backgroundImage:
+              "radial-gradient(circle at 12% 8%, rgba(42,155,144,0.1), transparent 42%), radial-gradient(circle at 92% 0%, rgba(180,200,170,0.16), transparent 40%), linear-gradient(180deg, #F2F8F4 0%, #EEF5F0 50%, #E2EDE6 100%)",
             minHeight: "100vh",
             maxWidth: "100%",
             overflowX: "clip",
+            color: "#142822",
+            textAlign: "start",
           },
           "img, svg, video, canvas": {
             maxWidth: "100%",
@@ -93,7 +96,7 @@ export function createAtlasTheme(
             overflowX: "auto",
           },
           ":focus-visible": {
-            outline: dark ? "3px solid #E08A5C" : "3px solid #C45C26",
+            outline: "3px solid #C45C26",
             outlineOffset: 2,
           },
           ".skip-link": {
@@ -102,8 +105,8 @@ export function createAtlasTheme(
             top: 8,
             zIndex: 4000,
             padding: "10px 14px",
-            background: dark ? "#7EB8B9" : "#0F3D3E",
-            color: dark ? "#0A1C1D" : "#F4F7F5",
+            background: "#0F3D3E",
+            color: "#F4F7F5",
             borderRadius: 8,
             transform: "translateY(-160%)",
             transition: "transform 120ms ease",
@@ -132,8 +135,6 @@ export function createAtlasTheme(
         },
         styleOverrides: {
           root: {
-            // MUI 6 still injects --Paper-overlay on the client for elevation;
-            // pin both vars so SSR HTML matches the first client paint.
             backgroundImage: "none",
             "--Paper-shadow": "none",
             "--Paper-overlay": "none",
@@ -143,7 +144,6 @@ export function createAtlasTheme(
       MuiDrawer: {
         styleOverrides: {
           paper: {
-            backgroundImage: "none",
             "--Paper-shadow": "none",
             "--Paper-overlay": "none",
           },
@@ -180,7 +180,7 @@ export function createAtlasTheme(
         styleOverrides: {
           root: {
             "&:focus-visible": {
-              outline: dark ? "3px solid #E08A5C" : "3px solid #C45C26",
+              outline: "3px solid #C45C26",
               outlineOffset: 2,
             },
           },
