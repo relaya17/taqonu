@@ -1,7 +1,11 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { CurrentStateCenter } from "@/components/state/CurrentStateCenter";
-
-export default function StatePage() {
-  return <CurrentStateCenter />;
+/** Legacy orphan surface → Projects (per-project state lives under /projects/:id/state). */
+export default async function StateRedirectPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  redirect(`/${locale}/projects`);
 }

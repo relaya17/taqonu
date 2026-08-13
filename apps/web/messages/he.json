@@ -99,7 +99,17 @@
     "paidActive": "מלווה בתשלום",
     "freeActive": "ArletOS חינם",
     "browseModels": "שוק מודלים",
-    "paidNote": "{name} מלווה אתכם בכל האפליקציה עם מקורות מאומתים (MDN, Python.org, Oracle, OWASP, Unity…). קרדיטים נגבים רק אחרי תשובה מוצלחת."
+    "paidNote": "{name} מלווה אתכם בכל האפליקציה עם מקורות מאומתים (MDN, Python.org, Oracle, OWASP, Unity…). קרדיטים נגבים רק אחרי תשובה מוצלחת.",
+    "expand": "הרחב מלווה",
+    "collapse": "כווץ מלווה"
+  },
+  "onboarding": {
+    "title": "התחילו כאן",
+    "body": "חברו תיקייה → Workbench → בדיקת E2E.",
+    "bodyMissing": "ל־{count} פרויקטים עדיין חסרה תיקייה מקומית — Studio / Workbench / E2E מוגבלים.",
+    "stepProjects": "1. חברו תיקייה",
+    "stepWorkbench": "2. Workbench",
+    "stepE2e": "3. ביקורת E2E"
   },
   "workbench": {
     "title": "סביבת עבודה לפרויקט",
@@ -150,6 +160,8 @@
     "projectHelp": "דורש נתיב מקומי (workspaceRoot) מקושר במכונת ה־API",
     "noRoot": "בלי נתיב מקומי",
     "needRoot": "קשרו תיקייה תחת פרויקטים ואז חזרו לסטודיו.",
+    "noProjects": "עדיין אין פרויקטים — רשמו או גלו תחת פרויקטים.",
+    "pickProject": "בחרו פרויקט למעלה כדי לפתוח את הסטודיו.",
     "goProjects": "פרויקטים",
     "tree": "קבצים",
     "truncated": "עץ חלקי",
@@ -298,6 +310,10 @@
     "investors": "למשקיעים",
     "nowLive": "זמין עכשיו",
     "epistemic": "מצבים אפיסטמיים מוצגים תמיד — לא מערבבים עובדה עם הסקה.",
+    "byoLoading": "בודקים Cloudflare BYO…",
+    "byoConnected": "Cloudflare BYO מחובר: {label}",
+    "byoDisconnected": "Cloudflare BYO לא מחובר — הנתונים החינמיים נשארים ב־Cloudflare שלכם; חברו תחת מחירים.",
+    "byoCta": "מחירים / BYO",
     "cats": {
       "exists": "מה קיים",
       "existsBody": "ראיות GitHub / מאגרים",
@@ -427,7 +443,7 @@
     "uploadCloud": "העלה לענן",
     "cloudSynced": "בענן",
     "localOnly": "מקומי בלבד",
-    "uploadCloudDisabledHint": "העלאה למראת Atlas חסומה ב־Free (0 מקומות). חברו Cloudflare BYO לנתונים, או שדרגו ל־Pro למראה אופציונלית.",
+    "uploadCloudDisabledHint": "העלאה למראת Atlas חסומה ב־Free (0 מראות). חברו Cloudflare BYO לנתונים, או שדרגו ל־Pro למראה אופציונלית.",
     "quotaBlocked": "מכסת ענן מלאה — שדרגו בתוכנית",
     "quotaSell": "חינם = Cloudflare שלכם לנתונים + שימוש מוגבל ב־Atlas. שדרגו ל־Pro לתקרות גבוהות.",
     "viewPlan": "למחירים",
@@ -465,7 +481,11 @@
     "linkRoot": "קשר נתיב זה",
     "discoveryRefreshResult": "מקומי: נסרקו {localScanned}, קושרו {localLinked}. GitHub: יובאו {ghImported}. App: יובאו {appImported}.",
     "openIntegrationsHint": "חברו מקורות באינטגרציות אם הרענון לא מוצא כלום.",
-    "openState": "מצב נוכחי"
+    "openState": "מצב נוכחי",
+    "emptyHelp": "הדביקו שמות מלאים ב-GitHub למטה, או רעננו גילוי אחרי חיבור באינטגרציות.",
+    "rootMissingHelp": "בלי נתיב מקומי Studio / Workbench / E2E מוגבלים. שמרו נתיב מוחלט למטה והמשיכו:",
+    "openWorkbench": "Workbench",
+    "openProcessAudit": "תהליך E2E"
   },
   "state": {
     "title": "מצב נוכחי",
@@ -559,6 +579,7 @@
     "ctaPricing": "למחירים",
     "ctaUpgrade": "עברו ל־Pro",
     "reelAria": "סיפור מוצר קצר: פסק דין, סביבת עבודה, ענן, שדרוג",
+    "reelFallbackNote": "סיפור מוצר (הגדירו NEXT_PUBLIC_MARKETING_VIDEO_URL לווידאו אמיתי)",
     "reel": {
       "verdict": {
         "title": "פסק דין לשחרור במבט אחד",
@@ -601,7 +622,7 @@
     "proDetail": "תקרות שימוש גבוהות · מראת ראיות אופציונלית · Checkout ב־Stripe.",
     "closeTitle": "מוכנים כשהמערכת שלכם מוכנה.",
     "seoTitle": "ArletOS · Atlas — שכבת אמת הנדסית לצוותי AI",
-    "seoDescription": "ArletOS (Atlas) — פלטפורמת ראיות ומוכנות: פסקי דין לשחרור, תיקוני AI מנוהלים, בדיקות E2E, ומקומות פרויקט בענן ב־freemium.",
+    "seoDescription": "ArletOS (Atlas) — פלטפורמת ראיות ומוכנות: פסקי דין לשחרור, תיקוני AI מנוהלים, בדיקות E2E, ואחסון BYO ב־Cloudflare — freemium על שימוש ב־Atlas, לא מקומות מאוחסנים אצלנו.",
     "seoKeywords": "מוכנות הנדסית, ממשל AI, גרף ראיות, פסק דין שחרור, SaaS freemium, Atlas, ArletOS, ביקורת מתמשכת, בינת QA"
   },
   "conflicts": {
@@ -1074,7 +1095,7 @@
     "modeDocsHint": "מסמכים: design-partner-playbook · design-partner-audit-runbook · design-partner-tracker · case-studies/_partner-fill-in (תחת docs/).",
     "openHealth": "לבריאות מערכת",
     "storageTitle": "מה נשמר אצל Atlas",
-    "freeSlots": "ענן במסלול חינמי: {n} פרויקטי מטא־נתונים",
+    "freeSlots": "מראת ראיות Atlas (חינם): {n} — השתמשו ב־Cloudflare BYO לנתונים",
     "byoCode": "הקוד נשאר אצלכם (לא מועלה במלואו)",
     "labOnly": "מקרה מעבדה מס׳ 001 — לא שם מוצר.",
     "connectTitle": "ייבוא מאגר",
@@ -1091,7 +1112,7 @@
     "githubHelp": "מאגר ציבורי אפשר בלי אסימון. פרטי — הדביקו PAT למטה. Atlas שואב מטא־נתונים — לא מעתיק את המאגר.",
     "remoteUrl": "כתובת המאגר",
     "remoteHelp": "גיטלאב / ביטבאקט / אחר — קישור מטא־נתונים בלבד",
-    "syncCloud": "סנכרן מטא־דאטה פרויקט לענן Atlas (לא את הקוד — מכסת freemium)",
+    "syncCloud": "סנכרן מטא־דאטה פרויקט למראת Atlas (לא את הקוד — מכסת שימוש, לא אחסון מארח)",
     "connect": "ייבא ובנה קו בסיס",
     "openReadiness": "למוכנות",
     "openVerdict": "לפסק דין בדף הבית",

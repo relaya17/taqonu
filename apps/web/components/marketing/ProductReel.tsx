@@ -6,12 +6,32 @@ import { useTranslations } from "next-intl";
 
 const BEATS = ["verdict", "workbench", "cloud", "upgrade"] as const;
 
-/** Short auto-advancing product story — marketing “video” without an MP4. */
+const VIDEO_URL = process.env.NEXT_PUBLIC_MARKETING_VIDEO_URL?.trim() || "";
+
+function isYouTube(url: string): boolean {
+  return /youtube\.com|youtu\.be/.test(url);
+}
+
+function youTubeEmbed(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) {
+      return `https://www.youtube.com/embed/${u.pathname.replace("/", "")}?rel=0`;
+    }
+    const id = u.searchParams.get("v");
+    return id ? `https://www.youtube.com/embed/${id}?rel=0` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Marketing hero media — real video when configured, else product story reel. */
 export function ProductReel() {
   const t = useTranslations("landing");
   const [beat, setBeat] = useState(0);
 
   useEffect(() => {
+    if (VIDEO_URL) return;
     const id = window.setInterval(() => {
       setBeat((b) => (b + 1) % BEATS.length);
     }, 3200);
@@ -19,6 +39,55 @@ export function ProductReel() {
   }, []);
 
   const key = BEATS[beat]!;
+  const yt = VIDEO_URL && isYouTube(VIDEO_URL) ? youTubeEmbed(VIDEO_URL) : null;
+
+  if (VIDEO_URL) {
+    return (
+      <Box
+        sx={{
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          minHeight: { xs: 280, md: 420 },
+          overflow: "hidden",
+          bgcolor: "#061012",
+        }}
+      >
+        {yt ? (
+          <Box
+            component="iframe"
+            title={t("reelAria")}
+            src={yt}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            sx={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              border: 0,
+            }}
+          />
+        ) : (
+          <Box
+            component="video"
+            src={VIDEO_URL}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label={t("reelAria")}
+            sx={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        )}
+      </Box>
+    );
+  }
 
   return (
     <Box
@@ -57,6 +126,12 @@ export function ProductReel() {
         }}
       >
         <Typography
+          variant="caption"
+          sx={{ color: "rgba(160,190,188,0.75)", letterSpacing: "0.04em" }}
+        >
+          {t("reelFallbackNote")}
+        </Typography>
+        <Typography
           key={key}
           sx={{
             fontFamily: '"Syne", "Fraunces", sans-serif',
@@ -87,13 +162,7 @@ export function ProductReel() {
           {t(`reel.${key}.body`)}
         </Typography>
 
-        <Box
-          sx={{
-            display: "flex",
-            gap: 0.75,
-            mt: 1,
-          }}
-        >
+        <Box sx={{ display: "flex", gap: 0.75, mt: 1 }}>
           {BEATS.map((_, i) => (
             <Box
               key={i}
@@ -102,39 +171,13 @@ export function ProductReel() {
                 flex: 1,
                 maxWidth: 56,
                 borderRadius: 1,
-                bgcolor:
-                  i === beat ? "#3EC8BE" : "rgba(126, 184, 185, 0.25)",
+                bgcolor: i === beat ? "#3EC8BE" : "rgba(126, 184, 185, 0.25)",
                 transition: "background-color 0.3s ease",
               }}
             />
           ))}
         </Box>
       </Box>
-
-      <Box
-        aria-hidden
-        sx={{
-          position: "absolute",
-          top: { xs: 24, md: 48 },
-          insetInlineEnd: { xs: 20, md: 48 },
-          width: { xs: 120, md: 168 },
-          height: { xs: 120, md: 168 },
-          borderRadius: "50%",
-          border: "1px solid rgba(62, 200, 190, 0.35)",
-          animation: "landingPulse 4.5s ease-in-out infinite",
-          "@keyframes landingPulse": {
-            "0%, 100%": { transform: "scale(1)", opacity: 0.55 },
-            "50%": { transform: "scale(1.08)", opacity: 0.9 },
-          },
-          "&::after": {
-            content: '""',
-            position: "absolute",
-            inset: 18,
-            borderRadius: "50%",
-            border: "1px solid rgba(232, 168, 72, 0.4)",
-          },
-        }}
-      />
     </Box>
   );
 }

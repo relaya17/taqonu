@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { ServerEnv } from "@atlas/config";
 import { createLogger } from "@atlas/observability";
+import { isAllowedWebOrigin } from "./lib/web-origin.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerStateRoutes } from "./routes/state.js";
@@ -61,7 +62,9 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   });
 
   await app.register(cors, {
-    origin: env.WEB_ORIGIN,
+    origin: (origin, cb) => {
+      cb(null, isAllowedWebOrigin(origin, env.WEB_ORIGIN));
+    },
     credentials: true,
   });
 

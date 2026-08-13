@@ -6,13 +6,16 @@ import {
   Box,
   Button,
   Chip,
+  Skeleton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
+import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import type { EpistemicState } from "@atlas/shared";
@@ -319,6 +322,7 @@ export default function ProjectsPage() {
   });
 
   const items = projectsQuery.data?.items ?? [];
+  const projectsLoading = projectsQuery.isLoading || portfolioQuery.isLoading;
   const plan = planQuery.data;
   const canUpload =
     Boolean(plan?.cloudConfigured) && (plan?.remainingCloudSlots ?? 0) > 0;
@@ -330,6 +334,7 @@ export default function ProjectsPage() {
   const discovery = discoveryQuery.data;
   const unlinked = discovery?.unlinkedProjects ?? [];
   const candidates = discovery?.localCandidates ?? [];
+  const missingRootCount = items.filter((p) => !p.workspaceRoot).length;
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 900, width: "100%", minWidth: 0 }}>
@@ -343,6 +348,9 @@ export default function ProjectsPage() {
           {" · "}
           <Link href="/plan">{t("viewPlan")}</Link>
         </Typography>
+        <Box sx={{ mt: 2 }}>
+          <OnboardingPath missingRootCount={missingRootCount} />
+        </Box>
         {plan?.tier === "free" ? (
           <Alert
             severity="warning"
@@ -365,11 +373,15 @@ export default function ProjectsPage() {
           <EpistemicChip
             state={portfolioQuery.data?.epistemicState ?? "UNKNOWN"}
           />
-          <Typography variant="body2">
-            {t("registered", {
-              count: portfolioQuery.data?.projectCount ?? 0,
-            })}
-          </Typography>
+          {projectsLoading ? (
+            <Skeleton width={140} height={22} />
+          ) : (
+            <Typography variant="body2">
+              {t("registered", {
+                count: portfolioQuery.data?.projectCount ?? items.length,
+              })}
+            </Typography>
+          )}
         </Stack>
       </Box>
 
@@ -805,8 +817,19 @@ export default function ProjectsPage() {
       ) : null}
 
       <Stack spacing={0}>
-        {items.length === 0 ? (
-          <Typography color="text.secondary">{t("empty")}</Typography>
+        {projectsLoading ? (
+          <Stack spacing={1.5} sx={{ py: 1 }}>
+            <Skeleton variant="rounded" height={72} />
+            <Skeleton variant="rounded" height={72} />
+            <Skeleton variant="rounded" height={72} />
+          </Stack>
+        ) : items.length === 0 ? (
+          <Alert severity="info">
+            <Typography fontWeight={650}>{t("empty")}</Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              {t("emptyHelp")}
+            </Typography>
+          </Alert>
         ) : (
           items.map((project) => {
             const overview = portfolioQuery.data?.projects.find(
@@ -877,25 +900,53 @@ export default function ProjectsPage() {
                           })}`
                         : null}
                     </Typography>
+                    {!project.workspaceRoot ? (
+                      <Alert severity="warning" sx={{ mt: 1 }}>
+                        {t("rootMissingHelp")}{" "}
+                        <Link href="/workbench">{t("openWorkbench")}</Link>
+                        {" · "}
+                        <Link href="/process-audit">{t("openProcessAudit")}</Link>
+                      </Alert>
+                    ) : null}
                   </Box>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     {!project.cloudSynced ? (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        disabled={!canUpload || uploadCloud.isPending}
-                        onClick={() => uploadCloud.mutate(project.id)}
+                      <Tooltip
+                        title={
+                          canUpload
+                            ? t("uploadCloud")
+                            : t("uploadCloudDisabledHint")
+                        }
                       >
-                        {t("uploadCloud")}
-                      </Button>
+                        <span>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            disabled={!canUpload || uploadCloud.isPending}
+                            onClick={() => uploadCloud.mutate(project.id)}
+                          >
+                            {t("uploadCloud")}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     ) : null}
                     <Button
                       component={Link}
                       href="/studio"
                       size="small"
                       variant="contained"
+                      disabled={!project.workspaceRoot}
                     >
                       {t("openStudio")}
+                    </Button>
+                    <Button
+                      component={Link}
+                      href="/workbench"
+                      size="small"
+                      variant="outlined"
+                      disabled={!project.workspaceRoot}
+                    >
+                      {t("openWorkbench")}
                     </Button>
                     <Button
                       component={Link}

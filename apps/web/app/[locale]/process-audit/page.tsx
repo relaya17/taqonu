@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { API_URL, apiGet, apiPost } from "@/lib/api";
+import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 
 interface Project {
   id: string;
@@ -88,6 +89,10 @@ export default function ProcessAuditPage() {
   const projects = useMemo(
     () => projectsQuery.data?.items ?? [],
     [projectsQuery.data],
+  );
+  const selected = useMemo(
+    () => projects.find((p) => p.id === projectId) ?? null,
+    [projects, projectId],
   );
 
   const reachabilityQuery = useQuery({
@@ -229,6 +234,10 @@ export default function ProcessAuditPage() {
             {reach.repo.note}
           </Typography>
         </Alert>
+      ) : null}
+
+      {selected && !selected.workspaceRoot ? (
+        <OnboardingPath missingRootCount={1} />
       ) : null}
 
       <TextField

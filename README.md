@@ -79,7 +79,8 @@ BrokerOS and other lab names are **demos only**. Customers import from:
 - GitHub (`owner/repo` after PAT connect)  
 - any remote git URL (metadata link)
 
-Atlas stores the **Evidence Graph** (freemium cloud slots for metadata). Full
+Atlas stores the **Evidence Graph** (optional Atlas evidence mirror on Pro;
+customer data prefers **BYO Cloudflare** free tier). Full
 source stays with the customer / their git host — they pay that vendor, not Atlas,
 for code hosting. See [`docs/strategy/byo-storage.md`](docs/strategy/byo-storage.md).
 
@@ -131,7 +132,9 @@ Not the LLM. **Engineering Evidence Graph + historical engineering memory.**
 
 Playbooks live under `docs/strategy/`.
 
-Pricing in product today: **Free / Pro** cloud slots (+ multi-axis quotas). Broader Developer · Team · Company · Enterprise packaging can sit on top later — sell **time + risk + money**.
+Pricing in product today: **Free / Pro** usage quotas + optional evidence mirror
+(Pro) + **BYO Cloudflare** for customer data. Broader Developer · Team · Company ·
+Enterprise packaging can sit on top later — sell **time + risk + money**.
 
 ---
 
@@ -144,7 +147,7 @@ Pricing in product today: **Free / Pro** cloud slots (+ multi-axis quotas). Broa
 | Workbench | Files · code · Visual Studio path · Cloud consoles · Cursor · agent chat |
 | Studio | Human view-only · agent proposes patches (Approve → Apply) |
 | Process / E2E | Internal deep process audits · opinion-style UI |
-| Freemium | Cloud slots + multi-axis quotas + Stripe |
+| Freemium | Usage quotas + BYO Cloudflare + optional Pro evidence mirror + Stripe |
 | Verified knowledge | Allow-listed tech sources · admin pack download |
 | Partners | External repo connect + usage analytics |
 

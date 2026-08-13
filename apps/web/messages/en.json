@@ -71,7 +71,17 @@
     "paidActive": "Paid companion",
     "freeActive": "Free ArletOS",
     "browseModels": "Marketplace",
-    "paidNote": "{name} accompanies you app-wide with verified sources (MDN, Python.org, Oracle, OWASP, Unity…). Credits charge only after a successful reply."
+    "paidNote": "{name} accompanies you app-wide with verified sources (MDN, Python.org, Oracle, OWASP, Unity…). Credits charge only after a successful reply.",
+    "expand": "Expand companion",
+    "collapse": "Collapse companion"
+  },
+  "onboarding": {
+    "title": "Start here",
+    "body": "Link a local folder → open Workbench → run an E2E process audit.",
+    "bodyMissing": "{count} projects still need a local folder before Studio, Workbench, and E2E unlock.",
+    "stepProjects": "1. Link folder",
+    "stepWorkbench": "2. Workbench",
+    "stepE2e": "3. E2E audit"
   },
   "workbench": {
     "title": "Project Workbench",
@@ -122,6 +132,8 @@
     "projectHelp": "Requires a local workspaceRoot linked on the API host",
     "noRoot": "no local path",
     "needRoot": "Link a folder under Projects first, then reopen Studio.",
+    "noProjects": "No projects yet — register or discover under Projects.",
+    "pickProject": "Select a project above to open Studio.",
     "goProjects": "Projects",
     "tree": "Files",
     "truncated": "Partial tree",
@@ -280,6 +292,10 @@
     "investors": "Investors",
     "nowLive": "Live now",
     "epistemic": "Epistemic states are always shown — facts are never silently merged with inference.",
+    "byoLoading": "Checking Cloudflare BYO…",
+    "byoConnected": "Cloudflare BYO connected: {label}",
+    "byoDisconnected": "Cloudflare BYO not connected — your free data stays in your Cloudflare; connect under Pricing.",
+    "byoCta": "Pricing / BYO",
     "cats": {
       "exists": "What exists",
       "existsBody": "GitHub / repository evidence",
@@ -409,7 +425,7 @@
     "uploadCloud": "Upload to cloud",
     "cloudSynced": "In cloud",
     "localOnly": "Local only",
-    "uploadCloudDisabledHint": "Atlas evidence-mirror upload is blocked on Free (0 slots). Connect Cloudflare BYO for your data, or upgrade to Pro for an optional mirror.",
+    "uploadCloudDisabledHint": "Atlas evidence-mirror upload is blocked on Free (0 mirror slots). Connect Cloudflare BYO for your data, or upgrade to Pro for an optional mirror.",
     "quotaBlocked": "Cloud quota full — upgrade on Plan",
     "quotaSell": "Free = your Cloudflare for data + limited Atlas usage. Upgrade Pro for higher ceilings.",
     "viewPlan": "View pricing",
@@ -447,7 +463,11 @@
     "linkRoot": "Link this path",
     "discoveryRefreshResult": "Local: scanned {localScanned}, linked {localLinked}. GitHub: imported {ghImported}. App: imported {appImported}.",
     "openIntegrationsHint": "Connect sources under Integrations first if refresh finds nothing.",
-    "openState": "Current state"
+    "openState": "Current state",
+    "emptyHelp": "Paste GitHub full names below, or refresh discovery after connecting Integrations.",
+    "rootMissingHelp": "Without a local path, Studio / Workbench / E2E stay limited. Save an absolute folder path below, then continue:",
+    "openWorkbench": "Workbench",
+    "openProcessAudit": "E2E process"
   },
   "state": {
     "title": "Current State",
@@ -541,6 +561,7 @@
     "ctaPricing": "See pricing",
     "ctaUpgrade": "Go Pro",
     "reelAria": "Short product story: verdict, workbench, cloud, upgrade",
+    "reelFallbackNote": "Product story (set NEXT_PUBLIC_MARKETING_VIDEO_URL for a real walkthrough video)",
     "reel": {
       "verdict": {
         "title": "Release verdict in one glance",
@@ -583,7 +604,7 @@
     "proDetail": "Higher Atlas usage ceilings · optional evidence mirror · Stripe checkout.",
     "closeTitle": "Ready when your stack is.",
     "seoTitle": "ArletOS · Atlas — Engineering truth layer for AI-native teams",
-    "seoDescription": "ArletOS (Atlas) is the engineering evidence and readiness platform: release verdicts, governed AI patches, E2E process audits, and freemium cloud project slots.",
+    "seoDescription": "ArletOS (Atlas) is the engineering evidence and readiness platform: release verdicts, governed AI patches, E2E process audits, and BYO Cloudflare storage — freemium on Atlas usage, not hosted slots.",
     "seoKeywords": "engineering readiness, AI governance, evidence graph, release verdict, SaaS freemium, Atlas, ArletOS, continuous audit, QA intelligence"
   },
   "conflicts": {

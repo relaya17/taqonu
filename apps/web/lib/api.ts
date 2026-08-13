@@ -1,4 +1,29 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const CONFIGURED_API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+const LOOPBACK = new Set(["localhost", "127.0.0.1"]);
+
+/**
+ * Prefer the same loopback host the page was opened with so cookies/CORS stay
+ * aligned (localhost vs 127.0.0.1).
+ */
+export function resolveApiUrl(): string {
+  try {
+    const configured = new URL(CONFIGURED_API_URL);
+    if (typeof window !== "undefined" && LOOPBACK.has(configured.hostname)) {
+      const pageHost = window.location.hostname;
+      if (LOOPBACK.has(pageHost)) {
+        configured.hostname = pageHost;
+      }
+    }
+    return configured.toString().replace(/\/$/, "");
+  } catch {
+    return CONFIGURED_API_URL.replace(/\/$/, "");
+  }
+}
+
+/** @deprecated Prefer resolveApiUrl() in browser code — kept for SSR imports. */
+export const API_URL = CONFIGURED_API_URL.replace(/\/$/, "");
 
 /** Separate admin console path (not under locale app shell). */
 export const ADMIN_BASE_PATH = "/admin";
@@ -7,7 +32,7 @@ export const ADMIN_LOGIN_PATH = "/admin/login";
 export function verifiedSourcesDownloadUrl(
   format: "json" | "markdown" = "json",
 ): string {
-  return `${API_URL}/api/v1/knowledge/verified-sources/download?format=${format}`;
+  return `${resolveApiUrl()}/api/v1/knowledge/verified-sources/download?format=${format}`;
 }
 
 export function downloadVerifiedSourcesPack(
@@ -43,7 +68,7 @@ const defaultInit: NonNullable<Parameters<typeof fetch>[1]> = {
 };
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
   });
   if (!response.ok) {
@@ -53,7 +78,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -66,7 +91,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -79,7 +104,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "DELETE",
     ...(body !== undefined

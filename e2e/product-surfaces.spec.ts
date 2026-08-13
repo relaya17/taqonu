@@ -53,13 +53,13 @@ test.describe("Product surfaces (EN)", () => {
   });
 
   test("current state center reachable", async ({ page, request }) => {
-    await page.goto("/en/state");
+    await page.goto("/en/projects");
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
     if (await apiHealthy(request)) {
       await expect(
-        page.getByText(/current state|unknown|project|reconcile/i).first(),
+        page.getByText(/project|portfolio|discover|empty|registered|folder/i).first(),
       ).toBeVisible({ timeout: 20_000 });
     }
   });
@@ -104,13 +104,13 @@ test.describe("Product surfaces (EN)", () => {
     page,
     request,
   }) => {
-    await page.goto("/en/chat");
+    await page.goto("/en/workbench");
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
     if (await apiHealthy(request)) {
       await expect(
-        page.getByText(/conversation|evidence|insufficient|atlas/i).first(),
+        page.getByText(/workbench|agent|chat|files|project/i).first(),
       ).toBeVisible({ timeout: 20_000 });
     }
   });

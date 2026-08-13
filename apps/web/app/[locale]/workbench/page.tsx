@@ -22,6 +22,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
+import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 
 interface Project {
   id: string;
@@ -323,9 +324,12 @@ export default function WorkbenchPage() {
       </Stack>
 
       {projectId && !hasRoot ? (
-        <Alert severity="warning">
-          {t("needRoot")} <Link href="/projects">{t("goProjects")}</Link>
-        </Alert>
+        <Stack spacing={1.5}>
+          <Alert severity="warning">
+            {t("needRoot")} <Link href="/projects">{t("goProjects")}</Link>
+          </Alert>
+          <OnboardingPath missingRootCount={1} />
+        </Stack>
       ) : null}
 
       <Box

@@ -314,6 +314,17 @@ export default function StudioPage() {
         </Alert>
       ) : null}
 
+      {!projectId && !projectsQuery.isLoading && projects.length === 0 ? (
+        <Alert severity="info">
+          {t("noProjects")}{" "}
+          <Link href="/projects">{t("goProjects")}</Link>
+        </Alert>
+      ) : null}
+
+      {!projectId && !projectsQuery.isLoading && projects.length > 0 ? (
+        <Alert severity="info">{t("pickProject")}</Alert>
+      ) : null}
+
       {treeQuery.isError ? (
         <Alert severity="error">{(treeQuery.error as Error).message}</Alert>
       ) : null}

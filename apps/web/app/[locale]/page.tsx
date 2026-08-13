@@ -7,6 +7,7 @@ import {
   Button,
   Chip,
   MenuItem,
+  Skeleton,
   Stack,
   TextField,
   Typography,
@@ -16,11 +17,13 @@ import { Link } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
+import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 
 interface ProjectItem {
   id: string;
   name: string;
   slug: string;
+  workspaceRoot?: string | null;
 }
 
 interface BlockerItem {
@@ -71,6 +74,17 @@ export default function DashboardPage() {
         "/api/v1/golden/project",
       ),
     staleTime: 5 * 60_000,
+  });
+
+  const byo = useQuery({
+    queryKey: ["byo-cloud-status"],
+    queryFn: () =>
+      apiGet<{
+        status: "connected" | "disconnected" | "error";
+        accountLabel: string | null;
+        provider: string;
+      }>("/api/v1/byo-cloud/status"),
+    staleTime: 60_000,
   });
 
   const projectId = useMemo(() => {
@@ -173,7 +187,29 @@ export default function DashboardPage() {
         <Typography color="text.secondary" sx={{ maxWidth: 640, mb: 2 }}>
           {t("dashboard.pitch")}
         </Typography>
-        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+        <OnboardingPath
+          missingRootCount={(projects.data?.items ?? []).filter(
+            (p) => !p.workspaceRoot,
+          ).length}
+        />
+        <Alert
+          severity={byo.data?.status === "connected" ? "success" : "info"}
+          sx={{ mt: 2, mb: 1 }}
+          action={
+            <Button component={Link} href="/plan" color="inherit" size="small">
+              {t("dashboard.byoCta")}
+            </Button>
+          }
+        >
+          {byo.isLoading
+            ? t("dashboard.byoLoading")
+            : byo.data?.status === "connected"
+              ? t("dashboard.byoConnected", {
+                  label: byo.data.accountLabel ?? "Cloudflare",
+                })
+              : t("dashboard.byoDisconnected")}
+        </Alert>
+        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
           <Button component={Link} href="/projects" variant="contained" size="large">
             {t("dashboard.ctaProjects")}
           </Button>
@@ -222,21 +258,25 @@ export default function DashboardPage() {
         </Stack>
       </Box>
 
-      <TextField
-        select
-        size="small"
-        label={t("dashboard.projectSelect")}
-        value={projectId}
-        onChange={(e) => setSelectedId(e.target.value)}
-        sx={{ maxWidth: 420 }}
-        helperText={t("dashboard.projectSelectHelp")}
-      >
-        {(projects.data?.items ?? []).map((p) => (
-          <MenuItem key={p.id} value={p.id}>
-            {p.name} ({p.slug})
-          </MenuItem>
-        ))}
-      </TextField>
+      {projects.isLoading ? (
+        <Skeleton variant="rounded" height={56} sx={{ maxWidth: 420 }} />
+      ) : (
+        <TextField
+          select
+          size="small"
+          label={t("dashboard.projectSelect")}
+          value={projectId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          sx={{ maxWidth: 420 }}
+          helperText={t("dashboard.projectSelectHelp")}
+        >
+          {(projects.data?.items ?? []).map((p) => (
+            <MenuItem key={p.id} value={p.id}>
+              {p.name} ({p.slug})
+            </MenuItem>
+          ))}
+        </TextField>
+      )}
 
       {verdict.isError ? (
         <Alert severity="warning">{t("dashboard.verdictUnavailable")}</Alert>
@@ -249,6 +289,21 @@ export default function DashboardPage() {
             {t("dashboard.ctaPartners")}
           </Button>
         </Alert>
+      ) : null}
+
+      {projectId && (verdict.isLoading || verdict.isFetching) && !verdict.data ? (
+        <Box sx={{ py: 3 }}>
+          <Skeleton width={220} height={24} />
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
+            <Skeleton width={96} height={56} />
+            <Skeleton width={100} height={32} />
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+            <Skeleton width={88} height={28} />
+            <Skeleton width={88} height={28} />
+            <Skeleton width={88} height={28} />
+          </Stack>
+        </Box>
       ) : null}
 
       {verdict.data ? (

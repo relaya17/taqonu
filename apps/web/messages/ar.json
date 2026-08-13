@@ -71,7 +71,17 @@
     "paidActive": "مرافق مدفوع",
     "freeActive": "ArletOS مجاني",
     "browseModels": "السوق",
-    "paidNote": "{name} يرافقك في كل التطبيق مع مصادر موثّقة (MDN، Python.org، Oracle، OWASP، Unity…). الرصيد يُخصم فقط بعد رد ناجح."
+    "paidNote": "{name} يرافقك في كل التطبيق مع مصادر موثّقة (MDN، Python.org، Oracle، OWASP، Unity…). الرصيد يُخصم فقط بعد رد ناجح.",
+    "expand": "توسيع المرافق",
+    "collapse": "طيّ المرافق"
+  },
+  "onboarding": {
+    "title": "ابدأ هنا",
+    "body": "اربط مجلدًا → Workbench → تدقيق E2E.",
+    "bodyMissing": "ما زال {count} مشروعًا بلا مجلد محلي — Studio / Workbench / E2E محدودة.",
+    "stepProjects": "1. ربط مجلد",
+    "stepWorkbench": "2. Workbench",
+    "stepE2e": "3. تدقيق E2E"
   },
   "workbench": {
     "title": "مساحة عمل المشروع",
@@ -122,6 +132,8 @@
     "projectHelp": "يتطلب workspaceRoot محلياً مربوطاً على جهاز الـ API",
     "noRoot": "بلا مسار محلي",
     "needRoot": "اربط مجلداً من المشاريع ثم أعد فتح Studio.",
+    "noProjects": "لا مشاريع بعد — سجّل أو اكتشف من المشاريع.",
+    "pickProject": "اختر مشروعاً أعلاه لفتح Studio.",
     "goProjects": "المشاريع",
     "tree": "الملفات",
     "truncated": "شجرة جزئية",
@@ -280,6 +292,10 @@
     "investors": "للمستثمرين",
     "nowLive": "متاح الآن",
     "epistemic": "تُعرض الحالات المعرفية دائماً — لا تُدمج الحقائق مع الاستنتاج بصمت.",
+    "byoLoading": "جارٍ التحقق من Cloudflare BYO…",
+    "byoConnected": "Cloudflare BYO متصل: {label}",
+    "byoDisconnected": "Cloudflare BYO غير متصل — بياناتك المجانية تبقى في Cloudflare لديك؛ اربط من التسعير.",
+    "byoCta": "التسعير / BYO",
     "cats": {
       "exists": "ما يوجد",
       "existsBody": "أدلة GitHub / المستودعات",
@@ -409,7 +425,7 @@
     "uploadCloud": "رفع إلى السحابة",
     "cloudSynced": "في السحابة",
     "localOnly": "محلي فقط",
-    "uploadCloudDisabledHint": "رفع مرآة Atlas محظور في المجاني (0 خانات). اربط Cloudflare BYO لبياناتك، أو رقِّ إلى Pro لمرآة اختيارية.",
+    "uploadCloudDisabledHint": "رفع مرآة Atlas محظور في المجاني (0 مرايا). اربط Cloudflare BYO لبياناتك، أو رقِّ إلى Pro لمرآة اختيارية.",
     "quotaBlocked": "حصة السحابة ممتلئة — رقِّ من الخطة",
     "quotaSell": "مجاني = Cloudflare لكم للبيانات + استخدام محدود في Atlas. رقِّ إلى Pro لسقوف أعلى.",
     "viewPlan": "الأسعار",
@@ -447,7 +463,11 @@
     "linkRoot": "ربط هذا المسار",
     "discoveryRefreshResult": "محلي: نُسخ {localScanned}، رُبط {localLinked}. GitHub: استُورد {ghImported}. App: استُورد {appImported}.",
     "openIntegrationsHint": "اربط المصادر من التكاملات أولاً إذا لم يجد التحديث شيئاً.",
-    "openState": "الحالة الحالية"
+    "openState": "الحالة الحالية",
+    "emptyHelp": "الصق أسماء GitHub الكاملة أدناه، أو حدّث الاكتشاف بعد ربط التكاملات.",
+    "rootMissingHelp": "بدون مسار محلي تبقى Studio / Workbench / E2E محدودة. احفظ مسارًا مطلقًا أدناه ثم تابع:",
+    "openWorkbench": "Workbench",
+    "openProcessAudit": "عملية E2E"
   },
   "state": {
     "title": "الحالة الحالية",
@@ -541,6 +561,7 @@
     "ctaPricing": "الأسعار",
     "ctaUpgrade": "انتقل إلى Pro",
     "reelAria": "قصة منتج قصيرة: حكم الإطلاق، مساحة العمل، السحابة، الترقية",
+    "reelFallbackNote": "قصة منتج (اضبط NEXT_PUBLIC_MARKETING_VIDEO_URL لفيديو حقيقي)",
     "reel": {
       "verdict": {
         "title": "حكم الإطلاق بنظرة واحدة",
@@ -583,7 +604,7 @@
     "proDetail": "سقوف استخدام أعلى · مرآة أدلة اختيارية · Checkout عبر Stripe.",
     "closeTitle": "جاهزون عندما تكون منظومتكم جاهزة.",
     "seoTitle": "ArletOS · Atlas — طبقة الحقيقة الهندسية لفرق AI",
-    "seoDescription": "ArletOS (Atlas) منصة أدلة وجاهزية: أحكام إطلاق، رقع AI محكومة، تدقيقات E2E، وخانات مشاريع سحابية freemium.",
+    "seoDescription": "ArletOS (Atlas) منصة أدلة وجاهزية: أحكام إطلاق، رقع AI محكومة، تدقيقات E2E، وتخزين BYO على Cloudflare — freemium على استخدام Atlas وليس خانات مستضافة لدينا.",
     "seoKeywords": "جاهزية هندسية، حوكمة AI، رسم بياني للأدلة، حكم إطلاق، SaaS freemium، Atlas، ArletOS، تدقيق مستمر، ذكاء QA"
   },
   "conflicts": {
@@ -1074,7 +1095,7 @@
     "modeDocsHint": "المستندات: design-partner-playbook · design-partner-audit-runbook · design-partner-tracker · case-studies/_partner-fill-in (تحت docs/).",
     "openHealth": "صحة النظام",
     "storageTitle": "ما يخزّنه Atlas",
-    "freeSlots": "سحابة freemium: {n} مشاريع بيانات وصفية",
+    "freeSlots": "مرآة أدلة Atlas (مجاني): {n} — استخدم Cloudflare BYO للبيانات",
     "byoCode": "الكود = BYO (لا يُرفع بالكامل)",
     "labOnly": "Case #001 (مختبر داخلي) — ليس علامة منتج.",
     "connectTitle": "استيراد مستودع",
@@ -1091,7 +1112,7 @@
     "githubHelp": "المستودع العام يعمل بلا توكن. الخاص يحتاج PAT أدناه. Atlas يسحب بيانات وصفية فقط.",
     "remoteUrl": "رابط المستودع",
     "remoteHelp": "GitLab / Bitbucket / غيره — رابط بيانات وصفية فقط",
-    "syncCloud": "مزامنة بيانات المشروع إلى سحابة Atlas (وليس الكود — حصة freemium)",
+    "syncCloud": "مزامنة بيانات المشروع إلى مرآة Atlas (وليس الكود — حصة استخدام، لا استضافة لدينا)",
     "connect": "استورد وابنِ baseline",
     "openReadiness": "الجاهزية",
     "openVerdict": "إلى Verdict في الصفحة الرئيسية",

@@ -326,12 +326,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Box>
         ) : (
           <Button
-            component={Link}
-            href="/auth/login"
             size="small"
             variant="outlined"
             color="secondary"
-            onClick={opts.mobile ? () => setNavOpen(false) : undefined}
+            onClick={() => {
+              if (opts.mobile) setNavOpen(false);
+              window.location.assign(`/${locale}/auth/login`);
+            }}
           >
             {t("auth.login")}
           </Button>
@@ -445,11 +446,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               {t("nav.plan")}
             </Button>
             <Button
+              component="a"
+              href={`/${locale}/auth/login`}
               size="small"
               variant="contained"
-              onClick={() => {
-                window.location.assign(`/${locale}/auth/login`);
-              }}
               sx={{
                 bgcolor: "#3EC8BE",
                 color: "#041214",

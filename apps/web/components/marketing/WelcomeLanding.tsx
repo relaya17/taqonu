@@ -1,17 +1,15 @@
 "use client";
 
 import { Box, Button, Stack, Typography } from "@mui/material";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
 
 export function WelcomeLanding() {
   const t = useTranslations("landing");
+  const locale = useLocale();
   const router = useRouter();
 
-  const goLogin = () => {
-    router.push("/auth/login");
-  };
   const goPlan = () => {
     router.push("/plan");
   };
@@ -43,7 +41,8 @@ export function WelcomeLanding() {
             zIndex: 2,
             justifyContent: "center",
             px: { xs: 2.5, sm: 4, md: 6 },
-            py: { xs: 4, md: 8 },
+            pt: { xs: 8, md: 10 },
+            pb: { xs: 4, md: 8 },
             maxWidth: 560,
           }}
         >
@@ -90,7 +89,8 @@ export function WelcomeLanding() {
           </Typography>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ pt: 0.5 }}>
             <Button
-              onClick={goLogin}
+              component="a"
+              href={`/${locale}/auth/login`}
               variant="contained"
               size="large"
               sx={{
@@ -252,7 +252,12 @@ export function WelcomeLanding() {
             <Typography sx={{ color: "rgba(170, 200, 198, 0.9)", mb: 2 }}>
               {t("freeDetail")}
             </Typography>
-            <Button onClick={goLogin} variant="outlined" sx={{ color: "#E8F4F2", borderColor: "rgba(62,200,190,0.45)" }}>
+            <Button
+              component="a"
+              href={`/${locale}/auth/login`}
+              variant="outlined"
+              sx={{ color: "#E8F4F2", borderColor: "rgba(62,200,190,0.45)" }}
+            >
               {t("ctaStart")}
             </Button>
           </Box>

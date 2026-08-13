@@ -12,7 +12,9 @@ export function createAtlasTheme(
 
   return createTheme({
     direction,
-    cssVariables: true,
+    // cssVariables add client-only Paper CSS vars (--Paper-overlay) that trip
+    // Next.js hydration "1 Issue" in dev; palette.mode is enough for theming.
+    cssVariables: false,
     palette: {
       mode,
       primary: {

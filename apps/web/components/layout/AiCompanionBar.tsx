@@ -1,13 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Box,
   Chip,
+  Collapse,
+  IconButton,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
@@ -26,11 +31,35 @@ interface ProviderItem {
   kind: "agent" | "assist" | "both";
 }
 
-/** Compact global companion strip — does not dominate the first viewport. */
+const STORAGE_KEY = "atlas.companionExpanded";
+
+/** Compact global companion strip — collapsed by default; expand on demand. */
 export function AiCompanionBar() {
   const t = useTranslations("companion");
   const locale = useLocale();
   const { providerId, billing, setProviderId, ready } = useAiCompanion();
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(STORAGE_KEY);
+      setExpanded(stored === "1");
+    } catch {
+      setExpanded(false);
+    }
+  }, []);
+
+  const toggle = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        window.sessionStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   const providers = useQuery({
     queryKey: ["ai-providers"],
@@ -48,11 +77,14 @@ export function AiCompanionBar() {
   const title = (p: ProviderItem) =>
     locale === "he" ? p.titleHe : locale === "ar" ? p.titleAr : p.titleEn;
 
+  const activeLabel =
+    options.find((p) => p.id === providerId)?.titleEn ?? "ArletOS";
+
   return (
     <Box
       sx={{
-        mb: 1.5,
-        py: 0.75,
+        mb: 1,
+        py: 0.25,
         borderBottom: "1px solid",
         borderColor: "divider",
       }}
@@ -61,58 +93,92 @@ export function AiCompanionBar() {
     >
       <Stack
         direction="row"
-        spacing={1}
+        spacing={0.75}
         alignItems="center"
-        flexWrap="wrap"
-        useFlexGap
+        flexWrap="nowrap"
+        sx={{ minHeight: 36 }}
       >
-        <Typography variant="caption" fontWeight={650} sx={{ mr: 0.5 }}>
+        <Typography
+          variant="caption"
+          fontWeight={650}
+          sx={{ whiteSpace: "nowrap", display: { xs: "none", sm: "inline" } }}
+        >
           {t("title")}
         </Typography>
-        <TextField
-          select
-          size="small"
-          label={t("label")}
-          value={ready ? providerId : "arletos-included"}
-          onChange={(e) => setProviderId(e.target.value)}
-          disabled={!ready || options.length === 0}
-          sx={{ minWidth: { xs: 160, sm: 200 } }}
-        >
-          {(options.length > 0
-            ? options
-            : [
-                {
-                  id: "arletos-included",
-                  titleEn: "ArletOS",
-                  titleHe: "ArletOS",
-                  titleAr: "ArletOS",
-                  billing: "included" as const,
-                  creditCost: 0,
-                  available: true,
-                  kind: "agent" as const,
-                },
-              ]
-          ).map((p) => (
-            <MenuItem key={p.id} value={p.id}>
-              {title(p)}
-              {p.billing === "credits" ? ` · ${p.creditCost}` : ""}
-            </MenuItem>
-          ))}
-        </TextField>
         <Chip
           size="small"
-          color={billing === "credits" ? "warning" : "success"}
-          label={billing === "credits" ? t("paidActive") : t("freeActive")}
+          color={billing === "credits" ? "warning" : "default"}
+          variant="outlined"
+          label={
+            billing === "credits"
+              ? `${activeLabel} · ${t("paidActive")}`
+              : t("freeActive")
+          }
+          sx={{ maxWidth: { xs: 140, sm: 220 } }}
         />
-        <Typography
-          component={Link}
-          href="/models"
-          variant="caption"
-          sx={{ color: "primary.main", whiteSpace: "nowrap" }}
+        <IconButton
+          size="small"
+          onClick={toggle}
+          aria-expanded={expanded}
+          aria-label={expanded ? t("collapse") : t("expand")}
+          sx={{ ml: "auto" }}
         >
-          {t("browseModels")}
-        </Typography>
+          {expanded ? (
+            <ExpandLessIcon fontSize="small" />
+          ) : (
+            <ExpandMoreIcon fontSize="small" />
+          )}
+        </IconButton>
       </Stack>
+      <Collapse in={expanded}>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ pb: 0.75, pt: 0.25 }}
+        >
+          <TextField
+            select
+            size="small"
+            label={t("label")}
+            value={ready ? providerId : "arletos-included"}
+            onChange={(e) => setProviderId(e.target.value)}
+            disabled={!ready || options.length === 0}
+            sx={{ minWidth: { xs: 150, sm: 200 } }}
+          >
+            {(options.length > 0
+              ? options
+              : [
+                  {
+                    id: "arletos-included",
+                    titleEn: "ArletOS",
+                    titleHe: "ArletOS",
+                    titleAr: "ArletOS",
+                    billing: "included" as const,
+                    creditCost: 0,
+                    available: true,
+                    kind: "agent" as const,
+                  },
+                ]
+            ).map((p) => (
+              <MenuItem key={p.id} value={p.id}>
+                {title(p)}
+                {p.billing === "credits" ? ` · ${p.creditCost}` : ""}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Typography
+            component={Link}
+            href="/models"
+            variant="caption"
+            sx={{ color: "primary.main", whiteSpace: "nowrap" }}
+          >
+            {t("browseModels")}
+          </Typography>
+        </Stack>
+      </Collapse>
     </Box>
   );
 }
