@@ -48,6 +48,7 @@ import { registerLegalMediaRoutes } from "./routes/legal-media.js";
 import { registerSecuritySarifRoutes } from "./routes/security-sarif.js";
 import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { registerObserverRoutes } from "./routes/observer.js";
+import { registerSentinelRoutes } from "./routes/sentinel.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
@@ -145,6 +146,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerMetricsRoutes(app);
   await registerLegalMediaRoutes(app);
   await registerObserverRoutes(app);
+  await registerSentinelRoutes(app);
 
   return app;
 }

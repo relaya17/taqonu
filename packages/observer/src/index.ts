@@ -60,3 +60,12 @@ export {
 export type { DeployEvent } from "./production/deploy-events.js";
 export { detectAdrConflicts } from "./memory/adr-conflict.js";
 export type { AdrConflict } from "./memory/adr-conflict.js";
+export { detectSecrets } from "./security/secrets.js";
+export type { SecretFinding } from "./security/secrets.js";
+export { detectAuthzRegressions } from "./security/authz-regression.js";
+export type { AuthzRegressionFinding } from "./security/authz-regression.js";
+export { runSentinelScan } from "./security/scan.js";
+export type {
+  SentinelScanResult,
+  SentinelFinding,
+} from "./security/scan.js";

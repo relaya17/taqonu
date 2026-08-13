@@ -22,6 +22,7 @@
     "health": "صحة النظام",
     "truth": "الحقيقة",
     "observer": "المراقب",
+    "sentinel": "فحص أمني",
     "metrics": "المقاييس",
     "contract": "عقد البنية",
     "partners": "شركاء التصميم",
@@ -1223,6 +1224,25 @@
     "bugsTitle": "الأخطاء",
     "bugTitle": "عنوان الخطأ",
     "addBug": "إضافة خطأ"
+  },
+  "sentinel": {
+    "title": "Atlas Sentinel",
+    "subtitle": "فحص أمني دفاعي — أسرار، تراجع صلاحيات، وضع مبني على أدلة. ليس أداة هجوم.",
+    "defensiveOnly": "دفاعي فقط: بلا PoCs استغلال وبلا مسح غير مصرّح لأنظمة الغير.",
+    "project": "المشروع",
+    "unlinked": "بدون مجلد محلي",
+    "run": "تشغيل الفحص الأمني",
+    "running": "جارٍ المسح…",
+    "error": "فشل مسح Sentinel",
+    "posture": "الوضع {posture}",
+    "scannedAt": "تم المسح في {at}",
+    "countSecrets": "أسرار {n}",
+    "countAuthz": "صلاحيات {n}",
+    "countCritical": "حرج {n}",
+    "countHigh": "عالٍ {n}",
+    "clear": "لا إشارات أسرار أو تراجع AuthZ في هذه الجولة.",
+    "remediation": "المعالجة",
+    "nextActions": "الخطوات التالية"
   },
   "health": {
     "title": "صحة النظام",

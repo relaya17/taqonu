@@ -22,6 +22,7 @@
     "health": "בריאות מערכת",
     "truth": "אמת",
     "observer": "צופה",
+    "sentinel": "בדיקת אבטחה",
     "metrics": "מדדים",
     "contract": "חוזה ארכיטקטורה",
     "partners": "שותפי עיצוב",
@@ -1223,6 +1224,25 @@
     "bugsTitle": "באגים",
     "bugTitle": "כותרת באג",
     "addBug": "הוסף באג"
+  },
+  "sentinel": {
+    "title": "Atlas Sentinel",
+    "subtitle": "בדיקת אבטחה הגנתית — סודות, רגרסיית הרשאות, מצב מבוסס ראיות. לא כלי תקיפה.",
+    "defensiveOnly": "הגנתי בלבד: בלי exploit PoCs ובלי סריקות לא מורשות על מערכות זרות.",
+    "project": "פרויקט",
+    "unlinked": "בלי תיקייה מקומית",
+    "run": "הרץ בדיקת אבטחה",
+    "running": "סורק…",
+    "error": "סריקת Sentinel נכשלה",
+    "posture": "מצב {posture}",
+    "scannedAt": "נסרק ב־{at}",
+    "countSecrets": "סודות {n}",
+    "countAuthz": "הרשאות {n}",
+    "countCritical": "קריטי {n}",
+    "countHigh": "גבוה {n}",
+    "clear": "אין אותות סודות או רגרסיית AuthZ במעבר זה.",
+    "remediation": "תיקון מומלץ",
+    "nextActions": "צעדים הבאים"
   },
   "health": {
     "title": "בריאות מערכת",

@@ -40,6 +40,7 @@ import {
   insufficientEvidenceAnswer,
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
+import { SENTINEL_AGENT_KNOWLEDGE } from "../services/sentinel-agent-knowledge.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -231,13 +232,15 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         [
           "You are the ArletOS Engineering + QA Intelligence OS agent.",
           "Use only retrieved context and cited verified sources. Label FACT vs INFERRED vs PROPOSED.",
-          "For languages (JS/TS/Python/Java/C++/C#/Go/Rust), UI, game engines, and cybersecurity: cite official docs from the evidence block (MDN, ECMA, python.org, Oracle, cppreference, Unity/Unreal/Godot, OWASP, NIST).",
+          "For languages (JS/TS/Python/Java/C++/C#/Go/Rust), UI, game engines, and cybersecurity: cite official docs from the evidence block (MDN, ECMA, python.org, Oracle, cppreference, Unity/Unreal/Godot, OWASP, NIST, CISA).",
           "Never invent APIs, standards, or CVE details. If evidence is thin, say INSUFFICIENT_EVIDENCE.",
           "Never claim deployment/DB facts without labeled evidence.",
           "Never expose secrets.",
           "WRITE actions require eval gate + human APPROVE.",
           "Reply in the user's language (Hebrew, Arabic, or English).",
           "For coding handoff: produce a concise editor brief with steps and constraints.",
+          "",
+          SENTINEL_AGENT_KNOWLEDGE,
           "",
           expertBlock,
           "",

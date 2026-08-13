@@ -22,6 +22,7 @@
     "health": "System Health",
     "truth": "Truth",
     "observer": "Observer",
+    "sentinel": "Security check",
     "metrics": "Metrics",
     "contract": "Architecture Contract",
     "partners": "Design Partners",
@@ -1223,6 +1224,25 @@
     "bugsTitle": "Bugs",
     "bugTitle": "Bug title",
     "addBug": "Add bug"
+  },
+  "sentinel": {
+    "title": "Atlas Sentinel",
+    "subtitle": "Defensive security check — secrets, authz regression, evidence-backed posture. Not an attack tool.",
+    "defensiveOnly": "Defensive only: no exploit PoCs, no unauthorized scanning of third-party systems.",
+    "project": "Project",
+    "unlinked": "no local folder",
+    "run": "Run security check",
+    "running": "Scanning…",
+    "error": "Sentinel scan failed",
+    "posture": "Posture {posture}",
+    "scannedAt": "Scanned {at}",
+    "countSecrets": "Secrets {n}",
+    "countAuthz": "AuthZ {n}",
+    "countCritical": "Critical {n}",
+    "countHigh": "High {n}",
+    "clear": "No secret or authz-regression signals in this pass.",
+    "remediation": "Remediation",
+    "nextActions": "Next actions"
   },
   "health": {
     "title": "System Health",

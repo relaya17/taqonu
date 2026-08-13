@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (Sentinel — Defensive Security Agent locked)  
+**עדכון אחרון:** 2026-08-13 (Sentinel S1.1/S1.3/S1.6 + nav + agent knowledge)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -76,7 +76,7 @@
 | 2.4 | Pricing experiments (repos/seats) | `PARTIAL` — freemium usage היום |
 | 2.5 | Case studies + Seed narrative | `OPEN` |
 | 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1.1–A1.7 seeds חיים |
-| 2.7 | **Atlas Sentinel** (Defensive Security Agent) | `OPEN` — ראה סעיף **S1** למטה |
+| 2.7 | **Atlas Sentinel** (Defensive Security Agent) | `PARTIAL` — S1.1/S1.3/S1.6 חיים; S1.2/S1.4/S1.5 עדיין OPEN |
 
 ---
 
@@ -191,12 +191,12 @@ DISCOVER → ANALYZE → RISK SCORE → COLLECT EVIDENCE
 | # | משימה | סטטוס |
 |---:|---|---|
 | S1.0 | מסמך Sentinel + חוזה הגנתי (זה) | `DONE` |
-| S1.1 | Secret Detection v0 על workspace מקושר | `OPEN` |
+| S1.1 | Secret Detection v0 על workspace מקושר | `DONE` — `detectSecrets` · POST `/sentinel/scan` (redacted) |
 | S1.2 | Dependency advisories → Graph / Truth findings | `OPEN` — נשען על A1.5 |
-| S1.3 | AuthZ regression (Temporal: route איבד guard) | `OPEN` — killer feature |
+| S1.3 | AuthZ regression (Temporal: route איבד guard) | `PARTIAL` — heuristic + EXPECTED flow auth-step loss |
 | S1.4 | Config security heuristics (CORS/JWT/cookies/headers) | `OPEN` |
 | S1.5 | Propose→sandbox→security-test→verify loop | `OPEN` — נשען על P1.1 |
-| S1.6 | UI `/sentinel` או טאב ב־`/truth` + Oracle | `OPEN` |
+| S1.6 | UI `/sentinel` או טאב ב־`/truth` + Oracle | `DONE` — `/sentinel` + nav «בדיקת אבטחה» |
 | S1.7 | Specialist packs later: Web · API · Cloud · Identity · DB · AI-security | `DEFERRED` |
 
 **סדר מומלץ:** S1.1 → S1.3 → S1.2 → S1.4 → S1.5 → S1.6  
@@ -268,6 +268,7 @@ Sprint C
 | 2026-08-13 | **A1.2:** Oracle action queue — detect→rank→notify/propose (watchdog + patches + deploys) |
 | 2026-08-13 | **A1.3–A1.7:** version EOL · defensive advisory match · daily brief · audit · morning digest |
 | 2026-08-13 | **S1 נועל:** Atlas Sentinel — Defensive Security Agent (לא תקיפה); Security Verification Loop + S1.1–S1.7 |
+| 2026-08-13 | **S1.1/S1.3/S1.6:** secret detect + authz regression · `/sentinel` · nav · agent Sentinel knowledge |
 
 ---
 
@@ -284,6 +285,6 @@ Sprint C
 | Health (ישן/מקביל) | `apps/web/app/[locale]/health` |
 | Truth dashboard | `apps/web/app/[locale]/truth` |
 | Admin Oracle | `/admin/oracle` · סעיף **A1** |
-| Atlas Sentinel (חזון) | סעיף **S1** — Defensive Security Agent |
+| Atlas Sentinel | `/sentinel` · `packages/observer/src/security` · `GET/POST …/sentinel` · סעיף **S1** |
 | Design partners | `docs/strategy/design-partner-playbook.md` |
 | TRUTH-10 Early Access (G1) | `docs/strategy/design-partner-truth10-early-access.md` |

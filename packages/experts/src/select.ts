@@ -28,10 +28,11 @@ const RULES: Array<{
     expert: "ACCESSIBILITY",
     pattern: /a11y|accessibility|wcag|rtl|נגיש|إتاحة|contrast/i,
   },
-  {
-    expert: "SECURITY",
-    pattern: /security|rls|secret|auth|אבטח|أمن|injection/i,
-  },
+    {
+      expert: "SECURITY",
+      pattern:
+        /security|cyber|sentinel|owasp|nist|cve|rls|secret|auth|אבטח|סייבר|أمن|injection|xss|csrf/i,
+    },
   {
     expert: "DEVOPS",
     pattern: /deploy|ci\/cd|docker|vercel|devops|פריס|نشر/i,

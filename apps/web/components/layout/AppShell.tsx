@@ -37,6 +37,7 @@ type NavKey =
   | "health"
   | "truth"
   | "observer"
+  | "sentinel"
   | "readiness"
   | "qa"
   | "processAudit"
@@ -61,6 +62,7 @@ const PATHS: Record<NavKey, string> = {
   health: "/health",
   truth: "/truth",
   observer: "/observer",
+  sentinel: "/sentinel",
   readiness: "/readiness",
   qa: "/qa",
   processAudit: "/process-audit",
@@ -97,8 +99,16 @@ const NAV_GROUPS: readonly {
   {
     id: "ops",
     labelKey: "opsGroup",
-    items: ["patches", "truth", "health", "observer", "readiness", "qa", "processAudit"],
-  },
+    items: [
+      "patches",
+      "truth",
+      "health",
+      "observer",
+      "sentinel",
+      "readiness",
+      "qa",
+      "processAudit",
+    ],  },
   {
     id: "workspace",
     labelKey: "workspaceGroup",
