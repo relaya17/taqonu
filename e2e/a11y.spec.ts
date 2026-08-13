@@ -43,12 +43,10 @@ test.describe("A11y smoke (EN)", () => {
     await expect(openMenu).toHaveAttribute("aria-expanded", "false");
 
     await openMenu.click();
-    const sidebar = page.getByRole("complementary", {
-      name: /main navigation/i,
-    });
-    await expect(sidebar).toBeVisible({ timeout: 15_000 });
+    const mobileDrawer = page.locator(".MuiDrawer-modal .MuiDrawer-paper");
+    await expect(mobileDrawer).toBeVisible({ timeout: 15_000 });
     await expect(
-      sidebar.getByRole("navigation", { name: /main navigation/i }),
+      mobileDrawer.getByRole("navigation", { name: /main navigation/i }),
     ).toBeVisible();
     await expect(openMenu).toHaveAttribute("aria-expanded", "true");
 
