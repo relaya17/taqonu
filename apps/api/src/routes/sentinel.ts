@@ -6,7 +6,6 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidSchema } from "@atlas/shared";
 import { runSentinelScan, verifySentinelFinding } from "@atlas/observer";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { resolveObserverWorkspace } from "../services/observe-cycle.js";
 import { proposeTruthFindingRemediation } from "../services/remediation-pipeline.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";

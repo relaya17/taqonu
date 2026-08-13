@@ -45,7 +45,7 @@ export default function SettingsPage() {
   const locale = useLocale();
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState("");
-  const [locale, setLocale] = useState<"he" | "en" | "ar">("he");
+  const [profileLocale, setProfileLocale] = useState<"he" | "en" | "ar">("he");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -88,7 +88,7 @@ export default function SettingsPage() {
     const u = me.data?.user;
     if (!u) return;
     setDisplayName(u.displayName ?? "");
-    setLocale(u.locale ?? "he");
+    setProfileLocale(u.locale ?? "he");
     setAvatarUrl(u.avatarUrl ?? "");
   }, [me.data?.user]);
 
@@ -96,7 +96,7 @@ export default function SettingsPage() {
     mutationFn: () =>
       apiPatch<{ user: AuthUser }>("/api/v1/auth/profile", {
         displayName: displayName.trim() || null,
-        locale,
+        locale: profileLocale,
         avatarUrl: avatarUrl.trim() || null,
       }),
     onSuccess: () => {
@@ -203,8 +203,10 @@ export default function SettingsPage() {
               <TextField
                 select
                 label={t("locale")}
-                value={locale}
-                onChange={(e) => setLocale(e.target.value as "he" | "en" | "ar")}
+                value={profileLocale}
+                onChange={(e) =>
+                  setProfileLocale(e.target.value as "he" | "en" | "ar")
+                }
                 fullWidth
               >
                 <MenuItem value="he">עברית</MenuItem>
