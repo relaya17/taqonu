@@ -51,5 +51,12 @@ export { collectP1TruthSignals } from "./findings/p1-signals.js";
 export type { P1TruthSignals } from "./findings/p1-signals.js";
 export { detectProductionSignals } from "./production/signals.js";
 export type { ProductionSignal } from "./production/signals.js";
+export {
+  recordDeployEvent,
+  loadDeployEvents,
+  mergeDeployEventsIntoGraph,
+  summarizeLastDeploy,
+} from "./production/deploy-events.js";
+export type { DeployEvent } from "./production/deploy-events.js";
 export { detectAdrConflicts } from "./memory/adr-conflict.js";
 export type { AdrConflict } from "./memory/adr-conflict.js";

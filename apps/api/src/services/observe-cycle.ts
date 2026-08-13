@@ -21,6 +21,7 @@ import {
   saveExpectedBehavior,
   verifyAgainstExpected,
   collectP1TruthSignals,
+  recordDeployEvent,
 } from "@atlas/observer";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
@@ -149,10 +150,23 @@ export function tryContinuousObserve(input: {
   projectId: string;
   envGoldenRoot?: string | null;
   trigger?: string;
+  deployEvent?: {
+    provider: string;
+    environment: string;
+    status: string;
+    observedAt: string;
+    url: string | null;
+    commitSha: string | null;
+    hostLabel: string;
+    summary: string;
+  };
 }): ObserveCycleResult | null {
   try {
     const linked = osStore.getWorkspaceRoot(input.projectId);
     if (!linked || !existsSync(linked)) return null;
+    if (input.deployEvent) {
+      recordDeployEvent(linked, input.deployEvent);
+    }
     return executeObserveCycle({
       body: {
         projectId: input.projectId,
@@ -244,10 +258,17 @@ export function readObserverState(input: {
         decidedByEdges: 0,
         identityNodes: 0,
         dataStoreNodes: 0,
+        deploymentNodes: 0,
         adrConflicts: 0,
         productionPresent: 0,
         productionMissing: 0,
         missingTitles: [] as string[],
+        lastDeploy: null as null | {
+          provider: string;
+          environment: string;
+          status: string;
+          observedAt: string;
+        },
       },
       counters: {
         analyzed: 0,

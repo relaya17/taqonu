@@ -1204,6 +1204,8 @@
     "p1Decided": "DECIDED_BY {n}",
     "p1Decisions": "عقد قرارات {n}",
     "p1Prod": "فحوصات إنتاج {present} · ناقص {missing}",
+    "p1DeployNodes": "نشريات {n}",
+    "p1LastDeploy": "آخر نشر: {provider} · {env} · {status}",
     "p1Missing": "تغطية ناقصة: {list}",
     "isolationNote": "عزل: كود العميل يبقى عندكم — Atlas لا يتعلّم عبر المستأجرين."
   },

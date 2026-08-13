@@ -8,6 +8,7 @@ export function atlasObserverPaths(workspaceRoot: string) {
   const bugs = join(atlas, "bugs");
   const metrics = join(atlas, "metrics");
   const cycles = join(atlas, "cycles");
+  const production = join(atlas, "production");
   return {
     atlas,
     genome,
@@ -20,5 +21,7 @@ export function atlasObserverPaths(workspaceRoot: string) {
     truthCounters: join(metrics, "truth-counters.json"),
     cycles,
     cyclesIndex: join(cycles, "index.json"),
+    production,
+    productionDeploys: join(production, "deploys.json"),
   };
 }

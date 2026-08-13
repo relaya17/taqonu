@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (P1.1 Truth → propose)  
+**עדכון אחרון:** 2026-08-13 (P1.3 deploy → graph)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -59,7 +59,7 @@
 |---:|---|---|
 | 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — **Truth → `TRUTH_FIX` draft** (`POST /remediation/from-truth`); HIGH blocked; לא prod auto |
 | 1.2 | Security Graph (identity→API→data) | `PARTIAL` — `IDENTITY` / `DATA_STORE` + API edges; לא policy engine מלא |
-| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — repo probes + deploy→observe + **Truth strip**; לא APM חי |
+| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — probes + **deploy events → DEPLOYMENT graph** + Truth; לא APM חי |
 | 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + **DECIDED_BY** + top finding ב־`/truth` |
 | 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — claim על `/truth` + README + DP pack; audit controls עדיין חלשים |
 | 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + **Atlas Truth Check Run** (דורש `checks:write` באפליקציית GitHub) |
@@ -134,6 +134,7 @@ Sprint C
 | 2026-08-13 | **P1.2/1.4:** IDENTITY + DATA_STORE chain; DECIDED_BY API↔ADR; put() dedupe |
 | 2026-08-13 | **P1.5 messaging:** isolation claim in README + DP Early Access; richer Truth P1 chips |
 | 2026-08-13 | **P1.1:** Truth Propose fix → `TRUTH_FIX` note draft (approve→apply→verify; HIGH blocked) |
+| 2026-08-13 | **P1.3:** Vercel/Render deploy → `.atlas/production/deploys.json` → DEPLOYMENT nodes + Truth finding |
 
 ---
 

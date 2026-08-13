@@ -160,10 +160,17 @@ export default function TruthPage() {
           decidedByEdges?: number;
           identityNodes?: number;
           dataStoreNodes?: number;
+          deploymentNodes?: number;
           adrConflicts: number;
           productionPresent: number;
           productionMissing: number;
           missingTitles: string[];
+          lastDeploy?: {
+            provider: string;
+            environment: string;
+            status: string;
+            observedAt: string;
+          } | null;
         };
         error?: string | null;
       }>(`/api/v1/projects/${activeId}/observer`),
@@ -264,6 +271,7 @@ export default function TruthPage() {
         if (f.id.startsWith("adr-conflict-")) return true;
         if (f.id === "security-graph" && f.riskBand !== "LOW") return true;
         if (f.id === "production-intelligence" && f.riskBand !== "LOW") return true;
+        if (f.id === "production-deploy" && f.riskBand !== "LOW") return true;
         if (f.category === "BUG" && f.riskBand !== "LOW") return true;
         return false;
       })
@@ -534,6 +542,11 @@ export default function TruthPage() {
               />
               <Chip
                 size="small"
+                label={t("p1DeployNodes", { n: p1Signals.deploymentNodes ?? 0 })}
+                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+              />
+              <Chip
+                size="small"
                 label={t("p1Prod", {
                   present: p1Signals.productionPresent,
                   missing: p1Signals.productionMissing,
@@ -541,6 +554,15 @@ export default function TruthPage() {
                 sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }}
               />
             </Stack>
+            {p1Signals.lastDeploy ? (
+              <Typography variant="caption" sx={{ opacity: 0.75, display: "block", mb: 0.5 }}>
+                {t("p1LastDeploy", {
+                  provider: p1Signals.lastDeploy.provider,
+                  env: p1Signals.lastDeploy.environment,
+                  status: p1Signals.lastDeploy.status,
+                })}
+              </Typography>
+            ) : null}
             {p1Signals.missingTitles.length > 0 ? (
               <Typography variant="caption" sx={{ opacity: 0.7, display: "block" }}>
                 {t("p1Missing", { list: p1Signals.missingTitles.slice(0, 4).join(", ") })}

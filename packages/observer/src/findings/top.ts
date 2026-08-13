@@ -17,6 +17,7 @@ export function isTruthPriorityFinding(f: {
   if (f.id.startsWith("adr-conflict-")) return true;
   if (f.id === "security-graph" && f.riskBand !== "LOW") return true;
   if (f.id === "production-intelligence" && f.riskBand !== "LOW") return true;
+  if (f.id === "production-deploy" && f.riskBand !== "LOW") return true;
   if (f.category === "BUG" && f.riskBand !== "LOW") return true;
   return false;
 }

@@ -1204,6 +1204,8 @@
     "p1Decided": "DECIDED_BY {n}",
     "p1Decisions": "Decision nodes {n}",
     "p1Prod": "Prod {present} present · {missing} missing",
+    "p1DeployNodes": "Deployments {n}",
+    "p1LastDeploy": "Last deploy: {provider} · {env} · {status}",
     "p1Missing": "Missing coverage: {list}",
     "isolationNote": "Isolation claim: customer code stays in your workspace — Atlas does not train across tenants."
   },

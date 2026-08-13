@@ -1204,6 +1204,8 @@
     "p1Decided": "DECIDED_BY {n}",
     "p1Decisions": "צמתי החלטה {n}",
     "p1Prod": "בדיקות פרוד {present} · חסרים {missing}",
+    "p1DeployNodes": "פריסות {n}",
+    "p1LastDeploy": "פריסה אחרונה: {provider} · {env} · {status}",
     "p1Missing": "חסר כיסוי: {list}",
     "isolationNote": "בידוד: קוד הלקוח נשאר אצלכם — Atlas לא לומד חוצה־tenant."
   },

@@ -26,6 +26,11 @@ import { impactBoostForFlow, scoreRiskWithGraph } from "./risk/graph-aware.js";
 import { bumpTruthCounters, loadTruthCounters } from "./metrics/counters.js";
 import { appendCycleHistory, listCycleHistory } from "./history/cycles.js";
 import { detectProductionSignals } from "./production/signals.js";
+import {
+  loadDeployEvents,
+  mergeDeployEventsIntoGraph,
+  summarizeLastDeploy,
+} from "./production/deploy-events.js";
 import { detectAdrConflicts } from "./memory/adr-conflict.js";
 import { selectTopTruthFinding } from "./findings/top.js";
 
@@ -69,11 +74,13 @@ export function runObserveCycle(input: {
     capturedAt: startedAt,
   });
 
-  const graph = buildSoftwareKnowledgeGraph({
-    workspaceRoot: input.workspaceRoot,
-    projectId: input.projectId ?? null,
-    projectSlug: input.projectSlug ?? null,
-  });
+  const graph = mergeDeployEventsIntoGraph(
+    buildSoftwareKnowledgeGraph({
+      workspaceRoot: input.workspaceRoot,
+      projectId: input.projectId ?? null,
+      projectSlug: input.projectSlug ?? null,
+    }),
+  );
 
   const expected = input.promoteExpected
     ? promoteObservedToExpected(input.workspaceRoot, genome.apis)
@@ -169,6 +176,35 @@ export function runObserveCycle(input: {
       (s) => `${s.id}:${s.present ? "PRESENT" : "MISSING"}`,
     ),
   });
+
+  const deploySummary = summarizeLastDeploy(loadDeployEvents(input.workspaceRoot));
+  if (deploySummary.last) {
+    const last = deploySummary.last;
+    const failed = /error|fail|suspend/i.test(last.status);
+    const openHighDrift = behaviorDiffs.some(
+      (d) => d.riskBand === "HIGH" || d.riskBand === "CRITICAL",
+    );
+    findings.push({
+      id: "production-deploy",
+      title: `Deploy ${last.provider} · ${last.environment}`,
+      detail: `${last.summary} · status ${last.status}${last.commitSha ? ` · sha ${last.commitSha.slice(0, 8)}` : ""}. Graph DEPLOYMENT nodes: ${graph.nodes.filter((n) => n.type === "DEPLOYMENT").length}.`,
+      claim: "OBSERVED",
+      epistemicState: "OBSERVED",
+      riskBand: failed
+        ? "HIGH"
+        : last.environment === "production" && openHighDrift
+          ? "HIGH"
+          : "LOW",
+      category: "GENOME",
+      evidenceRefs: [
+        `.atlas/production/deploys.json`,
+        `provider:${last.provider}`,
+        `env:${last.environment}`,
+        `status:${last.status}`,
+        ...(last.url ? [`url:${last.url}`] : []),
+      ],
+    });
+  }
 
   for (const conflict of detectAdrConflicts(input.workspaceRoot, behaviorDiffs)) {
     findings.push({

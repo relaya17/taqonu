@@ -122,6 +122,16 @@ export async function registerDeployFeedRoutes(
         projectId: body.projectId,
         envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
         trigger: "deploy",
+        deployEvent: {
+          provider: "vercel",
+          environment: summarized.environment,
+          status: summarized.status,
+          observedAt: now,
+          url: summarized.url,
+          commitSha: summarized.commitSha,
+          hostLabel: body.projectName,
+          summary: summarized.summary,
+        },
       });
       observeCycleId = observed?.id ?? null;
     } catch {
@@ -216,6 +226,16 @@ export async function registerDeployFeedRoutes(
         projectId: body.projectId,
         envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
         trigger: "deploy",
+        deployEvent: {
+          provider: "render",
+          environment: summarized.environment,
+          status: summarized.status,
+          observedAt: now,
+          url: summarized.url,
+          commitSha: summarized.commitSha,
+          hostLabel: body.serviceName,
+          summary: summarized.summary,
+        },
       });
       observeCycleId = observed?.id ?? null;
     } catch {
