@@ -1191,7 +1191,15 @@
     "openProjects": "Open projects",
     "expectedTitle": "EXPECTED vs OBSERVED",
     "expectedMeta": "Expected {expected} flows · Observed {observed} · Drifts {drifts} · source {source}",
-    "snapshots": "Genome snapshots"
+    "snapshots": "Genome snapshots",
+    "p1Title": "P1 signals — security · memory · production",
+    "p1Auth": "Auth edges {n}",
+    "p1Sensitive": "Sensitive edges {n}",
+    "p1Adr": "ADR conflicts {n}",
+    "p1Decisions": "Decision nodes {n}",
+    "p1Prod": "Prod {present} present · {missing} missing",
+    "p1Missing": "Missing coverage: {list}",
+    "isolationNote": "Isolation claim: customer code stays in your workspace — Atlas does not train across tenants."
   },
   "observer": {
     "title": "Observer",

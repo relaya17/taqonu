@@ -20,6 +20,7 @@ import {
   runObserveCycle,
   saveExpectedBehavior,
   verifyAgainstExpected,
+  collectP1TruthSignals,
 } from "@atlas/observer";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
@@ -200,6 +201,7 @@ export function readObserverState(input: {
     const genome = loadGenome(resolved.workspaceRoot);
     const expected = loadExpectedBehavior(resolved.workspaceRoot);
     const drifts = verifyAgainstExpected(expected, genome?.apis ?? []);
+    const p1Signals = collectP1TruthSignals(resolved.workspaceRoot, drifts);
     return {
       workspaceRoot: resolved.workspaceRoot,
       projectId: resolved.projectId,
@@ -214,6 +216,7 @@ export function readObserverState(input: {
         promotedAt: expected?.promotedAt ?? null,
         source: expected?.source ?? null,
       },
+      p1Signals,
       counters: loadTruthCounters(resolved.workspaceRoot),
       history: listCycleHistory(resolved.workspaceRoot).slice(0, 20),
       snapshots: listGenomeSnapshots(resolved.workspaceRoot, 20),
@@ -233,6 +236,15 @@ export function readObserverState(input: {
         drifts: [],
         promotedAt: null,
         source: null,
+      },
+      p1Signals: {
+        authEdges: 0,
+        sensitiveEdges: 0,
+        decisionNodes: 0,
+        adrConflicts: 0,
+        productionPresent: 0,
+        productionMissing: 0,
+        missingTitles: [] as string[],
       },
       counters: {
         analyzed: 0,

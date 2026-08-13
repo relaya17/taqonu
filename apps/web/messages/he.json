@@ -1191,7 +1191,15 @@
     "openProjects": "לפרויקטים",
     "expectedTitle": "EXPECTED מול OBSERVED",
     "expectedMeta": "צפוי {expected} · נצפה {observed} · סטיות {drifts} · מקור {source}",
-    "snapshots": "צילומי גנום"
+    "snapshots": "צילומי גנום",
+    "p1Title": "אותות P1 — אבטחה · זיכרון · פרודקשן",
+    "p1Auth": "קצוות Auth {n}",
+    "p1Sensitive": "קצוות רגישים {n}",
+    "p1Adr": "קונפליקטי ADR {n}",
+    "p1Decisions": "צמתי החלטה {n}",
+    "p1Prod": "בדיקות פרוד {present} · חסרים {missing}",
+    "p1Missing": "חסר כיסוי: {list}",
+    "isolationNote": "בידוד: קוד הלקוח נשאר אצלכם — Atlas לא לומד חוצה־tenant."
   },
   "observer": {
     "title": "צופה (Observer)",

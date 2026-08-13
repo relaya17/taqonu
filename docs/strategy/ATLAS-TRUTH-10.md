@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (0.6/0.11 harden + G1 pack READY)  
+**עדכון אחרון:** 2026-08-13 (P1 surface on `/truth`)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -58,11 +58,11 @@
 | # | משימה | סטטוס |
 |---:|---|---|
 | 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — gated LOW קיים; לא להרחיב ל־prod auto |
-| 1.2 | Security Graph (identity→API→data) | `PARTIAL` — AUTHENTICATED_BY / EXPOSES_DATA seed in Graph v0 |
-| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — repo signal scan + deploy feed → observe |
-| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — ADR nodes + conflict detect on behavior drift |
-| 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — BYO; לחזק messaging + audit |
-| 1.6 | CI/CD deep integrations | `PARTIAL` — GitHub webhook + deploy feeds trigger observe |
+| 1.2 | Security Graph (identity→API→data) | `PARTIAL` — edges + finding + **Truth strip**; עדיין לא identity→API→data מלא |
+| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — repo probes + deploy→observe + **Truth strip**; לא APM חי |
+| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + **top finding** ב־`/truth` |
+| 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `PARTIAL` — claim על `/truth` + BYO; audit controls עדיין חלשים |
+| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook + deploy observe; חסר Check Runs ללקוח |
 
 ---
 
@@ -129,6 +129,7 @@ Sprint C
 | 2026-08-13 | Bugfix: no golden fallback for linked projects; resilient observer GET; top-finding filter; Security/ADR graph seeds |
 | 2026-08-13 | P1.3/1.4: production signals + ADR conflict detect; deploy feeds trigger observe |
 | 2026-08-13 | **0.6 harden:** Expected GET/PUT + Truth EXPECTED vs OBSERVED; **0.11:** genome snapshots API+UI; **G1 pack** `design-partner-truth10-early-access.md` |
+| 2026-08-13 | **P1 surface:** `/truth` מציג Security/ADR/Production signals; top finding כולל adr-conflict; isolation claim |
 
 ---
 

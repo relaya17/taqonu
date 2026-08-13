@@ -153,6 +153,15 @@ export default function TruthPage() {
           source: string | null;
           drifts: { title: string; riskBand: string; beforeSteps: string[]; afterSteps: string[] }[];
         };
+        p1Signals?: {
+          authEdges: number;
+          sensitiveEdges: number;
+          decisionNodes: number;
+          adrConflicts: number;
+          productionPresent: number;
+          productionMissing: number;
+          missingTitles: string[];
+        };
         error?: string | null;
       }>(`/api/v1/projects/${activeId}/observer`),
   });
@@ -194,12 +203,15 @@ export default function TruthPage() {
   const linkError = state.data?.error ?? null;
   const expectedCompare = state.data?.expectedCompare;
   const snapshots = state.data?.snapshots ?? [];
+  const p1Signals = state.data?.p1Signals;
   const scores = useMemo(() => {
     if (!result) {
       return {
         software: graph.data?.total ? 88 : 0,
         behavior: 0,
-        security: 0,
+        security: p1Signals?.sensitiveEdges
+          ? Math.max(50, 92 - p1Signals.sensitiveEdges * 6)
+          : 0,
         architecture: 0,
         tests: 0,
       };
@@ -209,29 +221,42 @@ export default function TruthPage() {
     const openBugs = result.bugs.filter(
       (b) => b.status === "OPEN" || b.status === "REPRODUCED",
     ).length;
+    const sensitive = p1Signals?.sensitiveEdges ?? 0;
     return {
       software: base,
-      behavior: Math.max(40, 100 - drifts * 12),
-      security: Math.max(50, 96 - openBugs * 8),
+      behavior: Math.max(40, 100 - drifts * 12 - (p1Signals?.adrConflicts ?? 0) * 8),
+      security: Math.max(45, 96 - openBugs * 8 - sensitive * 5),
       architecture: Math.min(
         95,
         70 + Math.min(20, Math.floor((graph.data?.edgesTotal ?? 0) / 15)),
       ),
       tests: result.genome.architecture.fileCount > 0 ? 82 : 55,
     };
-  }, [result, graph.data]);
+  }, [result, graph.data, p1Signals]);
 
   const topFinding =
     result?.findings
-      .filter(
-        (f) =>
-          f.id.startsWith("behavior-") ||
-          (f.category === "BUG" && f.riskBand !== "LOW"),
-      )
+      .filter((f) => {
+        if (f.id.startsWith("behavior-")) return true;
+        if (f.id.startsWith("adr-conflict-")) return true;
+        if (f.id === "security-graph" && f.riskBand !== "LOW") return true;
+        if (f.id === "production-intelligence" && f.riskBand !== "LOW") return true;
+        if (f.category === "BUG" && f.riskBand !== "LOW") return true;
+        return false;
+      })
       .sort((a, b) => {
         const rank = (x: string) =>
           x === "CRITICAL" ? 4 : x === "HIGH" ? 3 : x === "MEDIUM" ? 2 : 1;
-        return rank(b.riskBand) - rank(a.riskBand);
+        const weight = (id: string) =>
+          id.startsWith("adr-conflict-")
+            ? 3
+            : id.startsWith("behavior-")
+              ? 2
+              : id.startsWith("bug-")
+                ? 1
+                : 0;
+        const band = rank(b.riskBand) - rank(a.riskBand);
+        return band !== 0 ? band : weight(b.id) - weight(a.id);
       })[0] ?? null;
 
   const critical = counters?.meaningfulRisks ?? 0;
@@ -408,6 +433,69 @@ export default function TruthPage() {
                 </Typography>
               </Box>
             ))}
+          </Box>
+        ) : null}
+
+        {p1Signals && !linkError ? (
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              border: "1px solid rgba(232,244,242,0.14)",
+              bgcolor: "rgba(0,0,0,0.18)",
+            }}
+          >
+            <Typography
+              sx={{
+                fontFamily: '"Syne", sans-serif',
+                fontWeight: 750,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontSize: 12,
+                opacity: 0.75,
+                mb: 1,
+              }}
+            >
+              {t("p1Title")}
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+              <Chip
+                size="small"
+                label={t("p1Auth", { n: p1Signals.authEdges })}
+                sx={{ bgcolor: "rgba(62,200,190,0.12)", color: "#B7EDE8" }}
+              />
+              <Chip
+                size="small"
+                label={t("p1Sensitive", { n: p1Signals.sensitiveEdges })}
+                sx={{ bgcolor: "rgba(224,122,95,0.15)", color: "#F2C4B8" }}
+              />
+              <Chip
+                size="small"
+                label={t("p1Adr", { n: p1Signals.adrConflicts })}
+                sx={{ bgcolor: "rgba(224,177,90,0.15)", color: "#F0D7A0" }}
+              />
+              <Chip
+                size="small"
+                label={t("p1Decisions", { n: p1Signals.decisionNodes })}
+                sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }}
+              />
+              <Chip
+                size="small"
+                label={t("p1Prod", {
+                  present: p1Signals.productionPresent,
+                  missing: p1Signals.productionMissing,
+                })}
+                sx={{ bgcolor: "rgba(255,255,255,0.06)", color: "#E8F4F2" }}
+              />
+            </Stack>
+            {p1Signals.missingTitles.length > 0 ? (
+              <Typography variant="caption" sx={{ opacity: 0.7, display: "block" }}>
+                {t("p1Missing", { list: p1Signals.missingTitles.slice(0, 4).join(", ") })}
+              </Typography>
+            ) : null}
+            <Typography variant="caption" sx={{ opacity: 0.65, display: "block", mt: 0.75 }}>
+              {t("isolationNote")}
+            </Typography>
           </Box>
         ) : null}
 

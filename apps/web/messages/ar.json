@@ -1191,7 +1191,15 @@
     "openProjects": "المشاريع",
     "expectedTitle": "EXPECTED مقابل OBSERVED",
     "expectedMeta": "متوقع {expected} · مُلاحَظ {observed} · انحرافات {drifts} · المصدر {source}",
-    "snapshots": "لقطات الجينوم"
+    "snapshots": "لقطات الجينوم",
+    "p1Title": "إشارات P1 — أمن · ذاكرة · إنتاج",
+    "p1Auth": "حواف Auth {n}",
+    "p1Sensitive": "حواف حساسة {n}",
+    "p1Adr": "تعارضات ADR {n}",
+    "p1Decisions": "عقد قرارات {n}",
+    "p1Prod": "فحوصات إنتاج {present} · ناقص {missing}",
+    "p1Missing": "تغطية ناقصة: {list}",
+    "isolationNote": "عزل: كود العميل يبقى عندكم — Atlas لا يتعلّم عبر المستأجرين."
   },
   "observer": {
     "title": "المراقب",

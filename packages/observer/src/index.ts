@@ -46,6 +46,9 @@ export {
   loadGenomeSnapshot,
 } from "./history/snapshots.js";
 export type { GenomeSnapshotMeta } from "./history/snapshots.js";
+export { selectTopTruthFinding, isTruthPriorityFinding } from "./findings/top.js";
+export { collectP1TruthSignals } from "./findings/p1-signals.js";
+export type { P1TruthSignals } from "./findings/p1-signals.js";
 export { detectProductionSignals } from "./production/signals.js";
 export type { ProductionSignal } from "./production/signals.js";
 export { detectAdrConflicts } from "./memory/adr-conflict.js";

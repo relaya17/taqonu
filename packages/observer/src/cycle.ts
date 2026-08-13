@@ -27,6 +27,7 @@ import { bumpTruthCounters, loadTruthCounters } from "./metrics/counters.js";
 import { appendCycleHistory, listCycleHistory } from "./history/cycles.js";
 import { detectProductionSignals } from "./production/signals.js";
 import { detectAdrConflicts } from "./memory/adr-conflict.js";
+import { selectTopTruthFinding } from "./findings/top.js";
 
 function claimToEpistemic(
   claim: ObserverFinding["claim"],
@@ -128,7 +129,7 @@ export function runObserveCycle(input: {
       detail: `Auth boundaries: ${authEdges} · Sensitive data edges: ${sensitiveEdges}.`,
       claim: "INFERRED",
       epistemicState: "INFERRED",
-      riskBand: sensitiveEdges > 3 ? "MEDIUM" : "LOW",
+      riskBand: sensitiveEdges > 0 ? (sensitiveEdges > 3 ? "HIGH" : "MEDIUM") : "LOW",
       category: "GENOME",
       evidenceRefs: [
         `AUTHENTICATED_BY×${authEdges}`,
@@ -157,7 +158,7 @@ export function runObserveCycle(input: {
     detail: `Present: ${prodSignals.filter((s) => s.present).map((s) => s.title).join(", ") || "none"}. Missing: ${missingProd.map((s) => s.title).join(", ") || "none"}.`,
     claim: missingProd.length ? "INFERRED" : "OBSERVED",
     epistemicState: missingProd.length ? "INFERRED" : "OBSERVED",
-    riskBand: missingProd.length >= 3 ? "MEDIUM" : "LOW",
+    riskBand: missingProd.length >= 2 ? "MEDIUM" : "LOW",
     category: "GENOME",
     evidenceRefs: prodSignals.map(
       (s) => `${s.id}:${s.present ? "PRESENT" : "MISSING"}`,
@@ -266,18 +267,7 @@ export function runObserveCycle(input: {
   }
 
   const cycleId = crypto.randomUUID();
-  const top =
-    findings
-      .filter(
-        (f) =>
-          f.id.startsWith("behavior-") ||
-          (f.category === "BUG" && f.riskBand !== "LOW"),
-      )
-      .sort((a, b) => {
-        const r = (x: string) =>
-          x === "CRITICAL" ? 4 : x === "HIGH" ? 3 : x === "MEDIUM" ? 2 : 1;
-        return r(b.riskBand) - r(a.riskBand);
-      })[0] ?? null;
+  const top = selectTopTruthFinding(findings);
 
   if (persist) {
     appendCycleHistory(input.workspaceRoot, {
