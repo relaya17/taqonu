@@ -41,9 +41,16 @@ export function buildTruthCheckRunBody(input: {
   detailsUrl?: string | null;
   startedAt?: string;
   completedAt?: string;
+  findings?: readonly {
+    title: string;
+    riskBand: string;
+    path?: string | null;
+    detail?: string | null;
+  }[];
 }): Record<string, unknown> {
   const conclusion = conclusionForRiskBand(input.riskBand);
   const title = `Atlas Truth · ${input.riskBand}`;
+  const topFindings = (input.findings ?? []).slice(0, 3);
   const summaryParts = [
     `Risk **${input.riskBand}** (score ${input.riskScore}).`,
     input.topFindingTitle
@@ -53,6 +60,29 @@ export function buildTruthCheckRunBody(input: {
     "",
     "_No evidence = no strong claim. Atlas does not auto-merge or rewrite your PR._",
   ];
+  if (topFindings.length) {
+    summaryParts.push("", "### Top findings");
+    for (const f of topFindings) {
+      summaryParts.push(`- **${f.riskBand}** · ${f.title}`);
+    }
+  }
+
+  const annotations = topFindings
+    .filter((f) => f.path && !f.path.includes(".."))
+    .slice(0, 3)
+    .map((f) => ({
+      path: f.path,
+      start_line: 1,
+      end_line: 1,
+      annotation_level:
+        f.riskBand.toUpperCase() === "CRITICAL" ||
+        f.riskBand.toUpperCase() === "HIGH"
+          ? "failure"
+          : "warning",
+      message: `${f.riskBand}: ${f.title}`.slice(0, 200),
+      title: "Atlas Truth",
+      raw_details: (f.detail ?? f.title).slice(0, 2000),
+    }));
 
   const body: Record<string, unknown> = {
     name: "Atlas Truth",
@@ -65,6 +95,7 @@ export function buildTruthCheckRunBody(input: {
       title,
       summary: summaryParts.join("\n"),
       text: summaryParts.join("\n"),
+      ...(annotations.length ? { annotations } : {}),
     },
   };
   if (input.detailsUrl) {
@@ -82,6 +113,12 @@ export async function postAtlasTruthCheckRun(input: {
   topFindingTitle: string | null;
   observeCycleId: string;
   detailsUrl?: string | null;
+  findings?: readonly {
+    title: string;
+    riskBand: string;
+    path?: string | null;
+    detail?: string | null;
+  }[];
   fetchImpl?: typeof fetch;
 }): Promise<{ ok: true; id: number; htmlUrl: string | null } | { ok: false; reason: string }> {
   const split = splitRepoFullName(input.fullName);
@@ -98,6 +135,7 @@ export async function postAtlasTruthCheckRun(input: {
     topFindingTitle: input.topFindingTitle,
     observeCycleId: input.observeCycleId,
     ...(input.detailsUrl !== undefined ? { detailsUrl: input.detailsUrl } : {}),
+    ...(input.findings !== undefined ? { findings: input.findings } : {}),
   });
 
   const res = await doFetch(

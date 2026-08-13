@@ -205,6 +205,10 @@ export function buildOracleMorningDigest(input: {
   };
 
   osStore.setMeta(
+    `admin.oracle.brief.${digest.date}`,
+    JSON.stringify(brief),
+  );
+  osStore.setMeta(
     "admin.oracle.digest.last",
     JSON.stringify({
       at: new Date().toISOString(),
@@ -212,8 +216,10 @@ export function buildOracleMorningDigest(input: {
       topIds: digest.top3.map((t) => t.id),
       versionFindings: versions.length,
       cyberFindings: cyber.length,
+      staleAfterHours: 24,
     }),
   );
+  osStore.setMeta("admin.oracle.digest.snapshot", JSON.stringify(digest));
 
   return { digest, versions, cyber };
 }

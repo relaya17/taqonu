@@ -3,9 +3,9 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (**S1.7 packs + Oracle Sentinel feed + G3/G4 packs**)  
+**עדכון אחרון:** 2026-08-13 (**P1 harden + A1 audit/digest + P2.2 benchmark + G2 EA draft**)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)  
-**סטטוס מוצר (MVP Proof):** P0 `DONE` · Sentinel S1 `DONE` (incl. packs) · G5 `DONE` · GTM G3–G4 = READY packs (human ops)
+**סטטוס מוצר (MVP Proof):** P0 `DONE` · Sentinel `DONE` · P1 deepen `PARTIAL→stronger` · GTM packs READY (human ops)
 
 > **חוק מוצר:** No evidence = no strong claim.  
 > **Loop:** Change → Impact → Evidence → Risk → Verification  
@@ -58,12 +58,12 @@
 
 | # | משימה | סטטוס |
 |---:|---|---|
-| 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — Truth/Sentinel propose + gates; HIGH blocked; לא prod auto |
+| 1.1 | Autonomous Remediation (propose→test→verify→approve) | `PARTIAL` — Truth propose + gates + **re-observe verify** + Oracle approve/verify audit; HIGH blocked; לא prod auto |
 | 1.2 | Security Graph (identity→API→data) | `DONE` — IDENTITY/DATA_STORE + **policy**: EXPOSES_DATA requires AUTHENTICATED_BY |
-| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — probes (+ error tracking / alerting) + deploy → graph; לא APM חי |
-| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — expanded topics (rate-limit/privacy/headers/secrets) + DECIDED_BY |
+| 1.3 | Production Intelligence (logs/traces/metrics) | `PARTIAL` — probes + deploy → graph + **failed-deploy finding/INCIDENT**; לא APM חי |
+| 1.4 | Engineering Memory ↔ Graph (ADR conflicts) | `PARTIAL` — conflict detect + **expanded DECIDED_BY topics** |
 | 1.5 | Isolation / no cross-tenant learning (product claim + controls) | `DONE` — owner bind + denied audit + Truth isolation chips |
-| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + Check Run + **CI secret scan** |
+| 1.6 | CI/CD deep integrations | `PARTIAL` — webhook observe + Check Run (**annotations**) + CI secret scan |
 
 ---
 
@@ -72,11 +72,11 @@
 | # | משימה | סטטוס |
 |---:|---|---|
 | 2.1 | Multi-agent specialists (Architect, Runtime, Security…) | `PARTIAL` — Fabric קיים; לא להרחיב |
-| 2.2 | Benchmarking versions/teams | `PARTIAL` — counters live · [`benchmarking-seed.md`](./benchmarking-seed.md) |
+| 2.2 | Benchmarking versions/teams | `PARTIAL` — `GET /api/v1/portfolio/truth-benchmark` + counters seed |
 | 2.3 | Patent landscape / Trademark Atlas | `OPEN` — משפטי, לא קוד |
 | 2.4 | Pricing experiments (repos/seats) | `PARTIAL` — freemium usage היום · WTP script |
 | 2.5 | Case studies + Seed narrative | `PARTIAL` — template + [`seed-narrative.md`](./seed-narrative.md) |
-| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1 + Sentinel HIGH/CRITICAL → queue |
+| 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1 + Sentinel feed + approve/verify audit + digest persist |
 | 2.7 | **Atlas Sentinel** (Defensive Security Agent) | `DONE` — S1.1–S1.7 (specialist packs) |
 
 ---
@@ -121,11 +121,11 @@
 |---:|---|---|
 | A1.1 | מסך Admin Command Center (premium dashboard shell) | `PARTIAL` — `/admin` + `/admin/oracle` |
 | A1.2 | Agent persona + תור פעולות (detect → rank → notify/propose) | `DONE` — queue + watchdog/remediation/cyber/**sentinel** |
-| A1.3 | Version instability detector (deps/runtime/EOL) | `PARTIAL` — Node EOL + Next/React stale majors |
-| A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `PARTIAL` — brief חי מ־queue/versions/cyber |
+| A1.3 | Version instability detector (deps/runtime/EOL) | `PARTIAL` — Node EOL + Next/React/TS/pg majors |
+| A1.4 | Daily Hi-Tech / Advisory brief (allowlisted ingest) | `PARTIAL` — brief חי + **persist** `admin.oracle.brief.YYYY-MM-DD` |
 | A1.5 | Defensive cyber feed → findings על Graph (CVE↔deps) | `DONE` — allowlisted advisories → Sentinel + PACKAGE/INCIDENT graph |
-| A1.6 | Full automation loop עם audit trail (מי אישר / מה הוחל) | `PARTIAL` — `admin.oracle.audit` על refresh |
-| A1.7 | “מנבא” digest: בוקר אחד — סיכום + Top 3 actions | `PARTIAL` — digest API + UI |
+| A1.6 | Full automation loop עם audit trail (מי אישר / מה הוחל) | `PARTIAL` — refresh + **approve/verify audit** |
+| A1.7 | “מנבא” digest: בוקר אחד — סיכום + Top 3 actions | `PARTIAL` — digest API + UI + snapshot meta |
 
 **תלות:** P0 DONE · P1.1 remediation · P1.3 production · G5 security review לפני automation רחבה.
 
@@ -212,7 +212,7 @@ DISCOVER → ANALYZE → RISK SCORE → COLLECT EVIDENCE
 | # | משימה | סטטוס |
 |---:|---|---|
 | G1 | 3–5 Design Partners (repos אמיתיים) | `READY` — pack + tracker; outreach = human |
-| G2 | Early Access agreement + feedback loop | `PARTIAL` — playbook + Truth-10 Early Access |
+| G2 | Early Access agreement + feedback loop | `PARTIAL` — playbook + [`early-access-agreement-draft.md`](./early-access-agreement-draft.md) (counsel) |
 | G3 | Willingness-to-pay interviews | `READY` — [`willingness-to-pay-interviews.md`](./willingness-to-pay-interviews.md); interviews = human |
 | G4 | Paid Beta | `READY` — [`paid-beta-checklist.md`](./paid-beta-checklist.md); ops = human |
 | G5 | Security hardening review לפני scale | `DONE` — project ownership writes · isolation audit · CI secret scan · graph policy · expanded advisories |
@@ -277,6 +277,7 @@ Sprint C
 | 2026-08-13 | **Sentinel 10/10:** cycle ingest · Graph PACKAGE/INCIDENT · Temporal AuthZ baseline · Truth surface · verify engine |
 | 2026-08-13 | **G5/P1.2/P1.5:** project ownership writes · isolation audit · Security Graph policy · CI secret scan · expanded advisories |
 | 2026-08-13 | **Closeout:** S1.7 specialist packs · Oracle←Sentinel · prod/ADR harden · G3/G4/WTP + Paid Beta packs · seed narrative · benchmarking seed |
+| 2026-08-13 | **P1/A1/P2 deepen:** re-observe verify · failed-deploy INCIDENT · DECIDED_BY topics · Check Run annotations · Oracle audit/digest persist · truth-benchmark API · EA agreement draft |
 
 ---
 
@@ -296,5 +297,7 @@ Sprint C
 | Atlas Sentinel | `/sentinel` · `packages/observer/src/security` · `GET/POST …/sentinel` · סעיף **S1** |
 | G3 WTP | `docs/strategy/willingness-to-pay-interviews.md` |
 | G4 Paid Beta | `docs/strategy/paid-beta-checklist.md` |
+| G2 EA draft | `docs/strategy/early-access-agreement-draft.md` |
+| Truth benchmark | `GET /api/v1/portfolio/truth-benchmark` |
 | Design partners | `docs/strategy/design-partner-playbook.md` |
 | TRUTH-10 Early Access (G1) | `docs/strategy/design-partner-truth10-early-access.md` |

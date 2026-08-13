@@ -135,6 +135,50 @@ export function mergeDeployEventsIntoGraph(
         updatedAt: now,
       }),
     );
+
+    if (/error|fail|suspend/i.test(ev.status)) {
+      const incidentKey = `deploy-fail:${ev.id}`;
+      if (!seen.has(`INCIDENT:${incidentKey}`)) {
+        seen.add(`INCIDENT:${incidentKey}`);
+        const incident = graphNodeSchema.parse({
+          id: stableUuid(`${graph.projectId ?? "na"}:INCIDENT:${incidentKey}`),
+          ownerId: OWNER_FALLBACK,
+          projectId: graph.projectId,
+          type: "INCIDENT",
+          key: incidentKey,
+          label: `Failed deploy · ${ev.provider}`,
+          epistemicState: "OBSERVED",
+          confidence: 0.9,
+          evidenceIds: [],
+          properties: {
+            provider: ev.provider,
+            status: ev.status,
+            deployId: ev.id,
+            observedAt: ev.observedAt,
+          },
+          createdAt: now,
+          updatedAt: now,
+        });
+        nodes.push(incident);
+        edges.push(
+          graphEdgeSchema.parse({
+            id: stableUuid(
+              `${graph.projectId ?? "na"}:CAUSED:${incident.id}:${node.id}`,
+            ),
+            ownerId: OWNER_FALLBACK,
+            projectId: graph.projectId,
+            type: "CAUSED",
+            fromNodeId: incident.id,
+            toNodeId: node.id,
+            epistemicState: "OBSERVED",
+            confidence: 0.85,
+            evidenceIds: [],
+            createdAt: now,
+            updatedAt: now,
+          }),
+        );
+      }
+    }
   }
 
   return { ...graph, nodes, edges };

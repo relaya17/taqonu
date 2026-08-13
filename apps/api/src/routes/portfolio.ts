@@ -12,6 +12,7 @@ import { z } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { runContinuousSystemAudit } from "@atlas/code-intelligence";
+import { loadTruthCounters } from "@atlas/observer";
 import { osStore } from "../store/os-store.js";
 import { loadArchitectureContract } from "../services/architecture-contract-store.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
@@ -249,6 +250,61 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     });
 
     return reply.status(200).send(rolled);
+  });
+
+  /** P2.2 — Design Partner truth counters side-by-side (linked workspaces only). */
+  app.get("/api/v1/portfolio/truth-benchmark", async () => {
+    const projects = osStore.listProjects();
+    const items = [];
+    for (const project of projects) {
+      const root = osStore.getWorkspaceRoot(project.id);
+      if (!root || !existsSync(root)) {
+        items.push({
+          projectId: project.id,
+          name: project.name,
+          slug: project.slug,
+          linked: false,
+          counters: null,
+        });
+        continue;
+      }
+      const counters = loadTruthCounters(root);
+      items.push({
+        projectId: project.id,
+        name: project.name,
+        slug: project.slug,
+        linked: true,
+        counters,
+      });
+    }
+    const linked = items.filter((i) => i.linked && i.counters);
+    const totals = linked.reduce(
+      (acc, i) => {
+        const c = i.counters!;
+        return {
+          analyzed: acc.analyzed + c.analyzed,
+          meaningfulRisks: acc.meaningfulRisks + c.meaningfulRisks,
+          confirmedRegressions:
+            acc.confirmedRegressions + c.confirmedRegressions,
+          caughtBeforeProd: acc.caughtBeforeProd + c.caughtBeforeProd,
+          cycles: acc.cycles + c.cycles,
+        };
+      },
+      {
+        analyzed: 0,
+        meaningfulRisks: 0,
+        confirmedRegressions: 0,
+        caughtBeforeProd: 0,
+        cycles: 0,
+      },
+    );
+    return {
+      asOf: new Date().toISOString(),
+      items,
+      totals,
+      linkedCount: linked.length,
+      note: "Per-workspace Truth counters · no public team ranking · consent required for external publish",
+    };
   });
 
   app.get("/api/v1/portfolio/patterns", async () => {

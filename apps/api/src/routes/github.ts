@@ -472,6 +472,15 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
                     topFindingTitle: top?.title ?? null,
                     observeCycleId: observed.id,
                     detailsUrl: `${publicBase}/en/truth`,
+                    findings: observed.findings.slice(0, 5).map((f) => ({
+                      title: f.title,
+                      riskBand: f.riskBand,
+                      path:
+                        f.evidenceRefs.find((r) => r.startsWith("file:"))?.slice(
+                          5,
+                        ) ?? null,
+                      detail: f.detail,
+                    })),
                   });
                   if (check.ok) {
                     app.atlasLogger.info("atlas_truth_check_run_posted", {

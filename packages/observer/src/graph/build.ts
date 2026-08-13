@@ -446,7 +446,7 @@ export function buildSoftwareKnowledgeGraph(input: {
         confidence: 0.9,
       }),
     );
-    // Link payment/booking APIs to payment-related ADRs when filenames suggest it
+    // Link APIs to ADRs when topics overlap (P1.4 — engineering memory)
     const topic = rel.toLowerCase();
     for (const node of nodes) {
       if (node.type !== "API") continue;
@@ -455,9 +455,30 @@ export function buildSoftwareKnowledgeGraph(input: {
         /payment|billing|charge|checkout/.test(topic) &&
         /payment|billing|charge|checkout|booking/.test(apiKey);
       const authish =
-        /auth|tenant|identity/.test(topic) &&
-        /auth|login|session|tenant/.test(apiKey);
-      if (!paymentish && !authish) continue;
+        /auth|tenant|identity|rbac|permission/.test(topic) &&
+        /auth|login|session|tenant|permission/.test(apiKey);
+      const rateLimitish =
+        /rate.?limit|throttle|quota/.test(topic) &&
+        /rate|throttle|quota|limit/.test(apiKey);
+      const privacyish =
+        /retention|gdpr|pii|privacy|encrypt/.test(topic) &&
+        /user|profile|pii|data|export|delete/.test(apiKey);
+      const headersish =
+        /cors|csp|security.?header|cookie|jwt/.test(topic) &&
+        /cors|cookie|session|token|header/.test(apiKey);
+      const secretsish =
+        /secret|credential|api.?key.?rotation/.test(topic) &&
+        /secret|key|token|credential|vault/.test(apiKey);
+      if (
+        !paymentish &&
+        !authish &&
+        !rateLimitish &&
+        !privacyish &&
+        !headersish &&
+        !secretsish
+      ) {
+        continue;
+      }
       edges.push(
         makeEdge({
           projectId,

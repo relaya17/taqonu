@@ -16,6 +16,7 @@ import {
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import { atlasMetrics } from "../routes/metrics.js";
+import { appendOracleAudit } from "./admin-oracle-digest.js";
 
 export function isAutoRemediationDraft(patch: PatchArtifact): boolean {
   return (
@@ -146,6 +147,17 @@ export function approvePatchArtifact(
     at: now,
     by: input.userId,
     sourceIssueId: existing.sourceIssueId ?? null,
+  });
+  appendOracleAudit({
+    type: "remediation.approve",
+    summary: `Approved patch ${existing.id}: ${existing.title}`,
+    actor: input.userId,
+    meta: {
+      patchId: existing.id,
+      sourceIssueId: existing.sourceIssueId ?? null,
+      projectId: existing.projectId,
+      risk: existing.risk,
+    },
   });
   return patch;
 }

@@ -181,6 +181,40 @@ export function detectVersionInstability(): VersionFinding[] {
           });
         }
       }
+      if (name === "typescript") {
+        const major = extractMajorFromEngine(range);
+        if (major !== null && major < 5) {
+          findings.push({
+            id: `version:${project.id}:typescript-${major}`,
+            severity: "medium",
+            title: `${project.name}: TypeScript major below 5`,
+            detail: `Declared typescript@${range}.`,
+            evidenceRefs: [`dep:typescript:${range}`, "source:typescript releases"],
+            projectId: project.id,
+            projectName: project.name,
+            packageName: "typescript",
+            current: range,
+            recommendation: "Upgrade TypeScript to 5.x and fix breaking type errors.",
+          });
+        }
+      }
+      if (name === "pg" || name === "postgres") {
+        const major = extractMajorFromEngine(range);
+        if (major !== null && major < 8) {
+          findings.push({
+            id: `version:${project.id}:${name}-${major}`,
+            severity: "medium",
+            title: `${project.name}: ${name} major looks stale`,
+            detail: `Declared ${name}@${range}. Prefer current maintained major.`,
+            evidenceRefs: [`dep:${name}:${range}`, "source:postgres.js / node-postgres releases"],
+            projectId: project.id,
+            projectName: project.name,
+            packageName: name,
+            current: range,
+            recommendation: `Upgrade ${name} and re-run integration tests.`,
+          });
+        }
+      }
     }
   }
 

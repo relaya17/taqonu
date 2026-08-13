@@ -226,6 +226,23 @@ export function runObserveCycle(input: {
         ...(last.url ? [`url:${last.url}`] : []),
       ],
     });
+    if (failed) {
+      findings.push({
+        id: `production-deploy-failed:${last.id}`.slice(0, 180),
+        title: `Failed deploy · ${last.provider} · ${last.environment}`,
+        detail: `${last.summary}. Treat as production incident until a successful deploy is observed.`,
+        claim: "OBSERVED",
+        epistemicState: "OBSERVED",
+        riskBand: "HIGH",
+        category: "GENOME",
+        evidenceRefs: [
+          `.atlas/production/deploys.json`,
+          `deploy:${last.id}`,
+          `status:${last.status}`,
+          `failedCount:${deploySummary.failedCount}`,
+        ],
+      });
+    }
   }
 
   for (const conflict of detectAdrConflicts(input.workspaceRoot, behaviorDiffs)) {

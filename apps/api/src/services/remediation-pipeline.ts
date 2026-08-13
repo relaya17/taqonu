@@ -27,6 +27,8 @@ import {
   recordRemediationVerification,
   resolveApplyWorkspaceRoot,
 } from "./patch-write.js";
+import { executeObserveCycle } from "./observe-cycle.js";
+import { appendOracleAudit } from "./admin-oracle-digest.js";
 
 export function openRemediationSourceIssueIds(
   projectId: string | null,
@@ -90,6 +92,8 @@ export function verifyAppliedRemediation(input: {
   readonly workspaceRoot?: string | null;
   readonly appliedPaths?: readonly string[];
   readonly userId: string;
+  /** When set, re-run Observer and require finding id cleared (Truth verify engine). */
+  readonly reobserveFindingId?: string | null;
 }): { patch: PatchArtifact; verify: RemediationVerifyResult } {
   if (input.patch.status !== "APPLIED" && input.patch.status !== "VERIFIED") {
     throw new AtlasError(
@@ -103,17 +107,94 @@ export function verifyAppliedRemediation(input: {
     bodyWorkspaceRoot: input.workspaceRoot ?? null,
     requireProjectRoot: Boolean(input.patch.projectId),
   });
-  const verify = verifyRemediationApply({
+  let verify = verifyRemediationApply({
     workspaceRoot,
     patch: input.patch,
     ...(input.appliedPaths ? { appliedPaths: input.appliedPaths } : {}),
   });
+
+  const findingKey =
+    input.reobserveFindingId?.trim() ||
+    (input.patch.title.startsWith("TRUTH_FIX:")
+      ? input.patch.sourceIssueId
+      : null);
+
+  if (findingKey && input.patch.projectId) {
+    try {
+      const observed = executeObserveCycle({
+        body: {
+          projectId: input.patch.projectId,
+          workspaceRoot,
+          persist: true,
+          trigger: "remediation_verify",
+        },
+      });
+      const stillPresent = observed.findings.some(
+        (f) =>
+          f.id === findingKey ||
+          f.id.includes(findingKey) ||
+          (input.patch.sourceIssueId
+            ? f.id.includes(input.patch.sourceIssueId)
+            : false),
+      );
+      const checks = [
+        ...verify.checks,
+        {
+          id: "reobserve-finding-cleared",
+          passed: !stillPresent,
+          detail: stillPresent
+            ? `Re-observe still reports finding related to ${findingKey} (cycle ${observed.id})`
+            : `Re-observe cleared finding ${findingKey} (cycle ${observed.id})`,
+        },
+      ];
+      const ok = checks.every((c) => c.passed);
+      verify = {
+        ok,
+        checks,
+        summary: ok
+          ? `Verify PASS — smoke + re-observe cycle ${observed.id}`
+          : `Verify FAIL — ${checks.filter((c) => !c.passed).length} check(s) failed (cycle ${observed.id})`,
+      };
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : "re-observe failed";
+      const checks = [
+        ...verify.checks,
+        {
+          id: "reobserve-finding-cleared",
+          passed: false,
+          detail: `Re-observe unavailable: ${detail}`,
+        },
+      ];
+      verify = {
+        ok: false,
+        checks,
+        summary: `Verify FAIL — re-observe error for patch ${input.patch.id}`,
+      };
+    }
+  }
+
   const patch = recordRemediationVerification({
     patch: input.patch,
     workspaceRoot,
     verify,
     userId: input.userId,
   });
+  try {
+    appendOracleAudit({
+      type: "remediation.verify",
+      summary: verify.summary,
+      actor: input.userId,
+      meta: {
+        patchId: patch.id,
+        ok: verify.ok,
+        findingId: findingKey ?? null,
+        projectId: patch.projectId,
+      },
+    });
+  } catch {
+    /* audit best-effort */
+  }
   return { patch, verify };
 }
 
