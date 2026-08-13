@@ -133,7 +133,10 @@ export function buildSoftwareKnowledgeGraph(input: {
   const byKey = new Map<string, GraphNode>();
 
   const put = (n: GraphNode) => {
-    byKey.set(`${n.type}:${n.key}`, n);
+    const k = `${n.type}:${n.key}`;
+    const existing = byKey.get(k);
+    if (existing) return existing;
+    byKey.set(k, n);
     nodes.push(n);
     return n;
   };
@@ -329,21 +332,26 @@ export function buildSoftwareKnowledgeGraph(input: {
       );
     }
 
-    // Security graph seed: auth middleware / requireUser → AUTHENTICATED_BY
-    if (
+    // Security graph: identity → API → data (TRUTH-10 · 1.2)
+    const hasAuthBoundary =
       /\b(requireAuth|requireUser|requireSignedIn|authenticate|verifyJwt|authGuard)\b/.test(
         text,
-      )
-    ) {
-      const authNode = put(
+      );
+    const hasSensitive =
+      /\b(password|secret|api[_-]?key|creditCard|ssn|nationalId|ENCRYPTION_KEY)\b/i.test(
+        text,
+      );
+
+    if (hasAuthBoundary) {
+      const identity = put(
         makeNode({
           projectId,
-          type: "FEATURE",
-          key: `auth:${rel}`,
-          label: `auth@${rel.split("/").pop()}`,
-          properties: { kind: "auth_boundary", file: rel },
+          type: "IDENTITY",
+          key: "identity:principal",
+          label: "authenticated principal",
+          properties: { kind: "principal" },
           epistemicState: "INFERRED",
-          confidence: 0.65,
+          confidence: 0.7,
         }),
       );
       edges.push(
@@ -351,26 +359,36 @@ export function buildSoftwareKnowledgeGraph(input: {
           projectId,
           type: "AUTHENTICATED_BY",
           from: fromFile,
-          to: authNode,
+          to: identity,
           epistemicState: "INFERRED",
           confidence: 0.6,
         }),
       );
+      for (const node of nodes) {
+        if (node.type !== "API") continue;
+        if (node.properties?.file !== rel) continue;
+        edges.push(
+          makeEdge({
+            projectId,
+            type: "AUTHENTICATED_BY",
+            from: node,
+            to: identity,
+            epistemicState: "INFERRED",
+            confidence: 0.65,
+          }),
+        );
+      }
     }
 
-    // Sensitive data touchpoints → EXPOSES_DATA
-    if (
-      /\b(password|secret|api[_-]?key|creditCard|ssn|nationalId|ENCRYPTION_KEY)\b/i.test(
-        text,
-      )
-    ) {
-      const dataNode = put(
+    if (hasSensitive) {
+      const storeKey = `data:${rel}`;
+      const dataStore = put(
         makeNode({
           projectId,
-          type: "FEATURE",
-          key: `sensitive:${rel}`,
-          label: `sensitive@${rel.split("/").pop()}`,
-          properties: { kind: "sensitive_data", file: rel },
+          type: "DATA_STORE",
+          key: storeKey,
+          label: `data@${rel.split("/").pop()}`,
+          properties: { kind: "sensitive_touchpoint", file: rel },
           epistemicState: "ASSUMED",
           confidence: 0.55,
         }),
@@ -380,11 +398,25 @@ export function buildSoftwareKnowledgeGraph(input: {
           projectId,
           type: "EXPOSES_DATA",
           from: fromFile,
-          to: dataNode,
+          to: dataStore,
           epistemicState: "INFERRED",
           confidence: 0.55,
         }),
       );
+      for (const node of nodes) {
+        if (node.type !== "API") continue;
+        if (node.properties?.file !== rel) continue;
+        edges.push(
+          makeEdge({
+            projectId,
+            type: "EXPOSES_DATA",
+            from: node,
+            to: dataStore,
+            epistemicState: "INFERRED",
+            confidence: 0.6,
+          }),
+        );
+      }
     }
   }
 
@@ -414,6 +446,29 @@ export function buildSoftwareKnowledgeGraph(input: {
         confidence: 0.9,
       }),
     );
+    // Link payment/booking APIs to payment-related ADRs when filenames suggest it
+    const topic = rel.toLowerCase();
+    for (const node of nodes) {
+      if (node.type !== "API") continue;
+      const apiKey = node.key.toLowerCase();
+      const paymentish =
+        /payment|billing|charge|checkout/.test(topic) &&
+        /payment|billing|charge|checkout|booking/.test(apiKey);
+      const authish =
+        /auth|tenant|identity/.test(topic) &&
+        /auth|login|session|tenant/.test(apiKey);
+      if (!paymentish && !authish) continue;
+      edges.push(
+        makeEdge({
+          projectId,
+          type: "DECIDED_BY",
+          from: node,
+          to: decision,
+          epistemicState: "INFERRED",
+          confidence: 0.5,
+        }),
+      );
+    }
   }
 
   // Deduplicate edges by id

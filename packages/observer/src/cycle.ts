@@ -122,16 +122,21 @@ export function runObserveCycle(input: {
   const authEdges = graph.edges.filter((e) => e.type === "AUTHENTICATED_BY").length;
   const sensitiveEdges = graph.edges.filter((e) => e.type === "EXPOSES_DATA").length;
   const decisions = graph.nodes.filter((n) => n.type === "DECISION").length;
-  if (authEdges || sensitiveEdges) {
+  const identities = graph.nodes.filter((n) => n.type === "IDENTITY").length;
+  const dataStores = graph.nodes.filter((n) => n.type === "DATA_STORE").length;
+  const decidedBy = graph.edges.filter((e) => e.type === "DECIDED_BY").length;
+  if (authEdges || sensitiveEdges || identities || dataStores) {
     findings.push({
       id: "security-graph",
       title: "Security graph signals",
-      detail: `Auth boundaries: ${authEdges} · Sensitive data edges: ${sensitiveEdges}.`,
+      detail: `Identity→API→data: IDENTITY×${identities} · DATA_STORE×${dataStores} · AUTHENTICATED_BY×${authEdges} · EXPOSES_DATA×${sensitiveEdges}.`,
       claim: "INFERRED",
       epistemicState: "INFERRED",
       riskBand: sensitiveEdges > 0 ? (sensitiveEdges > 3 ? "HIGH" : "MEDIUM") : "LOW",
       category: "GENOME",
       evidenceRefs: [
+        `IDENTITY×${identities}`,
+        `DATA_STORE×${dataStores}`,
         `AUTHENTICATED_BY×${authEdges}`,
         `EXPOSES_DATA×${sensitiveEdges}`,
       ],
@@ -141,12 +146,12 @@ export function runObserveCycle(input: {
     findings.push({
       id: "engineering-memory-graph",
       title: "Engineering memory on graph",
-      detail: `${decisions} decision/ADR node(s) linked into the knowledge graph.`,
+      detail: `${decisions} decision/ADR node(s) · DECIDED_BY×${decidedBy}.`,
       claim: "OBSERVED",
       epistemicState: "OBSERVED",
       riskBand: "LOW",
       category: "GENOME",
-      evidenceRefs: [`DECISION×${decisions}`],
+      evidenceRefs: [`DECISION×${decisions}`, `DECIDED_BY×${decidedBy}`],
     });
   }
 

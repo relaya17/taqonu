@@ -9,6 +9,8 @@ export const GRAPH_NODE_TYPES = [
   "CONFIG",
   "TEST",
   "FEATURE",
+  "IDENTITY",
+  "DATA_STORE",
   "DECISION",
   "TASK",
   "DEPLOYMENT",

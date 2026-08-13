@@ -81,4 +81,41 @@ describe("software knowledge graph", () => {
     expect(result.findings.some((f) => f.id === "graph-summary")).toBe(true);
     expect(result.atlasDir).toContain(".atlas");
   });
+
+  it("builds identity → API → data security chain", () => {
+    const root = tempWorkspace();
+    mkdirSync(join(root, "docs"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "secure-route.ts"),
+      `
+import { requireAuth } from "./auth";
+app.post("/api/payments", () => {
+  const password = process.env.SECRET;
+  return password;
+});
+`,
+      "utf8",
+    );
+    writeFileSync(
+      join(root, "docs", "ADR-010-payment-flow.md"),
+      "# Payment must confirm before charge\n",
+      "utf8",
+    );
+
+    const graph = buildSoftwareKnowledgeGraph({
+      workspaceRoot: root,
+      projectSlug: "gdemo",
+    });
+    expect(graph.nodes.some((n) => n.type === "IDENTITY")).toBe(true);
+    expect(graph.nodes.some((n) => n.type === "DATA_STORE")).toBe(true);
+    expect(graph.edges.some((e) => e.type === "AUTHENTICATED_BY")).toBe(true);
+    expect(graph.edges.some((e) => e.type === "EXPOSES_DATA")).toBe(true);
+    const api = graph.nodes.find((n) => n.key.includes("/api/payments"));
+    expect(api).toBeTruthy();
+    const apiAuth = graph.edges.filter(
+      (e) => e.type === "AUTHENTICATED_BY" && e.fromNodeId === api!.id,
+    );
+    expect(apiAuth.length).toBeGreaterThan(0);
+    expect(graph.edges.some((e) => e.type === "DECIDED_BY")).toBe(true);
+  });
 });
