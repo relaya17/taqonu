@@ -416,7 +416,22 @@ export function buildCentralOpinionPdfBytes(opinion: CentralOpinion): Uint8Array
     ...opinion.memoryReminders.slice(0, 15).map((r) => `- ${r}`),
     "",
     "(Full RTL/Hebrew layout: open HTML print endpoint.)",
-  ].map((l) => l.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "?"));
+  ].map((l) =>
+    [...l]
+      .map((ch) => {
+        const code = ch.charCodeAt(0);
+        if (
+          code === 9 ||
+          code === 10 ||
+          code === 13 ||
+          (code >= 0x20 && code <= 0x7e)
+        ) {
+          return ch;
+        }
+        return "?";
+      })
+      .join(""),
+  );
 
   const contentLines = [
     "BT",
