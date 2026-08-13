@@ -9,7 +9,7 @@ const PRIMARY = [
   "/en/projects",
   "/en/health",
   "/en/decisions",
-  "/en/agent",
+  "/en/agents",
   "/en/memory",
   "/en/auth/login",
 ] as const;
@@ -43,7 +43,9 @@ test.describe("A11y smoke (EN)", () => {
     await expect(openMenu).toHaveAttribute("aria-expanded", "false");
 
     await openMenu.click();
-    const sidebar = page.locator("aside");
+    const sidebar = page.getByRole("complementary", {
+      name: /main navigation/i,
+    });
     await expect(sidebar).toBeVisible({ timeout: 15_000 });
     await expect(
       sidebar.getByRole("navigation", { name: /main navigation/i }),
@@ -60,8 +62,9 @@ test.describe("A11y smoke (EN)", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     for (const path of PRIMARY) {
-      await page.goto(path);
+      await page.goto(path, { waitUntil: "domcontentloaded" });
       await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
+      await page.waitForLoadState("networkidle").catch(() => undefined);
 
       const overflowed = await page.evaluate(() => {
         const doc = document.documentElement;
@@ -76,10 +79,13 @@ test.describe("A11y smoke (EN)", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
       timeout: 45_000,
     });
-    await expect(page.locator("form")).toBeVisible();
-    await expect(page.getByLabel(/email/i)).toBeVisible();
-    await expect(page.getByLabel(/password/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
+    const form = page.locator("form");
+    await expect(form).toBeVisible();
+    await expect(form.getByLabel(/email/i)).toBeVisible();
+    await expect(form.getByLabel(/password/i)).toBeVisible();
+    await expect(
+      form.getByRole("button", { name: /sign in/i }),
+    ).toBeVisible();
   });
 
   test("memory page exposes main landmark and heading", async ({ page }) => {
