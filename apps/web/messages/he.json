@@ -1188,7 +1188,10 @@
     "promoteExpected": "קבע EXPECTED",
     "history": "היסטוריית תצפית",
     "historyEmptyTitle": "מחזור נרשם",
-    "openProjects": "לפרויקטים"
+    "openProjects": "לפרויקטים",
+    "expectedTitle": "EXPECTED מול OBSERVED",
+    "expectedMeta": "צפוי {expected} · נצפה {observed} · סטיות {drifts} · מקור {source}",
+    "snapshots": "צילומי גנום"
   },
   "observer": {
     "title": "צופה (Observer)",

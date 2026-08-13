@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 
 interface ProjectItem {
@@ -144,6 +144,15 @@ export default function TruthPage() {
       apiGet<{
         counters: TruthCounters;
         history: HistoryEntry[];
+        snapshots?: { file: string; capturedAt: string; apiCount: number }[];
+        expectedCompare?: {
+          expectedFlowCount: number;
+          observedFlowCount: number;
+          driftCount: number;
+          promotedAt: string | null;
+          source: string | null;
+          drifts: { title: string; riskBand: string; beforeSteps: string[]; afterSteps: string[] }[];
+        };
         error?: string | null;
       }>(`/api/v1/projects/${activeId}/observer`),
   });
@@ -170,19 +179,21 @@ export default function TruthPage() {
 
   const promote = useMutation({
     mutationFn: () =>
-      apiPost<ObserveResult>(`/api/v1/projects/${activeId}/observe-cycle`, {
-        trigger: "manual",
-        promoteExpected: true,
-      }),
+      apiPut<{ expected: unknown }>(
+        `/api/v1/projects/${activeId}/observer/expected`,
+        { mode: "promote_observed" },
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["observer-state", activeId] });
     },
   });
 
-  const result = cycle.data ?? promote.data;
+  const result = cycle.data;
   const counters = result?.counters ?? state.data?.counters;
   const history = result?.history ?? state.data?.history ?? [];
   const linkError = state.data?.error ?? null;
+  const expectedCompare = state.data?.expectedCompare;
+  const snapshots = state.data?.snapshots ?? [];
   const scores = useMemo(() => {
     if (!result) {
       return {
@@ -339,6 +350,11 @@ export default function TruthPage() {
             {cycle.error instanceof Error ? cycle.error.message : t("error")}
           </Alert>
         ) : null}
+        {promote.isError ? (
+          <Alert severity="error">
+            {promote.error instanceof Error ? promote.error.message : t("error")}
+          </Alert>
+        ) : null}
         {linkError ? (
           <Alert severity="warning">
             {linkError}{" "}
@@ -346,6 +362,53 @@ export default function TruthPage() {
               {t("openProjects")}
             </Button>
           </Alert>
+        ) : null}
+
+        {expectedCompare && !linkError ? (
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              border: "1px solid rgba(62,200,190,0.25)",
+              bgcolor: "rgba(0,0,0,0.2)",
+            }}
+          >
+            <Typography
+              sx={{
+                fontFamily: '"Syne", sans-serif',
+                fontWeight: 750,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontSize: 12,
+                opacity: 0.75,
+                mb: 1,
+              }}
+            >
+              {t("expectedTitle")}
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.85, mb: 1 }}>
+              {t("expectedMeta", {
+                expected: expectedCompare.expectedFlowCount,
+                observed: expectedCompare.observedFlowCount,
+                drifts: expectedCompare.driftCount,
+                source: expectedCompare.source ?? "—",
+              })}
+            </Typography>
+            {expectedCompare.drifts.slice(0, 3).map((d) => (
+              <Box key={d.title} sx={{ mb: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip size="small" label={d.riskBand} />
+                  <Typography fontWeight={650}>{d.title}</Typography>
+                </Stack>
+                <Typography variant="caption" sx={{ opacity: 0.7, display: "block" }}>
+                  EXPECTED: {d.beforeSteps.join(" → ") || "—"}
+                </Typography>
+                <Typography variant="caption" sx={{ opacity: 0.7, display: "block" }}>
+                  OBSERVED: {d.afterSteps.join(" → ") || "—"}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
         ) : null}
 
         <Box
@@ -601,6 +664,31 @@ export default function TruthPage() {
                       : ""}
                   </Typography>
                 </Stack>
+              ))}
+            </Stack>
+          </Box>
+        ) : null}
+
+        {snapshots.length > 0 ? (
+          <Box sx={{ pt: 1 }}>
+            <Typography
+              sx={{
+                fontFamily: '"Syne", sans-serif',
+                fontWeight: 750,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontSize: 12,
+                opacity: 0.7,
+                mb: 1.25,
+              }}
+            >
+              {t("snapshots")}
+            </Typography>
+            <Stack spacing={0.75}>
+              {snapshots.slice(0, 8).map((s) => (
+                <Typography key={s.file} variant="body2" sx={{ opacity: 0.8 }}>
+                  {s.capturedAt} · {s.apiCount} flows · {s.file}
+                </Typography>
               ))}
             </Stack>
           </Box>

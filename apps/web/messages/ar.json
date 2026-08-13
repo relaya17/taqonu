@@ -1188,7 +1188,10 @@
     "promoteExpected": "اعتماد EXPECTED",
     "history": "سجل المراقبة",
     "historyEmptyTitle": "دورة مسجّلة",
-    "openProjects": "المشاريع"
+    "openProjects": "المشاريع",
+    "expectedTitle": "EXPECTED مقابل OBSERVED",
+    "expectedMeta": "متوقع {expected} · مُلاحَظ {observed} · انحرافات {drifts} · المصدر {source}",
+    "snapshots": "لقطات الجينوم"
   },
   "observer": {
     "title": "المراقب",

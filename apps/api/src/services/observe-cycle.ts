@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   AtlasError,
+  genomeFlowSchema,
   ingestBugsRequestSchema,
   observeCycleRequestSchema,
   parseEvidenceRecord,
@@ -10,12 +11,17 @@ import {
 import {
   ingestBugs,
   listCycleHistory,
+  listGenomeSnapshots,
   loadBugs,
   loadExpectedBehavior,
   loadGenome,
   loadTruthCounters,
+  promoteObservedToExpected,
   runObserveCycle,
+  saveExpectedBehavior,
+  verifyAgainstExpected,
 } from "@atlas/observer";
+import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { defaultGoldenRoot } from "./golden-root.js";
 
@@ -191,14 +197,26 @@ export function readObserverState(input: {
 }) {
   try {
     const resolved = resolveObserverWorkspace(input);
+    const genome = loadGenome(resolved.workspaceRoot);
+    const expected = loadExpectedBehavior(resolved.workspaceRoot);
+    const drifts = verifyAgainstExpected(expected, genome?.apis ?? []);
     return {
       workspaceRoot: resolved.workspaceRoot,
       projectId: resolved.projectId,
-      genome: loadGenome(resolved.workspaceRoot),
+      genome,
       bugs: loadBugs(resolved.workspaceRoot),
-      expected: loadExpectedBehavior(resolved.workspaceRoot),
+      expected,
+      expectedCompare: {
+        expectedFlowCount: expected?.flows.length ?? 0,
+        observedFlowCount: genome?.apis.length ?? 0,
+        driftCount: drifts.length,
+        drifts: drifts.slice(0, 20),
+        promotedAt: expected?.promotedAt ?? null,
+        source: expected?.source ?? null,
+      },
       counters: loadTruthCounters(resolved.workspaceRoot),
       history: listCycleHistory(resolved.workspaceRoot).slice(0, 20),
+      snapshots: listGenomeSnapshots(resolved.workspaceRoot, 20),
       error: null as string | null,
     };
   } catch (error) {
@@ -208,6 +226,14 @@ export function readObserverState(input: {
       genome: null,
       bugs: [],
       expected: null,
+      expectedCompare: {
+        expectedFlowCount: 0,
+        observedFlowCount: 0,
+        driftCount: 0,
+        drifts: [],
+        promotedAt: null,
+        source: null,
+      },
       counters: {
         analyzed: 0,
         meaningfulRisks: 0,
@@ -217,7 +243,47 @@ export function readObserverState(input: {
         updatedAt: new Date().toISOString(),
       },
       history: [],
+      snapshots: [],
       error: error instanceof Error ? error.message : "Observer state unavailable",
     };
   }
+}
+
+export function putExpectedBehaviorModel(input: {
+  projectId?: string | null;
+  workspaceRoot?: string | null;
+  envGoldenRoot?: string | null;
+  body: unknown;
+}) {
+  const body = z
+    .object({
+      mode: z.enum(["promote_observed", "replace_flows"]).default("promote_observed"),
+      flows: z.array(genomeFlowSchema).max(50).optional(),
+    })
+    .parse(input.body);
+  const resolved = resolveObserverWorkspace({
+    projectId: input.projectId ?? null,
+    workspaceRoot: input.workspaceRoot ?? null,
+    envGoldenRoot: input.envGoldenRoot ?? null,
+  });
+  const genome = loadGenome(resolved.workspaceRoot);
+  if (body.mode === "replace_flows") {
+    if (!body.flows?.length) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "flows required when mode=replace_flows",
+      );
+    }
+    const model = {
+      version: 1 as const,
+      promotedAt: new Date().toISOString(),
+      source: "manual" as const,
+      flows: body.flows,
+    };
+    saveExpectedBehavior(resolved.workspaceRoot, model);
+    return { expected: model, workspaceRoot: resolved.workspaceRoot };
+  }
+  const flows = genome?.apis ?? body.flows ?? [];
+  const expected = promoteObservedToExpected(resolved.workspaceRoot, flows);
+  return { expected, workspaceRoot: resolved.workspaceRoot };
 }

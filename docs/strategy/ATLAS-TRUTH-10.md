@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-13 (Sprint B: P0 green)  
+**עדכון אחרון:** 2026-08-13 (0.6/0.11 harden + G1 pack READY)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)
 
 > **חוק מוצר:** No evidence = no strong claim.  
@@ -43,12 +43,12 @@
 | 0.3 | **Software Knowledge Graph v0** | המוח — calls / depends / tested_by | `DONE` | `packages/observer/src/graph` · `/api/v1/graph/nodes` |
 | 0.4 | Graph Impact (transitive) | שינוי אחד → מי נשבר | `DONE` | `computeGraphImpact` · `/api/v1/graph/nodes/:id/impact` |
 | 0.5 | Observer ↔ Graph sync | כל cycle מעדכן את המודל | `DONE` | cycle שומר `.atlas/genome/graph.json` |
-| 0.6 | Behavioral Verification v1 | EXPECTED vs OBSERVED flows | `DONE` | `.atlas/genome/expected.json` · `verifyAgainstExpected` |
+| 0.6 | Behavioral Verification v1 | EXPECTED vs OBSERVED flows | `DONE` | `.atlas/genome/expected.json` · GET/PUT `/observer/expected` · `/truth` compare |
 | 0.7 | Evidence על כל finding | מקורות + confidence | `DONE` | `evidenceRefs` על findings + Evidence drafts |
 | 0.8 | Risk scoring על Impact+Behavior | HIGH רק עם ראיות | `DONE` | `scoreRiskWithGraph` + blast radius |
-| 0.9 | Continuous Observer (Git/PR/Deploy hooks) | Always-on, לא רק כפתור | `DONE` | GitHub webhook → `tryContinuousObserve` |
+| 0.9 | Continuous Observer (Git/PR/Deploy hooks) | Always-on, לא רק כפתור | `DONE` | GitHub webhook + deploy feeds → `tryContinuousObserve` |
 | 0.10 | **ATLAS HEALTH dashboard (מסך אחד)** | 10/10 UX — לא 30 גרפים | `DONE` | `/truth` |
-| 0.11 | Audit / evidence history UI | היסטוריית cycles + diffs | `DONE` | `.atlas/cycles` + timeline ב־`/truth` |
+| 0.11 | Audit / evidence history UI | היסטוריית cycles + snapshots | `DONE` | `.atlas/cycles` + `.atlas/snapshots` · `/observer/snapshots` · `/truth` |
 | 0.12 | Design Partner measurement counters | analyzed / risks / confirmed / caught | `DONE` | `.atlas/metrics/truth-counters.json` |
 
 ---
@@ -82,8 +82,8 @@
 
 | # | משימה | סטטוס |
 |---:|---|---|
-| G1 | 3–5 Design Partners (repos אמיתיים) | `OPEN` |
-| G2 | Early Access agreement + feedback loop | `OPEN` — יש playbook |
+| G1 | 3–5 Design Partners (repos אמיתיים) | `READY` — pack + tracker; outreach = human |
+| G2 | Early Access agreement + feedback loop | `PARTIAL` — playbook + Truth-10 Early Access |
 | G3 | Willingness-to-pay interviews | `OPEN` |
 | G4 | Paid Beta | `OPEN` |
 | G5 | Security hardening review לפני scale | `OPEN` |
@@ -128,6 +128,7 @@ Sprint C
 | 2026-08-13 | **Sprint B / P0 ירוק:** EXPECTED model · evidenceRefs · graph-aware risk · webhook observe · cycle history · DP counters |
 | 2026-08-13 | Bugfix: no golden fallback for linked projects; resilient observer GET; top-finding filter; Security/ADR graph seeds |
 | 2026-08-13 | P1.3/1.4: production signals + ADR conflict detect; deploy feeds trigger observe |
+| 2026-08-13 | **0.6 harden:** Expected GET/PUT + Truth EXPECTED vs OBSERVED; **0.11:** genome snapshots API+UI; **G1 pack** `design-partner-truth10-early-access.md` |
 
 ---
 
@@ -138,7 +139,10 @@ Sprint C
 | Observer | `packages/observer` |
 | Evidence | `packages/shared/src/schemas/evidence.schema.ts` |
 | Graph schema | `packages/shared/src/schemas/graph.schema.ts` |
-| Graph API (להחליף stub) | `apps/api/src/routes/graph.ts` |
+| Graph API | `apps/api/src/routes/graph.ts` |
+| Expected API | `GET/PUT /api/v1/projects/:id/observer/expected` |
+| Snapshots API | `GET /api/v1/projects/:id/observer/snapshots` |
 | Health (ישן/מקביל) | `apps/web/app/[locale]/health` |
-| Truth dashboard (יעד) | `apps/web/app/[locale]/truth` |
+| Truth dashboard | `apps/web/app/[locale]/truth` |
 | Design partners | `docs/strategy/design-partner-playbook.md` |
+| TRUTH-10 Early Access (G1) | `docs/strategy/design-partner-truth10-early-access.md` |

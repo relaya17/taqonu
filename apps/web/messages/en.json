@@ -1188,7 +1188,10 @@
     "promoteExpected": "Promote EXPECTED",
     "history": "Observe history",
     "historyEmptyTitle": "Cycle recorded",
-    "openProjects": "Open projects"
+    "openProjects": "Open projects",
+    "expectedTitle": "EXPECTED vs OBSERVED",
+    "expectedMeta": "Expected {expected} flows · Observed {observed} · Drifts {drifts} · source {source}",
+    "snapshots": "Genome snapshots"
   },
   "observer": {
     "title": "Observer",

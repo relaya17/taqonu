@@ -1,6 +1,7 @@
 # Design Partner Playbook
 
 **Execution pack (READY — awaiting human outreach):**  
+[`design-partner-truth10-early-access.md`](./design-partner-truth10-early-access.md) (TRUTH-10 G1) ·  
 [`design-partner-audit-runbook.md`](./design-partner-audit-runbook.md) (1-week · URLs/APIs) ·  
 [`design-partner-execution-checklist.md`](./design-partner-execution-checklist.md) ·  
 [`design-partner-tracker.md`](./design-partner-tracker.md) ·  

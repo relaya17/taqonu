@@ -41,6 +41,11 @@ export { loadTruthCounters, bumpTruthCounters } from "./metrics/counters.js";
 export type { TruthCounters } from "./metrics/counters.js";
 export { listCycleHistory, appendCycleHistory } from "./history/cycles.js";
 export type { CycleHistoryEntry } from "./history/cycles.js";
+export {
+  listGenomeSnapshots,
+  loadGenomeSnapshot,
+} from "./history/snapshots.js";
+export type { GenomeSnapshotMeta } from "./history/snapshots.js";
 export { detectProductionSignals } from "./production/signals.js";
 export type { ProductionSignal } from "./production/signals.js";
 export { detectAdrConflicts } from "./memory/adr-conflict.js";

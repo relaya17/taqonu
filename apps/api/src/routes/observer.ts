@@ -5,6 +5,7 @@ import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import {
   executeBugIngest,
   executeObserveCycle,
+  putExpectedBehaviorModel,
   readObserverState,
 } from "../services/observe-cycle.js";
 
@@ -40,6 +41,43 @@ export async function registerObserverRoutes(
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
+  });
+
+  app.get("/api/v1/projects/:id/observer/expected", async (request) => {
+    const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    const state = readObserverState({
+      projectId,
+      envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+    });
+    return {
+      expected: state.expected,
+      compare: state.expectedCompare,
+      error: state.error,
+    };
+  });
+
+  app.put("/api/v1/projects/:id/observer/expected", async (request, reply) => {
+    requireSignedInForWrite(app, request);
+    const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    const result = putExpectedBehaviorModel({
+      projectId,
+      body: request.body,
+      envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+    });
+    return reply.send(result);
+  });
+
+  app.get("/api/v1/projects/:id/observer/snapshots", async (request) => {
+    const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    const state = readObserverState({
+      projectId,
+      envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+    });
+    return {
+      items: state.snapshots,
+      total: state.snapshots.length,
+      error: state.error,
+    };
   });
 
   app.get("/api/v1/observer/state", async (request) => {
