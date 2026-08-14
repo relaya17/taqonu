@@ -248,7 +248,7 @@ export function PartnerAuditIntake({
   };
 
   return (
-    <Stack spacing={3} sx={embedded ? undefined : { maxWidth: 920 }}>
+    <Stack spacing={3} {...(embedded ? {} : { sx: { maxWidth: 920 } })}>
       {!embedded ? (
         <>
           <Box>

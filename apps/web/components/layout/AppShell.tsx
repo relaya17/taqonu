@@ -361,7 +361,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <>
         <Stack spacing={0.75} sx={{ px: 1.5, mb: 3 }}>
           {brandMark("/", {
-            onClick: opts.mobile ? () => setNavOpen(false) : undefined,
+            ...(opts.mobile ? { onClick: () => setNavOpen(false) } : {}),
             tone: opts.tone ?? "dark",
           })}
           <Typography

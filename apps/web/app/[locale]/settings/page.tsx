@@ -172,7 +172,7 @@ export default function SettingsPage() {
         <>
           <Stack direction="row" spacing={2} alignItems="center">
             <Avatar
-              src={me.data.user.avatarUrl ?? undefined}
+              {...(me.data.user.avatarUrl ? { src: me.data.user.avatarUrl } : {})}
               alt=""
               sx={{ width: 56, height: 56, bgcolor: "#9A9EA8", color: "#12141A" }}
             >

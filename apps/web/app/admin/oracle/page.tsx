@@ -479,8 +479,9 @@ export default function AdminOraclePage() {
                   <Typography
                     component={Link}
                     href={s.url}
-                    target={s.url.startsWith("http") ? "_blank" : undefined}
-                    rel={s.url.startsWith("http") ? "noreferrer" : undefined}
+                    {...(s.url.startsWith("http")
+                      ? { target: "_blank" as const, rel: "noreferrer" }
+                      : {})}
                     sx={{ color: "#9A9EA8", fontWeight: 650, textDecoration: "none" }}
                   >
                     {s.title}

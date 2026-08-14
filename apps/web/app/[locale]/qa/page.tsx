@@ -322,7 +322,7 @@ export default function QaPage() {
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             sx={{ minWidth: 220 }}
-            helperText={projects.length === 0 ? t("noProjects") : undefined}
+            {...(projects.length === 0 ? { helperText: t("noProjects") } : {})}
           >
             {projects.map((p) => (
               <MenuItem key={p.id} value={p.id}>

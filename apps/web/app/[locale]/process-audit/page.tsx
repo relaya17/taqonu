@@ -185,7 +185,7 @@ export default function ProcessAuditPage() {
             setOpinion(null);
           }}
           sx={{ minWidth: 220, flex: 1 }}
-          helperText={projects.length === 0 ? t("noProjects") : undefined}
+          {...(projects.length === 0 ? { helperText: t("noProjects") } : {})}
         >
           {projects.map((p) => (
             <MenuItem key={p.id} value={p.id}>

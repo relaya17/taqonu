@@ -5,9 +5,9 @@ import { Box, Tab, Tabs, Typography } from "@mui/material";
 import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
-import { MemoryPanel } from "@/app/[locale]/memory/page";
-import { DecisionsPanel } from "@/app/[locale]/decisions/page";
-import { PatchesPanel } from "@/app/[locale]/patches/page";
+import { MemoryPanel } from "@/components/dashboard/MemoryPanel";
+import { DecisionsPanel } from "@/components/dashboard/DecisionsPanel";
+import { PatchesPanel } from "@/components/dashboard/PatchesPanel";
 
 export type DeskTab = "memory" | "decisions" | "patches";
 
