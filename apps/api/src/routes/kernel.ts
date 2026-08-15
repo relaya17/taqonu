@@ -34,6 +34,7 @@ import {
 } from "../services/hybrid-rag.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
+import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { z } from "zod";
 
 export async function registerKernelRoutes(app: FastifyInstance): Promise<void> {
@@ -109,6 +110,10 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   /** P1–P7 run */
   app.post("/api/v1/kernel/run", async (request, reply) => {
     const body = kernelRunRequestSchema.parse(request.body);
+    const sentinel = runSecuritySpecialistViaSentinel({
+      request: body.request,
+      projectId: body.projectId ?? null,
+    });
     const result = runIntelligenceKernel({
       request: body.request,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
@@ -116,6 +121,14 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
       budgetUsd: body.budgetUsd,
       runSimulation: body.runSimulation,
       runJudge: body.runJudge,
+      ...(sentinel
+        ? {
+            securityObservation: {
+              claims: sentinel.claims,
+              evidenceRefs: sentinel.evidenceRefs,
+            },
+          }
+        : {}),
     });
     osStore.recordEvent({
       type: "kernel.run",

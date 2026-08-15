@@ -222,6 +222,52 @@ export function ingestKnowledgeDocument(input: {
   return doc;
 }
 
+/** Update a stable source id / URL in place so daily refresh does not fork the corpus. */
+export function upsertKnowledgeDocument(input: {
+  id?: string;
+  title: string;
+  excerpt: string;
+  sourceClass: string;
+  url?: string | null;
+  sourceUpdatedAt?: string | null;
+  projectScoped?: boolean;
+  embedding?: number[] | null;
+}): CorpusDoc {
+  const contentHash = hashDoc(input.title, input.excerpt);
+  const existing =
+    (input.id ? CORPUS.find((d) => d.id === input.id) : undefined) ??
+    (input.url ? CORPUS.find((d) => d.url === input.url) : undefined);
+  if (existing) {
+    existing.title = input.title;
+    existing.excerpt = input.excerpt;
+    existing.sourceClass = input.sourceClass;
+    existing.url = input.url ?? existing.url;
+    existing.sourceUpdatedAt = input.sourceUpdatedAt ?? new Date().toISOString();
+    existing.contentHash = contentHash;
+    existing.projectScoped = input.projectScoped ?? existing.projectScoped;
+    if (input.embedding) existing.embedding = [...input.embedding];
+    persistIfConfigured();
+    return existing;
+  }
+  if (input.id) {
+    const doc: CorpusDoc = {
+      id: input.id,
+      title: input.title,
+      sourceClass: input.sourceClass,
+      url: input.url ?? null,
+      excerpt: input.excerpt,
+      sourceUpdatedAt: input.sourceUpdatedAt ?? new Date().toISOString(),
+      projectScoped: input.projectScoped ?? false,
+      contentHash,
+      ...(input.embedding ? { embedding: [...input.embedding] } : {}),
+    };
+    CORPUS.push(doc);
+    persistIfConfigured();
+    return doc;
+  }
+  return ingestKnowledgeDocument(input);
+}
+
 export function listKnowledgeCorpus(): readonly CorpusDoc[] {
   return CORPUS;
 }

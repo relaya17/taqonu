@@ -54,6 +54,10 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
+import {
+  KNOWLEDGE_REFRESH_INTERVAL_MS,
+  maybeRefreshVerifiedKnowledge,
+} from "./services/verified-knowledge-refresh.js";
 
 export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   const logger = createLogger({
@@ -149,6 +153,25 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerLegalMediaRoutes(app);
   await registerObserverRoutes(app);
   await registerSentinelRoutes(app);
+
+  void maybeRefreshVerifiedKnowledge({ env }).catch((err) => {
+    logger.warn("knowledge_refresh_boot_failed", {
+      message: err instanceof Error ? err.message : "refresh failed",
+    });
+  });
+  if (!process.env.VERCEL) {
+    const timer = setInterval(() => {
+      void maybeRefreshVerifiedKnowledge({ env }).catch((err) => {
+        logger.warn("knowledge_refresh_daily_failed", {
+          message: err instanceof Error ? err.message : "refresh failed",
+        });
+      });
+    }, KNOWLEDGE_REFRESH_INTERVAL_MS);
+    timer.unref?.();
+    app.addHook("onClose", async () => {
+      clearInterval(timer);
+    });
+  }
 
   return app;
 }

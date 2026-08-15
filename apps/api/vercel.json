@@ -3,5 +3,11 @@
   "framework": null,
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@atlas/api... && pnpm --filter @atlas/api run bundle:vercel",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "crons": [
+    {
+      "path": "/api/v1/knowledge/refresh",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

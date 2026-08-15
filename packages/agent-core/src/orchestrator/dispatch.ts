@@ -3,6 +3,7 @@ import {
   agentRunResultSchema,
   type AgentDispatchResult,
   type AgentPlan,
+  type AgentRunResult,
   type FabricAgentId,
 } from "@atlas/shared";
 import { getFabricAgent } from "../registry/catalog.js";
@@ -53,6 +54,11 @@ export function dispatchAgentPlan(input: {
   maxAgents?: number;
   budgetUsd?: number;
   runJudge?: boolean;
+  /** When set, replaces the stub for that agent (e.g. SECURITY → Sentinel). */
+  specialistOverride?: (
+    agentId: FabricAgentId,
+    request: string,
+  ) => AgentRunResult | null | undefined;
 }): AgentDispatchResult {
   const plan =
     input.plan ??
@@ -79,7 +85,10 @@ export function dispatchAgentPlan(input: {
     .flatMap((g) =>
       (byGroup.get(g) ?? [])
         .filter((s) => s.agentId !== "JUDGE")
-        .map((s) => runSpecialistStub(s.agentId, input.request)),
+        .map((s) => {
+          const override = input.specialistOverride?.(s.agentId, input.request);
+          return override ?? runSpecialistStub(s.agentId, input.request);
+        }),
     );
 
   const runJudge = input.runJudge !== false;

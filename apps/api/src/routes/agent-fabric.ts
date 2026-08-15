@@ -11,6 +11,7 @@ import {
   TECH_SOURCE_DOMAINS,
   buildVerifiedTechSourcesPack,
   buildVerifiedTechSourcesMarkdown,
+  isAuthorizedOfficialKnowledgeUrl,
   isAuthorizedVerifiedTechUrl,
   AtlasError,
 } from "@atlas/shared";
@@ -40,6 +41,12 @@ import {
 } from "../services/hybrid-rag.js";
 import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
+import {
+  knowledgeRefreshIsDue,
+  readKnowledgeRefreshLedger,
+  refreshVerifiedKnowledge,
+} from "../services/verified-knowledge-refresh.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -165,6 +172,13 @@ export async function registerAgentFabricRoutes(
       maxAgents: body.maxAgents,
       budgetUsd: body.budgetUsd,
       runJudge: body.runJudge,
+      specialistOverride: (agentId, request) => {
+        if (agentId !== "SECURITY") return null;
+        return runSecuritySpecialistViaSentinel({
+          request,
+          projectId: body.projectId ?? null,
+        });
+      },
     });
     atlasMetrics.record("agent_run_duration", Date.now() - started, {
       kind: "dispatch",
@@ -263,7 +277,7 @@ export async function registerAgentFabricRoutes(
     requireSignedInForWrite(app, request);
     ensureKnowledgeCorpusHydrated();
     const body = knowledgeIngestRequestSchema.parse(request.body);
-    if (body.url && !isAuthorizedVerifiedTechUrl(body.url)) {
+    if (body.url && !isAuthorizedOfficialKnowledgeUrl(body.url)) {
       throw new AtlasError(
         "FORBIDDEN",
         "External knowledge URL is not on the verified/authorized allow-list. Agents may only ingest official vendor, standards, government, or university sources.",
@@ -318,6 +332,60 @@ export async function registerAgentFabricRoutes(
         : "Persisted to local .atlas/knowledge/corpus.json (pgvector offline — set live SUPABASE_* / DATABASE_URL).",
     });
   });
+
+  function assertKnowledgeRefreshAllowed(
+    request: Parameters<typeof requireSignedInForWrite>[1],
+  ): void {
+    const secret =
+      process.env.CRON_SECRET?.trim() ||
+      process.env.ATLAS_CRON_SECRET?.trim() ||
+      "";
+    const auth = request.headers.authorization ?? "";
+    if (secret && auth === `Bearer ${secret}`) return;
+    if (!process.env.VERCEL && !secret) return;
+    requireSignedInForWrite(app, request);
+  }
+
+  const runRefresh = async (
+    request: Parameters<typeof requireSignedInForWrite>[1],
+    reply: { status: (code: number) => { send: (body: unknown) => unknown } },
+  ) => {
+    assertKnowledgeRefreshAllowed(request);
+    ensureKnowledgeCorpusHydrated();
+    const report = await refreshVerifiedKnowledge({ env: app.atlasEnv });
+    appendDomainEvent({
+      type: "observation.recorded",
+      projectId: null,
+      epistemicState: "OBSERVED",
+      payload: {
+        kind: "knowledge.refresh",
+        ok: report.ok,
+        failed: report.failed,
+        pgvectorWrites: report.pgvectorWrites,
+      },
+    });
+    return reply.status(200).send(report);
+  };
+
+  app.get("/api/v1/knowledge/refresh/status", async () => {
+    const ledger = readKnowledgeRefreshLedger();
+    return {
+      due: knowledgeRefreshIsDue(),
+      intervalHours: 24,
+      lastFinishedAt: ledger?.lastFinishedAt ?? null,
+      lastOk: ledger?.lastOk ?? 0,
+      lastFailed: ledger?.lastFailed ?? 0,
+      policy:
+        "Daily allow-listed fetch of official vendor, government, and standards pages. Snapshots persist to corpus + knowledge_chunks when Supabase is live.",
+    };
+  });
+
+  app.get("/api/v1/knowledge/refresh", async (request, reply) =>
+    runRefresh(request, reply),
+  );
+  app.post("/api/v1/knowledge/refresh", async (request, reply) =>
+    runRefresh(request, reply),
+  );
 
   app.get("/api/v1/knowledge/corpus", async () => {
     ensureKnowledgeCorpusHydrated();

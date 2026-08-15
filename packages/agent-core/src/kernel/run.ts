@@ -139,6 +139,7 @@ export function runIntelligenceKernel(input: {
   budgetUsd?: number;
   runSimulation?: boolean;
   runJudge?: boolean;
+  securityObservation?: { claims: string[]; evidenceRefs: string[] } | null;
 }): KernelRunResult {
   const plan = createTaskPlan({
     request: input.request,
@@ -232,6 +233,9 @@ export function runIntelligenceKernel(input: {
       knowledgeHitIds: knowledge.hits.map((h) => h.id),
       lessons: lessonsApplied,
       projectId: input.projectId ?? null,
+      ...(input.securityObservation
+        ? { securityObservation: input.securityObservation }
+        : {}),
     });
     summaries.push(result);
   }

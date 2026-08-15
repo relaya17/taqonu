@@ -9,6 +9,7 @@ import {
   ingestKnowledgeDocument,
   listKnowledgeCorpus,
   searchKnowledgeFabric,
+  upsertKnowledgeDocument,
   type CorpusDoc,
 } from "@atlas/knowledge";
 import {
@@ -48,6 +49,7 @@ function chunkToCorpusDoc(row: {
 export async function ingestKnowledgeClosedLoop(
   env: HybridRagEnv,
   input: {
+    id?: string;
     title: string;
     excerpt: string;
     sourceClass: string;
@@ -64,7 +66,7 @@ export async function ingestKnowledgeClosedLoop(
   const [embedding] = await safeEmbed(provider, [
     `${input.title}\n${input.excerpt}`,
   ]);
-  const doc = ingestKnowledgeDocument({
+  const payload = {
     title: input.title,
     excerpt: input.excerpt,
     sourceClass: input.sourceClass,
@@ -76,7 +78,10 @@ export async function ingestKnowledgeClosedLoop(
       ? { projectScoped: input.projectScoped }
       : {}),
     ...(embedding ? { embedding: [...embedding] } : {}),
-  });
+  };
+  const doc = input.id
+    ? upsertKnowledgeDocument({ id: input.id, ...payload })
+    : ingestKnowledgeDocument(payload);
 
   const cloud = await tryPersistKnowledgeChunk(env, {
     id: doc.id,

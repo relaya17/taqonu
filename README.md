@@ -35,6 +35,7 @@ are operator ratings — not marketing.
 | ACT / observe security | **9/10** | Ownership on ACT; no prod/BLOCKED auto-apply; memory + evidence scoped to one project |
 | Systems command center | **9/10** | Blocked-first + **Run Audit → Executive Report** with drill-down to Evidence |
 | GTM offer | **7/10** | Audit wedge + executive readout is in-product; tracker still empty; no paid partner |
+| Verified knowledge | **7/10** | Daily allow-listed refresh (NIST/CISA/OWASP/MDN/gov.il) → corpus + `knowledge_chunks`; still excerpts, not full curricula |
 | **As a truth & control plane** | **~8.5/10** | 10 needs one live customer system + a real partner readout |
 
 Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
@@ -202,7 +203,7 @@ later — sell **time + risk + money**, not seats.
 | Studio | Human view-only · agent proposes patches (Approve → Apply) |
 | Process / E2E | Internal deep process audits · opinion-style UI |
 | Freemium | Audit offer · usage ceilings · BYO Cloudflare · optional Pro evidence mirror |
-| Verified knowledge | Allow-listed tech sources · admin pack download |
+| Verified knowledge | Daily allow-listed refresh → corpus + DB · pack download |
 | Partners | Audit intake · external repo connect — no invented customers |
 
 Normative: [ADR-014](docs/adr/ADR-014-evidence-governance-north-star.md) ·

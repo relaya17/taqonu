@@ -23,6 +23,8 @@ export function runSpecialist(input: {
   knowledgeHitIds: string[];
   lessons: string[];
   projectId?: string | null;
+  /** Observed Sentinel findings when SECURITY is in the plan. */
+  securityObservation?: { claims: string[]; evidenceRefs: string[] } | null;
 }): SpecialistResult {
   const agent = getRegisteredAgent(input.agentId);
   const sub = input.plan.subtasks.find((s) => s.agentId === input.agentId);
@@ -65,6 +67,27 @@ export function runSpecialist(input: {
       agentId: input.agentId,
       status: "INSUFFICIENT_EVIDENCE",
       summary: `${agent.name} returned INSUFFICIENT_EVIDENCE.`,
+      evidenceIds: [item.id],
+    };
+  }
+
+  if (input.agentId === "SECURITY" && input.securityObservation?.claims.length) {
+    const item = input.bus.publishClaim({
+      claim: input.securityObservation.claims.slice(0, 8).join(" · "),
+      source: "sentinel:scan",
+      sourceType: "SECURITY_ADVISORY",
+      authorityScore: 0.85,
+      confidence: 0.85,
+      agentId: "SECURITY",
+      projectId: input.projectId ?? null,
+      supports: input.securityObservation.evidenceRefs.slice(0, 8),
+      taskPlanId: input.plan.id,
+      epistemicState: "OBSERVED",
+    });
+    return {
+      agentId: "SECURITY",
+      status: "COMPLETED",
+      summary: "SECURITY published Sentinel observations to Evidence Bus.",
       evidenceIds: [item.id],
     };
   }
