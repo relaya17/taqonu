@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const locale = useLocale();
   const [selectedId, setSelectedId] = useProjectQueryParam("");
   const [showReport, setShowReport] = useState(false);
+  const [showExecutive, setShowExecutive] = useState(false);
 
   const projects = useQuery({
     queryKey: ["projects"],
@@ -155,6 +156,26 @@ export default function DashboardPage() {
     },
   });
 
+  const executive = useQuery({
+    queryKey: ["executive-report", projectId, showExecutive, locale],
+    enabled: Boolean(projectId) && showExecutive,
+    staleTime: 60_000,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set("locale", locale === "ar" ? "ar" : locale === "he" ? "he" : "en");
+      if (
+        golden.data?.workspaceRoot &&
+        projects.data?.items.find((p) => p.id === projectId)?.slug ===
+          (golden.data?.slug ?? "brokeros")
+      ) {
+        params.set("workspaceRoot", golden.data.workspaceRoot);
+      }
+      return apiGet<EvidenceReport>(
+        `/api/v1/projects/${projectId}/executive-report?${params.toString()}`,
+      );
+    },
+  });
+
   const statusColor =
     verdict.data?.status === "READY"
       ? "success"
@@ -172,13 +193,13 @@ export default function DashboardPage() {
     return t.has(key) ? t(key) : severity;
   };
 
-  const downloadReport = () => {
-    if (!report.data?.markdown) return;
-    const blob = new Blob([report.data.markdown], { type: "text/markdown" });
+  const downloadMarkdown = (markdown: string | undefined, kind: "report" | "executive") => {
+    if (!markdown) return;
+    const blob = new Blob([markdown], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `atlas-report-${verdict.data?.projectName ?? "project"}.md`;
+    a.download = `atlas-${kind}-${verdict.data?.projectName ?? "project"}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -446,9 +467,29 @@ export default function DashboardPage() {
             >
               {t("dashboard.viewReport")}
             </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setShowExecutive(true)}
+            >
+              {t("dashboard.viewExecutive")}
+            </Button>
             {showReport && report.data ? (
-              <Button size="small" variant="text" onClick={downloadReport}>
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => downloadMarkdown(report.data?.markdown, "report")}
+              >
                 {t("dashboard.downloadReport")}
+              </Button>
+            ) : null}
+            {showExecutive && executive.data ? (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => downloadMarkdown(executive.data?.markdown, "executive")}
+              >
+                {t("dashboard.downloadExecutive")}
               </Button>
             ) : null}
           </Stack>
@@ -470,6 +511,27 @@ export default function DashboardPage() {
             </Box>
           ) : null}
           {showReport && report.isError ? (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {t("dashboard.reportUnavailable")}
+            </Alert>
+          ) : null}
+          {showExecutive && executive.data ? (
+            <Box
+              component="pre"
+              sx={{
+                mt: 2,
+                p: 2,
+                bgcolor: "rgba(26,31,42,0.04)",
+                overflow: "auto",
+                maxHeight: 320,
+                fontSize: 12,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {executive.data.markdown}
+            </Box>
+          ) : null}
+          {showExecutive && executive.isError ? (
             <Alert severity="warning" sx={{ mt: 2 }}>
               {t("dashboard.reportUnavailable")}
             </Alert>

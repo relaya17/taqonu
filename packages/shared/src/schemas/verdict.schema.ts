@@ -44,6 +44,43 @@ export const atlasVerdictSchema = z.object({
   certificateId: uuidSchema.nullable(),
 });
 
+export const executiveReportLineSchema = z.object({
+  id: z.string().min(1).max(120),
+  title: z.string().min(1).max(400),
+  severity: z.enum(["CRITICAL", "HIGH", "MEDIUM"]),
+  why: z.string().max(800),
+  evidenceRefs: z.array(z.string()).default([]),
+  nextAction: z.string().max(400),
+  epistemicState: epistemicStateSchema,
+});
+
+/** CEO/CTO one-pager — compose existing verdict, do not invent a second truth. */
+export const executiveReportSchema = z.object({
+  id: uuidSchema,
+  projectId: uuidSchema,
+  systemId: uuidSchema.nullable(),
+  projectName: z.string(),
+  generatedAt: isoDateTimeSchema,
+  overall: releaseVerdictStatusSchema,
+  productionReadiness: z.number().min(0).max(100),
+  buckets: z.object({
+    verifiedPct: z.number().min(0).max(100),
+    unverifiedPct: z.number().min(0).max(100),
+    unknownPct: z.number().min(0).max(100),
+  }),
+  counts: z.object({
+    criticalBlockers: z.number().int().min(0),
+    highRisks: z.number().int().min(0),
+    medium: z.number().int().min(0),
+    verifiedClaims: z.number().int().min(0),
+    unverifiedClaims: z.number().int().min(0),
+  }),
+  topRisks: z.array(executiveReportLineSchema).max(8),
+  recommendedActions: z.array(z.string().max(400)).max(8),
+  verdict: atlasVerdictSchema,
+  markdown: z.string(),
+});
+
 export const evidenceReportSchema = z.object({
   id: uuidSchema,
   projectId: uuidSchema,
@@ -137,6 +174,8 @@ export const usageAnalyticsSchema = z.object({
 });
 
 export type AtlasVerdict = z.infer<typeof atlasVerdictSchema>;
+export type ExecutiveReport = z.infer<typeof executiveReportSchema>;
+export type ExecutiveReportLine = z.infer<typeof executiveReportLineSchema>;
 export type EvidenceReport = z.infer<typeof evidenceReportSchema>;
 export type UsageAnalytics = z.infer<typeof usageAnalyticsSchema>;
 export type ImportProjectRequest = z.infer<typeof importProjectSchema>;

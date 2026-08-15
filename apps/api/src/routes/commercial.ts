@@ -23,6 +23,7 @@ import { osStore } from "../store/os-store.js";
 import {
   buildAtlasVerdict,
   buildEvidenceReport,
+  buildExecutiveReport,
   collectCaseStudyMetrics,
 } from "../services/atlas-verdict.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
@@ -133,6 +134,37 @@ export async function registerCommercialValidationRoutes(
       projectId: params.id,
       epistemicState: "OBSERVED",
       payload: { kind: "evidence-report", reportId: report.id },
+    });
+    return reply.status(200).send(report);
+  });
+
+  app.get("/api/v1/projects/:id/executive-report", async (request, reply) => {
+    const params = z.object({ id: uuidSchema }).parse(request.params);
+    const q = z
+      .object({
+        workspaceRoot: z.string().max(1000).optional(),
+        locale: z.enum(["he", "en", "ar"]).optional(),
+      })
+      .parse(request.query ?? {});
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
+    const stored = osStore.getWorkspaceRoot(params.id);
+    const workspaceRoot = resolveWorkspaceRoot({
+      queryRoot: q.workspaceRoot ?? stored ?? null,
+      envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+    });
+    const report = buildExecutiveReport({
+      projectId: params.id,
+      workspaceRoot,
+      locale: q.locale ?? "en",
+    });
+    osStore.incrementUsage("reportsGenerated");
+    appendDomainEvent({
+      type: "evaluation.completed",
+      projectId: params.id,
+      epistemicState: "OBSERVED",
+      payload: { kind: "executive-report", reportId: report.id },
     });
     return reply.status(200).send(report);
   });

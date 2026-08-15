@@ -13,6 +13,7 @@ import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { apiGet, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { ExecutiveAuditPanel } from "@/components/systems/ExecutiveAuditPanel";
 
 interface FacetState {
   facet: string;
@@ -140,6 +141,10 @@ export default function SystemDetailPage() {
               {system.actEligible ? t("actReady") : t("actBlocked")}
             </Typography>
           </Box>
+
+          {projectId ? (
+            <ExecutiveAuditPanel systemId={system.id} projectId={projectId} />
+          ) : null}
 
           {projectId ? (
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>

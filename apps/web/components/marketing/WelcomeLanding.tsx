@@ -96,6 +96,17 @@ export function WelcomeLanding() {
           >
             {t("subhead")}
           </Typography>
+          <Typography
+            sx={{
+              color: "rgba(212, 216, 224, 0.88)",
+              fontSize: "0.95rem",
+              lineHeight: 1.5,
+              maxWidth: 440,
+              textShadow: "0 1px 12px rgba(0,0,0,0.45)",
+            }}
+          >
+            {t("commercialLine")}
+          </Typography>
           <Stack
             direction={{ xs: "column", sm: "row" }}
             spacing={1.5}

@@ -1,9 +1,11 @@
 import {
   atlasVerdictSchema,
   evidenceReportSchema,
+  executiveReportSchema,
   groupEvidenceByCategory,
   type AtlasVerdict,
   type EvidenceReport,
+  type ExecutiveReport,
 } from "@atlas/shared";
 import { issueProductionReadinessCertificate } from "./readiness-certificate.js";
 import { evaluateReleaseGateGraph } from "./gate-engine.js";
@@ -413,6 +415,263 @@ export function buildEvidenceReport(input: {
     generatedAt: now,
     verdict,
     sections,
+    markdown,
+  });
+}
+
+function pct(part: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((part / total) * 100);
+}
+
+function nextActionForSeverity(
+  locale: ReportLocale,
+  severity: "CRITICAL" | "HIGH" | "MEDIUM",
+): string {
+  if (locale === "he") {
+    if (severity === "CRITICAL") return "אל תבצעו ACT — פתחו שערים/בריאות וצרפו ראיה חסרה.";
+    if (severity === "HIGH") return "רשמו ראיה ב-אמת ואז הריצו Verify מחדש.";
+    return "עקבו בפאסט הזה במחזור התצפית הבא.";
+  }
+  if (locale === "ar") {
+    if (severity === "CRITICAL") return "لا تنفّذ ACT — افتح البوابات/الصحة وأرفق الدليل الناقص.";
+    if (severity === "HIGH") return "سجّل دليلاً في الحقيقة ثم أعد Verify.";
+    return "راقب هذا الجانب في دورة الرصد التالية.";
+  }
+  if (severity === "CRITICAL") {
+    return "Do not ACT — open Gates/Health and attach the missing evidence.";
+  }
+  if (severity === "HIGH") {
+    return "Record evidence on Truth, then re-run Verify.";
+  }
+  return "Watch this facet on the next observe cycle.";
+}
+
+function recommendedActionsForVerdict(
+  locale: ReportLocale,
+  verdict: AtlasVerdict,
+): string[] {
+  const actions: string[] = [];
+  if (locale === "he") {
+    if (verdict.status === "BLOCKED") {
+      actions.push("אל תשחררו. נקו חסמים קריטיים והריצו Verify מחדש.");
+    } else if (verdict.status === "CONDITIONAL") {
+      actions.push("שחרור רק אחרי אישור אדם מפורש — נשארת סיכון שיורית.");
+    } else if (verdict.status === "UNKNOWN") {
+      actions.push("חברו מקורות ראיה לפני שמתייחסים לזה כהחלטת שחרור.");
+    } else {
+      actions.push("השחרור מותר לפי הראיות הנוכחיות — המשיכו לצפות אחרי העלייה.");
+    }
+    if (verdict.unverifiedClaims > 0) {
+      actions.push(
+        `אמתו ${verdict.unverifiedClaims} טענות לא מאומתות ב-אמת עם ראיה מתוארכת.`,
+      );
+    }
+    if (verdict.criticalBlockers > 0) {
+      actions.push("פתחו שערים וצרפו ראיה לכל צומת FAIL/BLOCKED.");
+    }
+    if (verdict.highRisks > 0) {
+      actions.push("פתרו תיקונים בסיכון גבוה או קונפליקטים פתוחים לפני ACT.");
+    }
+    actions.push("הריצו Audit שוב אחרי שינוי ראיות — זה צילום, לא תעודה חיה.");
+    return actions.slice(0, 8);
+  }
+  if (locale === "ar") {
+    if (verdict.status === "BLOCKED") {
+      actions.push("لا تُطلق. أزل الحواجز الحرجة ثم أعد Verify.");
+    } else if (verdict.status === "CONDITIONAL") {
+      actions.push("الإطلاق فقط بعد موافقة بشرية صريحة — يبقى خطر متبقٍ.");
+    } else if (verdict.status === "UNKNOWN") {
+      actions.push("اربط مصادر أدلة قبل اعتبار هذا قرار إطلاق.");
+    } else {
+      actions.push("الإطلاق مسموح وفق الأدلة الحالية — واصل الرصد بعد الإطلاق.");
+    }
+    if (verdict.unverifiedClaims > 0) {
+      actions.push(
+        `تحقّق من ${verdict.unverifiedClaims} ادّعاء غير مثبت في الحقيقة بدليل مؤرّخ.`,
+      );
+    }
+    if (verdict.criticalBlockers > 0) {
+      actions.push("افتح البوابات وأرفق دليلاً لكل عقدة FAIL/BLOCKED.");
+    }
+    if (verdict.highRisks > 0) {
+      actions.push("حلّ التصحيحات عالية المخاطر أو التعارضات المفتوحة قبل ACT.");
+    }
+    actions.push("أعد التدقيق بعد تغيّر الأدلة — هذا لقطة وليس شهادة حيّة.");
+    return actions.slice(0, 8);
+  }
+  if (verdict.status === "BLOCKED") {
+    actions.push("Do not ship. Clear critical blockers and re-run Verify.");
+  } else if (verdict.status === "CONDITIONAL") {
+    actions.push("Ship only behind an explicit human approval — residual risk remains.");
+  } else if (verdict.status === "UNKNOWN") {
+    actions.push("Connect evidence sources before treating this as a release decision.");
+  } else {
+    actions.push("Release is eligible on current evidence — keep observing after ship.");
+  }
+  if (verdict.unverifiedClaims > 0) {
+    actions.push(
+      `Verify ${verdict.unverifiedClaims} unverified claim(s) on Truth with dated evidence.`,
+    );
+  }
+  if (verdict.criticalBlockers > 0) {
+    actions.push("Open Gates and attach the missing evidence for each FAIL/BLOCKED node.");
+  }
+  if (verdict.highRisks > 0) {
+    actions.push("Resolve high-risk patches or open conflicts before ACT.");
+  }
+  actions.push(
+    "Re-run Audit after evidence changes — this report is a snapshot, not a live certificate.",
+  );
+  return actions.slice(0, 8);
+}
+
+/** CEO/CTO one-pager composed from the existing Verdict — not a second truth model. */
+export function buildExecutiveReport(input: {
+  projectId: string;
+  workspaceRoot?: string | null;
+  locale?: string | null;
+  systemId?: string | null;
+}): ExecutiveReport {
+  const locale = normalizeLocale(input.locale);
+  const verdictInput: {
+    projectId: string;
+    workspaceRoot?: string | null;
+    locale: ReportLocale;
+  } = {
+    projectId: input.projectId,
+    locale,
+  };
+  if (input.workspaceRoot !== undefined) {
+    verdictInput.workspaceRoot = input.workspaceRoot;
+  }
+  const verdict = buildAtlasVerdict(verdictInput);
+  const now = new Date().toISOString();
+  const claimTotal =
+    verdict.verifiedClaims + verdict.unverifiedClaims + verdict.staleClaims;
+  const verifiedPct = claimTotal === 0 ? 0 : pct(verdict.verifiedClaims, claimTotal);
+  const unverifiedPct =
+    claimTotal === 0 ? 0 : pct(verdict.unverifiedClaims, claimTotal);
+  const unknownPct =
+    claimTotal === 0 ? 100 : Math.max(0, 100 - verifiedPct - unverifiedPct);
+
+  const topRisks = verdict.blockerItems.slice(0, 5).map((item) => ({
+    id: item.id,
+    title: item.title,
+    severity: item.severity,
+    why:
+      item.evidenceRefs[0] ??
+      (locale === "he"
+        ? "מתוך פסק הדין הקיים — פתחו את הראיה המקושרת."
+        : locale === "ar"
+          ? "من الحكم الحالي — افتح الدليل المرتبط."
+          : "Named by the existing Verdict — open the linked evidence."),
+    evidenceRefs: item.evidenceRefs,
+    nextAction: nextActionForSeverity(locale, item.severity),
+    epistemicState: item.epistemicState,
+  }));
+
+  if (topRisks.length === 0 && verdict.unverifiedClaims > 0) {
+    topRisks.push({
+      id: "unverified-claims",
+      title:
+        locale === "he"
+          ? `${verdict.unverifiedClaims} טענות לא מאומתות`
+          : locale === "ar"
+            ? `${verdict.unverifiedClaims} ادّعاءات غير مثبتة`
+            : `${verdict.unverifiedClaims} unverified claims`,
+      severity: "HIGH",
+      why:
+        locale === "he"
+          ? "יש טענות בלי ראיה במצב VERIFIED/FACT/CONFIRMED/OBSERVED."
+          : locale === "ar"
+            ? "توجد ادّعاءات بلا دليل في حالة VERIFIED/FACT/CONFIRMED/OBSERVED."
+            : "Claims exist without VERIFIED/FACT/CONFIRMED/OBSERVED evidence.",
+      evidenceRefs: [],
+      nextAction: nextActionForSeverity(locale, "HIGH"),
+      epistemicState: "UNVERIFIED",
+    });
+  }
+
+  const recommendedActions = recommendedActionsForVerdict(locale, verdict);
+  const heading =
+    locale === "he"
+      ? `דוח מנהלים Atlas — ${verdict.projectName}`
+      : locale === "ar"
+        ? `تقرير تنفيذي Atlas — ${verdict.projectName}`
+        : `Atlas Executive Report — ${verdict.projectName}`;
+  const line =
+    locale === "he"
+      ? "דעו אם התוכנה באמת מוכנה — לפני שהמשתמשים, המבקרים או תקלות הייצור יגידו לכם אחרת."
+      : locale === "ar"
+        ? "اعرف إن كان برنامجك جاهزاً فعلاً — قبل أن يخبرك المستخدمون أو المدققون أو حوادث الإنتاج بخلاف ذلك."
+        : "Know if your software is actually ready — before your users, auditors, or production incidents tell you otherwise.";
+  const riskLines = topRisks.map((risk, i) => {
+    const refs = risk.evidenceRefs.length
+      ? risk.evidenceRefs.join(", ")
+      : locale === "he"
+        ? "אין הפניית ראיה"
+        : locale === "ar"
+          ? "لا مرجع دليل"
+          : "no evidence ref";
+    return `${i + 1}. [${risk.severity}] ${risk.title}\n   ${risk.why}\n   ${refs}\n   ${risk.nextAction}`;
+  });
+  const actionLines = recommendedActions.map((a, i) => `${i + 1}. ${a}`);
+  const footer =
+    locale === "he"
+      ? "_כל שורה נפתחת לראיה. אינו תחליף לאימות ייצור חי._"
+      : locale === "ar"
+        ? "_كل سطر يفتح إلى دليل. ليس بديلاً عن تحقق إنتاج حي._"
+        : "_Every line opens to Evidence. Not a substitute for live production verification._";
+
+  const markdown = [
+    `# ${heading}`,
+    "",
+    `**${verdict.status}** · ${verdict.productionReadiness}/100`,
+    locale === "he" ? `נוצר: ${now}` : locale === "ar" ? `أُنشئ: ${now}` : `Generated: ${now}`,
+    "",
+    line,
+    "",
+    locale === "he" ? "## דלי אמון" : locale === "ar" ? "## دلاء الثقة" : "## Trust buckets",
+    `- ${locale === "he" ? "מאומת" : locale === "ar" ? "مثبت" : "Verified"}: ${verifiedPct}%`,
+    `- ${locale === "he" ? "לא מאומת" : locale === "ar" ? "غير مثبت" : "Unverified"}: ${unverifiedPct}%`,
+    `- ${locale === "he" ? "לא ידוע" : locale === "ar" ? "غير معروف" : "Unknown"}: ${unknownPct}%`,
+    "",
+    locale === "he" ? "## סיכונים מובילים" : locale === "ar" ? "## أبرز المخاطر" : "## Top risks",
+    ...(riskLines.length ? riskLines : ["—"]),
+    "",
+    locale === "he"
+      ? "## פעולות מומלצות"
+      : locale === "ar"
+        ? "## إجراءات موصى بها"
+        : "## Recommended actions",
+    ...actionLines,
+    "",
+    locale === "he" ? "## פסק דין (מקור האמת)" : locale === "ar" ? "## الحكم (مصدر الحقيقة)" : "## Verdict (source of truth)",
+    verdict.plainLanguageSummary,
+    "",
+    footer,
+  ].join("\n");
+
+  return executiveReportSchema.parse({
+    id: crypto.randomUUID(),
+    projectId: verdict.projectId,
+    systemId: input.systemId ?? null,
+    projectName: verdict.projectName,
+    generatedAt: now,
+    overall: verdict.status,
+    productionReadiness: verdict.productionReadiness,
+    buckets: { verifiedPct, unverifiedPct, unknownPct },
+    counts: {
+      criticalBlockers: verdict.criticalBlockers,
+      highRisks: verdict.highRisks,
+      medium: Math.max(0, verdict.blockerItems.filter((b) => b.severity === "MEDIUM").length),
+      verifiedClaims: verdict.verifiedClaims,
+      unverifiedClaims: verdict.unverifiedClaims,
+    },
+    topRisks,
+    recommendedActions,
+    verdict,
     markdown,
   });
 }

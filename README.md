@@ -1,12 +1,15 @@
 # Atlas Core · ArletOS
 
 > **The Truth & Control Layer for AI-Native Software**  
+> Know if your software is actually ready — before your users, auditors, or
+> production incidents tell you otherwise.  
 > Atlas knows what every connected system is supposed to do, what it actually
 > does, what has been proven, what has changed, what is risky, and what may
 > safely happen next.
 
 **Isolation:** customer code stays in your workspace / BYO storage — Atlas does not
-train across tenants. Living roadmap: [`docs/strategy/ATLAS-TRUTH-10.md`](docs/strategy/ATLAS-TRUTH-10.md).
+train across tenants. Living roadmap: [`docs/strategy/ATLAS-TRUTH-10.md`](docs/strategy/ATLAS-TRUTH-10.md).  
+One-page startup lock: [`docs/strategy/ATLAS-STARTUP-BLUEPRINT.md`](docs/strategy/ATLAS-STARTUP-BLUEPRINT.md).
 
 | Layer | Name | Version |
 | --- | --- | --- |
@@ -30,8 +33,8 @@ are operator ratings — not marketing.
 | --- | --- | --- |
 | Managed System / truth bind | **9/10** | DEF-000 binds this repo; facets from evidence + saved graph nodes; contract + invariants |
 | ACT / observe security | **9/10** | Ownership on ACT; no prod/BLOCKED auto-apply; memory + evidence scoped to one project |
-| Systems command center | **8.5/10** | Blocked-first + next-step by loop phase → Truth / Health / Gates / Patches |
-| GTM offer | **6.5/10** | Landing + Plan sell a one-week **Readiness Audit**; design-partner tracker is empty on purpose |
+| Systems command center | **9/10** | Blocked-first + **Run Audit → Executive Report** with drill-down to Evidence |
+| GTM offer | **7/10** | Audit wedge + executive readout is in-product; tracker still empty; no paid partner |
 | **As a truth & control plane** | **~8.5/10** | 10 needs one live customer system + a real partner readout |
 
 Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
@@ -44,7 +47,7 @@ honest — they are not the product. Storage is BYO, not Atlas-hosted.
 | Surface | URL | What the user sees |
 | --- | --- | --- |
 | **Marketing landing** | `/he/welcome` · alias `/marketing` | Audit hero · request intake · BYO story |
-| **Systems command center** | `/he/systems` · `/he/systems/:id` | Blocked-first Managed Systems |
+| **Systems command center** | `/he/systems` · `/he/systems/:id` | Blocked-first · **Run Audit → Executive Report** |
 | **Audit intake** | `/he/partners` | Import one repo → Verdict + Evidence |
 | **Plan** | `/he/plan` | Audit first · then Free/Pro ceilings · Cloudflare BYO |
 | **Billing settings** | `/he/settings/billing` | Tenant plan + upgrade |
