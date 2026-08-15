@@ -2,7 +2,8 @@
 
 **Canonical document:** [Architecture v1.0](./v1.0.md)
 
-ArletOS is an **Engineering Intelligence OS**, not an AI agent product and not an IDE.
+ArletOS is an **Engineering Intelligence OS**, not an AI agent product and not an IDE.  
+Managed System abstraction: [managed-system.md](./managed-system.md).
 
 ```
 Evidence + Current State

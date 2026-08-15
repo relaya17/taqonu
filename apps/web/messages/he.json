@@ -7,6 +7,7 @@
   "nav": {
     "dashboard": "לוח בקרה",
     "projects": "פרויקטים",
+    "systems": "מערכות",
     "studio": "סטודיו",
     "workbench": "סביבת עבודה",
     "state": "מצב נוכחי",
@@ -498,6 +499,19 @@
     "companionSelected": "המלווה הפעיל",
     "companionActive": "מלווה פעיל בכל האפליקציה: {id} — אותו ידע מאומת (שפות, UI, משחקים, סייבר) בכל המסכים.",
     "useInArtifacts": "השתמש בקבצים"
+  },
+  "systems": {
+    "title": "מערכות",
+    "subtitle": "לוח פיקוד — כל תוכנה מחוברת היא Managed System. Atlas צופה מבחוץ דרך קונקטורים, לא נכנס לקוד המוצר.",
+    "empty": "אין מערכות רשומות עדיין. הוסיפו פרויקט או חברו מאגר.",
+    "self": "Atlas עצמו",
+    "coverage": "כיסוי ראיות {pct}%",
+    "coverageUnknown": "כיסוי ראיות לא ידוע",
+    "critical": "{count} פערי ראיות קריטיים",
+    "medium": "{count} סיכונים בינוניים",
+    "openProject": "פתח פרויקט",
+    "openHealth": "בריאות",
+    "loop": "גלה → הבן → אמת → פעל"
   },
   "projects": {
     "title": "פרויקטים",

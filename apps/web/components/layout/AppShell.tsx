@@ -62,6 +62,7 @@ const navChrome = {
 type NavKey =
   | "dashboard"
   | "projects"
+  | "systems"
   | "studio"
   | "workbench"
   | "agents"
@@ -87,6 +88,7 @@ type NavKey =
 const PATHS: Record<NavKey, string> = {
   dashboard: "/",
   projects: "/projects",
+  systems: "/systems",
   studio: "/studio",
   workbench: "/workbench",
   agents: "/agents",
@@ -120,6 +122,7 @@ const NAV_GROUPS: readonly {
     id: "main",
     items: [
       "dashboard",
+      "systems",
       "projects",
       "studio",
       "workbench",

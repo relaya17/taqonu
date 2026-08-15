@@ -14,7 +14,8 @@ Not “more agents.” World-class **engineering truth / readiness** products an
 2. What blocks a safe release?  
 3. Can an AI propose a fix under human governance?
 
-Atlas’s moat: **Evidence Graph + historical engineering memory + Constitution**, not the LLM.
+Atlas’s moat: **Evidence Graph + historical engineering memory + Constitution**, not the LLM.  
+Category name: **The Truth & Control Layer for AI-Native Software** — not “like X but with AI.”
 
 ---
 

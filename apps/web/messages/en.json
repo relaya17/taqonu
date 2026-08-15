@@ -7,6 +7,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "projects": "Projects",
+    "systems": "Systems",
     "studio": "Studio",
     "workbench": "Workbench",
     "state": "Current State",
@@ -480,6 +481,19 @@
     "companionSelected": "Active companion",
     "companionActive": "Active companion across the app: {id} — same verified knowledge (languages, UI, games, cyber) on every surface.",
     "useInArtifacts": "Use in artifacts"
+  },
+  "systems": {
+    "title": "Systems",
+    "subtitle": "Command center — every connected product is a Managed System. Atlas observes from outside through connectors; it does not embed in product code.",
+    "empty": "No systems yet. Register a project or connect a repository.",
+    "self": "Atlas itself",
+    "coverage": "{pct}% evidence coverage",
+    "coverageUnknown": "Evidence coverage unknown",
+    "critical": "{count} critical evidence gaps",
+    "medium": "{count} medium risks",
+    "openProject": "Open project",
+    "openHealth": "Health",
+    "loop": "Discover → Understand → Verify → Act"
   },
   "projects": {
     "title": "Projects",

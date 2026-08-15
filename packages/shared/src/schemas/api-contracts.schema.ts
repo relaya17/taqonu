@@ -9,6 +9,7 @@ export const API_V1_ROUTES = [
   { method: "GET", path: "/api/v1/projects/:id/state", mvp: true },
   { method: "POST", path: "/api/v1/projects/:id/state/reconcile", mvp: true },
   { method: "GET", path: "/api/v1/projects/:id/resume", mvp: true },
+  { method: "GET", path: "/api/v1/systems", mvp: true },
   { method: "GET", path: "/api/v1/portfolio/overview", mvp: true },
   { method: "GET", path: "/api/v1/portfolio/patterns", mvp: true },
   { method: "GET", path: "/api/v1/memory", mvp: true },

@@ -34,6 +34,7 @@
     "@atlas/qa-core": "workspace:*",
     "@atlas/shared": "workspace:*",
     "@atlas/state": "workspace:*",
+    "@atlas/system-model": "workspace:*",
     "@fastify/cors": "^11.0.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.2.1",

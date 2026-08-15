@@ -7,6 +7,7 @@ import { test, expect } from "@playwright/test";
 const PRIMARY = [
   "/en",
   "/en/projects",
+  "/en/systems",
   "/en/health",
   "/en/decisions",
   "/en/agents",

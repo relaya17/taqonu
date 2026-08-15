@@ -110,6 +110,9 @@ importers:
       '@atlas/state':
         specifier: workspace:*
         version: link:../../packages/state
+      '@atlas/system-model':
+        specifier: workspace:*
+        version: link:../../packages/system-model
       '@fastify/cors':
         specifier: ^11.0.0
         version: 11.3.0
@@ -513,6 +516,19 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.12)
 
   packages/state:
+    dependencies:
+      '@atlas/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.8
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.12)
+
+  packages/system-model:
     dependencies:
       '@atlas/shared':
         specifier: workspace:*

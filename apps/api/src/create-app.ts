@@ -11,6 +11,7 @@ import { registerDecisionRoutes } from "./routes/decisions.js";
 import { registerEvidenceRoutes } from "./routes/evidence.js";
 import { registerGraphRoutes } from "./routes/graph.js";
 import { registerPortfolioRoutes } from "./routes/portfolio.js";
+import { registerSystemRoutes } from "./routes/systems.js";
 import { registerAgentRoutes } from "./routes/agent.js";
 import { registerConversationRoutes } from "./routes/conversation.js";
 import { registerEvalRoutes } from "./routes/eval.js";
@@ -108,6 +109,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerEvidenceRoutes(app);
   await registerGraphRoutes(app);
   await registerPortfolioRoutes(app);
+  await registerSystemRoutes(app);
   await registerAgentRoutes(app);
   await registerConversationRoutes(app);
   await registerEvalRoutes(app);

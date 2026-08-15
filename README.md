@@ -1,8 +1,9 @@
 # Atlas Core · ArletOS
 
-> **The Engineering Truth Layer for AI-Native Software Teams**  
-> Know what your software actually does. Know what is verified. Know what is
-> risky. And let AI fix it — safely.
+> **The Truth & Control Layer for AI-Native Software**  
+> Atlas knows what every connected system is supposed to do, what it actually
+> does, what has been proven, what has changed, what is risky, and what may
+> safely happen next.
 
 **Isolation:** customer code stays in your workspace / BYO storage — Atlas does not
 train across tenants. Living roadmap: [`docs/strategy/ATLAS-TRUTH-10.md`](docs/strategy/ATLAS-TRUTH-10.md).
@@ -54,10 +55,36 @@ scanners, and multiple LLMs — but none reliably answer:
 
 ## The solution
 
-Atlas builds a continuously reconciled **Evidence Graph**:
+Atlas is **not** an AI coding assistant. It is five layers over connected
+systems — observed from the outside through connectors:
 
 ```
-code → tests → infrastructure → deployments → decisions → risks → readiness
+Truth · Evidence · Governance · Intelligence · Automation Control
+```
+
+```
+                         ATLAS CORE
+                              │
+       ┌──────────────────────┼──────────────────────┐
+       │                      │                      │
+   Truth Engine          Governance             Intelligence
+       │                      │                      │
+   Evidence Graph       Policies              Agents
+   System Model         Approvals             Reasoning
+   Memory               Risk Gates            Research
+       │                      │                      │
+       └──────────────────────┼──────────────────────┘
+                              │
+                       SYSTEM CONNECTORS
+                              │
+                 Vantera · HotelOS · CaseFlow · BrokerOS · you
+```
+
+Each connected product is a **Managed System** (Atlas itself is one — DEF-000).
+Atlas does not replace those products and does not embed in their code.
+
+```
+DISCOVER → UNDERSTAND → VERIFY → ACT (gated)
 ```
 
 Workers stay where they are:
@@ -70,9 +97,7 @@ Cursor · Claude Code · VS Code · Copilot
      Truth / QA / Governance
 ```
 
-Atlas does **not** replace the developer or the IDE. It understands, evaluates,
-modifies, tests, and verifies software under **explicit governance and human
-approval**.
+Normative: [`docs/architecture/managed-system.md`](docs/architecture/managed-system.md).
 
 ### Import any repo (BYO)
 
@@ -98,6 +123,7 @@ Atlas gives: **what is verified, what isn’t, what’s dangerous — and the Ev
 | Surface | URL / API |
 | --- | --- |
 | Marketing landing | `/he/welcome` |
+| Systems command center | `/he/systems` · `GET /api/v1/systems` |
 | Release Verdict (app home) | `/he` · `GET /api/v1/projects/:id/verdict` |
 | Pricing | `/he/plan` · `GET/POST /api/v1/billing/plan` |
 | Workbench | `/he/workbench` |
@@ -111,7 +137,7 @@ Atlas gives: **what is verified, what isn’t, what’s dangerous — and the Ev
 
 ### Three product pillars
 
-1. **Understand** — structure, deps, APIs, architecture contracts  
+1. **Understand** — Managed System model: structure, deps, APIs, contracts  
 2. **Detect** — Continuous System Audit: bugs, security, drift, debt (Evidence-backed scores)  
 3. **Remediate** — fix → tests → verify, under severity guardrails (LOW auto · MEDIUM PR · HIGH recommend · CRITICAL human)
 
@@ -190,8 +216,9 @@ pnpm proof:run
 3. WRITE is approval-gated (ADR-015).  
 4. Secrets redacted before LLM egress.  
 5. External AIs / editors are workers; Atlas is truth + gate.  
-6. Atlas must audit itself (DEF-000).  
-7. **README versions + sell surfaces stay current** when the product changes.
+6. Atlas must audit itself (DEF-000) — Atlas is a Managed System.  
+7. Connectors observe from outside; do not wire Atlas “into every app.”  
+8. **README versions + sell surfaces stay current** when the product changes.
 
 ---
 

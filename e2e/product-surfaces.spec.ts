@@ -39,6 +39,12 @@ test.describe("Product surfaces (EN)", () => {
     }
   });
 
+  test("systems command center reachable", async ({ page }) => {
+    await page.goto("/en/systems");
+    await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  });
+
   test("projects portfolio page reachable", async ({ page, request }) => {
     await page.goto("/en/projects");
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
