@@ -153,9 +153,7 @@ export async function registerConversationRoutes(
       budget: AGENT_MEMORY_BUDGET,
     });
     const { memories, ...memoryContext } = memoryContextResult;
-    const evidenceRecords = projectId
-      ? osStore.getEvidence(projectId)
-      : projects.flatMap((p) => osStore.getEvidence(p.id));
+    const evidenceRecords = projectId ? osStore.getEvidence(projectId) : [];
 
     let knowledge: Awaited<ReturnType<typeof searchKnowledgeClosedLoop>> | null =
       null;

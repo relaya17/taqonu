@@ -511,7 +511,13 @@
     "missingEvidence": "missing evidence",
     "confirmContract": "Confirm contract",
     "selfNoProject": "Atlas-self has no customer project — confirm the contract here, then observe the Atlas repo if it is registered.",
-    "loop": "Discover → Understand → Verify → Act"
+    "loop": "Discover → Understand → Verify → Act",
+    "next": {
+      "DISCOVER": "Next: connect a repo or workspace so Atlas can observe from outside.",
+      "UNDERSTAND": "Next: open Truth and record evidence — do not ACT yet.",
+      "VERIFY": "Next: confirm the contract and clear invariants before ACT.",
+      "ACT": "Next: ACT is eligible — approve a patch, then verify."
+    }
   },
   "projects": {
     "title": "Projects",

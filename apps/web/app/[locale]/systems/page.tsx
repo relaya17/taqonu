@@ -119,6 +119,9 @@ export default function SystemsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
             {system.summary}
           </Typography>
+          <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 650 }}>
+            {t(`next.${system.loopPhase}`)}
+          </Typography>
           <Typography variant="body2" sx={{ mt: 0.5 }}>
             {system.evidenceCoverage == null
               ? t("coverageUnknown")

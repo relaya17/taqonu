@@ -282,6 +282,7 @@ Sprint C
 | 2026-08-15 | **P2.8:** Managed System layer — Truth/Control Plane over connectors; `/systems`; Atlas-self; no rewrite |
 | 2026-08-15 | **P2.8b bind:** real facets · persisted contract + invariant verify · ACT ownership · no prod auto-apply · Systems command path · Audit offer copy |
 | 2026-08-15 | **P2.8c:** facet source notes · memory retrieve project-scoped · auto-apply skipped on BLOCKED · Atlas-self workspace bind |
+| 2026-08-15 | **P2.8d:** DEF-000 binds this monorepo · graph node facets · no cross-project evidence/memory dump · Systems next-step by phase |
 
 ---
 

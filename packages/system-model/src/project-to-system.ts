@@ -105,13 +105,14 @@ export function atlasSelfManagedSystem(input?: {
   observedFacets?: Partial<Record<ManagedSystemFacetState["facet"], number>>;
   facetNotes?: Partial<Record<ManagedSystemFacetState["facet"], string>>;
   workspaceRoot?: string | null;
+  projectId?: string | null;
   loopPhase?: ControlLoopPhase;
   actEligible?: boolean;
 }): ManagedSystem {
   const asOf = input?.asOf ?? new Date().toISOString();
   return {
     id: ATLAS_SELF_SYSTEM_ID,
-    projectId: null,
+    projectId: input?.projectId ?? null,
     slug: "atlas-core",
     name: "Atlas Core",
     kind: "ATLAS_SELF",

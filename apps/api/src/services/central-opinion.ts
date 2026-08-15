@@ -219,7 +219,7 @@ export function listManagerPartnerReminders(projectId: string | null): string[] 
   const memories =
     projectId != null
       ? osStore.getMemories(projectId)
-      : osStore.listProjects().flatMap((p) => osStore.getMemories(p.id));
+      : osStore.getMemories("global");
   return memories
     .filter(
       (m) =>

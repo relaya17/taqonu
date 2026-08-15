@@ -23,9 +23,10 @@ import {
 import { osStore } from "../store/os-store.js";
 import { PORTFOLIO_HEALTH_META_KEY } from "./portfolio-health.js";
 import {
+  ATLAS_SELF_SLUGS,
   collectEvidenceTokens,
   collectFacetSignals,
-  findAtlasSelfProjectId,
+  ensureAtlasSelfBound,
 } from "./observe-system-facets.js";
 
 const CONTRACT_META = (systemId: string) => `system.contract.v1.${systemId}`;
@@ -73,8 +74,8 @@ export function saveSystemContract(
 
 function tokensForSystem(system: ManagedSystem): string[] {
   if (system.projectId) return collectEvidenceTokens(system.projectId);
-  const selfProject = findAtlasSelfProjectId();
-  return selfProject ? collectEvidenceTokens(selfProject) : [];
+  const bound = ensureAtlasSelfBound();
+  return bound.projectId ? collectEvidenceTokens(bound.projectId) : [];
 }
 
 function withLoop(system: ManagedSystem): ManagedSystem {
@@ -126,7 +127,8 @@ function projectSystem(
 
 function selfSystem(now: string): ManagedSystem {
   const health = loadPersistedPortfolioHealth();
-  const selfProjectId = findAtlasSelfProjectId();
+  const bound = ensureAtlasSelfBound();
+  const selfProjectId = bound.projectId;
   const observed = selfProjectId
     ? collectFacetSignals(selfProjectId, Boolean(health))
     : {
@@ -163,10 +165,11 @@ function selfSystem(now: string): ManagedSystem {
     observedFacets: facetsFromSignals(observed.signals),
     facetNotes: observed.notes,
     ...(selfRoot ? { workspaceRoot: selfRoot } : {}),
+    ...(selfProjectId ? { projectId: selfProjectId } : {}),
     ...(selfProjectId
       ? {
           summary:
-            "Self-audit (DEF-000): observing the Atlas / ArletOS project through the same connectors as any Managed System.",
+            "Self-audit (DEF-000): observing this Atlas / ArletOS repo through the same connectors as any Managed System.",
         }
       : {}),
   });
@@ -176,7 +179,10 @@ function selfSystem(now: string): ManagedSystem {
 export function listManagedSystems(now = new Date().toISOString()): ManagedSystemList {
   osStore.ensureLoaded();
   const health = loadPersistedPortfolioHealth();
-  const items = osStore.listProjects().map((project) => projectSystem(project, now));
+  const items = osStore
+    .listProjects()
+    .filter((project) => !ATLAS_SELF_SLUGS.has(project.slug.toLowerCase()))
+    .map((project) => projectSystem(project, now));
   items.push(selfSystem(now));
 
   return managedSystemListSchema.parse({
