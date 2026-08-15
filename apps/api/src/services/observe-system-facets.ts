@@ -1,5 +1,11 @@
 import type { FacetSignals } from "@atlas/system-model";
+import type { ManagedSystemFacetState } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
+
+export type FacetObservation = {
+  signals: FacetSignals;
+  notes: Partial<Record<ManagedSystemFacetState["facet"], string>>;
+};
 
 const ATLAS_SELF_SLUGS = new Set(["atlas", "arletos", "atlas-core"]);
 
@@ -32,7 +38,7 @@ export function collectEvidenceTokens(projectId: string): string[] {
 export function collectFacetSignals(
   projectId: string,
   healthObserved: boolean,
-): FacetSignals {
+): FacetObservation {
   const evidence = osStore.getEvidence(projectId);
   const observations = osStore.getObservations(projectId);
   const dbFeeds = osStore.getDbFeeds(projectId);
@@ -77,29 +83,69 @@ export function collectFacetSignals(
   const repoCount =
     (workspace ? 1 : 0) + (githubObserved ? 1 : 0) + (byCategory("GIT") > 0 ? 1 : 0);
 
+  const githubName = observations.find((row) => row.connector === "github")
+    ?.repository?.fullName;
+  const notes: Partial<Record<ManagedSystemFacetState["facet"], string>> = {};
+  if (workspace || githubName) {
+    notes.repositories = [workspace ? "linked workspace" : null, githubName]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (deployFeeds.length > 0) {
+    notes.deployments = deployFeeds
+      .map((feed) => `${feed.provider}:${feed.environment}`)
+      .join(", ");
+    notes.environments = [...environments].join(", ");
+    notes.services = `${deployFeeds.length} deploy feed(s)`;
+  }
+  if (dbFeeds.length > 0) {
+    notes.databases = dbFeeds.map((feed) => feed.provider).join(", ");
+  }
+  if (connectors.size > 0) {
+    notes.integrations = [...connectors].join(", ");
+  }
+  if (evidence.length > 0) {
+    notes.evidence = `${evidence.length} evidence record(s)`;
+  }
+  if (gates?.nodes.length) {
+    notes.policies = `${gates.nodes.length} gate node(s)`;
+  }
+  if (decisions.length > 0) {
+    notes.decisions = `${decisions.length} decision(s)`;
+  }
+  if (healthObserved) {
+    notes.health = "portfolio health snapshot";
+  }
+  if (byCategory("SECURITY") > 0) {
+    notes.secretsMetadata = `${byCategory("SECURITY")} security evidence row(s) — values never stored`;
+  }
+
   return {
-    hasIdentity: true,
-    repoCount,
-    environmentCount: environments.size,
-    serviceCount: deployFeeds.length,
-    databaseCount: dbFeeds.length + byCategory("DATABASE"),
-    integrationCount: connectors.size,
-    deploymentCount: byCategory("DEPLOYMENT") + deployFeeds.length,
-    workerCount: evidence.filter((row) => /worker/i.test(haystack(row))).length,
-    jobCount: evidence.filter(
-      (row) => row.category === "TASKS" || /job|cron/i.test(haystack(row)),
-    ).length,
-    apiCount: evidence.filter(
-      (row) =>
-        row.category === "ARCHITECTURE" || /api/i.test(haystack(row)),
-    ).length,
-    secretsMetadataCount: byCategory("SECURITY"),
-    policyCount: gates?.nodes.length ?? 0,
-    evidenceCount: evidence.length,
-    riskCount: byCategory("RISKS"),
-    decisionCount: decisions.length + byCategory("DECISIONS"),
-    incidentCount: incidents,
-    healthObserved,
+    signals: {
+      hasIdentity: true,
+      repoCount,
+      environmentCount: environments.size,
+      serviceCount: deployFeeds.length,
+      databaseCount: dbFeeds.length + byCategory("DATABASE"),
+      integrationCount: connectors.size,
+      deploymentCount: byCategory("DEPLOYMENT") + deployFeeds.length,
+      workerCount: evidence.filter((row) => /worker/i.test(haystack(row))).length,
+      jobCount: evidence.filter(
+        (row) => row.category === "TASKS" || /job|cron/i.test(haystack(row)),
+      ).length,
+      apiCount: evidence.filter(
+        (row) =>
+          row.category === "ARCHITECTURE" || /api/i.test(haystack(row)),
+      ).length,
+      secretsMetadataCount: byCategory("SECURITY"),
+      policyCount: gates?.nodes.length ?? 0,
+      evidenceCount: evidence.length,
+      riskCount: byCategory("RISKS"),
+      decisionCount: decisions.length + byCategory("DECISIONS"),
+      incidentCount: incidents,
+      healthObserved,
+    },
+    notes,
   };
 }
 

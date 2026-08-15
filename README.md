@@ -28,11 +28,11 @@ are operator ratings — not marketing.
 
 | Surface | Score | What is true today |
 | --- | --- | --- |
-| Managed System / truth bind | **8/10** | Facets counted from evidence + feeds; contract persisted; invariants verified; ACT gated |
-| ACT / observe security | **8/10** | Project ownership on approve/apply/observe; no production auto-apply; `assertNoSecrets` on LLM egress |
+| Managed System / truth bind | **8.5/10** | Facets counted + sourced notes; contract persisted; invariants verified; ACT gated |
+| ACT / observe security | **8.5/10** | Ownership on ACT/observe; no prod / BLOCKED auto-apply; memory retrieve is project-scoped; `assertNoSecrets` |
 | Systems command center | **8/10** | Blocked-first `/systems` → `/systems/:id` → Truth / Health / Gates / Patches |
 | GTM offer | **6.5/10** | Landing + Plan sell a one-week **Readiness Audit**; design-partner tracker is empty on purpose |
-| **As a truth & control plane** | **~7.5/10** | 10 needs one live production system + a real partner readout |
+| **As a truth & control plane** | **~8/10** | 10 needs one live production system + a real partner readout |
 
 Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
 

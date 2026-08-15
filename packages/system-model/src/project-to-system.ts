@@ -32,12 +32,14 @@ function facet(
   name: ManagedSystemFacetState["facet"],
   observed: boolean,
   count = 0,
+  note?: string,
 ): ManagedSystemFacetState {
   return {
     facet: name,
     observed,
     count,
     epistemicState: observed ? "OBSERVED" : "UNKNOWN",
+    ...(note ? { note } : {}),
   };
 }
 
@@ -50,15 +52,23 @@ export function projectToManagedSystem(input: {
   mediumRisks?: number;
   summary?: string;
   observedFacets?: Partial<Record<ManagedSystemFacetState["facet"], number>>;
+  facetNotes?: Partial<Record<ManagedSystemFacetState["facet"], string>>;
   loopPhase?: ControlLoopPhase;
   actEligible?: boolean;
   asOf?: string;
 }): ManagedSystem {
   const verdict = input.verdictHint ?? "UNKNOWN";
   const observed = input.observedFacets ?? {};
+  const notes = input.facetNotes ?? {};
   const facets = MANAGED_SYSTEM_FACETS.map((name) => {
     const count = observed[name];
-    return facet(name, count != null && count > 0, count ?? 0);
+    const note = notes[name];
+    return facet(
+      name,
+      count != null && count > 0,
+      count ?? 0,
+      note,
+    );
   });
 
   return {
@@ -93,6 +103,8 @@ export function atlasSelfManagedSystem(input?: {
   posture?: SystemPosture;
   summary?: string;
   observedFacets?: Partial<Record<ManagedSystemFacetState["facet"], number>>;
+  facetNotes?: Partial<Record<ManagedSystemFacetState["facet"], string>>;
+  workspaceRoot?: string | null;
   loopPhase?: ControlLoopPhase;
   actEligible?: boolean;
 }): ManagedSystem {
@@ -111,11 +123,12 @@ export function atlasSelfManagedSystem(input?: {
     evidenceCoverage: null,
     criticalGaps: 0,
     mediumRisks: 0,
-    workspaceRoot: null,
+    workspaceRoot: input?.workspaceRoot ?? null,
     facets: MANAGED_SYSTEM_FACETS.map((name) => {
       const count = input?.observedFacets?.[name];
+      const note = input?.facetNotes?.[name];
       if (count != null) {
-        return facet(name, count > 0, count);
+        return facet(name, count > 0, count, note);
       }
       return facet(
         name,
@@ -124,6 +137,7 @@ export function atlasSelfManagedSystem(input?: {
           name === "evidence" ||
           name === "health",
         name === "identity" ? 1 : 0,
+        note,
       );
     }),
     selfManaged: true,

@@ -306,10 +306,7 @@ export function approveMemory(input: {
   projectId?: string | null;
 }): Memory | null {
   const key = input.projectId ?? null;
-  const allKeys =
-    key !== null
-      ? [key, "global"]
-      : [...osStore.memories.keys()];
+  const allKeys = key !== null ? [key] : ["global"];
   for (const k of allKeys) {
     const list = [...osStore.getMemories(k)];
     const idx = list.findIndex((m) => m.id === input.memoryId);
@@ -359,12 +356,13 @@ export function retrieveMemories(input: {
   const key = input.projectId ?? null;
   const pools: Memory[] = [];
   if (key) {
-    pools.push(...osStore.getMemories(key));
-  }
-  pools.push(...osStore.getMemories("global"));
-  for (const [k, list] of osStore.memories.entries()) {
-    if (k === key || k === "global") continue;
-    if (!input.projectId) pools.push(...list);
+    pools.push(
+      ...osStore.getMemories(key).filter((m) => m.projectId === key),
+    );
+  } else {
+    pools.push(
+      ...osStore.getMemories("global").filter((m) => m.projectId == null),
+    );
   }
   const q = (input.query ?? "").trim().toLowerCase();
   const active = pools.filter((m) => m.status === "ACTIVE");

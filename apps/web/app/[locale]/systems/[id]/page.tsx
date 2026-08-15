@@ -19,6 +19,7 @@ interface FacetState {
   observed: boolean;
   count: number;
   epistemicState: string;
+  note?: string;
 }
 
 interface ManagedSystem {
@@ -192,7 +193,7 @@ export default function SystemDetailPage() {
                   variant={facet.observed ? "filled" : "outlined"}
                   label={
                     facet.observed
-                      ? `${facet.facet} · ${facet.count}`
+                      ? `${facet.facet} · ${facet.count}${facet.note ? ` · ${facet.note}` : ""}`
                       : `${facet.facet} · ${t("facetUnknown")}`
                   }
                 />

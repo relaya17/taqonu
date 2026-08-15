@@ -281,6 +281,7 @@ Sprint C
 | 2026-08-13 | **P1/A1/P2 deepen:** re-observe verify · failed-deploy INCIDENT · DECIDED_BY topics · Check Run annotations · Oracle audit/digest persist · truth-benchmark API · EA agreement draft |
 | 2026-08-15 | **P2.8:** Managed System layer — Truth/Control Plane over connectors; `/systems`; Atlas-self; no rewrite |
 | 2026-08-15 | **P2.8b bind:** real facets · persisted contract + invariant verify · ACT ownership · no prod auto-apply · Systems command path · Audit offer copy |
+| 2026-08-15 | **P2.8c:** facet source notes · memory retrieve project-scoped · auto-apply skipped on BLOCKED · Atlas-self workspace bind |
 
 ---
 

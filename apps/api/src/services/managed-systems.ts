@@ -108,7 +108,7 @@ function projectSystem(
   const health = loadPersistedPortfolioHealth();
   const row = (health?.items ?? []).find((item) => item.projectId === project.id);
   const verdict: PortfolioVerdictHint = row?.verdictHint ?? "UNKNOWN";
-  const signals = collectFacetSignals(project.id, Boolean(row));
+  const observed = collectFacetSignals(project.id, Boolean(row));
   const system = projectToManagedSystem({
     project,
     workspaceRoot: osStore.getWorkspaceRoot(project.id) ?? null,
@@ -117,7 +117,8 @@ function projectSystem(
     criticalGaps: row?.criticalIssues ?? 0,
     mediumRisks: row?.highRisk ?? 0,
     ...(row?.notes ? { summary: row.notes } : {}),
-    observedFacets: facetsFromSignals(signals),
+    observedFacets: facetsFromSignals(observed.signals),
+    facetNotes: observed.notes,
     asOf: now,
   });
   return withLoop(system);
@@ -126,31 +127,42 @@ function projectSystem(
 function selfSystem(now: string): ManagedSystem {
   const health = loadPersistedPortfolioHealth();
   const selfProjectId = findAtlasSelfProjectId();
-  const signals = selfProjectId
+  const observed = selfProjectId
     ? collectFacetSignals(selfProjectId, Boolean(health))
     : {
-        hasIdentity: true,
-        repoCount: 0,
-        environmentCount: 0,
-        serviceCount: 0,
-        databaseCount: 0,
-        integrationCount: 0,
-        deploymentCount: 0,
-        workerCount: 0,
-        jobCount: 0,
-        apiCount: 0,
-        secretsMetadataCount: 0,
-        policyCount: 1,
-        evidenceCount: health ? 1 : 0,
-        riskCount: 0,
-        decisionCount: osStore.listDecisions().length,
-        incidentCount: 0,
-        healthObserved: Boolean(health),
+        signals: {
+          hasIdentity: true,
+          repoCount: 0,
+          environmentCount: 0,
+          serviceCount: 0,
+          databaseCount: 0,
+          integrationCount: 0,
+          deploymentCount: 0,
+          workerCount: 0,
+          jobCount: 0,
+          apiCount: 0,
+          secretsMetadataCount: 0,
+          policyCount: 1,
+          evidenceCount: health ? 1 : 0,
+          riskCount: 0,
+          decisionCount: osStore.listDecisions().length,
+          incidentCount: 0,
+          healthObserved: Boolean(health),
+        },
+        notes: {
+          identity: "DEF-000 Atlas-self",
+          policies: "WRITE is approval-gated",
+        },
       };
+  const selfRoot = selfProjectId
+    ? osStore.getWorkspaceRoot(selfProjectId) ?? null
+    : null;
   const system = atlasSelfManagedSystem({
     asOf: now,
     posture: "WATCH",
-    observedFacets: facetsFromSignals(signals),
+    observedFacets: facetsFromSignals(observed.signals),
+    facetNotes: observed.notes,
+    ...(selfRoot ? { workspaceRoot: selfRoot } : {}),
     ...(selfProjectId
       ? {
           summary:

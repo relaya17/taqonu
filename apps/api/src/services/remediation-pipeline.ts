@@ -30,6 +30,7 @@ import {
 import { executeObserveCycle } from "./observe-cycle.js";
 import { appendOracleAudit } from "./admin-oracle-digest.js";
 import { projectHasProductionTarget } from "./observe-system-facets.js";
+import { getManagedSystem } from "./managed-systems.js";
 
 /** Auto-apply never hits production unless ATLAS_ALLOW_PROD_AUTO_APPLY=true. */
 export function productionAutoApplyBlocked(input: {
@@ -243,6 +244,19 @@ export function autoApplyLowRemediations(input: {
   const outcomes: AutoApplyOutcome[] = [];
 
   for (const d of input.drafts) {
+    if (d.patch.projectId) {
+      const system = getManagedSystem(d.patch.projectId);
+      if (system?.posture === "BLOCKED") {
+        outcomes.push({
+          patchId: d.patch.id,
+          issueId: d.issueId,
+          status: "skipped",
+          reason:
+            "Auto-apply blocked: system posture is BLOCKED — human ACT required",
+        });
+        continue;
+      }
+    }
     const prodGate = productionAutoApplyBlocked({
       projectId: d.patch.projectId,
       allowProd: process.env.ATLAS_ALLOW_PROD_AUTO_APPLY === "true",

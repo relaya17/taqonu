@@ -19,6 +19,7 @@ export type FacetSignals = {
   decisionCount: number;
   incidentCount: number;
   healthObserved: boolean;
+  notes?: Partial<Record<ManagedSystemFacetState["facet"], string>>;
 };
 
 export function facetsFromSignals(
