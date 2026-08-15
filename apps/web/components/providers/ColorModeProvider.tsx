@@ -53,7 +53,11 @@ function writeMode(next: AtlasColorMode): void {
 export function ColorModeProvider({ children }: { children: ReactNode }) {
   // Server snapshot is always light so SSR HTML matches the first hydrate pass.
   // After hydrate, React switches to the stored value without a mismatch warning.
-  const mode = useSyncExternalStore(subscribe, readStoredMode, () => "light");
+  const mode = useSyncExternalStore(
+    subscribe,
+    readStoredMode,
+    (): AtlasColorMode => "light",
+  );
 
   const setMode = useCallback((next: AtlasColorMode) => {
     writeMode(next);
