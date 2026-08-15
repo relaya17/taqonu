@@ -12,7 +12,6 @@ import {
   buildVerifiedTechSourcesPack,
   buildVerifiedTechSourcesMarkdown,
   isAuthorizedOfficialKnowledgeUrl,
-  isAuthorizedVerifiedTechUrl,
   AtlasError,
 } from "@atlas/shared";
 import {

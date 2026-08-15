@@ -326,6 +326,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/patches/:id/approve", async (request, reply) => {
+    requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = approvePatchSchema.parse(request.body ?? {});
     const existing = osStore.getPatch(id);
@@ -341,6 +342,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/patches/:id/apply", async (request, reply) => {
+    requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = applyPatchSchema.parse(request.body ?? {});
     const existing = osStore.getPatch(id);
@@ -356,6 +358,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/patches/:id/rollback", async (request, reply) => {
+    requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000) })
