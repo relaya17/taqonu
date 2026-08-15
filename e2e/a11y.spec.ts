@@ -61,12 +61,14 @@ test.describe("A11y smoke (EN)", () => {
   test("primary surfaces avoid horizontal overflow on narrow viewports", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await page.setViewportSize({ width: 375, height: 812 });
 
     for (const path of PRIMARY) {
       await page.goto(path, { waitUntil: "domcontentloaded" });
-      await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-      await page.waitForLoadState("networkidle").catch(() => undefined);
+      await expect(page.locator("main")).toBeVisible({ timeout: 20_000 });
+      // Do not wait for networkidle — dashboard/systems keep polling and CI
+      // closes the page when the 60s test timeout wins.
 
       const overflowed = await page.evaluate(() => {
         const doc = document.documentElement;
