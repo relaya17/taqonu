@@ -74,6 +74,18 @@ interface AgentDispatch {
     epistemicState: string;
     costUsd: number;
   }>;
+  knowledgePackage?: {
+    query: string;
+    hits: Array<{
+      id: string;
+      title: string;
+      url: string | null;
+      excerpt: string;
+      sourceClass: string;
+    }>;
+    filteredOut: number;
+    plainLanguage: string;
+  };
   judge: {
     decision: string;
     confidence: number;
@@ -96,6 +108,7 @@ const CATEGORIES = [
   "ops",
   "research",
   "governance",
+  "legal",
 ] as const;
 
 function pickLocale<T>(locale: string, en: T, he: T, ar: T): T {
@@ -122,7 +135,16 @@ export default function AgentsPage() {
   const agentsQuery = useQuery({
     queryKey: ["fabric-agents"],
     queryFn: () =>
-      apiGet<{ items: FabricAgent[]; note?: string }>("/api/v1/agents"),
+      apiGet<{
+        items: FabricAgent[];
+        note?: string;
+        knowledge?: {
+          corpusDocs: number;
+          officialSources: number;
+          specialists: number;
+          corpusSource: string;
+        };
+      }>("/api/v1/agents"),
   });
 
   const projectsQuery = useQuery({
@@ -264,6 +286,15 @@ export default function AgentsPage() {
         <Alert severity="success" sx={{ mt: 1.5 }}>
           {t("verifiedKnowledgeNote")}
         </Alert>
+        {agentsQuery.data?.knowledge ? (
+          <Alert severity="info" sx={{ mt: 1.5 }}>
+            {t("knowledgeLoaded", {
+              specialists: agentsQuery.data.knowledge.specialists,
+              sources: agentsQuery.data.knowledge.officialSources,
+              docs: agentsQuery.data.knowledge.corpusDocs,
+            })}
+          </Alert>
+        ) : null}
         {verifiedSourcesQuery.data ? (
           <Box sx={{ mt: 2 }}>
             <Typography fontWeight={650}>{t("verifiedSourcesTitle")}</Typography>
@@ -533,6 +564,26 @@ export default function AgentsPage() {
           <Typography variant="h2" sx={{ fontSize: "1.25rem" }}>
             {t("dispatchResult")} · {dispatch.traceId}
           </Typography>
+          {dispatch.knowledgePackage ? (
+            <Alert severity="info">
+              {t("knowledgeHits", {
+                n: dispatch.knowledgePackage.hits.length,
+              })}
+              {dispatch.knowledgePackage.hits.length === 0
+                ? ` ${t("knowledgeEmpty")}`
+                : ""}
+              {dispatch.knowledgePackage.hits.length > 0 ? (
+                <Box component="ul" sx={{ m: 0, mt: 1, ps: 2, textAlign: "start" }}>
+                  {dispatch.knowledgePackage.hits.slice(0, 8).map((h) => (
+                    <Typography component="li" key={h.id} variant="body2">
+                      {h.title}
+                      {h.url ? ` · ${h.url}` : ""}
+                    </Typography>
+                  ))}
+                </Box>
+              ) : null}
+            </Alert>
+          ) : null}
           {dispatch.runs.map((run) => (
             <Box
               key={`${run.agentId}-${run.summary}`}

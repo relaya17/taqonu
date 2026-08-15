@@ -44,6 +44,7 @@ export const legalMediaReviewSchema = z.object({
   verifiedSources: z.array(verifiedSourceCiteSchema),
   epistemicState: epistemicStateSchema,
   notALawyer: z.literal(true),
+  briefMarkdown: z.string().min(1),
 });
 
 export type LawyerReadiness = z.infer<typeof lawyerReadinessSchema>;

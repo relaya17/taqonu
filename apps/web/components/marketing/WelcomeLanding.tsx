@@ -1,12 +1,12 @@
 "use client";
 
 import { Box, Button, Stack, Typography } from "@mui/material";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
 
-export function WelcomeLanding() {
+export function WelcomeLanding({ children }: { children?: ReactNode }) {
   const t = useTranslations("landing");
   const locale = useLocale();
   const router = useRouter();
@@ -57,6 +57,20 @@ export function WelcomeLanding() {
             transition: "opacity 0.45s ease",
           }}
         >
+          <Stack
+            spacing={2.5}
+            alignItems="center"
+            sx={{
+              width: "100%",
+              px: { xs: 2.5, sm: 4 },
+              py: { xs: 3, sm: 4 },
+              bgcolor: "rgba(18, 20, 26, 0.48)",
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
+              border: "1px solid rgba(220, 221, 225, 0.16)",
+              borderRadius: 2,
+            }}
+          >
           <Typography
             component="p"
             sx={{
@@ -95,17 +109,6 @@ export function WelcomeLanding() {
             }}
           >
             {t("subhead")}
-          </Typography>
-          <Typography
-            sx={{
-              color: "rgba(212, 216, 224, 0.88)",
-              fontSize: "0.95rem",
-              lineHeight: 1.5,
-              maxWidth: 440,
-              textShadow: "0 1px 12px rgba(0,0,0,0.45)",
-            }}
-          >
-            {t("commercialLine")}
           </Typography>
           <Stack
             direction={{ xs: "column", sm: "row" }}
@@ -155,66 +158,11 @@ export function WelcomeLanding() {
               {t("ctaAudit")}
             </Button>
           </Stack>
+          </Stack>
         </Stack>
       </Box>
 
-      <Box
-        component="section"
-        sx={{
-          px: { xs: 2.5, sm: 4, md: 6 },
-          py: { xs: 6, md: 9 },
-          borderTop: "1px solid rgba(154, 158, 168, 0.14)",
-          background:
-            "linear-gradient(180deg, #12141A 0%, #16191F 50%, #12141A 100%)",
-        }}
-      >
-        <Typography
-          component="h2"
-          sx={{
-            fontFamily: '"Syne", sans-serif',
-            fontWeight: 700,
-            fontSize: { xs: "1.6rem", md: "2rem" },
-            letterSpacing: "-0.03em",
-            mb: 1.5,
-            maxWidth: 560,
-            mx: "auto",
-          }}
-        >
-          {t("whyTitle")}
-        </Typography>
-        <Typography
-          sx={{
-            color: "rgba(154, 163, 178, 0.88)",
-            fontSize: "1.1rem",
-            maxWidth: 520,
-            mx: "auto",
-            lineHeight: 1.55,
-            mb: 4,
-          }}
-        >
-          {t("whyBody")}
-        </Typography>
-        <Stack spacing={3} sx={{ maxWidth: 520, mx: "auto" }}>
-          {(["truth", "govern", "scale"] as const).map((k) => (
-            <Box key={k}>
-              <Typography
-                sx={{
-                  fontFamily: '"Syne", sans-serif',
-                  fontWeight: 650,
-                  fontSize: "1.15rem",
-                  color: "#9A9EA8",
-                  mb: 0.5,
-                }}
-              >
-                {t(`pillars.${k}.title`)}
-              </Typography>
-              <Typography sx={{ color: "rgba(154, 163, 178, 0.85)", lineHeight: 1.5 }}>
-                {t(`pillars.${k}.body`)}
-              </Typography>
-            </Box>
-          ))}
-        </Stack>
-      </Box>
+      {children}
 
       <Box
         component="section"
@@ -312,63 +260,6 @@ export function WelcomeLanding() {
         </Stack>
       </Box>
 
-      <Box
-        component="section"
-        sx={{
-          px: { xs: 2.5, sm: 4, md: 6 },
-          py: { xs: 5, md: 7 },
-          borderTop: "1px solid rgba(154, 158, 168, 0.14)",
-        }}
-      >
-        <Typography
-          sx={{
-            fontFamily: '"Syne", sans-serif',
-            fontWeight: 700,
-            fontSize: { xs: "1.4rem", md: "1.75rem" },
-            mb: 2,
-            maxWidth: 480,
-            mx: "auto",
-          }}
-        >
-          {t("closeTitle")}
-        </Typography>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={1.5}
-          justifyContent="center"
-          alignItems="center"
-        >
-          <Button
-            component="a"
-            href={`/${locale}/auth/register`}
-            variant="contained"
-            size="large"
-            sx={{
-              bgcolor: "#9A9EA8",
-              color: "#12141A",
-              fontWeight: 700,
-              px: 4,
-              "&:hover": { bgcolor: "#ADB1BA" },
-            }}
-          >
-            {t("ctaRegister")}
-          </Button>
-          <Button
-            component="a"
-            href={`/${locale}/auth/login`}
-            variant="outlined"
-            size="large"
-            sx={{
-              borderColor: "rgba(154,158,168,0.5)",
-              color: "#DCDDE1",
-              fontWeight: 650,
-              px: 4,
-            }}
-          >
-            {t("ctaLogin")}
-          </Button>
-        </Stack>
-      </Box>
     </Box>
   );
 }

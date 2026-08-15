@@ -5,42 +5,68 @@ import {
   type AgentPlan,
   type AgentRunResult,
   type FabricAgentId,
+  type KnowledgeSearchResult,
 } from "@atlas/shared";
+import { buildEvidencePackageForAgent } from "@atlas/knowledge";
 import { getFabricAgent } from "../registry/catalog.js";
 import { planAgentWork } from "./plan.js";
 import { evaluateJudge } from "../judge/evaluate.js";
 
-/** Deterministic specialist stub — contracts + evidence requirements, not chat. */
-function runSpecialistStub(agentId: FabricAgentId, request: string) {
+function loadKnowledge(request: string, agentIds: FabricAgentId[]): KnowledgeSearchResult {
+  return buildEvidencePackageForAgent({
+    query: request,
+    agentSpecialtyHints: agentIds.map((id) => getFabricAgent(id).specialty),
+    maxItems: 12,
+  });
+}
+
+/** Specialist run grounded in allow-listed excerpts — not a chat model. */
+function runSpecialistStub(
+  agentId: FabricAgentId,
+  request: string,
+  knowledge: KnowledgeSearchResult,
+) {
   const def = getFabricAgent(agentId);
   const started = Date.now();
   const needs = def.evidenceRequirements;
   const hasHint = needs.some((n) =>
     request.toLowerCase().includes(n.split(" ")[0]!.toLowerCase()),
   );
+  const cites = knowledge.hits.slice(0, 5);
+  const citeLine =
+    cites.length > 0
+      ? ` Official sources: ${cites.map((h) => h.title).join(" · ")}.`
+      : " No allow-listed hit — INSUFFICIENT_EVIDENCE until a verified source matches.";
 
   return agentRunResultSchema.parse({
     agentId,
     status:
-      hasHint || agentId === "ORCHESTRATOR" || agentId === "JUDGE"
+      hasHint || agentId === "ORCHESTRATOR" || agentId === "JUDGE" || cites.length > 0
         ? "COMPLETED"
         : "NEEDS_EVIDENCE",
     summary:
       agentId === "ORCHESTRATOR"
-        ? `Planned specialists with isolated contexts for: ${request.slice(0, 160)}`
-        : `${def.title} reviewed request under policy (risk=${def.riskLevel}). Tools allowed: ${def.allowedTools.join(", ")}.`,
+        ? `Planned specialists with isolated contexts for: ${request.slice(0, 160)}.${citeLine}`
+        : `${def.title} reviewed request under policy (risk=${def.riskLevel}). Tools allowed: ${def.allowedTools.join(", ")}.${citeLine}`,
     claims: [
       `${def.id}: specialty=${def.specialty}`,
       `WRITE=${def.canWriteCode ? "patch-only-gated" : "forbidden"}`,
       `budgetCapUsd=${def.maxCostUsd}`,
+      `knowledgeHits=${knowledge.hits.length}`,
+      ...cites.map((h) => `cite:${h.title}${h.url ? ` <${h.url}>` : ""}`),
     ],
-    evidenceRefs: needs.map((n) => `required:${n}`),
+    evidenceRefs: [
+      ...needs.map((n) => `required:${n}`),
+      ...cites.map((h) => h.url ?? h.id),
+    ],
     epistemicState:
       agentId === "ORCHESTRATOR"
         ? "INFERRED"
-        : hasHint
+        : cites.length > 0
           ? "INFERRED"
-          : "UNVERIFIED",
+          : hasHint
+            ? "INFERRED"
+            : "UNVERIFIED",
     costUsd: Number((def.maxCostUsd * 0.05).toFixed(4)),
     durationMs: Math.max(1, Date.now() - started),
   });
@@ -70,8 +96,11 @@ export function dispatchAgentPlan(input: {
       ...(input.agentIds !== undefined ? { agentIds: input.agentIds } : {}),
     });
 
-  // Plan already honors forced agentIds — run all non-Judge steps in parallel groups
   const selected = plan.steps;
+  const knowledge = loadKnowledge(
+    input.request,
+    selected.map((s) => s.agentId),
+  );
 
   const byGroup = new Map<number, typeof selected>();
   for (const step of selected) {
@@ -87,7 +116,7 @@ export function dispatchAgentPlan(input: {
         .filter((s) => s.agentId !== "JUDGE")
         .map((s) => {
           const override = input.specialistOverride?.(s.agentId, input.request);
-          return override ?? runSpecialistStub(s.agentId, input.request);
+          return override ?? runSpecialistStub(s.agentId, input.request, knowledge);
         }),
     );
 
@@ -103,5 +132,6 @@ export function dispatchAgentPlan(input: {
     judge,
     traceId: `trace_${crypto.randomUUID().slice(0, 8)}`,
     createdAt: new Date().toISOString(),
+    knowledgePackage: knowledge,
   });
 }

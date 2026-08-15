@@ -275,7 +275,7 @@ export function PartnerAuditIntake({
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           {t("modeNote")}
         </Typography>
-        <Stack component="ul" spacing={0.5} sx={{ mt: 1.5, pl: 2, m: 0 }}>
+        <Stack component="ul" spacing={0.5} sx={{ mt: 1.5, ps: 2, m: 0 }}>
           <Typography component="li" variant="body2">
             {t("modeStepImport")}
           </Typography>
@@ -287,6 +287,9 @@ export function PartnerAuditIntake({
           </Typography>
           <Typography component="li" variant="body2">
             {t("modeStepCapture")}
+          </Typography>
+          <Typography component="li" variant="body2">
+            {t("modeStepCounsel")}
           </Typography>
         </Stack>
 
@@ -331,6 +334,9 @@ export function PartnerAuditIntake({
           </Button>
           <Button component={Link} href="/health" size="small" variant="outlined">
             {t("openHealth")}
+          </Button>
+          <Button component={Link} href="/legal-media" size="small" variant="outlined">
+            {t("openCounsel")}
           </Button>
         </Stack>
         <Typography variant="caption" display="block" sx={{ mt: 1.5 }} color="text.secondary">

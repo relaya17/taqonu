@@ -30,7 +30,7 @@
     "qa": "QA",
     "processAudit": "E2E process tests",
     "experts": "Experts",
-    "legalMedia": "Lawyer AI check",
+    "legalMedia": "Counsel brief",
     "uiux": "UI/UX",
     "design": "Design",
     "artifacts": "Artifacts",
@@ -51,6 +51,7 @@
     "admin": "Admin",
     "main": "Main navigation",
     "languages": "Languages",
+    "theme": "Theme",
     "opsGroup": "Dashboard tracking",
     "buildGroup": "Build",
     "workspaceGroup": "Workspace"
@@ -82,11 +83,11 @@
   },
   "onboarding": {
     "title": "Start here",
-    "body": "Link a local folder → open Workbench → run an E2E process audit.",
+    "body": "Link a local folder · open Workbench · run an E2E process audit.",
     "bodyMissing": "{count} projects still need a local folder before Studio, Workbench, and E2E unlock.",
-    "stepProjects": "1. Link folder",
-    "stepWorkbench": "2. Workbench",
-    "stepE2e": "3. E2E audit"
+    "stepProjects": "Link folder",
+    "stepWorkbench": "Workbench",
+    "stepE2e": "E2E audit"
   },
   "workspaceLink": {
     "title": "Local workspace folder",
@@ -313,6 +314,7 @@
     "pitch": "The Truth & Control Layer for AI-native software — what is verified, what is risky, and the evidence. Start from Systems.",
     "ctaReadiness": "Production Readiness Certificate",
     "ctaPartners": "Design Partners",
+    "ctaCounsel": "Counsel brief",
     "ctaSystems": "Open Systems",
     "blockedSystems": "{count} systems blocked — open evidence before you act",
     "ctaProjects": "Track projects",
@@ -325,6 +327,7 @@
     "opsReadiness": "Readiness",
     "opsQa": "QA",
     "opsProcessAudit": "E2E process",
+    "opsCounsel": "Counsel brief",
     "personalTitle": "Personal area",
     "personalHelp": "Memory, decisions, and code patches — one place on your dashboard, not scattered in the nav.",
     "personalTab": {
@@ -747,9 +750,50 @@
     "auditTitle": "Design-partner Audit",
     "auditBody": "No invented customers. If you run production software and want a blocked-first readout, request the Audit. Outreach is human.",
     "closeTitle": "Ready when you are.",
-    "seoTitle": "ArletOS — Know what your software actually does",
-    "seoDescription": "ArletOS helps teams verify release readiness with evidence — before production.",
-    "seoKeywords": "release readiness, evidence, AI governance, ArletOS, Atlas"
+    "seoTitle": "ArletOS Atlas — Truth and control layer: software readiness, evidence, AI governance",
+    "seoDescription": "What a software truth-and-control layer is: how production readiness is verified with evidence, what Atlas is not, and how a one-system readiness audit works.",
+    "seoKeywords": "truth and control layer, production readiness, software evidence, AI governance, readiness audit, ArletOS, Atlas, DISCOVER VERIFY ACT",
+    "info": {
+      "kicker": "Information · not a pitch",
+      "title": "What Atlas checks on software that already runs",
+      "lead": "CI, coding agents, and cloud consoles do not reliably answer: what is true about this software right now? This page states the model — not a marketing promise.",
+      "definitionTitle": "Definition",
+      "definition": "Atlas (this instance is ArletOS) is a truth and control layer for AI-native software. It observes connected systems from the outside through connectors, and records what is proven, what changed, what is risky, and what may happen next. Customer code stays with the customer.",
+      "notTitle": "What it is not",
+      "notBody": "Not a coding assistant, not a chatbot that stamps “ready for production,” and not a marketing scanner. This page invents no customers. External knowledge comes from an allow-listed official set (NIST, CISA, OWASP, MDN, gov.il) as refreshed excerpts — not a full library.",
+      "loopTitle": "Work order",
+      "loopLead": "The loop is fixed. ACT is always last, and only after evidence, policy, and a human approval.",
+      "loop": {
+        "discover": {
+          "title": "DISCOVER",
+          "body": "What is connected: a repo, a local folder, or a connector. Each connected product is a Managed System."
+        },
+        "understand": {
+          "title": "UNDERSTAND",
+          "body": "A system model — layers, contract, and intended behavior — without embedding Atlas in your app code."
+        },
+        "verify": {
+          "title": "VERIFY",
+          "body": "Claims against evidence. What is unproven stays labeled unknown. “Exists in code” is not “proven in production.”"
+        },
+        "act": {
+          "title": "ACT",
+          "body": "Propose → approve → apply. Auto-apply never hits a blocked production path. You keep WRITE ownership."
+        }
+      },
+      "evidenceTitle": "Claim versus evidence",
+      "evidenceBody": "Every claim needs a linked evidence record. Epistemic labels stay visible. A verdict (READY / CONDITIONAL / BLOCKED / UNKNOWN) is composed from existing evidence — not a second truth model.",
+      "selfTitle": "Atlas as a Managed System",
+      "selfBody": "Atlas audits itself (DEF-000). The same evidence rules apply to this product and to the systems you connect. There is no double standard.",
+      "faqTitle": "Frequently asked questions",
+      "faq": {
+        "q1": { "q": "How is Atlas different from an AI coding tool?", "a": "Writers (Cursor, Copilot, and others) stay where they are. Atlas does not replace them. It is the truth, evidence, and governance layer over what already runs." },
+        "q2": { "q": "What is a readiness audit?", "a": "Import one production system, get a verdict and an evidence report. Code is not stored by Atlas. That is the entry offer — not a usage quota." },
+        "q3": { "q": "Does Atlas keep the source code?", "a": "No. Storage is yours (local / git / Cloudflare BYO). Atlas does not train across tenants." },
+        "q4": { "q": "What happens after the audit?", "a": "You can keep the verdict and evidence, or continue with a control layer (higher usage ceilings). This page does not require an upgrade." },
+        "q5": { "q": "Can a “ready” score be trusted?", "a": "Only when evidence exists. A score without evidence coverage stays UNKNOWN or CONDITIONAL. Atlas does not invent readiness." }
+      }
+    }
   },
   "conflicts": {
     "title": "Conflicts",
@@ -988,22 +1032,48 @@
     "styleLanesHelp": "Optional: narrow the review to a named style lane."
   },
   "legalMedia": {
-    "title": "Legal · Media & Communications",
-    "subtitle": "Engineering indicator: is the app ready to brief a lawyer — not legal advice, and not a substitute for counsel.",
-    "disclaimer": "NOT LEGAL ADVICE. Atlas flags engineering gaps (privacy, UGC, ads, copyright) and cites verified government/university sources only.",
+    "title": "High-tech counsel briefing",
+    "subtitle": "An engineering evidence pack for a licensed attorney — not legal advice, and not a law-firm product.",
+    "disclaimer": "NOT LEGAL ADVICE. Atlas flags engineering gaps (privacy, license, secrets, auth) and cites verified government/university sources only.",
+    "audience": "For a high-tech lawyer doing software due diligence: what the repo shows, what is missing, and what to raise in the meeting. No case files, no contracts, no privilege.",
     "project": "Project",
-    "projectHelp": "Linked workspaceRoot required for the scan.",
+    "projectHelp": "A linked local folder is required for the scan.",
     "pickProject": "Select a project…",
-    "run": "Run counsel-readiness check",
+    "run": "Build counsel pack",
+    "running": "Scanning…",
+    "download": "Download brief (Markdown)",
+    "openAudit": "Readiness audit",
+    "verdictAttach": "Engineering verdict attached to the download: {status} · {score}/100 — not a legal opinion.",
     "readiness_READY_FOR_COUNSEL": "Ready to brief counsel",
     "readiness_NEEDS_FIXES": "Fix before counsel",
     "readiness_INSUFFICIENT_EVIDENCE": "Insufficient evidence",
     "notLawyerChip": "Not a lawyer",
     "findings": "Findings",
     "fixHint": "What to fix",
-    "counselTopics": "Topics for your attorney",
+    "counselTopics": "Topics for licensed counsel",
     "sourcesTitle": "Verified sources",
-    "sourcesHelp": "Government / university / official bodies only — no unofficial blogs."
+    "sourcesHelp": "Government / university / official bodies only — no unofficial blogs.",
+    "jurisdictions": "Counsel-topic coverage: Israel, United States, European Union — official portals only. Not legal advice.",
+    "regionCount": "{region} · {count}",
+    "region_IL": "Israel",
+    "region_EU": "European Union",
+    "region_US": "United States",
+    "region_INTL": "International",
+    "finding": {
+      "no-root": "Missing workspace folder",
+      "privacy-terms": "Privacy / Terms",
+      "cookies-consent": "Cookie / tracking consent",
+      "dsr-export-delete": "Export / account deletion",
+      "ugc-moderation": "UGC / moderation",
+      "ads-disclosure": "Advertising disclosure",
+      "copyright-media": "Copyright / media licensing",
+      "minors": "Minors / age gate",
+      "entity-contact": "Legal entity / contact",
+      "oss-license": "Open-source license file",
+      "secret-leak": "Credential / secret patterns",
+      "auth-tenant": "Auth / tenant isolation",
+      "ai-system-surfaces": "AI system surfaces (counsel pointer)"
+    }
   },
   "agents": {
     "title": "Specialist lanes",
@@ -1012,6 +1082,9 @@
     "seeModels": "Model marketplace",
     "seeExperts": "Expert Council",
     "verifiedKnowledgeNote": "Specialists retrieve only verified sources: official language docs, standards bodies, government cyber guidance, and university CS portals — not blogs.",
+    "knowledgeLoaded": "{specialists} specialists loaded · {sources} official sources · {docs} corpus docs (cite excerpts — not textbooks).",
+    "knowledgeHits": "This dispatch pulled {n} verified sources into the specialists.",
+    "knowledgeEmpty": "No allow-list match — the agent must refuse or ask for evidence.",
     "verifiedSourcesTitle": "Verified knowledge domains",
     "verifiedSourcesHelp": "{count} allow-listed primary sources. Agents must cite these URLs or refuse.",
     "downloadVerifiedJson": "Download allow-list (JSON)",
@@ -1241,6 +1314,8 @@
     "modeStepVerdict": "2. Open Verdict + Readiness Certificate — every score must open to Evidence.",
     "modeStepHealth": "3. Run System Health (/health) — keep UNKNOWN / INSUFFICIENT_EVIDENCE labels honest.",
     "modeStepCapture": "4. Capture findings in the case-study fill-in; log the slot in the partner tracker (no invented customers).",
+    "modeStepCounsel": "5. Build a high-tech counsel briefing pack (evidence only — not legal advice).",
+    "openCounsel": "Counsel brief",
     "modeDocsHint": "Docs: design-partner-playbook · design-partner-audit-runbook · design-partner-tracker · case-studies/_partner-fill-in (under docs/).",
     "openHealth": "Open System Health",
     "storageTitle": "What Atlas stores",

@@ -161,7 +161,7 @@ export default function ProcessAuditPage() {
   const reach = reachabilityQuery.data;
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 720, width: "100%", minWidth: 0 }}>
+    <Stack spacing={3} sx={{ maxWidth: 720, width: "100%", minWidth: 0, mx: "auto", textAlign: "center" }}>
       <Box>
         <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", md: "2.25rem" } }}>
           {t("title")}
@@ -174,7 +174,7 @@ export default function ProcessAuditPage() {
       <Alert severity="info">{t("intro")}</Alert>
       <Alert severity="success">{t("partnerNote")}</Alert>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="center">
         <TextField
           select
           label={t("project")}

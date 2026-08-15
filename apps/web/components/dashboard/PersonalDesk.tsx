@@ -47,29 +47,45 @@ export function PersonalDesk({
     <Box
       sx={{
         py: 3,
+        width: "100%",
+        textAlign: "center",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         borderTop: "1px solid rgba(26,31,42,0.14)",
       }}
     >
       <Typography fontWeight={700} sx={{ fontSize: "1.2rem" }}>
         {t("personalTitle")}
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ mt: 0.5, mb: 1.5, maxWidth: 560 }}
+      >
         {t("personalHelp")}
       </Typography>
       <Tabs
         value={tab}
         onChange={(_, v: DeskTab) => selectTab(v)}
-        variant="scrollable"
-        allowScrollButtonsMobile
-        sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}
+        variant="fullWidth"
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          mb: 2,
+          width: "100%",
+          maxWidth: 560,
+        }}
       >
         {TABS.map((id) => (
           <Tab key={id} value={id} label={t(`personalTab.${id}`)} />
         ))}
       </Tabs>
-      {tab === "memory" ? <MemoryPanel embedded /> : null}
-      {tab === "decisions" ? <DecisionsPanel embedded /> : null}
-      {tab === "patches" ? <PatchesPanel embedded /> : null}
+      <Box sx={{ width: "100%" }}>
+        {tab === "memory" ? <MemoryPanel embedded /> : null}
+        {tab === "decisions" ? <DecisionsPanel embedded /> : null}
+        {tab === "patches" ? <PatchesPanel embedded /> : null}
+      </Box>
     </Box>
   );
 }

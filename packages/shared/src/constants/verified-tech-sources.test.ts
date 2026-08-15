@@ -18,6 +18,7 @@ describe("verified tech sources authorization", () => {
     expect(isAuthorizedVerifiedTechUrl("https://random-blog.example/x")).toBe(
       false,
     );
+    expect(isAuthorizedVerifiedTechUrl("not-a-url")).toBe(false);
   });
 
   it("builds downloadable pack", () => {

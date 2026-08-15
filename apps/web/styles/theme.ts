@@ -7,34 +7,34 @@ export type AtlasColorMode = "light" | "dark";
 
 export function createAtlasTheme(
   direction: "rtl" | "ltr",
-  _mode: AtlasColorMode = "light",
+  mode: AtlasColorMode = "light",
 ): Theme {
-  // Global UI is always light silver. Dark is scoped to Studio / marketing.
+  const dark = mode === "dark";
   return createTheme({
     direction,
     cssVariables: false,
     palette: {
-      mode: "light",
+      mode: dark ? "dark" : "light",
       primary: {
-        main: c.steelMid,
-        contrastText: c.chromeBright,
+        main: dark ? c.accent : c.steelMid,
+        contrastText: dark ? c.onAccent : c.chromeBright,
       },
       secondary: {
         main: c.accent,
         contrastText: c.onAccent,
       },
       background: {
-        default: c.silverBg,
-        paper: c.silverPaper,
+        default: dark ? c.ink : c.silverBg,
+        paper: dark ? c.steel : c.silverPaper,
       },
       text: {
-        primary: c.textOnLight,
-        secondary: c.textSecondaryOnLight,
+        primary: dark ? "#F0F1F3" : c.textOnLight,
+        secondary: dark ? c.chrome : c.textSecondaryOnLight,
       },
-      divider: "rgba(26, 28, 34, 0.14)",
-      success: { main: "#3D7A5F" },
-      warning: { main: "#9A7B3C" },
-      error: { main: "#B42318" },
+      divider: dark ? c.border : "rgba(26, 28, 34, 0.14)",
+      success: { main: dark ? "#6BA88A" : "#3D7A5F" },
+      warning: { main: dark ? "#C4A35A" : "#9A7B3C" },
+      error: { main: dark ? "#E06B66" : "#B42318" },
     },
     typography: {
       fontFamily:
@@ -73,16 +73,17 @@ export function createAtlasTheme(
           html: {
             maxWidth: "100%",
             overflowX: "clip",
-            colorScheme: "light",
+            colorScheme: dark ? "dark" : "light",
           },
           body: {
-            backgroundColor: c.silverBg,
-            backgroundImage:
-              "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.1), transparent 42%), radial-gradient(circle at 92% 0%, rgba(180,183,190,0.12), transparent 40%), linear-gradient(180deg, #F6F6F7 0%, #F1F2F4 50%, #E8E9EC 100%)",
+            backgroundColor: dark ? c.ink : c.silverBg,
+            backgroundImage: dark
+              ? "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.08), transparent 42%), radial-gradient(circle at 92% 0%, rgba(42,46,54,0.55), transparent 40%), linear-gradient(180deg, #12141A 0%, #16191F 55%, #12141A 100%)"
+              : "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.1), transparent 42%), radial-gradient(circle at 92% 0%, rgba(180,183,190,0.12), transparent 40%), linear-gradient(180deg, #F6F6F7 0%, #F1F2F4 50%, #E8E9EC 100%)",
             minHeight: "100vh",
             maxWidth: "100%",
             overflowX: "clip",
-            color: c.textOnLight,
+            color: dark ? c.text : c.textOnLight,
             textAlign: "start",
           },
           "img, svg, video, canvas": {
@@ -154,6 +155,22 @@ export function createAtlasTheme(
             minHeight: 44,
             px: 1.5,
           },
+          outlined: dark
+            ? {
+                color: "#F0F1F3",
+                borderColor: "rgba(240, 241, 243, 0.5)",
+                "&:hover": {
+                  borderColor: "#F0F1F3",
+                  bgcolor: "rgba(240, 241, 243, 0.1)",
+                },
+              }
+            : {},
+          text: dark
+            ? {
+                color: c.chromeBright,
+                "&:hover": { bgcolor: "rgba(240, 241, 243, 0.08)" },
+              }
+            : {},
         },
       },
       MuiIconButton: {
@@ -180,6 +197,44 @@ export function createAtlasTheme(
             "&:focus-visible": {
               outline: `3px solid ${c.accent}`,
               outlineOffset: 2,
+            },
+          },
+        },
+      },
+      MuiAlert: {
+        styleOverrides: {
+          root: {
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            gap: 8,
+            width: "100%",
+          },
+          icon: {
+            margin: 0,
+            padding: 0,
+            marginRight: 0,
+            marginLeft: 0,
+            marginInline: 0,
+          },
+          message: {
+            width: "100%",
+            padding: 0,
+            textAlign: "center",
+          },
+          action: {
+            margin: 0,
+            padding: 0,
+            marginRight: 0,
+            marginLeft: 0,
+            paddingLeft: 0,
+            paddingRight: 0,
+            width: "100%",
+            justifyContent: "center",
+            "& .MuiButton-root": {
+              width: "100%",
+              maxWidth: 280,
             },
           },
         },

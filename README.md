@@ -34,8 +34,8 @@ are operator ratings — not marketing.
 | Managed System / truth bind | **9/10** | DEF-000 binds this repo; facets from evidence + saved graph nodes; contract + invariants |
 | ACT / observe security | **9/10** | Ownership on ACT; no prod/BLOCKED auto-apply; memory + evidence scoped to one project |
 | Systems command center | **9/10** | Blocked-first + **Run Audit → Executive Report** with drill-down to Evidence |
-| GTM offer | **7/10** | Audit wedge + executive readout is in-product; tracker still empty; no paid partner |
-| Verified knowledge | **7/10** | Daily allow-listed refresh (NIST/CISA/OWASP/MDN/gov.il) → corpus + `knowledge_chunks`; still excerpts, not full curricula |
+| GTM offer | **7/10** | Audit wedge + executive readout + counsel briefing pack; tracker still empty; no paid partner |
+| Verified knowledge | **7/10** | Daily allow-listed refresh (NIST/CISA/OWASP/MDN/gov.il + EUR-Lex AI Act/DSA + justice.gov/CPPA + React/Next) → corpus + `knowledge_chunks`; still excerpts, not full curricula |
 | **As a truth & control plane** | **~8.5/10** | 10 needs one live customer system + a real partner readout |
 
 Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
@@ -50,6 +50,7 @@ honest — they are not the product. Storage is BYO, not Atlas-hosted.
 | **Marketing landing** | `/he/welcome` · alias `/marketing` | Audit hero · request intake · BYO story |
 | **Systems command center** | `/he/systems` · `/he/systems/:id` | Blocked-first · **Run Audit → Executive Report** |
 | **Audit intake** | `/he/partners` | Import one repo → Verdict + Evidence |
+| **Counsel briefing** | `/he/legal-media` | Evidence pack for a licensed high-tech lawyer — not legal advice |
 | **Plan** | `/he/plan` | Audit first · then Free/Pro ceilings · Cloudflare BYO |
 | **Billing settings** | `/he/settings/billing` | Tenant plan + upgrade |
 | **Nav** | **Systems** first · **Audit & plan** · Landing | Primary nav |
@@ -149,11 +150,13 @@ Atlas gives: **what is verified, what isn’t, what’s dangerous — and the Ev
 | System Health | `/he/health?project=` |
 | Release Verdict (app home) | `/he?project=` · `GET /api/v1/projects/:id/verdict` |
 | Audit intake | `/he/partners` |
+| Counsel briefing | `/he/legal-media` |
 | Plan | `/he/plan` · `GET/POST /api/v1/billing/plan` |
 | Production Readiness / Gates | `/he/readiness?project=` |
 | Workbench | `/he/workbench` |
 | Studio | `/he/studio` |
 | E2E process audit | `/he/process-audit` · `POST /api/v1/qa/process-audit` |
+| Observer / Sentinel | `/he/observer` · `/he/sentinel` |
 | Admin (separate) | `/admin` · `/admin/login` · Command Center (watchdog / knowledge / automation) |
 | Investors deck | `/investors` |
 
@@ -227,6 +230,7 @@ pnpm dev
 | Systems | http://localhost:3000/he/systems |
 | App home | http://localhost:3000/he |
 | Audit intake | http://localhost:3000/he/partners |
+| Counsel briefing | http://localhost:3000/he/legal-media |
 | Plan | http://localhost:3000/he/plan |
 | API | http://localhost:4000 |
 

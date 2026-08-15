@@ -1,5 +1,6 @@
 import { VERIFIED_LEGAL_MEDIA_SOURCES } from "./legal-media-sources.js";
 import {
+  httpUrlHostname,
   isAuthorizedVerifiedTechUrl,
   VERIFIED_TECH_SOURCES,
 } from "./verified-tech-sources.js";
@@ -16,11 +17,8 @@ export interface OfficialRefreshTarget {
 function hostsFromUrls(urls: readonly string[]): readonly string[] {
   const hosts = new Set<string>();
   for (const url of urls) {
-    try {
-      hosts.add(new URL(url).hostname.toLowerCase());
-    } catch {
-      // skip
-    }
+    const host = httpUrlHostname(url);
+    if (host) hosts.add(host);
   }
   return [...hosts];
 }
@@ -30,12 +28,8 @@ export function verifiedLegalMediaHosts(): readonly string[] {
 }
 
 export function isAuthorizedLegalMediaUrl(url: string): boolean {
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
+  const hostname = httpUrlHostname(url);
+  if (!hostname) return false;
   return verifiedLegalMediaHosts().some(
     (host) => hostname === host || hostname.endsWith(`.${host}`),
   );
@@ -78,4 +72,29 @@ export function listOfficialRefreshTargets(): OfficialRefreshTarget[] {
   return [...tech, ...legal].sort(
     (a, b) => a.priority - b.priority || a.id.localeCompare(b.id),
   );
+}
+
+/** Allow-list → corpus seed (excerpts + cite URL — not textbooks). */
+export function officialSourcesAsCorpusSeed(): readonly {
+  id: string;
+  title: string;
+  sourceClass: string;
+  url: string;
+  excerpt: string;
+}[] {
+  const tech = VERIFIED_TECH_SOURCES.map((s) => ({
+    id: `kf_tech_${s.id}`,
+    title: s.titleEn,
+    sourceClass: s.kind,
+    url: s.url,
+    excerpt: `${s.excerptEn} Topics: ${s.topics.join(", ")}. Cite ${s.url}.`,
+  }));
+  const legal = VERIFIED_LEGAL_MEDIA_SOURCES.map((s) => ({
+    id: `kf_legal_${s.id}`,
+    title: s.titleEn,
+    sourceClass: s.kind,
+    url: s.url,
+    excerpt: `Official ${s.kind.toLowerCase()} source (${s.region}). Topics: ${s.topics.join(", ")}. Cite ${s.url}. Not legal advice.`,
+  }));
+  return [...tech, ...legal];
 }

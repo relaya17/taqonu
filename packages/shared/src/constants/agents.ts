@@ -658,7 +658,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleHe: "משפט מדיה ותקשורת",
     titleAr: "قانون الإعلام والاتصالات",
     specialty:
-      "Counsel-prep readiness for media/comms apps (IL + world) — not a licensed attorney",
+      "Counsel-prep readiness for IL + US + EU official portals — not a licensed attorney",
     category: "legal",
     allowedTools: [
       "legal_media_review",
@@ -680,18 +680,18 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     costHintHe: "בינוני — מוכנות לעו״ד (לא שכר טרחה)",
     costHintAr: "متوسط — جاهزية للمحامي (ليس أتعاباً)",
     strengthsEn: [
-      "Flags privacy/UGC/ads/copyright gaps for a lawyer",
-      "Cites only allow-listed gov/university sources",
+      "Flags privacy/UGC/ads/copyright/AI-surface gaps for a lawyer",
+      "Cites only allow-listed IL/US/EU gov and university portals",
       "Always returns NOT LEGAL ADVICE + lawyerReadiness",
     ],
     strengthsHe: [
-      "מסמן פערים בפרטיות/UGC/פרסום/זכויות יוצרים לעו״ד",
-      "מצטט רק מקורות ממשלתיים/אוניברסיטאיים מאושרים",
+      "מסמן פערים בפרטיות/UGC/פרסום/זכויות/משטחי AI לעו״ד",
+      "מצטט רק פורטלים רשמיים בישראל / ארה״ב / האיחוד",
       "תמיד מחזיר אין ייעוץ משפטי + מוכנות לעו״ד",
     ],
     strengthsAr: [
-      "يؤشر فجوات خصوصية/محتوى/إعلان/حقوق للمَحامي",
-      "يستشهد فقط بمصادر حكومية/جامعية مسموحة",
+      "يؤشر فجوات خصوصية/محتوى/إعلان/حقوق/أسطح ذكاء للمَحامي",
+      "يستشهد فقط ببوابات رسمية في إسرائيل / الولايات المتحدة / الاتحاد",
       "يعيد دائماً ليس استشارة قانونية + جاهزية للمحامي",
     ],
     weaknessesEn: [

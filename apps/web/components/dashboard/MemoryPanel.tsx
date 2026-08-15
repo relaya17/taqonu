@@ -72,10 +72,9 @@ function MemoryRow({
         direction="row"
         spacing={1}
         alignItems="center"
-        justifyContent="space-between"
+        justifyContent="center"
         flexWrap="wrap"
-        useFlexGap
-        sx={{ mb: 0.5 }}
+        sx={{ mb: 0.5, gap: 1 }}
       >
         <Stack direction="row" spacing={1} alignItems="center">
           <EpistemicChip state={item.epistemicState} />
@@ -165,7 +164,16 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
   const projects = projectsQuery.data?.items ?? [];
 
   return (
-    <Stack spacing={embedded ? 3 : 4} sx={{ maxWidth: embedded ? "100%" : 820 }}>
+    <Stack
+      spacing={embedded ? 3 : 4}
+      sx={{
+        maxWidth: embedded ? "100%" : 820,
+        width: "100%",
+        mx: "auto",
+        textAlign: "center",
+        alignItems: "center",
+      }}
+    >
       {!embedded ? (
         <Box>
           <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
@@ -177,14 +185,19 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
         </Box>
       ) : null}
 
-      <Stack spacing={1.5}>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+      <Stack spacing={1.5} sx={{ width: "100%", alignItems: "center" }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          sx={{ width: "100%" }}
+        >
           <TextField
             select
+            fullWidth
             label={t("type")}
             value={type}
             onChange={(e) => setType(e.target.value)}
-            sx={{ minWidth: 180 }}
+            sx={{ flex: 1, minWidth: 0 }}
           >
             {["PREFERENCE", "DECISION", "LESSON", "FACT", "GOAL"].map((value) => (
               <MenuItem key={value} value={value}>
@@ -194,10 +207,11 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
           </TextField>
           <TextField
             select
+            fullWidth
             label={t("project")}
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            sx={{ minWidth: 220 }}
+            sx={{ flex: 1, minWidth: 0 }}
           >
             <MenuItem value="">{t("global")}</MenuItem>
             {projects.map((p) => (
@@ -219,7 +233,7 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
           variant="contained"
           disabled={create.isPending || statement.trim().length < 3}
           onClick={() => create.mutate()}
-          sx={{ alignSelf: "flex-start" }}
+          sx={{ alignSelf: "center", minWidth: 180 }}
         >
           {t("save")}
         </Button>

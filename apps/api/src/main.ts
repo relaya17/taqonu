@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { AtlasError } from "@atlas/shared";
 import { loadServerEnv } from "@atlas/config";
+import { isAllowedWebOrigin } from "./lib/web-origin.js";
 import { buildApp } from "./create-app.js";
 
 export type NodeHttpHandler = (
@@ -10,7 +11,7 @@ export type NodeHttpHandler = (
 ) => void;
 
 function listenPort(fallback: number): number {
-  const fromEnv = process.env.PORT?.trim();
+  const fromEnv = process.env.PORT?.trim() || process.env.API_PORT?.trim();
   if (fromEnv) {
     const n = Number(fromEnv);
     if (Number.isFinite(n) && n > 0) return n;
@@ -32,7 +33,20 @@ function configErrorHandler(message: string): NodeHttpHandler {
       hint: "Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env.",
     },
   });
-  return (_req, res) => {
+  return (req, res) => {
+    const origin = req.headers.origin;
+    const webOrigin = process.env.WEB_ORIGIN?.trim() || "http://localhost:3000";
+    if (origin && isAllowedWebOrigin(origin, webOrigin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Headers", "content-type, authorization");
+      res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS");
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     res.writeHead(503, { "content-type": "application/json; charset=utf-8" });
     res.end(body);
   };

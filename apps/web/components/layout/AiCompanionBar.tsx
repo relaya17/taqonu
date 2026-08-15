@@ -7,7 +7,6 @@ import {
   Collapse,
   IconButton,
   MenuItem,
-  Stack,
   TextField,
   Typography,
 } from "@mui/material";
@@ -84,19 +83,24 @@ export function AiCompanionBar() {
     <Box
       sx={{
         mb: 1,
-        py: 0.25,
-        borderBottom: "1px solid",
-        borderColor: "divider",
+        py: 0.5,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
       }}
       component="section"
       aria-label={t("label")}
     >
-      <Stack
-        direction="row"
-        spacing={0.75}
-        alignItems="center"
-        flexWrap="nowrap"
-        sx={{ minHeight: 36 }}
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+          gap: 0.75,
+          minHeight: 36,
+        }}
       >
         <Typography
           variant="caption"
@@ -114,14 +118,13 @@ export function AiCompanionBar() {
               ? `${activeLabel} · ${t("paidActive")}`
               : t("freeActive")
           }
-          sx={{ maxWidth: { xs: 140, sm: 220 } }}
+          sx={{ maxWidth: { xs: 180, sm: 240 } }}
         />
         <IconButton
           size="small"
           onClick={toggle}
           aria-expanded={expanded}
           aria-label={expanded ? t("collapse") : t("expand")}
-          sx={{ ml: "auto" }}
         >
           {expanded ? (
             <ExpandLessIcon fontSize="small" />
@@ -129,15 +132,19 @@ export function AiCompanionBar() {
             <ExpandMoreIcon fontSize="small" />
           )}
         </IconButton>
-      </Stack>
-      <Collapse in={expanded}>
-        <Stack
-          direction="row"
-          spacing={1}
-          alignItems="center"
-          flexWrap="wrap"
-          useFlexGap
-          sx={{ pb: 0.75, pt: 0.25 }}
+      </Box>
+      <Collapse in={expanded} sx={{ width: "100%" }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            flexWrap: "wrap",
+            gap: 1,
+            pb: 0.75,
+            pt: 0.5,
+          }}
         >
           <TextField
             select
@@ -177,7 +184,7 @@ export function AiCompanionBar() {
           >
             {t("browseModels")}
           </Typography>
-        </Stack>
+        </Box>
       </Collapse>
     </Box>
   );

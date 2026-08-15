@@ -113,6 +113,7 @@ export function loadServerEnv(
 
   if (result.data.NODE_ENV === "production") {
     assertProductionSecrets(result.data);
+    assertNotExampleSecrets(result.data);
   }
 
   return result.data;
@@ -155,6 +156,18 @@ function assertProductionSecrets(env: ServerEnv): void {
     throw new AtlasError(
       "CONFIG_ERROR",
       `Missing production secrets: ${missing.join(", ")}. Refusing to start.`,
+      { statusCode: 500 },
+    );
+  }
+}
+
+const EXAMPLE_SECRET = "12345678901234567890123456789012";
+
+function assertNotExampleSecrets(env: ServerEnv): void {
+  if (env.ENCRYPTION_KEY === EXAMPLE_SECRET || env.COOKIE_SECRET === EXAMPLE_SECRET) {
+    throw new AtlasError(
+      "CONFIG_ERROR",
+      "ENCRYPTION_KEY / COOKIE_SECRET still use the documented example value. Refusing to start in production.",
       { statusCode: 500 },
     );
   }

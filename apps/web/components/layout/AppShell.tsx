@@ -18,11 +18,15 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
+import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
+import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
+import { ClientOnly } from "@/components/layout/ClientOnly";
+import { useColorMode } from "@/components/providers/ColorModeProvider";
 import { atlasChrome as c } from "@/styles/palette";
 
 const DRAWER_WIDTH = 248;
@@ -126,7 +130,7 @@ const NAV_GROUPS: readonly {
   {
     id: "ops",
     labelKey: "opsGroup",
-    items: ["truth", "health", "readiness", "qa", "processAudit"],
+    items: ["truth", "health", "readiness", "qa", "processAudit", "observer", "sentinel"],
   },
   {
     id: "build",
@@ -167,6 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useTranslations();
   const locale = useLocale();
   const pathname = usePathname();
+  const { mode, toggleMode } = useColorMode();
   const isRtl = locale === "he" || locale === "ar";
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -293,6 +298,26 @@ export function AppShell({ children }: { children: ReactNode }) {
           OS
         </Box>
       </Typography>
+    );
+  };
+
+  const themeToggle = (opts?: { tone?: NavTone }) => {
+    const tone = navChrome[opts?.tone ?? "dark"];
+    const goDark = mode !== "dark";
+    return (
+      <IconButton
+        size="small"
+        onClick={toggleMode}
+        aria-label={goDark ? t("a11y.themeDark") : t("a11y.themeLight")}
+        title={t("nav.theme")}
+        sx={{ color: tone.accent }}
+      >
+        {goDark ? (
+          <DarkModeOutlinedIcon fontSize="small" />
+        ) : (
+          <LightModeOutlinedIcon fontSize="small" />
+        )}
+      </IconButton>
     );
   };
 
@@ -554,12 +579,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Button>
             </Stack>
           )}
-          <Box sx={{ pt: 1, display: { xs: "none", md: "block" } }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0}
+            sx={{ pt: 1, display: { xs: "none", md: "flex" } }}
+          >
+            {themeToggle({ tone: opts.tone ?? "dark" })}
             {langMenu("atlas-lang-menu", {
               mobile: opts.mobile,
               tone: opts.tone ?? "dark",
             })}
-          </Box>
+          </Stack>
         </Stack>
       </>
     );
@@ -628,11 +659,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             borderBottom: marketingTone.border,
             backdropFilter: "blur(16px) saturate(1.1)",
             WebkitBackdropFilter: "blur(16px) saturate(1.1)",
-            direction: "ltr",
           }}
         >
           {brandMark("/welcome", { size: "sm", tone: "dark" })}
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Stack
               direction="row"
               spacing={1}
@@ -688,6 +718,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 },
               }}
             >
+              {themeToggle({ tone: "dark" })}
               {langMenu("atlas-lang-menu-marketing", { tone: "dark" })}
               <IconButton
                 size="small"
@@ -782,7 +813,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const appMobileTone = navChrome.light;
+  const appMobileToneKey: NavTone = mode === "dark" ? "dark" : "light";
+  const appMobileTone = navChrome[appMobileToneKey];
 
   return (
     <Box
@@ -808,7 +840,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: "block", md: "none" },
-          [`& .MuiDrawer-paper`]: drawerPaperSx("light"),
+          [`& .MuiDrawer-paper`]: drawerPaperSx(appMobileToneKey),
         }}
         PaperProps={{
           ...drawerPaperProps,
@@ -824,7 +856,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <CloseIcon />
           </IconButton>
         </Stack>
-        {nav({ mobile: true, tone: "light" })}
+        {nav({ mobile: true, tone: appMobileToneKey })}
       </Drawer>
 
       {/* Desktop: permanent sidebar */}
@@ -859,23 +891,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           maxWidth: "100%",
           overflowX: "clip",
           p: { xs: 2, sm: 3, md: 4 },
+          pb: { xs: 3, md: 5 },
           outline: "none",
-          // App content: reading-start (right in RTL), never page-centered.
-          textAlign: "start",
+          textAlign: "center",
         }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
+        <Box
           component="header"
-          dir="ltr"
           sx={{
             mb: 2,
             minWidth: 0,
-            display: { xs: "flex", md: "none" },
-            mx: { xs: -2, sm: -3 },
-            px: { xs: 2, sm: 3 },
+            display: "flex",
+            alignItems: "center",
+            justifyContent: { xs: "space-between", md: "center" },
+            mx: { xs: -2, sm: -3, md: 0 },
+            px: { xs: 2, sm: 3, md: 0 },
             py: 1.25,
             bgcolor: appMobileTone.bgcolor,
             borderBottom: appMobileTone.border,
@@ -883,7 +913,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             WebkitBackdropFilter: "blur(16px) saturate(1.1)",
           }}
         >
-          {brandMark("/", { size: "sm", tone: "light" })}
+          <Box sx={{ display: { xs: "block", md: "none" } }}>
+            {brandMark("/", { size: "sm", tone: appMobileToneKey })}
+          </Box>
+          <Box sx={{ display: { xs: "none", md: "block" }, flex: 1 }} />
           <Stack
             direction="row"
             alignItems="center"
@@ -897,7 +930,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               },
             }}
           >
-            {langMenu("atlas-lang-menu-mobile", { mobile: true, tone: "light" })}
+            {themeToggle({ tone: appMobileToneKey })}
+            <Box sx={{ display: { xs: "block", md: "none" } }}>
+              {langMenu("atlas-lang-menu-mobile", {
+                mobile: true,
+                tone: appMobileToneKey,
+              })}
+            </Box>
             <IconButton
               ref={menuButtonRef}
               edge="end"
@@ -905,13 +944,47 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label={t("a11y.openMenu")}
               aria-expanded={navOpen}
               aria-controls={navId}
+              sx={{ display: { xs: "inline-flex", md: "none" } }}
             >
               <MenuIcon />
             </IconButton>
           </Stack>
-        </Stack>
-        <AiCompanionBar />
-        {children}
+        </Box>
+        <Box
+          sx={{
+            width: "100%",
+            maxWidth: 920,
+            mx: "auto",
+          }}
+        >
+          <AiCompanionBar />
+        </Box>
+        <Box
+          sx={{
+            width: "100%",
+            maxWidth: 920,
+            mx: "auto",
+            mb: { xs: 2, md: 3 },
+            minWidth: 0,
+            px: { xs: 2.5, sm: 3, md: 4 },
+            py: { xs: 2.5, sm: 3.5 },
+            bgcolor: "background.paper",
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 2,
+            boxSizing: "border-box",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            "& > *": {
+              mx: "auto",
+              width: "100%",
+            },
+          }}
+        >
+          <ClientOnly>{children}</ClientOnly>
+        </Box>
       </Box>
     </Box>
   );

@@ -100,7 +100,7 @@ export const judgeResultSchema = z.object({
   epistemicState: epistemicStateSchema,
 });
 
-export const agentDispatchResultSchema = z.object({
+const agentDispatchResultBaseSchema = z.object({
   id: uuidSchema,
   plan: agentPlanSchema,
   runs: z.array(agentRunResultSchema),
@@ -143,6 +143,10 @@ export const knowledgeSearchResultSchema = z.object({
   plainLanguage: z.string(),
   /** pgvector when live DB answered; local = file corpus + local embeddings. */
   retrievalBackend: z.enum(["pgvector", "local"]).optional(),
+});
+
+export const agentDispatchResultSchema = agentDispatchResultBaseSchema.extend({
+  knowledgePackage: knowledgeSearchResultSchema,
 });
 
 export const lessonLearnedSchema = z.object({

@@ -106,6 +106,27 @@ export function runLegalMediaReview(input: {
   }));
 
   if (!input.workspaceRoot) {
+    const findings = [
+      finding({
+        id: "no-root",
+        area: "evidence",
+        status: "UNKNOWN",
+        severity: "HIGH",
+        title: "Missing workspace evidence",
+        note: "Counsel-prep scan requires a linked project root.",
+        fixHint: "PUT /projects/:id/workspace-root then re-run legal media review.",
+        evidenceRefs: [],
+      }),
+    ];
+    const counselTopics = [
+      "Confirm product type (SaaS / publisher / UGC / ads) with licensed counsel",
+      "IL — Privacy Protection Authority, Justice, Communications, INCD portals",
+      "EU — GDPR + AI Act + DSA official EUR-Lex texts",
+      "US — FTC, DOJ, Copyright Office, California CPPA",
+      "Who owns IP in AI-assisted code — after a workspace is linked",
+    ];
+    const summaryEn =
+      "No workspaceRoot linked — cannot scan legal/media surfaces. Link a root, then re-run. This is not legal advice.";
     return legalMediaReviewSchema.parse({
       id: crypto.randomUUID(),
       projectId: input.projectId,
@@ -114,29 +135,21 @@ export function runLegalMediaReview(input: {
       disclaimerHe: LEGAL_MEDIA_DISCLAIMER_HE,
       disclaimerAr: LEGAL_MEDIA_DISCLAIMER_AR,
       lawyerReadiness: "INSUFFICIENT_EVIDENCE",
-      summaryEn:
-        "No workspaceRoot linked — cannot scan legal/media surfaces. Link a root, then re-run. This is not legal advice.",
+      summaryEn,
       summaryHe:
         "אין workspaceRoot מקושר — לא ניתן לסרוק משטחי משפט/מדיה. קשרו נתיב והריצו שוב. אין זו ייעוץ משפטי.",
-      findings: [
-        finding({
-          id: "no-root",
-          area: "evidence",
-          status: "UNKNOWN",
-          severity: "HIGH",
-          title: "Missing workspace evidence",
-          note: "Counsel-prep scan requires a linked project root.",
-          fixHint: "PUT /projects/:id/workspace-root then re-run legal media review.",
-          evidenceRefs: [],
-        }),
-      ],
-      counselTopics: [
-        "Confirm product type (publisher / UGC / ads / broadcast-adjacent)",
-        "Map jurisdictions (IL / EU / US) with counsel",
-      ],
+      findings,
+      counselTopics,
       verifiedSources: sources,
       epistemicState: "INSUFFICIENT_EVIDENCE",
       notALawyer: true,
+      briefMarkdown: buildBriefMarkdown({
+        lawyerReadiness: "INSUFFICIENT_EVIDENCE",
+        summaryEn,
+        findings,
+        counselTopics,
+        sources,
+      }),
     });
   }
 
@@ -265,6 +278,81 @@ export function runLegalMediaReview(input: {
       fixHint: "Publish operator identity + contact for legal notices.",
       evidenceRefs: has(/company|בע״מ|legal@|contact@|ח\.פ/i) ? ["entity-signal"] : [],
     }),
+    finding({
+      id: "oss-license",
+      area: "ip",
+      status: has(/^(?:.*\/)?LICENSE(?:\.\w+)?$/m) || has(/spdx-license|mit license|apache license|gnu gpl/i)
+        ? "PASS"
+        : "WARN",
+      severity: "HIGH",
+      title: "Open-source license file",
+      note: has(/license|spdx-license|mit license|apache license|gnu gpl/i)
+        ? "License signals found — counsel should confirm inbound/outbound obligations."
+        : "No clear LICENSE / SPDX signal — a high-tech lawyer will ask who may use this code.",
+      fixHint: "Add a LICENSE (and NOTICE if needed) and list third-party licenses.",
+      evidenceRefs: has(/license|spdx-license|mit license|apache license/i)
+        ? ["license-signal"]
+        : [],
+    }),
+    finding({
+      id: "secret-leak",
+      area: "security",
+      status: has(
+        /AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----|api[_-]?secret\s*[:=]\s*['"][^'"]{8,}|sk_live_|ghp_[A-Za-z0-9]{20,}/i,
+      )
+        ? "FAIL"
+        : "PASS",
+      severity: "CRITICAL",
+      title: "Credential / secret patterns",
+      note: has(
+        /AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----|api[_-]?secret\s*[:=]\s*['"][^'"]{8,}|sk_live_|ghp_[A-Za-z0-9]{20,}/i,
+      )
+        ? "Possible live credentials in the tree — counsel and security must treat this as incident material."
+        : "No obvious live-key patterns in the sampled tree. Not a guarantee the repo is clean.",
+      fixHint: "Rotate anything that looks live; move secrets to a vault; never commit keys.",
+      evidenceRefs: has(/AKIA[0-9A-Z]{16}|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|sk_live_|ghp_/i)
+        ? ["secret-signal"]
+        : [],
+    }),
+    finding({
+      id: "auth-tenant",
+      area: "security",
+      status: has(/oauth|openid|session|jwt|rbac|tenant.?isolat|row.?level.?security|login|auth0|clerk/i)
+        ? "PASS"
+        : "WARN",
+      severity: "HIGH",
+      title: "Auth / tenant isolation signals",
+      note: has(/oauth|openid|session|jwt|rbac|tenant|login/i)
+        ? "Auth/session signals present — counsel still needs the data-flow story."
+        : "Weak auth/tenant signals — a SaaS diligence review will stop here.",
+      fixHint: "Document login, roles, and tenant isolation before counsel review.",
+      evidenceRefs: has(/oauth|openid|session|jwt|login/i) ? ["auth-signal"] : [],
+    }),
+    finding({
+      id: "ai-system-surfaces",
+      area: "ai",
+      status: has(
+        /openai|anthropic|llm|gpt-|claude|gemini|foundry|copilot|model.?card|ai.?act/i,
+      )
+        ? has(
+            /transparenc|model.?card|ai.?disclosure|human.?oversight|high.?risk|ai.?act/i,
+          )
+          ? "PASS"
+          : "WARN"
+        : "UNKNOWN",
+      severity: "HIGH",
+      title: "AI system surfaces (counsel pointer)",
+      note: has(/openai|anthropic|llm|gpt-|claude|gemini|foundry|copilot/i)
+        ? has(/transparenc|model.?card|ai.?disclosure|human.?oversight|ai.?act/i)
+          ? "AI + transparency language found — counsel should still map EU AI Act / DSA duties."
+          : "AI/LLM signals without transparency language — raise EU AI Act and product disclosure with counsel."
+        : "No AI/LLM signals in the sampled tree — skip AI Act only if counsel confirms the product is not an AI system.",
+      fixHint:
+        "If the product is an AI system: document purpose, human oversight, and user-facing disclosure before the lawyer meeting. Not a legal classification.",
+      evidenceRefs: has(/openai|anthropic|llm|gpt-|claude|gemini|foundry|copilot/i)
+        ? ["ai-signal"]
+        : [],
+    }),
   ];
 
   const fails = findings.filter((f) => f.status === "FAIL").length;
@@ -286,12 +374,31 @@ export function runLegalMediaReview(input: {
   }
 
   const counselTopics = [
-    "Israel Privacy Protection Authority guidance vs product data flows",
-    "Whether UGC / publishing triggers notice-and-takedown duties",
-    "Advertising and sponsorship disclosure (IL + target markets)",
-    "Cross-border processing (EU GDPR / US FTC) if users abroad",
-    "Broadcast / communications licensing only if product is regulated media",
+    "IL — Privacy Protection Authority guidance vs product data flows and databases",
+    "IL — Communications / broadcast licensing only if the product is regulated media",
+    "IL — Cyber incident notification (INCD) if credentials or personal data leak",
+    "EU — GDPR controller/processor, consent, export, and erasure if EU users",
+    "EU — AI Act transparency / high-risk duties if the product is an AI system",
+    "EU — Digital Services Act notice-and-action if the product hosts UGC",
+    "US — FTC privacy, advertising, and endorsement disclosure",
+    "US — California CPPA / CCPA / CPRA if California residents are in scope",
+    "US — Copyright Office + inbound/outbound OSS and AI-assisted code ownership",
+    "US — DOJ portal as an enforcement pointer only — not a prediction",
+    "Cross-border — which licensed attorney (IL / US / EU) owns the first meeting",
   ];
+
+  const summaryEn =
+    lawyerReadiness === "READY_FOR_COUNSEL"
+      ? `Engineering package looks coherent enough to brief a high-tech lawyer (${passes} PASS · ${warns} WARN · ${fails} FAIL · ${unknowns} UNKNOWN). Still NOT legal advice.`
+      : lawyerReadiness === "NEEDS_FIXES"
+        ? `Fix engineering gaps before counsel deep-dive (${fails} FAIL · ${warns} WARN). Atlas is not a lawyer.`
+        : `Insufficient repo evidence for a counsel-prep score (${unknowns} UNKNOWN). Link richer surfaces or documents.`;
+  const summaryHe =
+    lawyerReadiness === "READY_FOR_COUNSEL"
+      ? `החבילה ההנדסית נראית מספיק עקבית לתדרוך עו״ד הייטק (${passes} עבר · ${warns} אזהרה · ${fails} נכשל). עדיין אין זו ייעוץ משפטי.`
+      : lawyerReadiness === "NEEDS_FIXES"
+        ? `יש לתקן פערים הנדסיים לפני עומק עם עו״ד (${fails} נכשל · ${warns} אזהרה). Atlas אינו עורך דין.`
+        : `אין מספיק ראיות במאגר לציון מוכנות לעו״ד (${unknowns} לא ידוע).`;
 
   return legalMediaReviewSchema.parse({
     id: crypto.randomUUID(),
@@ -301,22 +408,60 @@ export function runLegalMediaReview(input: {
     disclaimerHe: LEGAL_MEDIA_DISCLAIMER_HE,
     disclaimerAr: LEGAL_MEDIA_DISCLAIMER_AR,
     lawyerReadiness,
-    summaryEn:
-      lawyerReadiness === "READY_FOR_COUNSEL"
-        ? `Engineering package looks coherent enough to brief a media/comms lawyer (${passes} PASS · ${warns} WARN · ${fails} FAIL · ${unknowns} UNKNOWN). Still NOT legal advice.`
-        : lawyerReadiness === "NEEDS_FIXES"
-          ? `Fix engineering gaps before counsel deep-dive (${fails} FAIL · ${warns} WARN). Atlas is not a lawyer.`
-          : `Insufficient repo evidence for a counsel-prep score (${unknowns} UNKNOWN). Link richer surfaces or documents.`,
-    summaryHe:
-      lawyerReadiness === "READY_FOR_COUNSEL"
-        ? `החבילה ההנדסית נראית מספיק עקבית לתדרוך עו״ד מדיה/תקשורת (${passes} עבר · ${warns} אזהרה · ${fails} נכשל). עדיין אין זו ייעוץ משפטי.`
-        : lawyerReadiness === "NEEDS_FIXES"
-          ? `יש לתקן פערים הנדסיים לפני עומק עם עו״ד (${fails} נכשל · ${warns} אזהרה). Atlas אינו עורך דין.`
-          : `אין מספיק ראיות במאגר לציון מוכנות לעו״ד (${unknowns} לא ידוע).`,
+    summaryEn,
+    summaryHe,
     findings,
     counselTopics,
     verifiedSources: sources,
     epistemicState,
     notALawyer: true,
+    briefMarkdown: buildBriefMarkdown({
+      lawyerReadiness,
+      summaryEn,
+      findings,
+      counselTopics,
+      sources,
+    }),
   });
+}
+
+function buildBriefMarkdown(input: {
+  lawyerReadiness: LawyerReadiness;
+  summaryEn: string;
+  findings: LegalMediaFinding[];
+  counselTopics: string[];
+  sources: Array<{ titleEn: string; url: string; kind: string; region: string }>;
+}): string {
+  const lines = [
+    "# Counsel briefing pack",
+    "",
+    "> NOT legal advice. Atlas is not a lawyer. Give this pack to a licensed attorney.",
+    "",
+    `Readiness: **${input.lawyerReadiness}**`,
+    "",
+    input.summaryEn,
+    "",
+    "## Engineering findings",
+    "",
+  ];
+  for (const f of input.findings) {
+    lines.push(
+      `### ${f.title}`,
+      "",
+      `- Status: ${f.status} · Severity: ${f.severity} · Area: ${f.area}`,
+      `- ${f.note}`,
+      `- Fix: ${f.fixHint}`,
+      "",
+    );
+  }
+  lines.push("## Topics for licensed counsel", "");
+  for (const topic of input.counselTopics) {
+    lines.push(`- ${topic}`);
+  }
+  lines.push("", "## Verified sources (government / university / official)", "");
+  for (const s of input.sources) {
+    lines.push(`- [${s.titleEn}](${s.url}) · ${s.kind} · ${s.region}`);
+  }
+  lines.push("");
+  return lines.join("\n");
 }

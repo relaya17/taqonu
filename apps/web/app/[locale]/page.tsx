@@ -9,7 +9,6 @@ import {
   Chip,
   MenuItem,
   Skeleton,
-  Stack,
   TextField,
   Typography,
 } from "@mui/material";
@@ -20,6 +19,7 @@ import { apiGet } from "@/lib/api";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { PersonalDesk } from "@/components/dashboard/PersonalDesk";
+import { ResponsiveActions } from "@/components/layout/ResponsiveActions";
 import { Suspense } from "react";
 
 interface ProjectItem {
@@ -205,7 +205,18 @@ export default function DashboardPage() {
   };
 
   return (
-    <Stack spacing={4} sx={{ maxWidth: 920, width: "100%", minWidth: 0 }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        maxWidth: 920,
+        width: "100%",
+        minWidth: 0,
+        textAlign: "center",
+      }}
+    >
       <Box>
         <Typography
           variant="h1"
@@ -225,7 +236,7 @@ export default function DashboardPage() {
         >
           {t("brand.name")}
         </Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 640, mb: 2 }}>
+        <Typography color="text.secondary" sx={{ maxWidth: 640, mx: "auto", mb: 2 }}>
           {t("dashboard.pitch")}
         </Typography>
         <OnboardingPath
@@ -265,7 +276,7 @@ export default function DashboardPage() {
                 })
               : t("dashboard.byoDisconnected")}
         </Alert>
-        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+        <ResponsiveActions sx={{ mt: 2 }}>
           <Button component={Link} href="/systems" variant="contained" size="large">
             {t("dashboard.ctaSystems")}
           </Button>
@@ -281,11 +292,16 @@ export default function DashboardPage() {
           <Button component={Link} href="/experts" variant="outlined" size="large">
             {t("dashboard.ctaPartners")}
           </Button>
+          <Button component={Link} href="/legal-media" variant="outlined" size="large">
+            {t("dashboard.ctaCounsel")}
+          </Button>
           <Button component={Link} href="/readiness" variant="text" size="large">
             {t("dashboard.ctaReadiness")}
           </Button>
+        </ResponsiveActions>
+        <Box sx={{ mt: 1.25, display: "flex", justifyContent: "center" }}>
           <EpistemicChip state="INFERRED" />
-        </Stack>
+        </Box>
       </Box>
 
       <Box>
@@ -293,7 +309,7 @@ export default function DashboardPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           {t("dashboard.opsHelp")}
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
+        <ResponsiveActions compact sx={{ mt: 1.5 }}>
           <Button component={Link} href="/health" size="small" variant="outlined">
             {t("dashboard.opsHealth")}
           </Button>
@@ -311,11 +327,14 @@ export default function DashboardPage() {
           >
             {t("dashboard.opsProcessAudit")}
           </Button>
-        </Stack>
+          <Button component={Link} href="/legal-media" size="small" variant="outlined">
+            {t("dashboard.opsCounsel")}
+          </Button>
+        </ResponsiveActions>
       </Box>
 
       {projects.isLoading ? (
-        <Skeleton variant="rounded" height={56} sx={{ maxWidth: 420 }} />
+        <Skeleton variant="rounded" height={56} sx={{ maxWidth: 420, mx: "auto", width: "100%" }} />
       ) : (
         <TextField
           select
@@ -323,7 +342,13 @@ export default function DashboardPage() {
           label={t("dashboard.projectSelect")}
           value={projectId}
           onChange={(e) => setSelectedId(e.target.value)}
-          sx={{ maxWidth: 420 }}
+          sx={{
+            maxWidth: 420,
+            mx: "auto",
+            width: "100%",
+            "& .MuiSelect-select": { textAlign: "center" },
+            "& .MuiFormHelperText-root": { textAlign: "center", mx: 0 },
+          }}
           helperText={t("dashboard.projectSelectHelp")}
         >
           {(projects.data?.items ?? []).map((p) => (
@@ -348,17 +373,17 @@ export default function DashboardPage() {
       ) : null}
 
       {projectId && (verdict.isLoading || verdict.isFetching) && !verdict.data ? (
-        <Box sx={{ py: 3 }}>
+        <Box sx={{ py: 3, display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5 }}>
           <Skeleton width={220} height={24} />
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
             <Skeleton width={96} height={56} />
             <Skeleton width={100} height={32} />
-          </Stack>
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+          </Box>
+          <Box sx={{ display: "flex", justifyContent: "center", gap: 1, flexWrap: "wrap" }}>
             <Skeleton width={88} height={28} />
             <Skeleton width={88} height={28} />
             <Skeleton width={88} height={28} />
-          </Stack>
+          </Box>
         </Box>
       ) : null}
 
@@ -366,6 +391,11 @@ export default function DashboardPage() {
         <Box
           sx={{
             py: 3,
+            width: "100%",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
             borderTop: "1px solid rgba(26,31,42,0.14)",
             borderBottom: "1px solid rgba(26,31,42,0.14)",
           }}
@@ -373,18 +403,44 @@ export default function DashboardPage() {
           <Typography variant="overline" color="text.secondary">
             {verdict.data.projectName} · {t("dashboard.releaseLabel")}
           </Typography>
-          <Stack direction="row" spacing={2} alignItems="baseline" sx={{ mt: 1 }}>
-            <Typography sx={{ fontSize: "3rem", fontWeight: 700, lineHeight: 1 }}>
-              {verdict.data.productionReadiness}
-            </Typography>
-            <Typography color="text.secondary">/ 100</Typography>
+          <Box
+            sx={{
+              mt: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 1.25,
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "center",
+                gap: 1,
+              }}
+            >
+              <Typography sx={{ fontSize: "3rem", fontWeight: 700, lineHeight: 1 }}>
+                {verdict.data.productionReadiness}
+              </Typography>
+              <Typography color="text.secondary">/ 100</Typography>
+            </Box>
             <Chip
               color={statusColor}
               label={statusLabel(verdict.data.status)}
               sx={{ fontWeight: 700 }}
             />
-          </Stack>
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+          </Box>
+          <Box
+            sx={{
+              mt: 2,
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: 1,
+              width: "100%",
+            }}
+          >
             <Chip
               size="small"
               color="error"
@@ -417,27 +473,46 @@ export default function DashboardPage() {
                 n: Math.round(verdict.data.evidenceCoverage * 100),
               })}
             />
-          </Stack>
+          </Box>
 
           {verdict.data.blockerItems.length > 0 ? (
-            <Stack spacing={1} sx={{ mt: 2 }}>
+            <Box
+              sx={{
+                mt: 2,
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
               <Typography fontWeight={700}>{t("dashboard.blockersTitle")}</Typography>
               {verdict.data.blockerItems.slice(0, 8).map((b) => (
                 <Box
                   key={b.id}
                   sx={{
                     py: 1,
+                    width: "100%",
+                    textAlign: "center",
                     borderBottom: "1px solid rgba(26,31,42,0.08)",
                   }}
                 >
-                  <Stack direction="row" spacing={1} alignItems="center">
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 1,
+                    }}
+                  >
                     <Chip
                       size="small"
                       color={b.severity === "CRITICAL" ? "error" : "warning"}
                       label={severityLabel(b.severity)}
                     />
                     <Typography variant="body2">{b.title}</Typography>
-                  </Stack>
+                  </Box>
                   {b.evidenceRefs[0] ? (
                     <Typography variant="caption" color="text.secondary">
                       {t("dashboard.evidenceLabel")} {b.evidenceRefs[0]}
@@ -445,7 +520,7 @@ export default function DashboardPage() {
                   ) : null}
                 </Box>
               ))}
-            </Stack>
+            </Box>
           ) : null}
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.65 }}>
@@ -456,7 +531,7 @@ export default function DashboardPage() {
               unverified: verdict.data.unverifiedClaims,
             })}
           </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+          <ResponsiveActions compact sx={{ mt: 2 }}>
             <Button component={Link} href="/readiness" size="small" variant="outlined">
               {t("dashboard.viewCertificate")}
             </Button>
@@ -492,7 +567,7 @@ export default function DashboardPage() {
                 {t("dashboard.downloadExecutive")}
               </Button>
             ) : null}
-          </Stack>
+          </ResponsiveActions>
 
           {showReport && report.data ? (
             <Box
@@ -548,6 +623,6 @@ export default function DashboardPage() {
       <Suspense fallback={null}>
         <PersonalDesk />
       </Suspense>
-    </Stack>
+    </Box>
   );
 }

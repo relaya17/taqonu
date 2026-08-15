@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { runLegalMediaReview } from "@atlas/code-intelligence";
 import {
   VERIFIED_LEGAL_MEDIA_SOURCES,
+  legalSourcesByRegion,
   uuidSchema,
 } from "@atlas/shared";
 import { z } from "zod";
@@ -13,6 +14,7 @@ export async function registerLegalMediaRoutes(
   app.get("/api/v1/legal-media/sources", async () => ({
     note: "Allow-listed government / university / official bodies only. Not legal advice.",
     items: VERIFIED_LEGAL_MEDIA_SOURCES,
+    byRegion: legalSourcesByRegion(),
   }));
 
   app.post("/api/v1/legal-media/review", async (request) => {

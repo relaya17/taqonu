@@ -191,7 +191,7 @@ export function ExecutiveAuditPanel(props: {
                     </Button>
                   </Stack>
                   <Collapse in={openId === risk.id}>
-                    <Stack spacing={0.5} sx={{ mt: 1, pl: 0.5 }}>
+                    <Stack spacing={0.5} sx={{ mt: 1, ps: 0.5 }}>
                       <Typography variant="body2">
                         {t("findingWhy")}: {risk.why}
                       </Typography>

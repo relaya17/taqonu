@@ -8,6 +8,7 @@ import {
   knowledgeSearchRequestSchema,
   lessonLearnedSchema,
   VERIFIED_TECH_SOURCES,
+  VERIFIED_LEGAL_MEDIA_SOURCES,
   TECH_SOURCE_DOMAINS,
   buildVerifiedTechSourcesPack,
   buildVerifiedTechSourcesMarkdown,
@@ -40,6 +41,7 @@ import {
 } from "../services/hybrid-rag.js";
 import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import {
   knowledgeRefreshIsDue,
@@ -73,6 +75,14 @@ export async function registerAgentFabricRoutes(
   app.get("/api/v1/agents", async () => ({
     model: "ONE_BRAIN_MANY_SPECIALISTS_ONE_JUDGE",
     note: "Agent ≠ Model. Typed handoffs on Evidence Bus — not multi-LLM chat.",
+    knowledge: {
+      corpusDocs: listKnowledgeCorpus().length,
+      corpusSource: getKnowledgeCorpusSource(),
+      officialSources:
+        VERIFIED_TECH_SOURCES.length + VERIFIED_LEGAL_MEDIA_SOURCES.length,
+      specialists: listFabricAgents().length,
+      policy: "Dispatch injects allow-listed excerpts. Not textbooks. No blogs.",
+    },
     items: listFabricAgents().map((a) =>
       fabricAgentPublicSchema.parse({ ...a, trustLevel: "LAB" }),
     ),
@@ -172,11 +182,19 @@ export async function registerAgentFabricRoutes(
       budgetUsd: body.budgetUsd,
       runJudge: body.runJudge,
       specialistOverride: (agentId, request) => {
-        if (agentId !== "SECURITY") return null;
-        return runSecuritySpecialistViaSentinel({
-          request,
-          projectId: body.projectId ?? null,
-        });
+        if (agentId === "SECURITY") {
+          return runSecuritySpecialistViaSentinel({
+            request,
+            projectId: body.projectId ?? null,
+          });
+        }
+        if (agentId === "LEGAL_MEDIA_COMMS") {
+          return runLegalMediaSpecialistViaReview({
+            request,
+            projectId: body.projectId ?? null,
+          });
+        }
+        return null;
       },
     });
     atlasMetrics.record("agent_run_duration", Date.now() - started, {
@@ -341,7 +359,6 @@ export async function registerAgentFabricRoutes(
       "";
     const auth = request.headers.authorization ?? "";
     if (secret && auth === `Bearer ${secret}`) return;
-    if (!process.env.VERCEL && !secret) return;
     requireSignedInForWrite(app, request);
   }
 
@@ -386,7 +403,8 @@ export async function registerAgentFabricRoutes(
     runRefresh(request, reply),
   );
 
-  app.get("/api/v1/knowledge/corpus", async () => {
+  app.get("/api/v1/knowledge/corpus", async (request) => {
+    requireSignedInForWrite(app, request);
     ensureKnowledgeCorpusHydrated();
     return {
       items: listKnowledgeCorpus(),

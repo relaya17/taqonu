@@ -44,7 +44,7 @@ export function geniusRoute(request: string): GeniusRoute {
       q,
     )
   ) {
-    add("LEGAL_MEDIA_COMMS", "Legal media/comms counsel-prep (not a lawyer)");
+    add("LEGAL_MEDIA_COMMS", "Legal media/comms counsel-prep IL/US/EU (not a lawyer)");
     add("RESEARCHER", "Verified gov/university sources only");
     add("JUDGE", "Legal claims need belief gate");
   }

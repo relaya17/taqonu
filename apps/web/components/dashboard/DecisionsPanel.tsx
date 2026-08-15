@@ -199,7 +199,17 @@ export function DecisionsPanel({ embedded = false }: { embedded?: boolean }) {
   }, [evidenceQuery.data?.items, projectId]);
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: embedded ? "100%" : 920, width: "100%", minWidth: 0 }}>
+    <Stack
+      spacing={3}
+      sx={{
+        maxWidth: embedded ? "100%" : 920,
+        width: "100%",
+        minWidth: 0,
+        mx: "auto",
+        textAlign: "center",
+        alignItems: "center",
+      }}
+    >
       {!embedded ? (
         <Box>
           <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.4rem" }, wordBreak: "break-word" }}>
@@ -213,6 +223,7 @@ export function DecisionsPanel({ embedded = false }: { embedded?: boolean }) {
 
       <Box
         component="form"
+        sx={{ width: "100%" }}
         onSubmit={(e) => {
           e.preventDefault();
           if (!create.isPending && decision.trim().length >= 3) {
@@ -304,7 +315,7 @@ export function DecisionsPanel({ embedded = false }: { embedded?: boolean }) {
           type="submit"
           variant="contained"
           disabled={create.isPending || decision.trim().length < 3}
-          sx={{ alignSelf: "flex-start" }}
+          sx={{ alignSelf: "center", minWidth: 180 }}
         >
           {t("save")}
         </Button>

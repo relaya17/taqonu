@@ -26,4 +26,21 @@ describe("loadServerEnv", () => {
     expect(env.PRODUCT_CODENAME).toBe("Atlas");
     expect(env.API_PORT).toBe(4000);
   });
+
+  it("refuses documented example secrets in production", () => {
+    expect(() =>
+      loadServerEnv(
+        {
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://localhost:5432/atlas",
+          SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_ANON_KEY: "anon-key",
+          SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+          ENCRYPTION_KEY: "12345678901234567890123456789012",
+          COOKIE_SECRET: "12345678901234567890123456789012",
+        },
+        { loadEnvFile: false },
+      ),
+    ).toThrow(/example value/);
+  });
 });

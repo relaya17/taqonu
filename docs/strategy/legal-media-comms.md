@@ -5,11 +5,15 @@
 
 ## Purpose
 
-Simulate a media/communications counsel **prep** pass over an application:
+Engineering **counsel briefing pack** for a high-tech lawyer doing software due diligence — not a law-firm product and not legal advice.
 
 - Indicate `READY_FOR_COUNSEL` · `NEEDS_FIXES` · `INSUFFICIENT_EVIDENCE`
-- List engineering fixes before briefing a licensed attorney
+- List engineering fixes (privacy, license, secrets, auth, UGC) before briefing a licensed attorney
+- Downloadable Markdown brief (`briefMarkdown`)
 - Cite only allow-listed **government / university / official** sources (IL + EU + US + intl)
+- IL includes Justice, Privacy Protection Authority, Communications, Judicial Authority, INCD
+- EU includes GDPR, AI Act, DSA, EDPB, EDPS (EUR-Lex / europa.eu)
+- US includes FTC, FCC, DOJ, Copyright Office, California CPPA
 
 ## Surfaces
 

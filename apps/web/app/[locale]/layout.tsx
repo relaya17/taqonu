@@ -7,6 +7,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProviders } from "@/components/providers/AppProviders";
 import { AppShell } from "@/components/layout/AppShell";
 import { routing } from "@/i18n/routing";
+import { getSiteUrl } from "@/lib/site-url";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -20,6 +21,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "brand" });
   return {
+    metadataBase: new URL(getSiteUrl()),
     title: {
       default: t("name"),
       template: `%s · ${t("name")}`,

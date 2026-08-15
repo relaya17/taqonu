@@ -420,7 +420,7 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
     titleHe: "משפט · מדיה ותקשורת",
     titleAr: "قانون · إعلام واتصالات",
     focus:
-      "Engineering readiness for media/comms counsel (IL + international) — privacy, UGC, ads, broadcast, copyright signals. NOT a lawyer.",
+      "Engineering readiness for media/comms counsel (IL + US + EU official portals) — privacy, UGC, ads, AI surfaces, copyright. NOT a lawyer.",
     checklist: [
       "Privacy / terms surfaces discoverable",
       "Cookie / tracking consent signals",
@@ -476,6 +476,20 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
         titleHe: "פרסום ושידור",
         titleAr: "إعلان وبث",
         focus: "Sponsorship disclosure, ad rules, communications regulators",
+      },
+      {
+        id: "eu-ai-dsa",
+        titleEn: "EU AI Act & DSA pointers",
+        titleHe: "הפניות לחוק ה־AI ול־DSA",
+        titleAr: "إشارات إلى قانون الذكاء الاصطناعي وDSA",
+        focus: "Official EUR-Lex cites for counsel — not a legal classification",
+      },
+      {
+        id: "us-ftc-cppa",
+        titleEn: "US FTC / CPPA / copyright",
+        titleHe: "ארה״ב — FTC / CPPA / זכויות יוצרים",
+        titleAr: "الولايات المتحدة — FTC / CPPA / حقوق النشر",
+        focus: "Official US portals for counsel topics — not enforcement advice",
       },
     ],
   },

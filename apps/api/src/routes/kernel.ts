@@ -9,6 +9,8 @@ import {
   registeredAgentSchema,
   runAgentEvalRequestSchema,
   FABRIC_AGENT_IDS,
+  isAuthorizedOfficialKnowledgeUrl,
+  AtlasError,
   type FabricAgentId,
 } from "@atlas/shared";
 import {
@@ -36,6 +38,7 @@ import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { z } from "zod";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 
 export async function registerKernelRoutes(app: FastifyInstance): Promise<void> {
   hydrateKnowledgeCorpus({ enablePersist: true });
@@ -167,8 +170,23 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/kernel/knowledge/ingest", async (request, reply) => {
+    requireSignedInForWrite(app, request);
     hydrateKnowledgeCorpus({ enablePersist: true });
     const body = knowledgeIngestRequestSchema.parse(request.body);
+    if (body.url && !isAuthorizedOfficialKnowledgeUrl(body.url)) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "External knowledge URL is not on the verified/authorized allow-list.",
+        { statusCode: 403 },
+      );
+    }
+    if (!body.url && !body.projectScoped) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Non-project knowledge ingest requires a verified source URL.",
+        { statusCode: 400 },
+      );
+    }
     const { document: doc, corpus, pgvector } = await ingestKnowledgeClosedLoop(
       app.atlasEnv,
       {
@@ -194,7 +212,8 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/kernel/knowledge/corpus", async () => {
+  app.get("/api/v1/kernel/knowledge/corpus", async (request) => {
+    requireSignedInForWrite(app, request);
     hydrateKnowledgeCorpus({ enablePersist: true });
     return {
       items: listKnowledgeCorpus(),

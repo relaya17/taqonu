@@ -71,3 +71,26 @@ test.describe("Legacy orphan redirects (EN)", () => {
     await expect(page).toHaveURL(/\/en\/readiness/, { timeout: 30_000 });
   });
 });
+
+test.describe("Counsel + security surfaces (EN)", () => {
+  test("legal-media counsel briefing loads", async ({ page }) => {
+    await page.goto("/en/legal-media");
+    await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByText(/not legal advice/i).first()).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test("sentinel security check loads", async ({ page }) => {
+    await page.goto("/en/sentinel");
+    await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  });
+
+  test("observer loads", async ({ page }) => {
+    await page.goto("/en/observer");
+    await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  });
+});

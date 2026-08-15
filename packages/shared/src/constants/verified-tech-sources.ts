@@ -97,6 +97,28 @@ export const VERIFIED_TECH_SOURCES: readonly VerifiedTechSource[] = [
     excerptEn:
       "Official Node.js API documentation for the JavaScript server runtime.",
   },
+  {
+    id: "react-docs",
+    kind: "OFFICIAL_VENDOR_DOCS",
+    domain: "javascript",
+    titleEn: "React documentation",
+    titleHe: "תיעוד React",
+    url: "https://react.dev/reference/react",
+    topics: ["react", "javascript", "ui", "hooks", "jsx"],
+    excerptEn:
+      "Official React reference — components, hooks, and the React programming model.",
+  },
+  {
+    id: "nextjs-docs",
+    kind: "OFFICIAL_VENDOR_DOCS",
+    domain: "javascript",
+    titleEn: "Next.js documentation",
+    titleHe: "תיעוד Next.js",
+    url: "https://nextjs.org/docs",
+    topics: ["nextjs", "react", "app-router", "javascript", "web"],
+    excerptEn:
+      "Official Next.js documentation — App Router, routing, and production web apps.",
+  },
 
   // —— TypeScript ——
   {
@@ -423,6 +445,17 @@ export const VERIFIED_TECH_SOURCES: readonly VerifiedTechSource[] = [
     excerptEn:
       "US CISA — official cyber defense guidance, alerts, and best practices.",
   },
+  {
+    id: "il-incd",
+    kind: "GOVERNMENT_OR_STANDARDS",
+    domain: "cybersecurity",
+    titleEn: "Israel National Cyber Directorate",
+    titleHe: "מערך הסייבר הלאומי",
+    url: "https://www.gov.il/en/departments/israel_national_cyber_directorate",
+    topics: ["israel", "cyber", "gov.il", "incd", "government", "guidance"],
+    excerptEn:
+      "Israel National Cyber Directorate — official Israeli government cyber guidance. Not a substitute for counsel.",
+  },
 
   // —— Databases ——
   {
@@ -508,15 +541,19 @@ export const VERIFIED_TECH_SOURCES: readonly VerifiedTechSource[] = [
   },
 ];
 
+/** Hostname from an http(s) URL without relying on the DOM `URL` global. */
+export function httpUrlHostname(value: string): string | null {
+  const match = /^https?:\/\/([^/?#]+)/i.exec(value.trim());
+  const host = match?.[1];
+  return host ? host.toLowerCase() : null;
+}
+
 /** Hostnames (and parent suffixes) allowed for agent-facing tech knowledge. */
 export function verifiedTechSourceHosts(): readonly string[] {
   const hosts = new Set<string>();
   for (const s of VERIFIED_TECH_SOURCES) {
-    try {
-      hosts.add(new URL(s.url).hostname.toLowerCase());
-    } catch {
-      // skip malformed
-    }
+    const host = httpUrlHostname(s.url);
+    if (host) hosts.add(host);
   }
   return [...hosts];
 }
@@ -526,12 +563,8 @@ export function verifiedTechSourceHosts(): readonly string[] {
  * Agents / ingestion must reject non-matching external knowledge.
  */
 export function isAuthorizedVerifiedTechUrl(url: string): boolean {
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
+  const hostname = httpUrlHostname(url);
+  if (!hostname) return false;
   return verifiedTechSourceHosts().some(
     (host) => hostname === host || hostname.endsWith(`.${host}`),
   );

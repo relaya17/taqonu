@@ -81,7 +81,7 @@ export function ProductReel({
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          opacity: showEnd ? 0.35 : 1,
+          opacity: showEnd ? 0.55 : 1,
           transition: "opacity 0.4s ease",
         }}
       />
@@ -92,7 +92,7 @@ export function ProductReel({
           inset: 0,
           pointerEvents: "none",
           background: showEnd
-            ? "linear-gradient(180deg, rgba(14,17,22,0.7) 0%, rgba(14,17,22,0.92) 100%)"
+            ? "linear-gradient(180deg, rgba(14,17,22,0.28) 0%, rgba(14,17,22,0.42) 100%)"
             : "linear-gradient(90deg, rgba(14,17,22,0.78) 0%, rgba(14,17,22,0.4) 45%, rgba(14,17,22,0.2) 100%), linear-gradient(180deg, rgba(14,17,22,0.45) 0%, transparent 30%, rgba(14,17,22,0.55) 100%)",
         }}
       />
@@ -155,6 +155,21 @@ export function ProductReel({
             },
           }}
         >
+          <Stack
+            spacing={2.5}
+            alignItems="center"
+            sx={{
+              width: "100%",
+              maxWidth: 480,
+              px: { xs: 2.5, sm: 4 },
+              py: { xs: 3, sm: 4 },
+              bgcolor: "rgba(18, 20, 26, 0.48)",
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
+              border: "1px solid rgba(220, 221, 225, 0.16)",
+              borderRadius: 2,
+            }}
+          >
           <Typography
             sx={{
               fontFamily: '"Syne", "Rubik", sans-serif',
@@ -242,6 +257,7 @@ export function ProductReel({
               {t("ctaReplay")}
             </Button>
           ) : null}
+          </Stack>
         </Stack>
       ) : null}
     </Box>

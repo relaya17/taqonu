@@ -457,7 +457,7 @@ export default function TruthPage() {
         {proposeFix.isSuccess ? (
           <Alert severity="success">
             {proposeFix.data.note}{" "}
-            <Button component={Link} href="/patches" size="small" sx={{ ml: 1 }}>
+            <Button component={Link} href="/patches" size="small" sx={{ ms: 1 }}>
               {t("openPatches")}
             </Button>
           </Alert>
@@ -465,7 +465,7 @@ export default function TruthPage() {
         {linkError ? (
           <Alert severity="warning">
             {linkError}{" "}
-            <Button component={Link} href="/projects" size="small" sx={{ ml: 1 }}>
+            <Button component={Link} href="/projects" size="small" sx={{ ms: 1 }}>
               {t("openProjects")}
             </Button>
           </Alert>
@@ -790,7 +790,7 @@ export default function TruthPage() {
                   {(topFinding.evidenceRefs?.length ?? 0) > 0 ? (
                     <Box
                       component="ul"
-                      sx={{ m: 0, pl: 2, opacity: 0.8, fontSize: "0.8rem" }}
+                      sx={{ m: 0, ps: 2, opacity: 0.8, fontSize: "0.8rem" }}
                     >
                       {topFinding.evidenceRefs!.slice(0, 6).map((ref) => (
                         <li key={ref}>{ref}</li>

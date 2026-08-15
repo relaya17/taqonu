@@ -152,7 +152,7 @@ function TreeBranch({
         dense
         selected={selectedPath === node.path}
         onClick={() => onSelect(node.path, "file")}
-        sx={{ pl: 1 + depth * 1.1, borderRadius: 1, mx: 0.25 }}
+        sx={{ ps: 1 + depth * 1.1, borderRadius: 1, mx: 0.25 }}
       >
         <ListItemText
           primary={node.name}
@@ -166,7 +166,7 @@ function TreeBranch({
       <ListItemButton
         dense
         onClick={() => setOpen((v) => !v)}
-        sx={{ pl: 1 + depth * 1.1, borderRadius: 1, mx: 0.25 }}
+        sx={{ ps: 1 + depth * 1.1, borderRadius: 1, mx: 0.25 }}
       >
         <ListItemText
           primary={`${open ? "▾" : "▸"} ${node.name || "/"}`}

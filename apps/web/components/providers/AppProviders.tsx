@@ -46,8 +46,12 @@ function ThemedApp({
   const cacheOptions = useMemo(
     () =>
       direction === "rtl"
-        ? { key: "muirtl", stylisPlugins: [prefixer, rtlPlugin] }
-        : { key: "mui", stylisPlugins: [prefixer] },
+        ? {
+            key: "muirtl",
+            enableCssLayer: true,
+            stylisPlugins: [prefixer, rtlPlugin],
+          }
+        : { key: "mui", enableCssLayer: true, stylisPlugins: [prefixer] },
     [direction],
   );
 

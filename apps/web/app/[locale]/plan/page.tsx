@@ -132,13 +132,10 @@ export default function PlanPage() {
   const platform = platformQuery.data;
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 720 }}>
+    <Stack spacing={3} sx={{ maxWidth: 720, alignItems: "center", textAlign: "center" }}>
       <Box>
         <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
           {t("title")}
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          {t("subtitle")}
         </Typography>
         {platform ? (
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
@@ -164,7 +161,6 @@ export default function PlanPage() {
       <Button component={Link} href="/partners" variant="contained">
         {t("openAudit")}
       </Button>
-      <Alert severity="info">{t("sellBanner")}</Alert>
 
       <Box sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
         <Typography fontWeight={700} sx={{ mb: 1 }}>
@@ -259,10 +255,6 @@ export default function PlanPage() {
         </Box>
       </Stack>
 
-      <Button component={Link} href="/welcome" variant="text" size="small">
-        {t("openLanding")}
-      </Button>
-
       {plan ? (
         <>
           <Box sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
@@ -308,20 +300,8 @@ export default function PlanPage() {
             </Box>
           ) : null}
 
-          <Typography variant="body2" color="text.secondary">
-            {t("stripeHint")}
-          </Typography>
-
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {plan.tier !== "pro" ? (
-              <Button
-                variant="outlined"
-                disabled={setPlan.isPending}
-                onClick={() => setPlan.mutate("pro")}
-              >
-                {t("upgradePro")}
-              </Button>
-            ) : (
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent="center">
+            {plan.tier === "pro" ? (
               <Button
                 variant="outlined"
                 disabled={setPlan.isPending}
@@ -329,7 +309,7 @@ export default function PlanPage() {
               >
                 {t("downgradeFree")}
               </Button>
-            )}
+            ) : null}
             <Button component={Link} href="/settings/billing" variant="text">
               {t("openBilling")}
             </Button>

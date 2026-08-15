@@ -116,7 +116,16 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   });
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: embedded ? "100%" : 920 }}>
+    <Stack
+      spacing={3}
+      sx={{
+        maxWidth: embedded ? "100%" : 920,
+        width: "100%",
+        mx: "auto",
+        textAlign: "center",
+        alignItems: "center",
+      }}
+    >
       {!embedded ? (
         <Box>
           <Typography variant="h1">{t("title")}</Typography>
@@ -162,7 +171,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
         fullWidth
       />
 
-      <Button component={Link} href="/agent" variant="outlined" sx={{ alignSelf: "start" }}>
+      <Button component={Link} href="/agent" variant="outlined" sx={{ alignSelf: "center" }}>
         {t("openAgent")}
       </Button>
 

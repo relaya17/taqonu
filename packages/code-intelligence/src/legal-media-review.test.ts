@@ -10,7 +10,11 @@ describe("runLegalMediaReview", () => {
     expect(review.notALawyer).toBe(true);
     expect(review.lawyerReadiness).toBe("INSUFFICIENT_EVIDENCE");
     expect(review.disclaimerHe).toMatch(/ייעוץ משפטי/);
-    expect(review.verifiedSources.length).toBeGreaterThan(3);
+    expect(review.verifiedSources.length).toBeGreaterThan(15);
+    expect(review.counselTopics.some((topic) => /AI Act/i.test(topic))).toBe(
+      true,
+    );
+    expect(review.briefMarkdown).toMatch(/NOT legal advice/);
   });
 
   it("flags missing privacy/terms as NEEDS_FIXES on thin app", () => {
@@ -40,6 +44,8 @@ describe("runLegalMediaReview", () => {
         "copyright license attribution",
         "age gate under 18",
         "company בע״מ legal@example.com",
+        "MIT license SPDX-License-Identifier",
+        "oauth login session jwt tenant isolation",
       ].join("\n"),
     );
     const review = runLegalMediaReview({
@@ -50,5 +56,27 @@ describe("runLegalMediaReview", () => {
     expect(review.findings.every((f) => f.status === "PASS" || f.status === "UNKNOWN")).toBe(
       true,
     );
+    expect(review.briefMarkdown).toMatch(/NOT legal advice/);
+    expect(review.briefMarkdown).toMatch(/Counsel briefing pack/);
+    expect(review.counselTopics.some((topic) => /AI Act/i.test(topic))).toBe(
+      true,
+    );
+    expect(review.verifiedSources.some((s) => s.id === "eu-ai-act")).toBe(true);
+    expect(review.verifiedSources.some((s) => s.id === "us-doj")).toBe(true);
+  });
+
+  it("warns when AI surfaces lack transparency language", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atlas-legal-ai-"));
+    writeFileSync(join(dir, "app.md"), "We call OpenAI GPT-4 for every user.\n");
+    const review = runLegalMediaReview({
+      projectId: "11111111-1111-4111-8111-111111111111",
+      workspaceRoot: dir,
+    });
+    expect(
+      review.findings.some(
+        (f) => f.id === "ai-system-surfaces" && f.status === "WARN",
+      ),
+    ).toBe(true);
+    expect(review.notALawyer).toBe(true);
   });
 });
