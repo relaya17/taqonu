@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useProjectQueryParam } from "@/lib/use-project-query";
 import {
   Alert,
   Box,
@@ -59,7 +60,7 @@ interface EvidenceReport {
 export default function DashboardPage() {
   const t = useTranslations();
   const locale = useLocale();
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useProjectQueryParam("");
   const [showReport, setShowReport] = useState(false);
 
   const projects = useQuery({
@@ -68,6 +69,23 @@ export default function DashboardPage() {
       apiGet<{ items: ProjectItem[] }>("/api/v1/projects"),
     staleTime: 60_000,
   });
+
+  const systems = useQuery({
+    queryKey: ["managed-systems"],
+    queryFn: () =>
+      apiGet<{
+        items: {
+          id: string;
+          projectId: string | null;
+          name: string;
+          posture: "CLEAR" | "WATCH" | "BLOCKED" | "UNKNOWN";
+        }[];
+      }>("/api/v1/systems"),
+    staleTime: 30_000,
+  });
+  const blockedSystems = (systems.data?.items ?? []).filter(
+    (row) => row.posture === "BLOCKED",
+  );
 
   const golden = useQuery({
     queryKey: ["golden-project"],
@@ -194,6 +212,21 @@ export default function DashboardPage() {
             (p) => !p.workspaceRoot,
           ).length}
         />
+        {blockedSystems.length > 0 ? (
+          <Alert
+            severity="error"
+            sx={{ mt: 2, mb: 1 }}
+            action={
+              <Button component={Link} href="/systems" color="inherit" size="small">
+                {t("dashboard.ctaSystems")}
+              </Button>
+            }
+          >
+            {t("dashboard.blockedSystems", { count: blockedSystems.length })}
+            {": "}
+            {blockedSystems.map((row) => row.name).join(", ")}
+          </Alert>
+        ) : null}
         <Alert
           severity={byo.data?.status === "connected" ? "success" : "info"}
           sx={{ mt: 2, mb: 1 }}
@@ -212,7 +245,10 @@ export default function DashboardPage() {
               : t("dashboard.byoDisconnected")}
         </Alert>
         <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
-          <Button component={Link} href="/projects" variant="contained" size="large">
+          <Button component={Link} href="/systems" variant="contained" size="large">
+            {t("dashboard.ctaSystems")}
+          </Button>
+          <Button component={Link} href="/projects" variant="outlined" size="large">
             {t("dashboard.ctaProjects")}
           </Button>
           <Button component={Link} href="/studio" variant="outlined" size="large">

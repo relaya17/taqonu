@@ -12,6 +12,7 @@ import { renderObservationToEvidenceDrafts } from "@atlas/integrations-render";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 
 const vercelObserveSchema = z.object({
   projectId: uuidSchema,
@@ -113,6 +114,7 @@ export async function registerProviderAdapterRoutes(
 
   app.post("/api/v1/providers/vercel/observe", async (request, reply) => {
     const body = vercelObserveSchema.parse(request.body);
+    assertProjectWriteAccess(app, request, body.projectId);
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -190,6 +192,7 @@ export async function registerProviderAdapterRoutes(
 
   app.post("/api/v1/providers/render/observe", async (request, reply) => {
     const body = renderObserveSchema.parse(request.body);
+    assertProjectWriteAccess(app, request, body.projectId);
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");

@@ -6,6 +6,7 @@ import { engineeringIssueSchema, type AuthUser } from "@atlas/shared";
 import {
   autoApplyLowRemediations,
   persistAutoRemediationDrafts,
+  productionAutoApplyBlocked,
   shouldAutoApplyLow,
   verifyAppliedRemediation,
 } from "./remediation-pipeline.js";
@@ -153,5 +154,20 @@ describe("remediation-pipeline", () => {
     });
     expect(again.verify.ok).toBe(true);
     expect(again.patch.status).toBe("VERIFIED");
+  });
+
+  it("blocks production auto-apply unless explicitly allowed", () => {
+    const prev = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      expect(
+        productionAutoApplyBlocked({ projectId: null, allowProd: false }).blocked,
+      ).toBe(true);
+      expect(
+        productionAutoApplyBlocked({ projectId: null, allowProd: true }).blocked,
+      ).toBe(false);
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
   });
 });

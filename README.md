@@ -21,18 +21,35 @@ Keep this table in sync when you bump `package.json` versions.
 
 ---
 
+## Current product state (keep honest)
+
+Atlas is a **Truth & Control Layer**, not an AI coding assistant. Scores below
+are operator ratings — not marketing.
+
+| Surface | Score | What is true today |
+| --- | --- | --- |
+| Managed System / truth bind | **8/10** | Facets counted from evidence + feeds; contract persisted; invariants verified; ACT gated |
+| ACT / observe security | **8/10** | Project ownership on approve/apply/observe; no production auto-apply; `assertNoSecrets` on LLM egress |
+| Systems command center | **8/10** | Blocked-first `/systems` → `/systems/:id` → Truth / Health / Gates / Patches |
+| GTM offer | **6.5/10** | Landing + Plan sell a one-week **Readiness Audit**; design-partner tracker is empty on purpose |
+| **As a truth & control plane** | **~7.5/10** | 10 needs one live production system + a real partner readout |
+
+Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
+
 ## Where to sell (in the app)
 
-Monetization is **Atlas usage freemium** — not Atlas-hosted storage:
+The offer is a **Readiness Audit**. Usage meters exist so the product stays
+honest — they are not the product. Storage is BYO, not Atlas-hosted.
 
 | Surface | URL | What the user sees |
 | --- | --- | --- |
-| **Marketing landing** | `/he/welcome` · alias `/marketing` | Hero + Free/Pro (BYO Cloudflare story) |
-| **Pricing / Plan** | `/he/plan` | Connect Cloudflare BYO · usage quotas · Stripe |
+| **Marketing landing** | `/he/welcome` · alias `/marketing` | Audit hero · request intake · BYO story |
+| **Systems command center** | `/he/systems` · `/he/systems/:id` | Blocked-first Managed Systems |
+| **Audit intake** | `/he/partners` | Import one repo → Verdict + Evidence |
+| **Plan** | `/he/plan` | Audit first · then Free/Pro ceilings · Cloudflare BYO |
 | **Billing settings** | `/he/settings/billing` | Tenant plan + upgrade |
-| **Nav** | **מחירים / Pricing** + **דף נחיתה** | Primary nav |
-| **Upgrade CTA** | Sidebar when tier is `free` | Persistent sell |
-| **Projects** | Banner → Plan | Usage sell message |
+| **Nav** | **Systems** first · **Audit & plan** · Landing | Primary nav |
+| **Upgrade CTA** | Sidebar when tier is `free` | After-audit usage, not the pitch |
 
 ### Plan model (storage policy v2)
 
@@ -123,15 +140,16 @@ Atlas gives: **what is verified, what isn’t, what’s dangerous — and the Ev
 | Surface | URL / API |
 | --- | --- |
 | Marketing landing | `/he/welcome` |
-| Systems command center | `/he/systems` · `GET /api/v1/systems` |
-| Release Verdict (app home) | `/he` · `GET /api/v1/projects/:id/verdict` |
-| Pricing | `/he/plan` · `GET/POST /api/v1/billing/plan` |
+| Systems command center | `/he/systems` · `/he/systems/:id` · `GET /api/v1/systems` · `GET\|PUT /api/v1/systems/:id/contract` |
+| Truth | `/he/truth?project=` · Observer findings |
+| System Health | `/he/health?project=` |
+| Release Verdict (app home) | `/he?project=` · `GET /api/v1/projects/:id/verdict` |
+| Audit intake | `/he/partners` |
+| Plan | `/he/plan` · `GET/POST /api/v1/billing/plan` |
+| Production Readiness / Gates | `/he/readiness?project=` |
 | Workbench | `/he/workbench` |
 | Studio | `/he/studio` |
 | E2E process audit | `/he/process-audit` · `POST /api/v1/qa/process-audit` |
-| Production Readiness | `/he/readiness` |
-| Partners | `/he/partners` |
-| System Health | `/he/health` |
 | Admin (separate) | `/admin` · `/admin/login` · Command Center (watchdog / knowledge / automation) |
 | Investors deck | `/investors` |
 
@@ -161,9 +179,10 @@ Not the LLM. **Engineering Evidence Graph + historical engineering memory.**
 
 Playbooks live under `docs/strategy/`.
 
-Pricing in product today: **Free / Pro** usage quotas + optional evidence mirror
-(Pro) + **BYO Cloudflare** for customer data. Broader Developer · Team · Company ·
-Enterprise packaging can sit on top later — sell **time + risk + money**.
+Pricing in product today: lead with the **Audit**; Free / Pro are usage ceilings
+after that + optional evidence mirror (Pro) + **BYO Cloudflare** for customer
+data. Broader Developer · Team · Company · Enterprise packaging can sit on top
+later — sell **time + risk + money**, not seats.
 
 ---
 
@@ -171,14 +190,17 @@ Enterprise packaging can sit on top later — sell **time + risk + money**.
 
 | Area | Capability |
 | --- | --- |
+| Systems | Managed System list + detail · real facets · persisted contract · invariant PASS/FAIL |
 | Verdict | Release status READY/CONDITIONAL/BLOCKED + Evidence |
+| Truth / Health | `?project=` drill-down from a blocked system |
 | Readiness | Certificate with openable dimensions |
+| ACT | Approve → Apply is ownership-gated; LOW auto-apply never hits production |
 | Workbench | Files · code · Visual Studio path · Cloud consoles · Cursor · agent chat |
 | Studio | Human view-only · agent proposes patches (Approve → Apply) |
 | Process / E2E | Internal deep process audits · opinion-style UI |
-| Freemium | Usage quotas + BYO Cloudflare + optional Pro evidence mirror + Stripe |
+| Freemium | Audit offer · usage ceilings · BYO Cloudflare · optional Pro evidence mirror |
 | Verified knowledge | Allow-listed tech sources · admin pack download |
-| Partners | External repo connect + usage analytics |
+| Partners | Audit intake · external repo connect — no invented customers |
 
 Normative: [ADR-014](docs/adr/ADR-014-evidence-governance-north-star.md) ·
 [ADR-015](docs/adr/ADR-015-governed-native-code-engineering.md) ·
@@ -198,9 +220,10 @@ pnpm dev
 | Surface | URL |
 | --- | --- |
 | Landing (HE) | http://localhost:3000/he/welcome |
+| Systems | http://localhost:3000/he/systems |
 | App home | http://localhost:3000/he |
-| Pricing | http://localhost:3000/he/plan |
-| Workbench | http://localhost:3000/he/workbench |
+| Audit intake | http://localhost:3000/he/partners |
+| Plan | http://localhost:3000/he/plan |
 | API | http://localhost:4000 |
 
 ```bash
@@ -214,11 +237,12 @@ pnpm proof:run
 1. Epistemic labels always visible.  
 2. “Exists in code” ≠ “proven in production”.  
 3. WRITE is approval-gated (ADR-015).  
-4. Secrets redacted before LLM egress.  
+4. Secrets redacted + `assertNoSecrets` before LLM egress.  
 5. External AIs / editors are workers; Atlas is truth + gate.  
 6. Atlas must audit itself (DEF-000) — Atlas is a Managed System.  
 7. Connectors observe from outside; do not wire Atlas “into every app.”  
-8. **README versions + sell surfaces stay current** when the product changes.
+8. ACT is last: verified evidence + policy + human approval. Auto-apply never hits production.  
+9. **README, landing, Plan, and this score table stay current** when the product changes.
 
 ---
 

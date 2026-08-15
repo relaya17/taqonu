@@ -3,7 +3,7 @@
 **שם לזכור:** `TRUTH-10`  
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
-**עדכון אחרון:** 2026-08-15 (**P2.8 Managed System / Truth & Control Layer**)  
+**עדכון אחרון:** 2026-08-15 (**P2.8b bind Managed System — facets, contract, ACT auth, command path**)  
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)  
 **סטטוס מוצר (MVP Proof):** P0 `DONE` · Sentinel `DONE` · P1 deepen `PARTIAL→stronger` · GTM packs READY (human ops)
 
@@ -78,7 +78,7 @@
 | 2.5 | Case studies + Seed narrative | `PARTIAL` — template + [`seed-narrative.md`](./seed-narrative.md) |
 | 2.6 | **Admin Oracle / Command Agent** (לוח בקרה יוקרתי) | `PARTIAL` — A1 + Sentinel feed + approve/verify audit + digest persist |
 | 2.7 | **Atlas Sentinel** (Defensive Security Agent) | `DONE` — S1.1–S1.7 (specialist packs) |
-| 2.8 | **Managed System abstraction** (command center, not rewrite) | `PARTIAL` — `@atlas/system-model` · `/systems` · `GET /api/v1/systems` · Atlas-self (DEF-000). Stripe/Generic REST **not** added. |
+| 2.8 | **Managed System abstraction** (command center, not rewrite) | `DONE` for bind — real facets from evidence/feeds · persisted contract + invariant verify · `/systems/:id` · ACT ownership + no prod auto-apply. Stripe/Generic REST **not** added. |
 
 ---
 
@@ -280,6 +280,7 @@ Sprint C
 | 2026-08-13 | **Closeout:** S1.7 specialist packs · Oracle←Sentinel · prod/ADR harden · G3/G4/WTP + Paid Beta packs · seed narrative · benchmarking seed |
 | 2026-08-13 | **P1/A1/P2 deepen:** re-observe verify · failed-deploy INCIDENT · DECIDED_BY topics · Check Run annotations · Oracle audit/digest persist · truth-benchmark API · EA agreement draft |
 | 2026-08-15 | **P2.8:** Managed System layer — Truth/Control Plane over connectors; `/systems`; Atlas-self; no rewrite |
+| 2026-08-15 | **P2.8b bind:** real facets · persisted contract + invariant verify · ACT ownership · no prod auto-apply · Systems command path · Audit offer copy |
 
 ---
 
@@ -294,7 +295,7 @@ Sprint C
 | Expected API | `GET/PUT /api/v1/projects/:id/observer/expected` |
 | Snapshots API | `GET /api/v1/projects/:id/observer/snapshots` |
 | Health (ישן/מקביל) | `apps/web/app/[locale]/health` |
-| Managed Systems | `packages/system-model` · `/systems` · `GET /api/v1/systems` |
+| Managed Systems | `packages/system-model` · `/systems` · `/systems/:id` · `GET /api/v1/systems` · `GET|PUT /api/v1/systems/:id/contract` |
 | Truth dashboard | `apps/web/app/[locale]/truth` |
 | Admin Oracle | `/admin/oracle` · סעיף **A1** |
 | Atlas Sentinel | `/sentinel` · `packages/observer/src/security` · `GET/POST …/sentinel` · סעיף **S1** |

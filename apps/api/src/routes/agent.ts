@@ -9,6 +9,7 @@ import {
   verifyAgentResponse,
   redactSecrets,
   detectSecrets,
+  assertNoSecrets,
 } from "@atlas/agent-core";
 import { buildExpertSystemBlock, selectExperts } from "@atlas/experts";
 import {
@@ -249,16 +250,19 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
           context,
         ].join("\n"),
       );
+      const userRequest = redactSecrets(body.userRequest);
+      assertNoSecrets(system, "llm.system");
+      assertNoSecrets(userRequest, "llm.user");
 
       try {
         const llm = paidRun
           ? await completeStrict(llmEnvOverride, [
               { role: "system", content: system },
-              { role: "user", content: redactSecrets(body.userRequest) },
+              { role: "user", content: userRequest },
             ])
           : await completeWithFreeFallback(llmEnvOverride, [
               { role: "system", content: system },
-              { role: "user", content: redactSecrets(body.userRequest) },
+              { role: "user", content: userRequest },
             ]);
         llmProvider = llm.provider;
         answer = redactSecrets(

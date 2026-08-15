@@ -12,6 +12,7 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 
 /**
  * Customer Mongo/Supabase as **observation feeds** → DATABASE evidence.
@@ -20,6 +21,7 @@ import { resolveCloudIdentity } from "../services/cloud-identity.js";
 export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/v1/feeds/supabase", async (request, reply) => {
     const body = supabaseFeedInputSchema.parse(request.body);
+    assertProjectWriteAccess(app, request, body.projectId);
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeSupabaseFeed(body);
     const now = new Date().toISOString();
@@ -70,6 +72,7 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
 
   app.post("/api/v1/feeds/mongodb", async (request, reply) => {
     const body = mongoFeedInputSchema.parse(request.body);
+    assertProjectWriteAccess(app, request, body.projectId);
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeMongoFeed(body);
     const now = new Date().toISOString();

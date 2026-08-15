@@ -16,6 +16,7 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 
 const vercelFeedBodySchema = z.object({
   projectId: uuidSchema,
@@ -44,6 +45,7 @@ export async function registerDeployFeedRoutes(
 ): Promise<void> {
   app.post("/api/v1/feeds/vercel", async (request, reply) => {
     const body = vercelFeedBodySchema.parse(request.body);
+    assertProjectWriteAccess(app, request, body.projectId);
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeVercelFeed({
       projectId: body.projectId,
@@ -148,6 +150,7 @@ export async function registerDeployFeedRoutes(
 
   app.post("/api/v1/feeds/render", async (request, reply) => {
     const body = renderFeedBodySchema.parse(request.body);
+    assertProjectWriteAccess(app, request, body.projectId);
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeRenderFeed({
       projectId: body.projectId,

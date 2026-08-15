@@ -115,41 +115,29 @@ const PATHS: Record<NavKey, string> = {
 /** Slim primary nav — state/chat/agent/proof removed; QA+health under dashboard ops. */
 const NAV_GROUPS: readonly {
   readonly id: string;
-  readonly labelKey?: "opsGroup" | "workspaceGroup";
+  readonly labelKey?: "opsGroup" | "workspaceGroup" | "buildGroup";
+  readonly collapsedByDefault?: boolean;
   readonly items: readonly NavKey[];
 }[] = [
   {
     id: "main",
-    items: [
-      "dashboard",
-      "systems",
-      "projects",
-      "studio",
-      "workbench",
-      "agents",
-      "experts",
-      "plan",
-    ],
+    items: ["systems", "dashboard", "projects", "plan"],
   },
   {
     id: "ops",
     labelKey: "opsGroup",
-    items: [
-      "truth",
-      "health",
-      "readiness",
-      "qa",
-      "processAudit",
-    ],  },
+    items: ["truth", "health", "readiness", "qa", "processAudit"],
+  },
+  {
+    id: "build",
+    labelKey: "buildGroup",
+    collapsedByDefault: true,
+    items: ["studio", "workbench", "agents", "experts"],
+  },
   {
     id: "workspace",
     labelKey: "workspaceGroup",
-    items: [
-      "models",
-      "integrations",
-      "legalMedia",
-      "settings",
-    ],
+    items: ["models", "integrations", "partners", "legalMedia", "settings"],
   },
 ];
 
@@ -184,6 +172,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Small screens: closed by default; hamburger opens overlay drawer. */
   const [navOpen, setNavOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(
+    () =>
+      Object.fromEntries(
+        NAV_GROUPS.filter((group) => group.collapsedByDefault).map((group) => [
+          group.id,
+          true,
+        ]),
+      ),
+  );
   const [langAnchor, setLangAnchor] = useState<null | HTMLElement>(null);
   const navId = useId();
   const anchor = isRtl ? "right" : "left";
@@ -376,13 +373,36 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Stack>
 
         <Box component="nav" aria-label={t("nav.main")}>
-          {NAV_GROUPS.map((group) => (
+          {NAV_GROUPS.map((group) => {
+            const groupSelected = group.items.some((key) =>
+              isNavSelected(key, pathname),
+            );
+            const collapsed =
+              Boolean(group.collapsedByDefault) &&
+              collapsedGroups[group.id] !== false &&
+              !groupSelected;
+            return (
             <Box key={group.id} sx={{ mb: group.labelKey ? 1.5 : 0.5 }}>
               {group.labelKey ? (
                 <Typography
+                  component={group.collapsedByDefault ? "button" : "span"}
                   variant="caption"
+                  onClick={
+                    group.collapsedByDefault
+                      ? () =>
+                          setCollapsedGroups((prev) => ({
+                            ...prev,
+                            [group.id]: prev[group.id] === false,
+                          }))
+                      : undefined
+                  }
                   sx={{
                     display: "block",
+                    width: "100%",
+                    textAlign: "start",
+                    background: "none",
+                    border: 0,
+                    cursor: group.collapsedByDefault ? "pointer" : "default",
                     px: 1.5,
                     pt: 1,
                     pb: 0.5,
@@ -395,8 +415,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                   }}
                 >
                   {t(`nav.${group.labelKey}`)}
+                  {group.collapsedByDefault
+                    ? collapsed
+                      ? " ▸"
+                      : " ▾"
+                    : ""}
                 </Typography>
               ) : null}
+              {collapsed ? null : (
               <List dense disablePadding>
                 {group.items.map((key) => {
                   const href = PATHS[key];
@@ -438,8 +464,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   );
                 })}
               </List>
+              )}
             </Box>
-          ))}
+            );
+          })}
         </Box>
 
         <Stack spacing={1} sx={{ mt: "auto", px: 1, pt: 3 }}>

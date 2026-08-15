@@ -2,8 +2,8 @@
 
 **Status:** Architecture add-on (does not rewrite Atlas)  
 **Package:** `@atlas/system-model`  
-**API:** `GET /api/v1/systems` · `GET /api/v1/systems/:id/contract`  
-**UI:** `/systems`
+**API:** `GET /api/v1/systems` · `GET /api/v1/systems/:id` · `GET|PUT /api/v1/systems/:id/contract`  
+**UI:** `/systems` · `/systems/:id`
 
 Atlas is **not** an AI coding assistant and **not** “an AI wired to every app.”
 
@@ -39,8 +39,18 @@ ACT is last: recommendation → risk → policy → approval → execution → v
 
 Do **not** add Generic REST or Stripe ACT until GitHub + deploy + graph stay green on one customer system.
 
-## Next deepen (not this slice)
+## Bound in this slice
 
-- Facets as first-class graph nodes (workers, jobs, environments)
-- Stripe / Sentry READ+OBSERVE only
-- Persist System Contract per system (today: proposed default)
+- Facets counted from evidence, connector feeds, gates, decisions, and portfolio health
+- System Contract persisted in osStore (`system.contract.v1.<id>`)
+- Invariant verifier: requiredEvidence tokens vs observed evidence (PASS / FAIL / UNKNOWN)
+- Control loop phase derived; ACT eligible only after confirmed contract + passing invariants
+- WRITE on patch approve/apply/rollback and observe feeds requires project ownership
+- LOW auto-apply never runs in `NODE_ENV=production` or against a production deploy target unless `ATLAS_ALLOW_PROD_AUTO_APPLY=true`
+
+## Still hollow / deferred
+
+- Facets are counts, not first-class graph nodes
+- Stripe / Sentry / Generic REST not added
+- Knowledge/memory tenant partition is a separate isolation track
+- Design-partner outreach stays human — tracker is empty on purpose

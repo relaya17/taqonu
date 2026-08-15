@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Alert,
   Box,
@@ -17,6 +17,7 @@ import { useTranslations } from "next-intl";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import { useProjectQueryParam } from "@/lib/use-project-query";
 
 interface ProjectItem {
   id: string;
@@ -128,7 +129,7 @@ function ScoreRail({
 export default function TruthPage() {
   const t = useTranslations("truth");
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useProjectQueryParam("");
 
   const projects = useQuery({
     queryKey: ["projects"],

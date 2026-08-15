@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   applyPatchSchema,
   approvePatchSchema,
@@ -7,6 +7,7 @@ import {
   AtlasError,
   ENGINEERING_AGENT_MODES,
   type EngineeringAgentMode,
+  type PatchArtifact,
 } from "@atlas/shared";
 import {
   analyzeImpact,
@@ -22,10 +23,22 @@ import { osStore } from "../store/os-store.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 import {
   approvePatchArtifact,
   applyApprovedPatch,
 } from "../services/patch-write.js";
+
+function assertPatchWrite(
+  app: FastifyInstance,
+  request: FastifyRequest,
+  patch: PatchArtifact,
+) {
+  if (patch.projectId) {
+    return assertProjectWriteAccess(app, request, patch.projectId);
+  }
+  return requireSignedInForWrite(app, request);
+}
 
 const analyzeBody = z.object({
   workspaceRoot: z.string().min(1).max(1000),
@@ -313,13 +326,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/patches/:id/approve", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = approvePatchSchema.parse(request.body ?? {});
     const existing = osStore.getPatch(id);
     if (!existing) {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
+    const user = assertPatchWrite(app, request, existing);
     return approvePatchArtifact(existing, {
       approvedBy: body.approvedBy?.trim() || user.email,
       ...(body.note !== undefined ? { note: body.note } : {}),
@@ -328,13 +341,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/patches/:id/apply", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = applyPatchSchema.parse(request.body ?? {});
     const existing = osStore.getPatch(id);
     if (!existing) {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
+    const user = assertPatchWrite(app, request, existing);
     return applyApprovedPatch({
       existing,
       user,
@@ -343,7 +356,6 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/patches/:id/rollback", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000) })
@@ -352,6 +364,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
+    const user = assertPatchWrite(app, request, existing);
     if (existing.status !== "APPLIED" && existing.status !== "VERIFIED") {
       throw new AtlasError(
         "VALIDATION_ERROR",

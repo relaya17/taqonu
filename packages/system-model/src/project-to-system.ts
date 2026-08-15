@@ -1,6 +1,7 @@
 import {
   ATLAS_SELF_SYSTEM_ID,
   MANAGED_SYSTEM_FACETS,
+  type ControlLoopPhase,
   type ManagedSystem,
   type ManagedSystemFacetState,
   type PortfolioVerdictHint,
@@ -49,6 +50,8 @@ export function projectToManagedSystem(input: {
   mediumRisks?: number;
   summary?: string;
   observedFacets?: Partial<Record<ManagedSystemFacetState["facet"], number>>;
+  loopPhase?: ControlLoopPhase;
+  actEligible?: boolean;
   asOf?: string;
 }): ManagedSystem {
   const verdict = input.verdictHint ?? "UNKNOWN";
@@ -77,6 +80,8 @@ export function projectToManagedSystem(input: {
     workspaceRoot: input.workspaceRoot ?? null,
     facets,
     selfManaged: false,
+    loopPhase: input.loopPhase ?? "DISCOVER",
+    actEligible: input.actEligible ?? false,
     asOf: input.asOf ?? new Date().toISOString(),
     epistemicState: verdict === "UNKNOWN" ? "UNKNOWN" : "INFERRED",
   };
@@ -87,6 +92,9 @@ export function atlasSelfManagedSystem(input?: {
   asOf?: string;
   posture?: SystemPosture;
   summary?: string;
+  observedFacets?: Partial<Record<ManagedSystemFacetState["facet"], number>>;
+  loopPhase?: ControlLoopPhase;
+  actEligible?: boolean;
 }): ManagedSystem {
   const asOf = input?.asOf ?? new Date().toISOString();
   return {
@@ -104,17 +112,23 @@ export function atlasSelfManagedSystem(input?: {
     criticalGaps: 0,
     mediumRisks: 0,
     workspaceRoot: null,
-    facets: MANAGED_SYSTEM_FACETS.map((name) =>
-      facet(
+    facets: MANAGED_SYSTEM_FACETS.map((name) => {
+      const count = input?.observedFacets?.[name];
+      if (count != null) {
+        return facet(name, count > 0, count);
+      }
+      return facet(
         name,
         name === "identity" ||
           name === "policies" ||
           name === "evidence" ||
           name === "health",
         name === "identity" ? 1 : 0,
-      ),
-    ),
+      );
+    }),
     selfManaged: true,
+    loopPhase: input?.loopPhase ?? "VERIFY",
+    actEligible: input?.actEligible ?? false,
     asOf,
     epistemicState: "INFERRED",
   };

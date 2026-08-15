@@ -29,6 +29,30 @@ import {
 } from "./patch-write.js";
 import { executeObserveCycle } from "./observe-cycle.js";
 import { appendOracleAudit } from "./admin-oracle-digest.js";
+import { projectHasProductionTarget } from "./observe-system-facets.js";
+
+/** Auto-apply never hits production unless ATLAS_ALLOW_PROD_AUTO_APPLY=true. */
+export function productionAutoApplyBlocked(input: {
+  projectId: string | null;
+  allowProd: boolean;
+}): { blocked: boolean; reason?: string } {
+  if (input.allowProd) return { blocked: false };
+  if (process.env.NODE_ENV === "production") {
+    return {
+      blocked: true,
+      reason:
+        "Auto-apply is blocked in production (set ATLAS_ALLOW_PROD_AUTO_APPLY=true to override)",
+    };
+  }
+  if (input.projectId && projectHasProductionTarget(input.projectId)) {
+    return {
+      blocked: true,
+      reason:
+        "Auto-apply blocked: project has a production deploy target — human approval required",
+    };
+  }
+  return { blocked: false };
+}
 
 export function openRemediationSourceIssueIds(
   projectId: string | null,
@@ -219,6 +243,20 @@ export function autoApplyLowRemediations(input: {
   const outcomes: AutoApplyOutcome[] = [];
 
   for (const d of input.drafts) {
+    const prodGate = productionAutoApplyBlocked({
+      projectId: d.patch.projectId,
+      allowProd: process.env.ATLAS_ALLOW_PROD_AUTO_APPLY === "true",
+    });
+    if (prodGate.blocked) {
+      const skipped: AutoApplyOutcome = {
+        patchId: d.patch.id,
+        issueId: d.issueId,
+        status: "skipped",
+        ...(prodGate.reason ? { reason: prodGate.reason } : {}),
+      };
+      outcomes.push(skipped);
+      continue;
+    }
     if (!d.autoApplyEligible || !isAutoApplyEligiblePatch(d.patch)) {
       outcomes.push({
         patchId: d.patch.id,

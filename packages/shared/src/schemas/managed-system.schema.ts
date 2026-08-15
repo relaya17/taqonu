@@ -99,6 +99,8 @@ export const managedSystemSchema = z.object({
   workspaceRoot: z.string().nullable(),
   facets: z.array(managedSystemFacetStateSchema),
   selfManaged: z.boolean(),
+  loopPhase: controlLoopPhaseSchema,
+  actEligible: z.boolean(),
   asOf: isoDateTimeSchema,
   epistemicState: epistemicStateSchema,
 });
@@ -135,6 +137,31 @@ export const systemContractSchema = z.object({
   updatedAt: isoDateTimeSchema,
 });
 
+export const invariantCheckResultSchema = z.object({
+  id: z.string().min(1).max(80),
+  statement: z.string().min(1).max(500),
+  status: z.enum(["PASS", "FAIL", "UNKNOWN"]),
+  missingEvidence: z.array(z.string().min(1).max(80)),
+  presentEvidence: z.array(z.string().min(1).max(80)),
+});
+
+export const systemContractVerificationSchema = z.object({
+  systemId: uuidSchema,
+  overall: z.enum(["PASS", "FAIL", "UNKNOWN"]),
+  results: z.array(invariantCheckResultSchema),
+  asOf: isoDateTimeSchema,
+});
+
+export const systemContractWriteSchema = systemContractSchema
+  .omit({ systemId: true, updatedAt: true })
+  .partial();
+
+export const managedSystemDetailSchema = z.object({
+  system: managedSystemSchema,
+  contract: systemContractSchema,
+  verification: systemContractVerificationSchema,
+});
+
 export const managedSystemListSchema = z.object({
   items: z.array(managedSystemSchema),
   atlasSelfIncluded: z.boolean(),
@@ -155,4 +182,10 @@ export type ManagedSystemFacetState = z.infer<
 >;
 export type SystemInvariant = z.infer<typeof systemInvariantSchema>;
 export type SystemContract = z.infer<typeof systemContractSchema>;
+export type InvariantCheckResult = z.infer<typeof invariantCheckResultSchema>;
+export type SystemContractVerification = z.infer<
+  typeof systemContractVerificationSchema
+>;
+export type SystemContractWrite = z.infer<typeof systemContractWriteSchema>;
+export type ManagedSystemDetail = z.infer<typeof managedSystemDetailSchema>;
 export type ManagedSystemList = z.infer<typeof managedSystemListSchema>;

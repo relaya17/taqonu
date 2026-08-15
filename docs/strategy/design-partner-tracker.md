@@ -1,7 +1,8 @@
 # Design Partner Tracker (stub)
 
 **Status:** Human-owned CRM stub — no fake customers.  
-**Use:** one row per real conversation. Leave empty slots blank.
+**Offer in product:** `/welcome` and `/plan` sell a one-week Readiness Audit; intake is `/partners`.  
+**Use:** one row per real conversation. Leave empty slots blank. Outreach is still human.
 
 Companions: [`design-partner-playbook.md`](./design-partner-playbook.md) · [`design-partner-audit-runbook.md`](./design-partner-audit-runbook.md) · [`design-partner-execution-checklist.md`](./design-partner-execution-checklist.md) · [`design-partner-truth10-early-access.md`](./design-partner-truth10-early-access.md) (TRUTH-10 G1)
 

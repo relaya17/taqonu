@@ -159,8 +159,12 @@ export default function PlanPage() {
       ) : null}
 
       <Alert severity="info" sx={{ border: "1px solid", borderColor: "primary.main" }}>
-        {t("sellBanner")}
+        {t("auditBanner")}
       </Alert>
+      <Button component={Link} href="/partners" variant="contained">
+        {t("openAudit")}
+      </Button>
+      <Alert severity="info">{t("sellBanner")}</Alert>
 
       <Box sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
         <Typography fontWeight={700} sx={{ mb: 1 }}>

@@ -7,6 +7,7 @@ import {
   completeWithFreeFallback,
   completeStrict,
   redactSecrets,
+  assertNoSecrets,
 } from "@atlas/agent-core";
 import { buildExpertSystemBlock, selectExperts } from "@atlas/experts";
 import {
@@ -230,6 +231,9 @@ export async function registerConversationRoutes(
           context,
         ].join("\n"),
       );
+      const userMessage = redactSecrets(body.message);
+      assertNoSecrets(system, "llm.system");
+      assertNoSecrets(userMessage, "llm.user");
 
       const llmEnv = llmEnvForProvider(selectedId, app.atlasEnv, catalog);
       let llm: { provider: string; text: string };
@@ -237,11 +241,11 @@ export async function registerConversationRoutes(
         llm = paidRun
           ? await completeStrict(llmEnv, [
               { role: "system", content: system },
-              { role: "user", content: redactSecrets(body.message) },
+              { role: "user", content: userMessage },
             ])
           : await completeWithFreeFallback(llmEnv, [
               { role: "system", content: system },
-              { role: "user", content: redactSecrets(body.message) },
+              { role: "user", content: userMessage },
             ]);
         if (paidRun) {
           chargeCredits(catalog.creditCost);

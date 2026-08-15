@@ -137,11 +137,11 @@ export function WelcomeLanding() {
             </Button>
             <Button
               component="a"
-              href={`/${locale}/plan`}
+              href={`/${locale}/partners`}
               size="large"
               sx={{ color: "#B4B7BE", fontWeight: 650 }}
             >
-              {t("ctaPricing")}
+              {t("ctaAudit")}
             </Button>
           </Stack>
         </Stack>

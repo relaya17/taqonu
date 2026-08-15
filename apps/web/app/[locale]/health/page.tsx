@@ -18,6 +18,7 @@ import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import { useProjectQueryParam } from "@/lib/use-project-query";
 
 interface ProjectItem {
   id: string;
@@ -80,7 +81,7 @@ export default function SystemHealthPage() {
   const t = useTranslations("health");
   const tEp = useTranslations("epistemic");
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useProjectQueryParam("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [intent, setIntent] = useState("");
 

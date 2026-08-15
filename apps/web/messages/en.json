@@ -2,7 +2,7 @@
   "brand": {
     "name": "ArletOS",
     "codename": "Atlas",
-    "tagline": "Engineering + adaptive QA intelligence"
+    "tagline": "Truth & Control Layer"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -35,7 +35,7 @@
     "design": "Design",
     "artifacts": "Artifacts",
     "conflicts": "Conflicts",
-    "plan": "Pricing",
+    "plan": "Audit & plan",
     "welcome": "Landing",
     "upgradePro": "Upgrade to Pro",
     "memory": "Memory",
@@ -52,6 +52,7 @@
     "main": "Main navigation",
     "languages": "Languages",
     "opsGroup": "Dashboard tracking",
+    "buildGroup": "Build",
     "workspaceGroup": "Workspace"
   },
   "a11y": {
@@ -307,11 +308,13 @@
     "a11yNote": "WCAG 2.2 AA MVP: skip-link, landmarks, focus rings, keyboard nav, ≥44px targets, reduced-motion, mobile drawer without overflow."
   },
   "dashboard": {
-    "title": "Engineering + Adaptive QA portfolio",
-    "subtitle": "Project tracking · Specialists · QA and health under the dashboard",
-    "pitch": "The Engineering Truth Layer for AI-native teams — what is verified, what is risky, and the evidence.",
+    "title": "Truth & Control",
+    "subtitle": "Blocked systems first · evidence · gates · then ACT",
+    "pitch": "The Truth & Control Layer for AI-native software — what is verified, what is risky, and the evidence. Start from Systems.",
     "ctaReadiness": "Production Readiness Certificate",
     "ctaPartners": "Design Partners",
+    "ctaSystems": "Open Systems",
+    "blockedSystems": "{count} systems blocked — open evidence before you act",
     "ctaProjects": "Track projects",
     "ctaStudio": "Project Studio",
     "ctaAgents": "Specialists",
@@ -493,6 +496,21 @@
     "medium": "{count} medium risks",
     "openProject": "Open project",
     "openHealth": "Health",
+    "openSystem": "Open system",
+    "openTruth": "Truth",
+    "openPatches": "Patches",
+    "openGates": "Gates",
+    "backToList": "All systems",
+    "blockedFirst": "{count} blocked — evidence first, then Gates and Patches",
+    "actReady": "ACT eligible",
+    "actBlocked": "ACT not eligible yet",
+    "facetsTitle": "Observed facets",
+    "facetUnknown": "unknown",
+    "contractTitle": "System contract",
+    "invariantsOverall": "Invariants {status}",
+    "missingEvidence": "missing evidence",
+    "confirmContract": "Confirm contract",
+    "selfNoProject": "Atlas-self has no customer project — confirm the contract here, then observe the Atlas repo if it is registered.",
     "loop": "Discover → Understand → Verify → Act"
   },
   "projects": {
@@ -596,9 +614,11 @@
     }
   },
   "plan": {
-    "title": "Pricing & BYO cloud",
-    "subtitle": "Your data lives on Cloudflare (or another cloud you own). Atlas meters product usage — we do not host your projects for free.",
-    "sellBanner": "Free = Cloudflare free tier (yours) + limited Atlas usage. Pro = higher usage limits + optional evidence mirror.",
+    "title": "Readiness Audit & BYO cloud",
+    "subtitle": "The offer is a one-week Readiness Audit on one production system. Your data stays on Cloudflare (or another cloud you own). Usage meters exist so Atlas stays honest — they are not the product.",
+    "auditBanner": "Request a Readiness Audit: Discover → Verdict → Evidence report. Code stays with you. No invented case studies.",
+    "openAudit": "Open the Audit intake",
+    "sellBanner": "After the Audit: Free = your Cloudflare + limited Atlas usage. Pro = higher ceilings if you keep Atlas as the control layer.",
     "compareTitle": "Choose a plan",
     "freeColumnTitle": "Free",
     "proColumnTitle": "Pro",
@@ -641,13 +661,14 @@
   },
   "landing": {
     "brand": "ArletOS",
-    "headline": "Know what your software actually does — before you ship.",
-    "subhead": "Clear evidence and readiness, with AI that stays under your control.",
-    "ctaStart": "Start free",
+    "headline": "A Readiness Audit for software you already run.",
+    "subhead": "Atlas observes from outside, names what is proven, and blocks writes until evidence and a human say yes.",
+    "ctaStart": "Request an Audit",
     "ctaRegister": "Sign up",
     "ctaLogin": "Log in",
     "ctaApp": "Open product",
-    "ctaPricing": "See pricing",
+    "ctaPricing": "See the Audit",
+    "ctaAudit": "Request a Readiness Audit",
     "ctaUpgrade": "Go Pro",
     "promoEndTitle": "Ready to begin?",
     "promoEndBody": "Sign up or log in — and continue with evidence, not guesswork.",
@@ -673,8 +694,8 @@
         "body": "The services you already use — inside the flow."
       },
       "upgrade": {
-        "title": "Start free",
-        "body": "Your data stays with you. Pay only as usage grows."
+        "title": "Start with an Audit",
+        "body": "One production system. Verdict and evidence. Your code stays with you."
       }
     },
     "whyTitle": "Why it is different",
@@ -693,12 +714,14 @@
         "body": "Storage on your cloud. You pay for product usage, not for hosting with us."
       }
     },
-    "pricingTitle": "Simple and clear",
-    "pricingBody": "Start free. Upgrade when you need more usage.",
-    "freeName": "Free",
-    "freeDetail": "Quick start · basic usage · your data stays with you.",
-    "proName": "Pro",
-    "proDetail": "More usage · advanced tools · full support.",
+    "pricingTitle": "Start with an Audit — not a quota",
+    "pricingBody": "The offer is a one-week Readiness Audit on one production system. Usage limits exist so the product stays honest; they are not the product.",
+    "freeName": "Audit",
+    "freeDetail": "Import one repo. Verdict + evidence report. Code stays with you.",
+    "proName": "Ongoing control",
+    "proDetail": "Higher usage when you keep Atlas as the truth layer after the Audit.",
+    "auditTitle": "Design-partner Audit",
+    "auditBody": "No invented customers. If you run production software and want a blocked-first readout, request the Audit. Outreach is human.",
     "closeTitle": "Ready when you are.",
     "seoTitle": "ArletOS — Know what your software actually does",
     "seoDescription": "ArletOS helps teams verify release readiness with evidence — before production.",

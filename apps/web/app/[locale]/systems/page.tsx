@@ -19,12 +19,21 @@ interface ManagedSystemRow {
   criticalGaps: number;
   mediumRisks: number;
   selfManaged: boolean;
+  loopPhase: "DISCOVER" | "UNDERSTAND" | "VERIFY" | "ACT";
+  actEligible: boolean;
 }
 
 interface ManagedSystemList {
   items: ManagedSystemRow[];
   note: string;
 }
+
+const POSTURE_ORDER: Record<ManagedSystemRow["posture"], number> = {
+  BLOCKED: 0,
+  WATCH: 1,
+  UNKNOWN: 2,
+  CLEAR: 3,
+};
 
 function postureColor(
   posture: ManagedSystemRow["posture"],
@@ -48,7 +57,10 @@ export default function SystemsPage() {
     queryFn: () => apiGet<ManagedSystemList>("/api/v1/systems"),
   });
 
-  const items = query.data?.items ?? [];
+  const items = [...(query.data?.items ?? [])].sort(
+    (a, b) => POSTURE_ORDER[a.posture] - POSTURE_ORDER[b.posture],
+  );
+  const blocked = items.filter((row) => row.posture === "BLOCKED");
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 920 }}>
@@ -68,6 +80,12 @@ export default function SystemsPage() {
 
       {query.data?.note ? (
         <Alert severity="info">{query.data.note}</Alert>
+      ) : null}
+
+      {blocked.length > 0 ? (
+        <Alert severity="error">
+          {t("blockedFirst", { count: blocked.length })}
+        </Alert>
       ) : null}
 
       {items.length === 0 && !query.isLoading ? (
@@ -91,6 +109,7 @@ export default function SystemsPage() {
           >
             <Typography fontWeight={700}>{system.name}</Typography>
             <Chip size="small" color={postureColor(system.posture)} label={system.posture} />
+            <Chip size="small" variant="outlined" label={system.loopPhase} />
             {system.selfManaged ? (
               <Chip size="small" variant="outlined" label={t("self")} />
             ) : (
@@ -109,20 +128,43 @@ export default function SystemsPage() {
             {" · "}
             {t("medium", { count: system.mediumRisks })}
           </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
-            {system.projectId ? (
-              <Button
-                component={Link}
-                href="/projects"
-                size="small"
-                variant="outlined"
-              >
-                {t("openProject")}
-              </Button>
-            ) : null}
-            <Button component={Link} href="/health" size="small" variant="text">
-              {t("openHealth")}
+          <Stack direction="row" spacing={1} sx={{ mt: 1.25 }} flexWrap="wrap" useFlexGap>
+            <Button
+              component={Link}
+              href={`/systems/${system.id}`}
+              size="small"
+              variant="contained"
+            >
+              {t("openSystem")}
             </Button>
+            {system.projectId ? (
+              <>
+                <Button
+                  component={Link}
+                  href={`/truth?project=${system.projectId}`}
+                  size="small"
+                  variant="outlined"
+                >
+                  {t("openTruth")}
+                </Button>
+                <Button
+                  component={Link}
+                  href={`/health?project=${system.projectId}`}
+                  size="small"
+                  variant="text"
+                >
+                  {t("openHealth")}
+                </Button>
+                <Button
+                  component={Link}
+                  href={`/?desk=patches&project=${system.projectId}`}
+                  size="small"
+                  variant="text"
+                >
+                  {t("openPatches")}
+                </Button>
+              </>
+            ) : null}
           </Stack>
         </Box>
       ))}
