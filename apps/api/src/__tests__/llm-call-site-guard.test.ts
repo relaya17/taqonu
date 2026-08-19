@@ -53,6 +53,17 @@ import { fileURLToPath } from "node:url";
 const ALLOWED_CALL_SITES: readonly string[] = [
   "apps/api/src/routes/agent.ts",
   "apps/api/src/routes/conversation.ts",
+  // Phase 1a proposal-first fabric. Reviewed against this list's own rule
+  // before being added: `generateSpecialistProposalViaLlm` builds its system
+  // prompt with `buildLayeredSystemPrompt` and puts the caller-supplied
+  // `request` — the only attacker-controllable text in that prompt — in
+  // `untrustedBlocks`, keeping the static specialist-catalog text as the
+  // sole `instructions` content, then redacts the assembled result, exactly
+  // as `agent.ts` does. It is the ONLY new file in this change that contains
+  // a `completeWithFreeFallback(` call; the two specialist services that use
+  // it (`code-engineer-dispatch.ts`, `research-analyst-dispatch.ts`) reach
+  // the provider only through this file and are deliberately NOT listed here.
+  "apps/api/src/services/llm-specialist-proposal.ts",
 ];
 
 const CALL_PATTERNS = ["completeWithFreeFallback(", "completeStrict("] as const;

@@ -21,6 +21,9 @@ const { registerBuiltinAutomationRules, resetAutomationRulesForTests } = await i
 const { readAuditLogTail, setAuditLogPathForTests } = await import(
   "./audit-log.js"
 );
+const { resetApprovalsForTests, listApprovalRequests } = await import(
+  "./approvals.js"
+);
 
 async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -40,11 +43,13 @@ describe("built-in automation rules", () => {
     setAuditLogPathForTests(logFile);
     delete process.env.ATLAS_SKIP_AUDIT_LOG;
     resetAutomationRulesForTests();
+    resetApprovalsForTests();
   });
 
   afterEach(() => {
     setAuditLogPathForTests(null);
     resetAutomationRulesForTests();
+    resetApprovalsForTests();
     try {
       rmSync(logDir, { recursive: true, force: true });
     } catch {
@@ -52,10 +57,11 @@ describe("built-in automation rules", () => {
     }
   });
 
-  it("registerBuiltinAutomationRules() registers exactly the two built-in rule ids", () => {
+  it("registerBuiltinAutomationRules() registers exactly the three built-in rule ids", () => {
     registerBuiltinAutomationRules();
     expect(listRegisteredAutomationRuleIds().sort()).toEqual([
       "gate-blocked-audit",
+      "gate-persistent-block-case",
       "readiness-certificate-blockers-audit",
     ]);
   });
@@ -65,6 +71,7 @@ describe("built-in automation rules", () => {
     registerBuiltinAutomationRules();
     expect(listRegisteredAutomationRuleIds().sort()).toEqual([
       "gate-blocked-audit",
+      "gate-persistent-block-case",
       "readiness-certificate-blockers-audit",
     ]);
 
@@ -270,6 +277,117 @@ describe("built-in automation rules", () => {
       await flush();
 
       expect(readAuditLogTail(10)).toHaveLength(0);
+    });
+  });
+
+  describe("gate-persistent-block-case: gate.evaluated -> AUTOMATION-actor CASE.CREATE via dispatchAgentAction", () => {
+    const CASE_CREATE_TYPE = "automation.gate-persistent-block.case.create";
+
+    function evaluateBlocked(graphId: string, blockedNodeId = "release-gate") {
+      appendDomainEvent({
+        type: "gate.evaluated",
+        payload: {
+          graphId,
+          summary: "release blocked",
+          statuses: { [blockedNodeId]: "BLOCKED" },
+        },
+      });
+    }
+
+    function evaluateClean(graphId: string) {
+      appendDomainEvent({
+        type: "gate.evaluated",
+        payload: {
+          graphId,
+          summary: "all clear",
+          statuses: { "patch-safety": "PASS" },
+        },
+      });
+    }
+
+    it("real end-to-end: on the 3rd consecutive blocked evaluation of the same graph, dispatches a real AUTOMATION CASE.CREATE that lands on APPROVAL_REQUIRED (never AUTO/AUTO_LOG) and creates a real, retrievable approval request", async () => {
+      registerBuiltinAutomationRules();
+
+      evaluateBlocked("graph-streak-1");
+      await flush();
+      evaluateBlocked("graph-streak-1");
+      await flush();
+      evaluateBlocked("graph-streak-1");
+      await flush();
+
+      const tail = readAuditLogTail(20);
+      const dispatchEntries = tail.filter((r) => r.type === CASE_CREATE_TYPE);
+      // Fires exactly once — on the 3rd blocked evaluation, not the 1st or 2nd.
+      expect(dispatchEntries).toHaveLength(1);
+
+      const dispatchPayload = dispatchEntries[0]?.payload as Record<string, unknown>;
+      // The automation-CRUD floor (agent-dispatch-guard.ts) guarantees an
+      // AUTOMATION-actor CREATE can never resolve AUTO/AUTO_LOG — asserting
+      // the real outcome here, produced by the real trigger -> condition ->
+      // dispatchAgentAction pipeline, is what actually proves the floor
+      // holds end-to-end rather than only under a synthetic unit test.
+      expect(dispatchPayload.approval).toBe("PENDING");
+      expect(dispatchPayload.result).toBe("PARTIAL");
+      expect(dispatchPayload.risk).toBe("HIGH");
+      expect(dispatchPayload.policy).toBe("CASE.CREATE");
+      const dispatchOutput = dispatchPayload.output as { approvalRequestId?: string };
+      expect(typeof dispatchOutput.approvalRequestId).toBe("string");
+
+      const pending = listApprovalRequests("PENDING");
+      const approval = pending.find((r) => r.id === dispatchOutput.approvalRequestId);
+      expect(approval).toBeDefined();
+      expect(approval?.entityType).toBe("CASE");
+      expect(approval?.action).toBe("CREATE");
+      expect(approval?.status).toBe("PENDING");
+      // No live human in the loop (a bare AUTOMATION actor) — requestedBy
+      // must be the automation's own identity, never a fabricated user id.
+      expect(approval?.requestedBy).toBe("automation-engine.gate-persistent-block");
+      expect(approval?.context?.bucket).toBe("APPROVAL");
+      expect(approval?.context?.actorKind).toBe("AUTOMATION");
+
+      // Rule 1 (gate-blocked-audit) still independently fires on all 3
+      // blocked evaluations — this rule's action is additive, not a
+      // replacement for the existing audit-only rule.
+      expect(tail.filter((r) => r.type === "gate.evaluated")).toHaveLength(3);
+    });
+
+    it("does not fire before the streak reaches 3 consecutive blocked evaluations, and a clean evaluation in between resets the streak", async () => {
+      registerBuiltinAutomationRules();
+
+      evaluateBlocked("graph-streak-2");
+      await flush();
+      evaluateBlocked("graph-streak-2");
+      await flush();
+      expect(
+        readAuditLogTail(20).filter((r) => r.type === CASE_CREATE_TYPE),
+      ).toHaveLength(0);
+
+      // Streak resets: this clean evaluation means the *next* blocked
+      // evaluation is only streak=1, not streak=3.
+      evaluateClean("graph-streak-2");
+      await flush();
+      evaluateBlocked("graph-streak-2");
+      await flush();
+
+      expect(
+        readAuditLogTail(20).filter((r) => r.type === CASE_CREATE_TYPE),
+      ).toHaveLength(0);
+      expect(listApprovalRequests("PENDING")).toHaveLength(0);
+    });
+
+    it("tracks streaks independently per graphId — a different graph's blocked count never contributes to another graph's streak", async () => {
+      registerBuiltinAutomationRules();
+
+      evaluateBlocked("graph-streak-3a");
+      await flush();
+      evaluateBlocked("graph-streak-3b");
+      await flush();
+      evaluateBlocked("graph-streak-3a");
+      await flush();
+
+      expect(
+        readAuditLogTail(20).filter((r) => r.type === CASE_CREATE_TYPE),
+      ).toHaveLength(0);
     });
   });
 

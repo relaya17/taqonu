@@ -81,7 +81,7 @@ function runSpecialistStub(
   });
 }
 
-export function dispatchAgentPlan(input: {
+export async function dispatchAgentPlan(input: {
   request: string;
   projectId?: string | null;
   plan?: AgentPlan;
@@ -89,12 +89,26 @@ export function dispatchAgentPlan(input: {
   maxAgents?: number;
   budgetUsd?: number;
   runJudge?: boolean;
-  /** When set, replaces the stub for that agent (e.g. SECURITY → Sentinel). */
+  /**
+   * When set, replaces the stub for that agent (e.g. SECURITY → Sentinel).
+   *
+   * May be sync or async. It became async-capable when the first
+   * LLM-backed specialists landed (`apps/api/src/services/code-engineer-dispatch.ts`
+   * and `research-analyst-dispatch.ts`): proposing an action requires a real
+   * outbound provider call, which cannot be done synchronously. The existing
+   * sync overrides (SECURITY → Sentinel, LEGAL_MEDIA_COMMS → counsel-prep
+   * review) satisfy this wider type unchanged — a plain `AgentRunResult` is
+   * a valid value to `await`.
+   */
   specialistOverride?: (
     agentId: FabricAgentId,
     request: string,
-  ) => AgentRunResult | null | undefined;
-}): AgentDispatchResult {
+  ) =>
+    | AgentRunResult
+    | null
+    | undefined
+    | Promise<AgentRunResult | null | undefined>;
+}): Promise<AgentDispatchResult> {
   const plan =
     input.plan ??
     planAgentWork({
@@ -118,16 +132,23 @@ export function dispatchAgentPlan(input: {
     byGroup.set(step.parallelGroup, g);
   }
 
-  const runs = [...byGroup.keys()]
-    .sort((a, b) => a - b)
-    .flatMap((g) =>
-      (byGroup.get(g) ?? [])
-        .filter((s) => s.agentId !== "JUDGE")
-        .map((s) => {
-          const override = input.specialistOverride?.(s.agentId, input.request);
-          return override ?? runSpecialistStub(s.agentId, input.request, knowledge);
-        }),
-    );
+  // Sequential `for`/`await` rather than the previous chained
+  // `flatMap`/`map`: `specialistOverride` may now return a Promise, and the
+  // resulting run order must stay exactly what it was — parallel groups in
+  // ascending order, steps in their original order within a group — because
+  // callers (and `agent-fabric.ts`'s `runCosts` audit breakdown) index runs
+  // positionally against the plan. `Promise.all` per group would preserve
+  // that order too, but it would also fan out concurrent LLM calls that the
+  // plan's per-run budget accounting never authorized, so overrides stay
+  // one-at-a-time.
+  const runs: AgentRunResult[] = [];
+  for (const group of [...byGroup.keys()].sort((a, b) => a - b)) {
+    for (const step of byGroup.get(group) ?? []) {
+      if (step.agentId === "JUDGE") continue;
+      const override = await input.specialistOverride?.(step.agentId, input.request);
+      runs.push(override ?? runSpecialistStub(step.agentId, input.request, knowledge));
+    }
+  }
 
   const runJudge = input.runJudge !== false;
   const judge = runJudge

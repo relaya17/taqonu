@@ -34,6 +34,16 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 // decides rather than only checking that some function got called.
 const authorizeEntityAction = vi.fn();
 
+// Same "override only when a test asks for it" mechanism, applied to the
+// single outbound LLM gateway the proposal-first specialists
+// (CODE_ENGINEER / RESEARCHER) reach through
+// `apps/api/src/services/llm-specialist-proposal.ts`. Left unmocked by
+// default, so every pre-existing dispatch test keeps exercising the real
+// free/offline `ContextEchoProvider` path (no network, no API key) rather
+// than a stub; individual tests below hand it a canned model reply to drive
+// a specific proposal outcome.
+const completeWithFreeFallback = vi.fn();
+
 vi.mock("@atlas/agent-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@atlas/agent-core")>();
   return {
@@ -41,6 +51,9 @@ vi.mock("@atlas/agent-core", async (importOriginal) => {
     authorizeEntityAction: (
       ...args: Parameters<typeof actual.authorizeEntityAction>
     ) => authorizeEntityAction(...args) ?? actual.authorizeEntityAction(...args),
+    completeWithFreeFallback: (
+      ...args: Parameters<typeof actual.completeWithFreeFallback>
+    ) => completeWithFreeFallback(...args) ?? actual.completeWithFreeFallback(...args),
   };
 });
 
@@ -164,6 +177,8 @@ beforeEach(() => {
   dispatchAgentAction.mockReturnValue(undefined);
   runSecuritySpecialistViaSentinel.mockReset();
   runSecuritySpecialistViaSentinel.mockReturnValue(undefined);
+  completeWithFreeFallback.mockReset();
+  completeWithFreeFallback.mockReturnValue(undefined);
 });
 
 describe("GET /api/v1/agents", () => {
@@ -462,6 +477,203 @@ describe("POST /api/v1/agents/dispatch", () => {
       expect(run.status).toBe("SKIPPED");
       expect(run.epistemicState).toBe("UNKNOWN");
       expect(run.claims).toContain("approvalRequestId:approval-test-123");
+    });
+  });
+
+  describe("proposal-first specialists (CODE_ENGINEER / RESEARCHER)", () => {
+    const MODEL_CLAIM =
+      "auth.spec.ts:42 fails because clearSession() never unsets the session cookie";
+    const MODEL_RATIONALE =
+      "A failing test and the exact line it points at justify proposing a patch record.";
+
+    /** A canned, well-formed model reply — the same shape the specialist prompt documents. */
+    function llmReply(entityType: string, action: string) {
+      return {
+        provider: "test-provider",
+        cacheHit: false,
+        text: JSON.stringify({
+          claims: [MODEL_CLAIM],
+          evidence: [{ ref: "apps/api/src/routes/auth.ts:88", excerpt: "clearSession()" }],
+          confidence: 0.62,
+          rationale: MODEL_RATIONALE,
+          proposedAction: { entityType, action },
+        }),
+        // Real-shaped metered usage; 0.0042 is what the specialist must
+        // thread onto the run's costUsd rather than a flat 0.
+        usage: {
+          promptTokens: 1200,
+          completionTokens: 300,
+          totalTokens: 1500,
+          costUsd: 0.0042,
+        },
+      };
+    }
+
+    it("CODE_ENGINEER: a well-formed proposal reaches dispatchAgentAction as RECORD.CREATE, and the run + audit input carry the model's REAL claims/rationale", async () => {
+      completeWithFreeFallback.mockResolvedValue(llmReply("RECORD", "CREATE"));
+      dispatchAgentAction.mockReturnValue({
+        decision: "ALLOWED",
+        score: 20,
+        bucket: "AUTO_LOG",
+        auditId: "audit-ce-1",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "logout leaves the session cookie set", agentIds: ["CODE_ENGINEER"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const run = res
+        .json()
+        .runs.find((r: { agentId: string }) => r.agentId === "CODE_ENGINEER");
+      expect(run.status).toBe("COMPLETED");
+      // The model's own assertions, not a paraphrase, and labeled PROPOSED
+      // rather than OBSERVED — nothing here was verified.
+      expect(run.epistemicState).toBe("PROPOSED");
+      expect(run.claims).toContain(MODEL_CLAIM);
+      expect(run.claims).toContain(`rationale:${MODEL_RATIONALE}`);
+      expect(run.claims).toContain("proposedAction=RECORD.CREATE");
+      expect(run.costUsd).toBe(0.0042);
+
+      // The gate really was reached, with the proposal's own claims/
+      // rationale/confidence/evidence count destined for the audit entry.
+      const gateCall = dispatchAgentAction.mock.calls.find(
+        (c) => (c[0] as { routeLabel?: string }).routeLabel ===
+          "agent-fabric.dispatch.code-engineer",
+      )?.[0] as {
+        entityType: string;
+        action: string;
+        confidence: number;
+        evidenceCount: number;
+        input: { claims: string[]; rationale: string };
+      };
+      expect(gateCall).toBeDefined();
+      expect(gateCall.entityType).toBe("RECORD");
+      expect(gateCall.action).toBe("CREATE");
+      expect(gateCall.confidence).toBe(0.62);
+      expect(gateCall.evidenceCount).toBe(1);
+      expect(gateCall.input.claims).toEqual([MODEL_CLAIM]);
+      expect(gateCall.input.rationale).toBe(MODEL_RATIONALE);
+    });
+
+    it("RESEARCHER: proposes the read-only DOCUMENT.READ pair and completes when the gate allows it", async () => {
+      completeWithFreeFallback.mockResolvedValue(llmReply("DOCUMENT", "READ"));
+      dispatchAgentAction.mockReturnValue({
+        decision: "ALLOWED",
+        score: 5,
+        bucket: "AUTO",
+        auditId: "audit-res-1",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "find official guidance on secure cookie flags", agentIds: ["RESEARCHER"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const run = res
+        .json()
+        .runs.find((r: { agentId: string }) => r.agentId === "RESEARCHER");
+      expect(run.status).toBe("COMPLETED");
+      expect(run.claims).toContain("proposedAction=DOCUMENT.READ");
+      const gateCall = dispatchAgentAction.mock.calls.find(
+        (c) => (c[0] as { routeLabel?: string }).routeLabel ===
+          "agent-fabric.dispatch.researcher",
+      )?.[0] as { entityType: string; action: string };
+      expect(gateCall.entityType).toBe("DOCUMENT");
+      expect(gateCall.action).toBe("READ");
+    });
+
+    it("DENIED gate: the run is SKIPPED and the denial reason is surfaced, not swallowed", async () => {
+      completeWithFreeFallback.mockResolvedValue(llmReply("RECORD", "CREATE"));
+      dispatchAgentAction.mockReturnValue({
+        decision: "DENIED",
+        reason: "RECORD.CREATE blocked by policy in test",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "logout leaves the session cookie set", agentIds: ["CODE_ENGINEER"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const run = res
+        .json()
+        .runs.find((r: { agentId: string }) => r.agentId === "CODE_ENGINEER");
+      expect(run.status).toBe("SKIPPED");
+      expect(run.epistemicState).toBe("UNKNOWN");
+      expect(run.summary).toMatch(/RECORD.CREATE blocked by policy in test/);
+      expect(run.claims).toContain("denied:RECORD.CREATE blocked by policy in test");
+      // The proposal itself is still visible for a human reviewing why.
+      expect(run.claims).toContain(MODEL_CLAIM);
+    });
+
+    it("APPROVAL_REQUIRED gate: the run is SKIPPED and surfaces the real approvalRequestId", async () => {
+      completeWithFreeFallback.mockResolvedValue(llmReply("RECORD", "CREATE"));
+      dispatchAgentAction.mockReturnValue({
+        decision: "APPROVAL_REQUIRED",
+        approvalRequestId: "approval-ce-777",
+        score: 55,
+        bucket: "APPROVAL",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "logout leaves the session cookie set", agentIds: ["CODE_ENGINEER"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const run = res
+        .json()
+        .runs.find((r: { agentId: string }) => r.agentId === "CODE_ENGINEER");
+      expect(run.status).toBe("SKIPPED");
+      expect(run.epistemicState).toBe("UNKNOWN");
+      expect(run.claims).toContain("approvalRequestId:approval-ce-777");
+      expect(run.claims).toContain("bucket:APPROVAL");
+      expect(run.summary).toMatch(/pending human approval/);
+    });
+
+    it("a malformed model reply yields NEEDS_EVIDENCE without crashing the dispatch, and never reaches the gate", async () => {
+      completeWithFreeFallback.mockResolvedValue({
+        provider: "test-provider",
+        cacheHit: false,
+        text: "I'm sorry, I can't help with that.",
+        usage: {
+          promptTokens: 1200,
+          completionTokens: 20,
+          totalTokens: 1220,
+          costUsd: 0.0011,
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "logout leaves the session cookie set", agentIds: ["CODE_ENGINEER"] },
+      });
+
+      // The whole dispatch still succeeds — a specialist that can't propose
+      // must degrade, never take the request down with it.
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      const run = body.runs.find((r: { agentId: string }) => r.agentId === "CODE_ENGINEER");
+      expect(run.status).toBe("NEEDS_EVIDENCE");
+      expect(run.epistemicState).toBe("UNVERIFIED");
+      expect(run.summary).toMatch(/no usable proposal/);
+      // Real cost of the failed attempt, not zeroed out.
+      expect(run.costUsd).toBe(0.0011);
+      expect(body.judge).toBeDefined();
+      expect(
+        dispatchAgentAction.mock.calls.some(
+          (c) => (c[0] as { routeLabel?: string }).routeLabel ===
+            "agent-fabric.dispatch.code-engineer",
+        ),
+      ).toBe(false);
     });
   });
 });

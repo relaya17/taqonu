@@ -2,7 +2,6 @@ import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
-  AtlasError,
   setPlanSchema,
   purchaseCreditsSchema,
   CREDIT_PACKS,

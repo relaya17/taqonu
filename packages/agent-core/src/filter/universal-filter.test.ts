@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyFilters,
   applyFiltersAny,
@@ -124,19 +124,50 @@ describe("matchesCriterion: since", () => {
   });
 
   it("handles the exact boundary as inclusive (>=)", () => {
-    const now = Date.now();
-    const windowMs = 24 * 60 * 60 * 1000;
-    const boundaryIso = new Date(now - windowMs).toISOString();
-    // Reconstruct the cutoff the same way matchesCriterion does, using the
-    // parsed boundary timestamp, to avoid a flaky race against Date.now().
-    const parsedBoundary = Date.parse(boundaryIso);
-    expect(parsedBoundary).toBeLessThanOrEqual(now);
-    expect(
-      matchesCriterion(
-        { updatedAt: new Date(parsedBoundary).toISOString() },
-        { field: "updatedAt", op: "since", value: now - parsedBoundary },
-      ),
-    ).toBe(true);
+    // `matchesCriterion`'s "since" branch computes its cutoff as
+    // `Date.now() - value` — it reads the clock ITSELF, at call time. An
+    // earlier version of this test captured `Date.now()` into a local `now`
+    // and passed `value: now - parsedBoundary`, which made the assertion
+    // reduce to `0 >= Date.now() - now` — i.e. it only held when the clock
+    // did not tick between capturing `now` and the call. That is a real
+    // race, not a flake to retry: it passed on a fast machine and failed in
+    // CI (packages/agent-core/src/filter/universal-filter.test.ts#L139),
+    // because the boundary case is exactly where a 1ms drift flips the
+    // result. The production semantics ("within the last N ms, measured
+    // from now") are correct and are deliberately left unchanged.
+    //
+    // Freezing the clock is what actually makes the boundary testable: with
+    // `Date.now()` pinned, `cutoff` is exactly `parsedBoundary`, so this
+    // asserts the real property under test — that `fieldTime === cutoff`
+    // (the exact boundary) counts as inside the window, i.e. `>=` not `>`.
+    vi.useFakeTimers();
+    try {
+      const now = new Date("2026-01-01T00:00:00.000Z").getTime();
+      vi.setSystemTime(now);
+
+      const windowMs = 24 * 60 * 60 * 1000;
+      const boundaryIso = new Date(now - windowMs).toISOString();
+      const parsedBoundary = Date.parse(boundaryIso);
+
+      // The boundary instant itself is inside the window (inclusive >=).
+      expect(
+        matchesCriterion(
+          { updatedAt: boundaryIso },
+          { field: "updatedAt", op: "since", value: windowMs },
+        ),
+      ).toBe(true);
+
+      // One millisecond older than the boundary is outside it — this is the
+      // half of the boundary property the old test never actually checked.
+      expect(
+        matchesCriterion(
+          { updatedAt: new Date(parsedBoundary - 1).toISOString() },
+          { field: "updatedAt", op: "since", value: windowMs },
+        ),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fails gracefully on missing field, non-string field, or non-numeric value", () => {

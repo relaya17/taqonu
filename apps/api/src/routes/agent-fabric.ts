@@ -46,6 +46,8 @@ import { enforceEntityWrite } from "../services/risk-audit.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
 import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
+import { runCodeEngineerSpecialistViaLlm } from "../services/code-engineer-dispatch.js";
+import { runResearcherSpecialistViaLlm } from "../services/research-analyst-dispatch.js";
 import {
   knowledgeRefreshIsDue,
   readKnowledgeRefreshLedger,
@@ -283,7 +285,28 @@ export async function registerAgentFabricRoutes(
       memoryContext.items.length > 0 ? 1 : 0,
       { surface: "memory", kind: "agents.dispatch" },
     );
-    const result = dispatchAgentPlan({
+    // Provider selection for the proposal-first specialists below, projected
+    // out of the server env exactly the way `agent.ts`/`conversation.ts`
+    // already do it. No key configured is a supported state, not an error:
+    // `completeWithFreeFallback`'s chain ends at the free offline
+    // `ContextEchoProvider`.
+    const llmEnv = {
+      LLM_PROVIDER: app.atlasEnv.LLM_PROVIDER,
+      OLLAMA_BASE_URL: app.atlasEnv.OLLAMA_BASE_URL,
+      OLLAMA_MODEL: app.atlasEnv.OLLAMA_MODEL,
+      GROQ_API_KEY: app.atlasEnv.GROQ_API_KEY,
+      GROQ_MODEL: app.atlasEnv.GROQ_MODEL,
+      OPENAI_API_KEY: app.atlasEnv.OPENAI_API_KEY,
+      OPENAI_BASE_URL: app.atlasEnv.OPENAI_BASE_URL,
+      OPENAI_MODEL: app.atlasEnv.OPENAI_MODEL,
+      ANTHROPIC_API_KEY: app.atlasEnv.ANTHROPIC_API_KEY,
+      ANTHROPIC_MODEL: app.atlasEnv.ANTHROPIC_MODEL,
+      GEMINI_API_KEY: app.atlasEnv.GEMINI_API_KEY,
+      GEMINI_MODEL: app.atlasEnv.GEMINI_MODEL,
+      DEEPSEEK_API_KEY: app.atlasEnv.DEEPSEEK_API_KEY,
+      DEEPSEEK_MODEL: app.atlasEnv.DEEPSEEK_MODEL,
+    };
+    const result = await dispatchAgentPlan({
       request: body.request,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
       ...(body.agentIds !== undefined ? { agentIds: body.agentIds } : {}),
@@ -335,6 +358,38 @@ export async function registerAgentFabricRoutes(
           return runSecuritySpecialistViaSentinel({
             request,
             projectId: body.projectId ?? null,
+          });
+        }
+        // PROPOSAL-FIRST specialists (Phase 1a). Unlike the two branches
+        // above, these do NOT call `dispatchAgentAction` inline — they route
+        // through `submitAgentProposal()` (agent-proposal.ts), which calls
+        // that exact same gate one layer down, after validating the LLM's
+        // proposal against `agentProposalSchema`. Gating here as well would
+        // put two entries on the Unified Audit Log for one action and would
+        // score the entity/action pair *before* the model has proposed one,
+        // which is precisely the ordering `AgentProposal` exists to fix. The
+        // per-specialist Policy+Risk+Audit coverage is therefore identical
+        // to SECURITY/LEGAL_MEDIA_COMMS — same function, one layer deeper.
+        //
+        // The LLM never executes anything: it can only emit a proposal, and
+        // the gate's decision becomes the run's status (ALLOWED → COMPLETED,
+        // DENIED/APPROVAL_REQUIRED → SKIPPED with the reason/approval id
+        // surfaced, no usable proposal → NEEDS_EVIDENCE). See each dispatch
+        // service's doc comment for its entity/action justification.
+        if (agentId === "CODE_ENGINEER") {
+          return runCodeEngineerSpecialistViaLlm({
+            request,
+            projectId: body.projectId ?? null,
+            ownerId: user.id,
+            env: llmEnv,
+          });
+        }
+        if (agentId === "RESEARCHER") {
+          return runResearcherSpecialistViaLlm({
+            request,
+            projectId: body.projectId ?? null,
+            ownerId: user.id,
+            env: llmEnv,
           });
         }
         if (agentId === "LEGAL_MEDIA_COMMS") {

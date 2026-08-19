@@ -122,7 +122,13 @@ const MAX_CONFIDENCE_PENALTY = 20;
  */
 const EVIDENCE_SUFFICIENCY_TARGET = 3;
 const PER_MISSING_EVIDENCE_POINT = 5;
-const MAX_EVIDENCE_PENALTY = EVIDENCE_SUFFICIENCY_TARGET * PER_MISSING_EVIDENCE_POINT; // 15
+// The cap described above (15 = 3 x 5) is enforced structurally, by the
+// `Math.min(evidenceCount, EVIDENCE_SUFFICIENCY_TARGET)` clamp in
+// `computeActionRiskScore` — `missingEvidenceUnits` can never exceed
+// EVIDENCE_SUFFICIENCY_TARGET, so the penalty can never exceed the product.
+// A named MAX_EVIDENCE_PENALTY constant previously sat here but was never
+// read by anything (lint flagged it as dead); re-adding one and clamping
+// against it a second time would be redundant, not safer.
 
 /**
  * Floor applied when `requiresApproval` is true. 55 sits comfortably

@@ -18,8 +18,8 @@ describe("fabric plan/dispatch specialist lanes", () => {
     );
   });
 
-  it("uses specialistOverride for SECURITY instead of the stub", () => {
-    const result = dispatchAgentPlan({
+  it("uses specialistOverride for SECURITY instead of the stub", async () => {
+    const result = await dispatchAgentPlan({
       request: "security auth rls secrets",
       agentIds: ["SECURITY"],
       runJudge: false,
@@ -42,8 +42,8 @@ describe("fabric plan/dispatch specialist lanes", () => {
     expect(security?.summary).toContain("Sentinel");
   });
 
-  it("dispatches forced specialist even when router would pick others", () => {
-    const result = dispatchAgentPlan({
+  it("dispatches forced specialist even when router would pick others", async () => {
+    const result = await dispatchAgentPlan({
       request: "security auth rls secrets threat surface",
       agentIds: ["ACCESSIBILITY"],
       runJudge: true,
