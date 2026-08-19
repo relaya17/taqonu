@@ -340,10 +340,14 @@ describe("POST /api/v1/memory/:id/approve", () => {
       source: "seed",
       sourceType: "SYSTEM",
       sourceId: null,
+      // Gate 3 strengthening: non-empty evidence alone is no longer enough
+      // (see `hasVerificationSignal()` in memory-pipeline.ts) — `kind:
+      // "TEST_RUN"` is one of `evidenceSourceTypeSchema`'s inherently-
+      // verified source kinds, so this entry clears the stricter gate too.
       evidence: [
         {
           id: crypto.randomUUID(),
-          kind: "qa_finding",
+          kind: "TEST_RUN",
           reference: "finding-1",
           excerpt: "supporting evidence excerpt",
         },
@@ -370,6 +374,66 @@ describe("POST /api/v1/memory/:id/approve", () => {
     expect(body.epistemicState).toBe("CONFIRMED");
     expect(body.verifiedBy).toBe(ownerA.id);
     expect(body.verifiedAt).toBeTruthy();
+  });
+
+  it("rejects approval with 400 (not 404) when the memory's evidence carries no verification signal, and does not promote it", async () => {
+    osStore.ensureLoaded();
+    const now = new Date().toISOString();
+    const unverifiedMemoryId = crypto.randomUUID();
+    osStore.addMemory({
+      id: unverifiedMemoryId,
+      ownerId: ownerA.id,
+      type: "LESSON",
+      projectId: null,
+      statement: "owner A memory with only a bare USER assertion as evidence",
+      reason: [],
+      status: "ACTIVE",
+      confidence: 0.5,
+      category: "GENERATED_REASONING",
+      epistemicState: "PROPOSED",
+      observationMode: "INFERRED",
+      source: "seed",
+      sourceType: "SYSTEM",
+      sourceId: null,
+      // Non-empty (clears "no_evidence"), but `kind: "USER"` carries no
+      // genuine verification signal — must fail the stricter gate.
+      evidence: [
+        {
+          id: crypto.randomUUID(),
+          kind: "USER",
+          reference: "conversation-1",
+          excerpt: "someone said this is true",
+        },
+      ],
+      supersededBy: null,
+      validFrom: null,
+      validUntil: null,
+      observedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "seed",
+      scope: "GLOBAL",
+      priority: "MEDIUM",
+    });
+
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${unverifiedMemoryId}/approve`,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("UNVERIFIED_EVIDENCE");
+    // Distinct from both "no_evidence" (also 400, different code) and
+    // "not_found" (404) — see `approveMemory()`'s doc comment.
+    expect(res.json().error.code).not.toBe("NO_EVIDENCE");
+
+    // Still PROPOSED — never reached CONFIRMED.
+    const check = await app.inject({ method: "GET", url: "/api/v1/memory" });
+    const mine = check
+      .json()
+      .items.find((m: { id: string }) => m.id === unverifiedMemoryId);
+    expect(mine.epistemicState).toBe("PROPOSED");
   });
 
   it("rejects approval with 400 (not 404) when the memory has no evidence, and does not promote it", async () => {

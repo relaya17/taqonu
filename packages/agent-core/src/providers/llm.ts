@@ -238,10 +238,146 @@ export function resetLlmDedupCache(): void {
 }
 
 /**
+ * HTTP error carrying the real status code a provider's fetch call
+ * returned. Providers throw this (instead of a bare `Error`) specifically
+ * so `shouldRetry` below has something structured to inspect — a plain
+ * `Error` message like `"Gemini failed: 401"` would otherwise have to be
+ * string-parsed to recover the status, which is fragile and easy to break
+ * by editing the message text.
+ */
+export class LlmHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "LlmHttpError";
+  }
+}
+
+/**
+ * ---------------------------------------------------------------------
+ * Single-provider retry-with-backoff.
+ * ---------------------------------------------------------------------
+ * `runProviderCall` below is the one place every provider call — for both
+ * `completeWithFreeFallback` and `completeStrict` — actually invokes
+ * `provider.complete()`. A single transient blip there (a dropped
+ * connection, a 502 from an upstream load balancer, our own
+ * AbortController firing on the per-provider 8s/20s fetch timeout — see
+ * the `setTimeout(() => controller.abort(), ...)` calls in each provider
+ * below) used to fail the whole call immediately, even though the exact
+ * same request would likely succeed a moment later. `callProviderWithRetry`
+ * retries those failures a small, bounded number of times with exponential
+ * backoff + jitter before giving up.
+ *
+ * What counts as retryable (see `shouldRetry`):
+ *   - A network-level failure — DNS, connection reset, or our own fetch
+ *     timeout aborting (surfaces as a plain `Error`/`DOMException`, not an
+ *     `LlmHttpError`, since the request never got an HTTP response at
+ *     all) — always transient, always worth one more try.
+ *   - An `LlmHttpError` with status 429 (rate limited) or >=500
+ *     (server-side) — the request was fine, the server or network wasn't.
+ *   - NOT an `LlmHttpError` with any other 4xx status (401 bad key, 400
+ *     malformed request, 404 unknown model, etc.) — the request itself is
+ *     wrong, so retrying burns latency and (for paid providers) risks
+ *     burning real cost for a call that will never succeed.
+ *   - NOT a clean empty-response result — an empty `text` with no thrown
+ *     error is a legitimate answer from the provider (see
+ *     `completeStrict`'s empty-response check further down), not a
+ *     transport failure, so it never even reaches this retry loop:
+ *     `provider.complete()` returned normally, there's nothing to retry.
+ *
+ * Bounds: `MAX_PROVIDER_CALL_ATTEMPTS` (3) caps total attempts — 1
+ * original call plus up to 2 retries. Delay before retry `n` is
+ * `min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2^(n-1)) + jitter`, where
+ * jitter is `random() * RETRY_BASE_DELAY_MS`, so a full exhausted-retry run
+ * adds at most a couple of seconds of latency — enough to ride out a blip,
+ * not enough to turn a fast-failing bad request into a multi-second hang.
+ * The jitter term exists so many callers retrying the same flaky
+ * dependency at once don't all retry in lockstep and re-create the exact
+ * load spike that caused the failures.
+ *
+ * `shouldRetry` and `computeRetryDelayMs` are exported as small, pure,
+ * synchronous functions specifically so this policy can be unit-tested
+ * directly (no fetch mocking, no real timers). The actual sleep between
+ * attempts is indirected through `sleepImpl`, swappable via
+ * `setRetrySleepForTests` so retry tests resolve instantly instead of
+ * burning real wall-clock seconds.
+ */
+export const MAX_PROVIDER_CALL_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 150;
+const RETRY_MAX_DELAY_MS = 1_000;
+
+/**
+ * Whether a provider call failure should be retried. `attempt` is the
+ * 1-indexed attempt number that just failed (1 = the original call).
+ * Returns false once `MAX_PROVIDER_CALL_ATTEMPTS` has been reached even
+ * for an otherwise-retryable error, and false for any error judged
+ * non-transient regardless of attempt count.
+ */
+export function shouldRetry(error: unknown, attempt: number): boolean {
+  if (attempt >= MAX_PROVIDER_CALL_ATTEMPTS) return false;
+  if (error instanceof LlmHttpError) {
+    return error.status === 429 || error.status >= 500;
+  }
+  // No structured status means this never got an HTTP response at all —
+  // a network error or our own timeout abort. Both are transient.
+  return true;
+}
+
+/**
+ * Exponential backoff with jitter for the delay before retry attempt
+ * `attempt` (1-indexed attempt number about to be made, i.e. call this
+ * with 2 for the delay before the 2nd attempt). Pure and deterministic
+ * apart from the jitter term, so `RETRY_BASE_DELAY_MS`/`RETRY_MAX_DELAY_MS`
+ * bounds are directly assertable in tests.
+ */
+export function computeRetryDelayMs(attempt: number): number {
+  const exponential = RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1);
+  const jitter = Math.random() * RETRY_BASE_DELAY_MS;
+  return Math.min(RETRY_MAX_DELAY_MS, exponential + jitter);
+}
+
+type SleepFn = (ms: number) => Promise<void>;
+const realSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let sleepImpl: SleepFn = realSleep;
+
+/**
+ * Test-only: override the delay used between retry attempts so retry
+ * tests don't actually wait in real time. Pass `undefined` to restore the
+ * real timer-based sleep.
+ */
+export function setRetrySleepForTests(fn: SleepFn | undefined): void {
+  sleepImpl = fn ?? realSleep;
+}
+
+/** Retry wrapper around a single provider's `complete()` — see the policy doc comment above. */
+async function callProviderWithRetry(
+  provider: LlmProvider,
+  messages: readonly LlmMessage[],
+): Promise<LlmCompletion> {
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    try {
+      return await provider.complete(messages);
+    } catch (err) {
+      if (!shouldRetry(err, attempt)) {
+        throw err;
+      }
+      await sleepImpl(computeRetryDelayMs(attempt + 1));
+    }
+  }
+}
+
+/**
  * Single funnel every real provider call goes through: dedup cache lookup,
- * then (on a miss) the actual `provider.complete()` call timed for the
- * rolling cost tracker above, with the fresh result cached for the next
- * identical call within `DEDUP_TTL_MS`.
+ * then (on a miss) the actual `provider.complete()` call — retried per the
+ * policy above — timed for the rolling cost tracker above, with the fresh
+ * result cached for the next identical call within `DEDUP_TTL_MS`. Retries
+ * happen *inside* this one call: the dedup cache and cost tracker only
+ * ever see one entry per `runProviderCall` invocation (a single success or
+ * a single final failure), never one per attempt.
  */
 async function runProviderCall(
   provider: LlmProvider,
@@ -257,7 +393,7 @@ async function runProviderCall(
   const startedAt = Date.now();
   let completion: LlmCompletion;
   try {
-    completion = await provider.complete(messages);
+    completion = await callProviderWithRetry(provider, messages);
   } catch (err) {
     recordModelCall({
       model: modelKey,
@@ -425,7 +561,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       clearTimeout(timeout);
     }
     if (!response.ok) {
-      throw new Error(`LLM provider failed: ${response.status}`);
+      throw new LlmHttpError(response.status, `LLM provider failed: ${response.status}`);
     }
     const json = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -520,7 +656,7 @@ export class AnthropicProvider implements LlmProvider {
       clearTimeout(timeout);
     }
     if (!response.ok) {
-      throw new Error(`Anthropic failed: ${response.status}`);
+      throw new LlmHttpError(response.status, `Anthropic failed: ${response.status}`);
     }
     const json = (await response.json()) as {
       content?: Array<{ type?: string; text?: string }>;
@@ -593,7 +729,7 @@ export class GeminiProvider implements LlmProvider {
       clearTimeout(timeout);
     }
     if (!response.ok) {
-      throw new Error(`Gemini failed: ${response.status}`);
+      throw new LlmHttpError(response.status, `Gemini failed: ${response.status}`);
     }
     const json = (await response.json()) as {
       candidates?: Array<{

@@ -3,12 +3,18 @@ import {
   AnthropicProvider,
   ContextEchoProvider,
   GeminiProvider,
+  LlmHttpError,
+  MAX_PROVIDER_CALL_ATTEMPTS,
   OpenAiCompatibleProvider,
   completeStrict,
+  completeWithFreeFallback,
+  computeRetryDelayMs,
   createLlmProvider,
   detectReplyLocale,
   resetLlmDedupCache,
   resetModelCostTracker,
+  setRetrySleepForTests,
+  shouldRetry,
 } from "./llm.js";
 
 describe("detectReplyLocale", () => {
@@ -263,6 +269,181 @@ describe("completeStrict — short-TTL call dedup cache", () => {
     await completeStrict(env, messages); // cache hit — must not add a second sample
 
     const stats = getModelRollingStats("claude-sonnet-4-20250514");
+    expect(stats?.sampleSize).toBe(1);
+  });
+});
+
+describe("shouldRetry — retry policy", () => {
+  it("retries a network-level failure (no HTTP status) while attempts remain", () => {
+    const err = new TypeError("fetch failed");
+    expect(shouldRetry(err, 1)).toBe(true);
+    expect(shouldRetry(err, 2)).toBe(true);
+  });
+
+  it("stops retrying once MAX_PROVIDER_CALL_ATTEMPTS has been reached, even for a transient error", () => {
+    const err = new TypeError("fetch failed");
+    expect(shouldRetry(err, MAX_PROVIDER_CALL_ATTEMPTS)).toBe(false);
+    expect(shouldRetry(err, MAX_PROVIDER_CALL_ATTEMPTS + 1)).toBe(false);
+  });
+
+  it("retries a 5xx LlmHttpError (server-side, transient)", () => {
+    expect(shouldRetry(new LlmHttpError(500, "boom"), 1)).toBe(true);
+    expect(shouldRetry(new LlmHttpError(503, "boom"), 1)).toBe(true);
+  });
+
+  it("retries a 429 rate-limit LlmHttpError (transient)", () => {
+    expect(shouldRetry(new LlmHttpError(429, "rate limited"), 1)).toBe(true);
+  });
+
+  it("does NOT retry a 4xx LlmHttpError other than 429 — the request itself is bad, retrying won't help", () => {
+    expect(shouldRetry(new LlmHttpError(400, "bad request"), 1)).toBe(false);
+    expect(shouldRetry(new LlmHttpError(401, "unauthorized"), 1)).toBe(false);
+    expect(shouldRetry(new LlmHttpError(404, "not found"), 1)).toBe(false);
+  });
+});
+
+describe("computeRetryDelayMs — bounded exponential backoff", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("grows with the attempt number but stays capped at a bounded ceiling", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const d1 = computeRetryDelayMs(1);
+    const d2 = computeRetryDelayMs(2);
+    const d3 = computeRetryDelayMs(3);
+    expect(d1).toBeGreaterThan(0);
+    expect(d2).toBeGreaterThanOrEqual(d1);
+    expect(d3).toBeGreaterThanOrEqual(d2);
+    expect(d3).toBeLessThanOrEqual(1_000);
+  });
+
+  it("never exceeds the cap even at maximum jitter or a large attempt number", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    for (const attempt of [1, 2, 3, 10]) {
+      expect(computeRetryDelayMs(attempt)).toBeLessThanOrEqual(1_000);
+    }
+  });
+});
+
+describe("runProviderCall retry-with-backoff (exercised via completeStrict / completeWithFreeFallback)", () => {
+  const env = {
+    LLM_PROVIDER: "anthropic",
+    ANTHROPIC_API_KEY: "sk-test",
+    ANTHROPIC_MODEL: "claude-sonnet-4-20250514",
+  };
+  const messages = [{ role: "user" as const, content: "what is the deploy status?" }];
+
+  const okResponse = (text: string) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      content: [{ type: "text", text }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    }),
+  });
+  const httpErrorResponse = (status: number) => ({
+    ok: false,
+    status,
+    json: async () => ({}),
+  });
+
+  beforeEach(() => {
+    resetLlmDedupCache();
+    resetModelCostTracker();
+    // Don't actually wait out the backoff delay in tests.
+    setRetrySleepForTests(async () => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setRetrySleepForTests(undefined);
+  });
+
+  it("retries a transient network failure and succeeds on a later attempt", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(okResponse("all green"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await completeStrict(env, messages);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.text).toBe("all green");
+    expect(result.cacheHit).toBe(false);
+  });
+
+  it("retries a transient 5xx-style HTTP failure and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(httpErrorResponse(503))
+      .mockResolvedValueOnce(okResponse("recovered"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await completeStrict(env, messages);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.text).toBe("recovered");
+  });
+
+  it("does NOT retry a 4xx-style client error — fails on the very first attempt", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(httpErrorResponse(401));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(completeStrict(env, messages)).rejects.toThrow("Anthropic failed: 401");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT retry a clean empty response — it's a legitimate provider signal, not a transport failure", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: [], usage: { input_tokens: 5, output_tokens: 0 } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(completeStrict(env, messages)).rejects.toThrow("returned an empty response");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("exhausts all retries (MAX_PROVIDER_CALL_ATTEMPTS) and surfaces the final error to completeStrict", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(httpErrorResponse(500));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(completeStrict(env, messages)).rejects.toThrow("Anthropic failed: 500");
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_PROVIDER_CALL_ATTEMPTS);
+  });
+
+  it("exhausts all retries and completeWithFreeFallback falls through to the free echo provider", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(httpErrorResponse(500));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await completeWithFreeFallback(env, messages);
+
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_PROVIDER_CALL_ATTEMPTS);
+    expect(result.provider).toBe("context-echo-free");
+    expect(result.text.length).toBeGreaterThan(0);
+  });
+
+  it("a retried-then-successful call still dedups on a repeat and records exactly one rolling-cost sample", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(okResponse("all green"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { getModelRollingStats } = await import("./llm.js");
+
+    const first = await completeStrict(env, messages);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const second = await completeStrict(env, messages); // identical call — should hit dedup cache
+    expect(fetchMock).toHaveBeenCalledTimes(2); // no additional provider calls
+    expect(second.cacheHit).toBe(true);
+    expect(second.text).toBe(first.text);
+
+    const stats = getModelRollingStats("claude-sonnet-4-20250514");
+    // One rolling-tracker sample for the whole retried call, not one per attempt.
     expect(stats?.sampleSize).toBe(1);
   });
 });

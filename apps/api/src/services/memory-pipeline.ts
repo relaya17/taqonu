@@ -5,11 +5,14 @@ import {
   type DomainEvent,
   type DomainEventType,
   type EpistemicState,
+  type EvidenceSourceType,
   type Memory,
+  type MemoryEvidence,
   type MemoryType,
   type QaPortfolioPattern,
 } from "@atlas/shared";
 import { domainEventBus, redactSecrets } from "@atlas/agent-core";
+import { cosineSimilarity, embedTextLocalSync } from "@atlas/embeddings";
 import { osStore } from "../store/os-store.js";
 
 /** Evidence-tagged memory slice for agent payloads — never silent FACT merge. */
@@ -340,18 +343,63 @@ export function supersedeMatchingMemories(input: {
 }
 
 /**
+ * Evidence-gate verification-signal check (Gate 3 strengthening): true when
+ * `evidence.kind` — case/whitespace-normalized — names one of
+ * `evidenceSourceTypeSchema`'s inherently-verified source kinds (an
+ * automated, system-observed result: TEST_RUN, CI, STAGING, PRODUCTION), as
+ * opposed to something a person merely typed or asserted (USER,
+ * CONVERSATION, or any other free-text `kind` a caller chose).
+ *
+ * `MemoryEvidence` (memory.schema.ts) is the lightweight
+ * `{id, kind, reference, excerpt}` shape backing `Memory.evidence` — unlike
+ * `evidenceRecordSchema`/`claimSchema` (evidence.schema.ts, the separate
+ * Evidence/Claim pipeline referenced in the `Event → Observation → Claim →
+ * Decision → Evidence → Evaluation → Resolution` comment above
+ * `appendDomainEvent()`), it does not carry a `sourceType` or
+ * `verificationMatrix` field, so `kind` — the closest thing it has to a
+ * provenance tag — doubles as the verification signal here. Match is exact
+ * (not fuzzy/substring) and case-insensitive, so a producer can't
+ * accidentally satisfy this by, say, mentioning "ci" inside an unrelated
+ * free-text kind like "discussion".
+ */
+const INHERENTLY_VERIFIED_EVIDENCE_KINDS: ReadonlySet<string> = new Set<EvidenceSourceType>([
+  "TEST_RUN",
+  "CI",
+  "STAGING",
+  "PRODUCTION",
+]);
+
+function hasVerificationSignal(evidence: MemoryEvidence): boolean {
+  return INHERENTLY_VERIFIED_EVIDENCE_KINDS.has(evidence.kind.trim().toUpperCase());
+}
+
+/**
  * Why `approveMemory()` can fail — lets the route explain the *reason*
  * instead of collapsing every rejection into an ambiguous 404:
  *  - "not_found": the memory doesn't exist, or exists under a different
  *    owner. These two cases are deliberately indistinguishable from each
  *    other (no cross-tenant enumeration — see the ownerId doc below), but
- *    ARE distinguishable from the evidence gate below, which is not a
- *    tenancy/existence signal and is safe to explain.
+ *    ARE distinguishable from either evidence-gate reason below, neither of
+ *    which is a tenancy/existence signal, so both are safe to explain.
  *  - "no_evidence": the memory exists and is owned by the caller, but has
  *    zero `evidence` entries, so promoting it to CONFIRMED would assert
  *    verification that never happened (evidence-required gate, see below).
+ *  - "unverified_evidence": the memory exists, is owned by the caller, and
+ *    has at least one `evidence` entry — but none of them carry a genuine
+ *    verification signal (see `hasVerificationSignal()`). A memory backed
+ *    only by, e.g., a bare USER/CONVERSATION assertion has *evidence* in
+ *    the literal sense (the array isn't empty) but nothing that was
+ *    actually checked, so it cannot clear the same bar `"no_evidence"`
+ *    protects. Distinct from `"no_evidence"` so callers/UIs can tell
+ *    "there's nothing here at all" apart from "there's something here, but
+ *    none of it was verified" — both are equally safe to surface, for the
+ *    same reason `"no_evidence"` is: this is a content signal, not a
+ *    tenancy/existence one.
  */
-export type ApproveMemoryFailureReason = "not_found" | "no_evidence";
+export type ApproveMemoryFailureReason =
+  | "not_found"
+  | "no_evidence"
+  | "unverified_evidence";
 
 export type ApproveMemoryResult =
   | { memory: Memory; reason?: undefined }
@@ -380,6 +428,15 @@ export type ApproveMemoryResult =
  * verification. Returns `{ memory: null, reason: "no_evidence" }` instead
  * (distinct from `"not_found"` — this is not a tenancy signal, so it's safe
  * to surface to the caller).
+ *
+ * Evidence-*verified* gate (Gate 3 strengthening — stricter than merely
+ * non-empty): even with ≥1 `evidence` entry, at least one of them must carry
+ * a genuine verification signal per `hasVerificationSignal()` — a bare
+ * USER/CONVERSATION-style assertion is not, by itself, enough to promote a
+ * memory to CONFIRMED, because nothing about it was actually checked.
+ * Returns `{ memory: null, reason: "unverified_evidence" }` instead (see the
+ * `ApproveMemoryFailureReason` doc comment above for why this is distinct
+ * from, and equally safe to surface as, `"no_evidence"`).
  *
  * On success, stamps `verifiedBy`/`verifiedAt` (provenance trail — who
  * approved this and when) using the same `ownerId` the caller already
@@ -416,6 +473,13 @@ export function approveMemory(input: {
     // can't be promoted).
     if (current.evidence.length === 0) {
       return { memory: null, reason: "no_evidence" };
+    }
+    // Evidence-*verified* gate (see doc comment above): non-empty is not
+    // enough on its own — at least one entry must carry a genuine
+    // verification signal, or this is just an unchecked assertion wearing
+    // an "evidence" label. Same early-return rationale as the check above.
+    if (!current.evidence.some(hasVerificationSignal)) {
+      return { memory: null, reason: "unverified_evidence" };
     }
     const nextEpistemic: EpistemicState =
       current.epistemicState === "PROPOSED" ||
@@ -458,6 +522,69 @@ export function approveMemory(input: {
   return { memory: null, reason: "not_found" };
 }
 
+/** One evidence entry's provenance, resolved into an auditable, read-only shape. */
+export type MemoryProvenanceEntry = {
+  evidenceId: string;
+  kind: string;
+  /** Linkage back to whatever record `kind` names — a finding id, PR
+   *  number, commit SHA, etc. Passed through verbatim: `MemoryEvidence`
+   *  (memory.schema.ts) already carries this as a free-text `reference`
+   *  string, and this resolver doesn't invent a stronger link than that. */
+  reference: string;
+  excerpt: string | null;
+  /** Same judgment `approveMemory()`'s evidence-verified gate applies to
+   *  this entry — see `hasVerificationSignal()`. */
+  hasVerificationSignal: boolean;
+};
+
+/** Full evidence-provenance chain for one memory — "why does Atlas believe this". */
+export type MemoryProvenance = {
+  memoryId: string;
+  epistemicState: EpistemicState;
+  evidenceCount: number;
+  verifiedEvidenceCount: number;
+  /** True iff `approveMemory()`'s evidence-verified gate would currently
+   *  pass for this memory (regardless of its current epistemicState) — lets
+   *  a caller check "would this clear the bar" without calling approveMemory
+   *  and mutating anything. */
+  meetsApprovalEvidenceBar: boolean;
+  entries: MemoryProvenanceEntry[];
+};
+
+/**
+ * Read-only "why does Atlas believe this" trace (evidence provenance chain):
+ * resolves `memory.evidence` into a structured, auditable form — every
+ * entry's `kind`/`reference`/`excerpt` plus the same verification-signal
+ * judgment the approval gate uses, so a reviewer (human or another service)
+ * can see *why* a memory did or didn't clear that gate without re-deriving
+ * the logic themselves. "Never confuse remembering with proving": this
+ * function only surfaces what `MemoryEvidence` already carries (no store
+ * lookups, no mutation, no invented fields) — it is purely a read/derive
+ * projection of `memory`, safe to call on any memory regardless of who owns
+ * it (callers are responsible for their own tenant-scoping, exactly like
+ * `toMemoryContextItem()` above).
+ */
+export function resolveMemoryProvenance(memory: Memory): MemoryProvenance {
+  const entries: MemoryProvenanceEntry[] = memory.evidence.map((evidence) => ({
+    evidenceId: evidence.id,
+    kind: evidence.kind,
+    reference: evidence.reference,
+    excerpt: evidence.excerpt ?? null,
+    hasVerificationSignal: hasVerificationSignal(evidence),
+  }));
+  const verifiedEvidenceCount = entries.filter(
+    (entry) => entry.hasVerificationSignal,
+  ).length;
+  return {
+    memoryId: memory.id,
+    epistemicState: memory.epistemicState,
+    evidenceCount: entries.length,
+    verifiedEvidenceCount,
+    meetsApprovalEvidenceBar: verifiedEvidenceCount > 0,
+    entries,
+  };
+}
+
 /**
  * Per-agent scoping (P1 fix): true when `memory` may be returned to
  * `requestingAgentId`. A memory with no `allowedAgents` set (null/undefined/
@@ -480,7 +607,68 @@ function isVisibleToAgent(memory: Memory, requestingAgentId?: string): boolean {
   return allowed.includes(requestingAgentId);
 }
 
-/** Retrieve ACTIVE memories with a hard budget (token/cost control). */
+/**
+ * Weight applied to (clamped, non-negative) cosine similarity between the
+ * query embedding and a memory statement's embedding in `retrieveMemories()`.
+ * Sized to sit alongside the existing literal-substring bonus (0.25 below)
+ * without swamping the epistemic-state / priority / recency terms that also
+ * feed that same additive score — see the doc comment on `retrieveMemories()`
+ * for the full hybrid-ranking rationale.
+ */
+const SEMANTIC_SIMILARITY_WEIGHT = 0.22;
+
+/**
+ * Per-process cache of local hash-trick statement embeddings, keyed by
+ * `${memory.id}:${memory.statement}`. The statement text itself doubles as
+ * the content-hash half of the key: an edited statement (e.g. after
+ * `approveMemory()`/supersede touches `updatedAt` but leaves `statement`
+ * alone in the common case, or a genuine statement edit) produces a
+ * different key, so a stale vector is never returned — no separate
+ * invalidation bookkeeping needed. Deliberately unbounded/no-eviction: this
+ * matches the low-ceremony style of the rest of this scoring pass (nothing
+ * else in `retrieveMemories()` memoizes either), and each entry is ~64
+ * floats, so it stays cheap even for a large in-process memory pool.
+ */
+const memoryStatementEmbeddingCache = new Map<string, readonly number[]>();
+
+function getMemoryStatementEmbedding(memory: Memory): readonly number[] {
+  const cacheKey = `${memory.id}:${memory.statement}`;
+  const cached = memoryStatementEmbeddingCache.get(cacheKey);
+  if (cached) return cached;
+  const vec = embedTextLocalSync(memory.statement);
+  memoryStatementEmbeddingCache.set(cacheKey, vec);
+  return vec;
+}
+
+/**
+ * Retrieve ACTIVE memories with a hard budget (token/cost control).
+ *
+ * Query ranking is a hybrid, not a replacement: the pre-existing
+ * literal-substring bonuses (query as a whole phrase found in `statement` or
+ * `reason`) stay exactly as they were — nothing here narrows or filters the
+ * candidate pool, so no memory that used to be reachable becomes
+ * unreachable. Layered on top, when `query` is non-empty, every ACTIVE
+ * candidate also gets a semantic-similarity bonus from
+ * `@atlas/embeddings` — a fully local, offline, no-API-key, hash-trick
+ * embedding (`embedTextLocalSync`) compared via `cosineSimilarity` — scaled
+ * by `SEMANTIC_SIMILARITY_WEIGHT` and clamped to never go negative, so a
+ * dissimilar memory is never scored *below* its query-less baseline (every
+ * other term in this function is likewise additive-only, never punitive,
+ * except the explicit PROPOSED/STALE epistemic penalties above). This lets a
+ * query like "why did the deploy fail" surface a memory like "production
+ * build broke due to missing env var" even though they share no literal
+ * substring — something the substring bonus alone can never do. Note the
+ * hash-trick embedding captures token/lexical-level signal rather than
+ * trained semantic understanding, so its cross-vocabulary matches are
+ * probabilistic, not guaranteed for arbitrary paraphrases (see
+ * `packages/embeddings/src/provider.ts`).
+ *
+ * This only changes *which* memories rank where; it does not touch
+ * epistemic-state or evidence-tagging — `toMemoryContextItem()` /
+ * `buildMemoryContext()` still pass every returned `Memory` through
+ * unchanged, and `MEMORY_CONTEXT_NOTE` still applies to whatever this
+ * returns.
+ */
 export function retrieveMemories(input: {
   projectId?: string | null;
   query?: string;
@@ -512,6 +700,9 @@ export function retrieveMemories(input: {
     );
   }
   const q = (input.query ?? "").trim().toLowerCase();
+  // Semantic layer (hybrid ranking, see doc comment above): computed once per
+  // call, outside the per-memory map below, since it doesn't depend on `m`.
+  const qVec = q ? embedTextLocalSync(q) : null;
   const active = pools
     .filter((m) => m.status === "ACTIVE")
     .filter((m) => isVisibleToAgent(m, input.requestingAgentId));
@@ -529,6 +720,12 @@ export function retrieveMemories(input: {
       }
       if (q && m.statement.toLowerCase().includes(q)) score += 0.25;
       if (q && m.reason.some((r) => r.toLowerCase().includes(q))) score += 0.08;
+      if (qVec) {
+        const similarity = cosineSimilarity(qVec, getMemoryStatementEmbedding(m));
+        // Clamp to non-negative: an unrelated memory must never score below
+        // its query-less baseline (additive-bonus shape, see doc comment).
+        if (similarity > 0) score += similarity * SEMANTIC_SIMILARITY_WEIGHT;
+      }
       if (m.priority === "CRITICAL") score += 0.15;
       if (m.priority === "HIGH") score += 0.08;
       if (m.source === "qa-portfolio-pattern") score += 0.18;

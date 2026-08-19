@@ -237,6 +237,20 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
           },
         });
       }
+      if (result.reason === "unverified_evidence") {
+        // Gate 3 strengthening (see `approveMemory()`'s doc comment): the
+        // memory exists, is the caller's own, and has ≥1 evidence entry —
+        // but none of them carry a genuine verification signal. Same
+        // rationale as "no_evidence" above (not a tenancy/existence signal,
+        // safe to explain distinctly rather than collapsing into 404).
+        return reply.status(400).send({
+          error: {
+            message:
+              "Memory cannot be approved: none of its evidence entries are verified",
+            code: "UNVERIFIED_EVIDENCE",
+          },
+        });
+      }
       // Same 404 whether the memory truly doesn't exist or exists under a
       // different owner — never reveal cross-tenant existence.
       return reply.status(404).send({ error: { message: "Memory not found" } });
