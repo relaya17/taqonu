@@ -200,4 +200,21 @@
 **סטטוס בפועל**: זהו מסמך הרשימה בלבד, כפי שהתבקש ("נבנה את זה בשלבים והמסמך יתעדכן"). **אף שלב מ-6 השלבים לא התחיל להיבנות בקוד** — נדרשת החלטה מפורשת של המשתמשת על איזה שלב/scope להתחיל בו לפני שנכתוב שורת קוד.
 
 ---
-*מסמך זה הוא תמצית. לכל טענה יש file:line מגובה ב-`atlas-gap-analysis.md` (מיפוי מלא), `atlas-gap-analysis-staged-roadmap.md` (מסמך הפערים המלא ב-17 סעיפים + roadmap מדורג), ו-`atlas-security-intelligence-audit.md` (audit אבטחה מלא + תיקונים).*
+
+**batch 12 — `atlas-gap-analysis-staged-roadmap.md` עודכן ל-Revision 2 / Stage 2** (בעקבות מסמך המשך מפורט שהמשתמשת הדביקה: "יש פה מידע נוסף אני רוצה הכל להעביר למסמך... אני רוצה לשאוף הכי גבוה — פערים טכנולוגיים אלה כן אפשר לבנות"):
+
+המסמך גדל מ-17 ל-27 סעיפים. השינוי המרכזי: **חלוקה מפורשת ל-3 מסלולים**, כדי להפריד בבירור בין מה שבאמת ניתן לסגור בקוד לבין מה שלא (סעיף 0.1 חדש):
+- **מסלול A — Build Now** (פערים טכנולוגיים, ניתנים-לסגירה בקוד): §2-9, §14-15, §18 (Evaluation at Scale — סעיף חדש), §19 (reliability hygiene כ-Phase 2.5 — סעיף חדש).
+- **מסלול B — Enterprise Hardening** (בעיקר קוד+תהליך, אבל בצורת certification לא feature): §13, §20 (Enterprise Security/Compliance — סעיף חדש: SSO/SAML/SCIM/SOC2/ISO27001/פחות), §21 (Ecosystem/Integrations — סעיף חדש: GitHub/GitLab/Jira/Slack/AWS/וכו', עם ה-SDK כמנוף "build once integrate everywhere"), §22 (Production HA/SLA — סעיף חדש).
+- **מסלול C — Company Scale (לא פער קוד בכלל)**: §23 (Distribution/Customers), §24 (Capital/Team) — סעיפים חדשים, מתויגים בבירור כ"לא ניתן לסגירה ע"י כתיבת קוד", כדי שהמסמך לא ייצור רושם מטעה.
+
+**תוספות טכניות עיקריות:**
+- **§3 (Tool Runtime/Sandbox) הורחב משמעותית**: רשימת הכלים היעד (`read_file`, `search_repo`, `write_patch`, `run_tests`, `run_typecheck`, `run_lint`, `inspect_db`, `build`, `deploy_staging` ועוד), צינור הקריאה היעד `Agent → Identity → Policy → Risk → Tool Permission → Execution → Audit → Verification`, והבהרה מפורשת ש-`enforceEntityWrite` הקיים (32+ routes) הוא ה-control primitive שצריך להתרחב לזה — **לא להמציא gate מקביל**. Sandbox אוחד לתוך Tool Runtime כ-3 רמות בשלות (2A allow-listed tools ללא בידוד → 2B בידוד filesystem/process → 2C sandbox מלא עם network policy/quotas/snapshot-rollback), לא מוצר נפרד, בדיוק כפי שהמשתמשת ביקשה.
+- **§18 חדש — Evaluation at Scale**: `Task → Expected → Actual → Evidence → Tests → Score → Regression → Historical`, עם 8 מדדים (accuracy, success rate, regression rate, rollback rate, policy violation rate, cost per successful task, latency, human override rate). מתועד במפורש כמקור הנתונים הישיר ל-§7 (Confidence+Reputation) — לא feature נפרד.
+- **§26 חדש — שרשרת תלויות מלאה בת 14 צמתים** (גרסה מפורטת יותר של Phase 1-6), עם **שני כללים קשיחים מוצהרים**: (1) Organization לפני Multi-App Intelligence — כל עוד Project הוא יחידת הבעלות העליונה, אסור לבנות "Atlas רואה קשרים בין HotelOS ל-BrokerOS" כאילו עולם אחד; (2) Unified Verification לפני Prediction — בלי `verify() → Verified/Failed/Inconclusive` אחיד שמזין את ה-evaluation ledger, ל-Prediction אין נגד מה לכייל, וזו בדיוק ההיגיון שכבר מגובה בהחלטתה של המשתמשת להשאיר Diagnosis/Prediction כ-Roadmap.
+- **§27 חדש — מיצוב מול השחקניות הגדולות**: הפער בביצוע-סוכנים (מסלול A) ממוקד כמעט כולו ב-§2+§3, לא מפוזר; הפער הארגוני (מסלול B) הוא בעיקר הקשחה/הסמכות, לא ארכיטקטורה מחדש; הפער החברה (מסלול C) גדול ואמיתי — וזה נורמלי לשלב הזה, לא סימן לבעיה במוצר. כולל ניסוח single-line למשקיע.
+
+**סטטוס בפועל — ללא שינוי**: זהו עדיין שלב הרשימה בלבד. אף שורת קוד לא נכתבה כתוצאה מהעדכון הזה — נדרשת החלטת המשתמשת על scope/שלב להתחלה.
+
+---
+*מסמך זה הוא תמצית. לכל טענה יש file:line מגובה ב-`atlas-gap-analysis.md` (מיפוי מלא), `atlas-gap-analysis-staged-roadmap.md` (מסמך הפערים המלא, Revision 2, 27 סעיפים + 3 מסלולים + roadmap מדורג בן 14 צמתים), ו-`atlas-security-intelligence-audit.md` (audit אבטחה מלא + תיקונים).*
