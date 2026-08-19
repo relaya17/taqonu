@@ -41,6 +41,7 @@ import {
 } from "../services/hybrid-rag.js";
 import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import {
@@ -98,6 +99,19 @@ export async function registerAgentFabricRoutes(
   });
 
   app.post("/api/v1/agents/plan", async (request) => {
+    // Tenant boundary (P0 fix): this endpoint calls buildMemoryContext()
+    // below, which returns evidence-tagged memory *statements* directly in
+    // the HTTP response — without a signed-in caller + ownerId scope it
+    // would leak every tenant's memories to any anonymous requester.
+    const user = await requireSignedInForWrite(app, request);
+    // ENTITY-LEVEL gate: intentionally NOT added here. `planAgentWork`
+    // below only proposes a plan (steps + budget/cost estimate) — it never
+    // dispatches an agent or mutates/executes anything, mirroring
+    // `kernel.ts`'s `POST /kernel/plan` (no `authorizeEntityAction` call)
+    // vs. its `POST /kernel/run` (has one). If this route is ever changed
+    // to auto-execute steps rather than just return them for review, it
+    // should gain the same `CONFIGURATION.EXECUTE` check that
+    // `/api/v1/agents/dispatch` has below.
     const body = agentPlanRequestSchema.parse(request.body);
     const started = Date.now();
     const memoryContext = toPublicMemoryContext(
@@ -105,6 +119,7 @@ export async function registerAgentFabricRoutes(
         projectId: body.projectId ?? null,
         query: body.request,
         budget: AGENT_MEMORY_BUDGET,
+        ownerId: user.id,
       }),
     );
     atlasMetrics.record(
@@ -160,13 +175,59 @@ export async function registerAgentFabricRoutes(
   });
 
   app.post("/api/v1/agents/dispatch", async (request, reply) => {
+    // Tenant boundary (P0 fix): same reasoning as /api/v1/agents/plan above
+    // — dispatch also returns buildMemoryContext() statements directly in
+    // the HTTP response (and in the audit/domain-event payloads below), so
+    // it must require a signed-in caller and scope retrieval to their
+    // ownerId.
+    const user = await requireSignedInForWrite(app, request);
     const body = agentDispatchRequestSchema.parse(request.body);
+
+    // ENTITY-LEVEL gate, independent of the ROLE-LEVEL WRITE check above.
+    // Unlike /api/v1/agents/plan, this route actually dispatches agents
+    // that perform real work (see `specialistOverride` below, which can run
+    // live SECURITY/LEGAL_MEDIA_COMMS specialist actions) — this was the
+    // confirmed gap: no central Policy-Engine check for agent-initiated
+    // dispatch. `CONFIGURATION.EXECUTE` is the closest fit, matching
+    // `kernel.ts`'s `POST /kernel/run` (dispatching the control-plane
+    // agent fabric itself, not mutating one specific business record).
+    // As with kernel/run, this is scoped to a single caller-supplied
+    // request with an explicit agent/budget cap (not an unbounded sweep
+    // like admin-ops.ts's run-checks), so an authenticated WRITE-session
+    // caller's own request is treated as sufficient authorization — no
+    // separate human-approval round trip is manufactured for it here. The
+    // entity-policy engine is still genuinely exercised: a DENIED decision
+    // (e.g. write gate closed) blocks the request rather than being
+    // bypassed.
+    //
+    // Numeric risk-bucket scoring (`computeActionRiskScore`/
+    // `bucketForRiskScore`, as used by code.ts for patch apply/rollback)
+    // was intentionally NOT added here: that scorer needs a per-action
+    // `baseTier` derived from something like an existing `PatchRisk`, plus
+    // real `confidence`/`evidenceCount` inputs, and none of those exist
+    // for an agent-dispatch request *before* dispatch runs — the judge's
+    // confidence/evidence for this call are only known *after* dispatch
+    // completes, not ahead of the gate. Retrofitting a meaningful risk
+    // score (and the approval-workflow wiring admin-ops.ts uses for its
+    // DESTRUCTIVE/requiresApproval case) would need a real design decision
+    // about what pre-dispatch signal to score, which is out of scope for
+    // this fix; the categorical policy check above is the safe, correct
+    // subset to land now.
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "agents.dispatch",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
+
     const started = Date.now();
     const memoryContext = toPublicMemoryContext(
       buildMemoryContext({
         projectId: body.projectId ?? null,
         query: body.request,
         budget: AGENT_MEMORY_BUDGET,
+        ownerId: user.id,
       }),
     );
     atlasMetrics.record(
@@ -311,7 +372,7 @@ export async function registerAgentFabricRoutes(
   });
 
   app.post("/api/v1/knowledge/ingest", async (request, reply) => {
-    requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
     ensureKnowledgeCorpusHydrated();
     const body = knowledgeIngestRequestSchema.parse(request.body);
     if (body.url && !isAuthorizedOfficialKnowledgeUrl(body.url)) {
@@ -370,23 +431,23 @@ export async function registerAgentFabricRoutes(
     });
   });
 
-  function assertKnowledgeRefreshAllowed(
+  async function assertKnowledgeRefreshAllowed(
     request: Parameters<typeof requireSignedInForWrite>[1],
-  ): void {
+  ): Promise<void> {
     const secret =
       process.env.CRON_SECRET?.trim() ||
       process.env.ATLAS_CRON_SECRET?.trim() ||
       "";
     const auth = request.headers.authorization ?? "";
     if (secret && auth === `Bearer ${secret}`) return;
-    requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
   }
 
   const runRefresh = async (
     request: Parameters<typeof requireSignedInForWrite>[1],
     reply: { status: (code: number) => { send: (body: unknown) => unknown } },
   ) => {
-    assertKnowledgeRefreshAllowed(request);
+    await assertKnowledgeRefreshAllowed(request);
     ensureKnowledgeCorpusHydrated();
     const report = await refreshVerifiedKnowledge({ env: app.atlasEnv });
     appendDomainEvent({
@@ -424,7 +485,7 @@ export async function registerAgentFabricRoutes(
   );
 
   app.get("/api/v1/knowledge/corpus", async (request) => {
-    requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
     ensureKnowledgeCorpusHydrated();
     return {
       items: listKnowledgeCorpus(),

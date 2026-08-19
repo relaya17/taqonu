@@ -13,12 +13,14 @@ import {
   assertCloudSlotAvailable,
   getAccountPlan,
 } from "../services/plan-quota.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import {
+  assertProjectReadAccess,
   assertProjectWriteAccess,
   assertSafeWorkspaceRoot,
   bindProjectOwner,
+  canReadProjectScoped,
 } from "../services/project-access.js";
 import {
   buildCentralOpinion,
@@ -26,22 +28,27 @@ import {
   resolveProjectReachability,
   listManagerPartnerReminders,
 } from "../services/central-opinion.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
 
-  app.get("/api/v1/projects", async () => {
-    const items = osStore.listProjects().map((project) => {
-      const link = osStore.getCloudLink(project.id);
-      const workspaceRoot = osStore.getWorkspaceRoot(project.id) ?? null;
-      return {
-        ...project,
-        cloudSynced: Boolean(link),
-        cloudProjectId: link?.cloudProjectId ?? null,
-        cloudSyncedAt: link?.syncedAt ?? null,
-        workspaceRoot,
-      };
-    });
+  app.get("/api/v1/projects", async (request) => {
+    const user = await requireUser(app, request);
+    const items = osStore
+      .listProjects()
+      .filter((project) => canReadProjectScoped(user, project.id))
+      .map((project) => {
+        const link = osStore.getCloudLink(project.id);
+        const workspaceRoot = osStore.getWorkspaceRoot(project.id) ?? null;
+        return {
+          ...project,
+          cloudSynced: Boolean(link),
+          cloudProjectId: link?.cloudProjectId ?? null,
+          cloudSyncedAt: link?.syncedAt ?? null,
+          workspaceRoot,
+        };
+      });
     return {
       items,
       page: 1,
@@ -52,6 +59,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     const project = osStore.getProject(params.id);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -69,7 +77,14 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   /** Explicit local folder permission — Atlas never scans whole disk. */
   app.put("/api/v1/projects/:id/workspace-root", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    assertProjectWriteAccess(app, request, params.id);
+    const workspaceRootUser = await assertProjectWriteAccess(app, request, params.id);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "UPDATE",
+      routeLabel: "projects.workspace-root",
+      actorId: workspaceRootUser.id,
+      projectId: params.id,
+    });
     const body = z
       .object({
         workspaceRoot: z.string().min(1).max(1000).nullable(),
@@ -93,8 +108,14 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post("/api/v1/projects", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const body = createProjectSchema.parse(request.body);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "projects.create",
+      actorId: user.id,
+    });
     const now = new Date().toISOString();
     const existing = osStore.getProjectBySlug(body.slug);
     if (existing) {
@@ -149,6 +170,20 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.post("/api/v1/projects/:id/cloud", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth/ownership check — any caller could trigger a
+    // cloud-sync for ANY project id, consuming that project owner's cloud
+    // quota slot and exfiltrating project name/slug/description/techStack
+    // to the response. `assertProjectWriteAccess` matches the sibling
+    // `PUT /:id/workspace-root` route's gate.
+    const cloudSyncUser = await assertProjectWriteAccess(app, request, params.id);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "UPDATE",
+      routeLabel: "projects.cloud-sync",
+      actorId: cloudSyncUser.id,
+      projectId: params.id,
+    });
     const project = osStore.getProject(params.id);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -207,6 +242,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id/resume", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     const project = osStore.getProject(params.id);
     const snapshot = osStore.getSnapshot(params.id);
     const decisions = osStore.getDecisions(params.id);
@@ -260,6 +296,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id/context-export", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     const project = osStore.getProject(params.id);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");

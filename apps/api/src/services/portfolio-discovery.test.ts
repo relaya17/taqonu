@@ -16,10 +16,21 @@ describe("portfolio-discovery", () => {
 
   beforeAll(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    // Isolation gap fix: this previously left `ATLAS_STORE_PATH` unset, so
+    // `linkDiscoveredWorkspaceRoot` / `discoverLocalPortfolio`'s osStore
+    // calls hit the REAL `.atlas/store.json` at the repo root —
+    // SKIP_STORE_PERSIST alone suppresses persistence but not the initial
+    // `ensureLoaded()` read of real accumulated project/workspace-root
+    // state.
+    process.env.ATLAS_STORE_PATH = join(
+      mkdtempSync(join(tmpdir(), "atlas-portfolio-discovery-store-")),
+      "store.json",
+    );
   });
 
   afterAll(() => {
     delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    delete process.env.ATLAS_STORE_PATH;
     for (const dir of dirs) {
       rmSync(dir, { recursive: true, force: true });
     }

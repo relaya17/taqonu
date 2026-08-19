@@ -48,6 +48,11 @@ export function compareSuiteRuns(
     regressions,
     plainLanguageSummary: summary,
     createdAt: new Date().toISOString(),
+    // Tenant attribution — prefer the current suite's projectId/ownerId
+    // (the run being evaluated), falling back to the previous suite's when
+    // the current one wasn't tagged (e.g. an older, pre-attribution suite).
+    projectId: current.projectId ?? previous.projectId ?? null,
+    ownerId: current.ownerId ?? previous.ownerId ?? null,
   });
 }
 

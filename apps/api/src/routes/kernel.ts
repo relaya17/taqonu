@@ -39,6 +39,7 @@ import { osStore } from "../store/os-store.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { z } from "zod";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerKernelRoutes(app: FastifyInstance): Promise<void> {
   hydrateKnowledgeCorpus({ enablePersist: true });
@@ -112,7 +113,30 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
 
   /** P1–P7 run */
   app.post("/api/v1/kernel/run", async (request, reply) => {
+    // ROLE-LEVEL gate: any signed-in WRITE-capable user may trigger a
+    // kernel run. ENTITY-LEVEL gate below is a second, independent axis
+    // (see admin-ops.ts's run-checks for the general two-axis pattern).
+    const user = await requireSignedInForWrite(app, request);
     const body = kernelRunRequestSchema.parse(request.body);
+
+    // `CONFIGURATION.EXECUTE` is the closest fit: a kernel run dispatches
+    // the control-plane orchestrator/agent-fabric itself rather than
+    // mutating a specific business record. Unlike
+    // `admin.automation.run-checks` (an unbounded, platform-wide watchdog
+    // sweep), a kernel run is scoped to a single caller-supplied request
+    // with an explicit agent/budget cap, so an authenticated WRITE-session
+    // caller's own request is treated as sufficient authorization here —
+    // no separate human-approval round trip is manufactured for it. This
+    // still genuinely exercises the entity-policy engine: DENIED/blocked
+    // outcomes (e.g. write gate closed) are enforced, not bypassed.
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "kernel.run",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
+
     const sentinel = runSecuritySpecialistViaSentinel({
       request: body.request,
       projectId: body.projectId ?? null,
@@ -152,6 +176,7 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
         judge: result.judge?.decision ?? null,
         evidenceEvents: result.evidenceEvents.length,
         knowledgeHits: result.knowledgePackage?.hitIds.length ?? 0,
+        actorId: user.id,
       },
     });
     return reply.status(201).send(result);
@@ -170,7 +195,7 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/kernel/knowledge/ingest", async (request, reply) => {
-    requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
     hydrateKnowledgeCorpus({ enablePersist: true });
     const body = knowledgeIngestRequestSchema.parse(request.body);
     if (body.url && !isAuthorizedOfficialKnowledgeUrl(body.url)) {
@@ -213,7 +238,7 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.get("/api/v1/kernel/knowledge/corpus", async (request) => {
-    requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
     hydrateKnowledgeCorpus({ enablePersist: true });
     return {
       items: listKnowledgeCorpus(),
@@ -272,6 +297,18 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
 
   /** P10 Self-improvement */
   app.post("/api/v1/kernel/improve", async (request, reply) => {
+    // Self-improvement mutates the agent's own improvement-rule set from
+    // scanned lessons — an irreversible, agent-triggered control-plane
+    // change, so it gets the same two-axis (role + entity) gating as
+    // kernel/run above rather than staying open to any caller.
+    const improveUser = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "kernel.improve",
+      actorId: improveUser.id,
+    });
+
     const result = runSelfImprovement();
     osStore.recordEvent({
       type: "kernel.improve",

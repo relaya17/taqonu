@@ -16,7 +16,11 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const vercelFeedBodySchema = z.object({
   projectId: uuidSchema,
@@ -45,7 +49,14 @@ export async function registerDeployFeedRoutes(
 ): Promise<void> {
   app.post("/api/v1/feeds/vercel", async (request, reply) => {
     const body = vercelFeedBodySchema.parse(request.body);
-    assertProjectWriteAccess(app, request, body.projectId);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "feeds.vercel",
+      actorId: user.id,
+      projectId: body.projectId,
+    });
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeVercelFeed({
       projectId: body.projectId,
@@ -150,7 +161,14 @@ export async function registerDeployFeedRoutes(
 
   app.post("/api/v1/feeds/render", async (request, reply) => {
     const body = renderFeedBodySchema.parse(request.body);
-    assertProjectWriteAccess(app, request, body.projectId);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "feeds.render",
+      actorId: user.id,
+      projectId: body.projectId,
+    });
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeRenderFeed({
       projectId: body.projectId,
@@ -254,7 +272,10 @@ export async function registerDeployFeedRoutes(
   });
 
   app.get("/api/v1/feeds/:projectId/deployment", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — same class of gap as db-feeds.ts's sibling GET.
     const params = z.object({ projectId: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.projectId);
     return {
       items: osStore.getDeployFeeds(params.projectId),
       note: "Observation feeds for Current State DEPLOYMENT — distinct from DATABASE feeds.",

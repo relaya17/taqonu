@@ -1,4 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PLAN_CLOUD_LIMITS, STUB_OWNER_ID } from "@atlas/shared";
 import {
   hasRemainingCloudSlots,
@@ -8,12 +11,22 @@ import {
 } from "./plan-quota.js";
 import { osStore } from "../store/os-store.js";
 
+// Isolation gap fix: this previously left `ATLAS_STORE_PATH` unset, so
+// `upsertTenantSubscription`'s osStore writes hit the REAL
+// `.atlas/store.json` at the repo root — SKIP_STORE_PERSIST alone
+// suppresses persistence but not the initial `ensureLoaded()` read of real
+// accumulated tenant-subscription state.
+const tmpDir = mkdtempSync(join(tmpdir(), "atlas-plan-quota-test-"));
+
 beforeAll(() => {
   process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+  process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 });
 
 afterAll(() => {
   delete process.env.ATLAS_SKIP_STORE_PERSIST;
+  delete process.env.ATLAS_STORE_PATH;
+  rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe("resolveOwnerId", () => {

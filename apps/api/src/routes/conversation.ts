@@ -34,6 +34,8 @@ import {
   insufficientEvidenceAnswer,
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -110,8 +112,24 @@ export async function registerConversationRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/conversation/message", async (request, reply) => {
+    // Auth gate (P0 fix): this route spends LLM/credit budget and returns
+    // memory-context content — never usable anonymously. Mirrors the
+    // signed-in-required convention used by other write/expensive routes
+    // (see memory.ts / code.ts).
+    const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
     const body = createConversationMessageSchema.parse(request.body);
+    // ENTITY-LEVEL gate + numeric Risk Engine + unified audit log: a
+    // conversation message triggers an LLM run and can charge credits —
+    // same RECORD.EXECUTE class as artifacts.ts's assists/runs.
+    // Self-approved signed-in-human-write pattern used across this round.
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "conversation.message",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
     assertAgentMessageQuota(app.atlasEnv);
     const now = new Date().toISOString();
     const locale = body.locale ?? "en";
@@ -147,10 +165,15 @@ export async function registerConversationRoutes(
     const decisions = projectId
       ? [...osStore.getDecisions(projectId), ...osStore.getDecisions("global")]
       : [...osStore.getDecisions("global")];
+    // Tenant boundary (P0 fix): scope memory retrieval to the caller so one
+    // tenant's conversation never surfaces another tenant's memories.
+    // Admins bypass, same convention as memory.ts.
+    const callerOwnerId = user.role === "admin" ? undefined : user.id;
     const memoryContextResult = buildMemoryContext({
       projectId,
       query: body.message,
       budget: AGENT_MEMORY_BUDGET,
+      ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
     const { memories, ...memoryContext } = memoryContextResult;
     const evidenceRecords = projectId ? osStore.getEvidence(projectId) : [];

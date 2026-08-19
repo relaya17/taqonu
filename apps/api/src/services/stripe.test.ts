@@ -1,5 +1,8 @@
 import { createHmac } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AtlasError, PLAN_CLOUD_LIMITS, STUB_OWNER_ID } from "@atlas/shared";
 import {
   fulfillStripeCheckoutSession,
@@ -16,6 +19,24 @@ import { osStore } from "../store/os-store.js";
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
+
+// Isolation gap fix (file-level, covers all three describe blocks below):
+// only the middle describe block set `ATLAS_SKIP_STORE_PERSIST`, and it
+// deleted the env var again in its own `afterAll` — so by the time
+// "tenant quota enforcement" ran, `fulfillStripeCheckoutSession` was
+// writing tenant-subscription state for real into `.atlas/store.json` at
+// the repo root. Setting both env vars once for the whole file (before
+// any describe block runs) closes that gap.
+const tmpDir = mkdtempSync(join(tmpdir(), "atlas-stripe-test-"));
+beforeAll(() => {
+  process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+  process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
+});
+afterAll(() => {
+  delete process.env.ATLAS_SKIP_STORE_PERSIST;
+  delete process.env.ATLAS_STORE_PATH;
+  rmSync(tmpDir, { recursive: true, force: true });
+});
 
 describe("verifyStripeWebhookSignature", () => {
   const secret = "whsec_test_secret";
@@ -48,13 +69,10 @@ describe("verifyStripeWebhookSignature", () => {
 });
 
 describe("stripe webhook → tenant upgrade", () => {
-  beforeAll(() => {
-    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
-  });
-
-  afterAll(() => {
-    delete process.env.ATLAS_SKIP_STORE_PERSIST;
-  });
+  // ATLAS_SKIP_STORE_PERSIST / ATLAS_STORE_PATH are now set file-wide above
+  // (previously this block's own afterAll deleted SKIP_STORE_PERSIST right
+  // after this describe finished, unprotecting the "tenant quota
+  // enforcement" describe below it).
 
   afterEach(() => {
     osStore.resetBillingStateForTests();

@@ -18,6 +18,27 @@ import {
   discoverLocalPortfolio,
 } from "../services/portfolio-discovery.js";
 import { osStore } from "../store/os-store.js";
+import {
+  requireSignedInForWrite,
+  requireUser,
+} from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
+
+/**
+ * KNOWN LIMITATION (flagged, not fixed here — see task scope): the GitHub
+ * token and local repos-root path are stored as a single global record each
+ * in `os-store.ts` (`githubConnection` / `localConnection`), not keyed per
+ * owner/actor. Adding `requireUser`/`requireSignedInForWrite` below closes
+ * the "fully unauthenticated" hole (anyone on the network could previously
+ * read/replace/delete the shared token with zero auth), but it does NOT
+ * isolate the token between two different signed-in accounts on the same
+ * server — any signed-in user can still see/replace/import via the one
+ * shared connection. Properly scoping this per-owner requires reshaping the
+ * persisted store shape (`githubConnection`/`localConnection` -> a map keyed
+ * by ownerId, with a migration for existing single-record installs), which
+ * is a larger change than fits this pass; tracked as a follow-up rather than
+ * silently left unaddressed.
+ */
 
 function publicGithub() {
   const raw = osStore.getGithubConnection();
@@ -60,12 +81,22 @@ function publicLocal() {
 export async function registerConnectionRoutes(
   app: FastifyInstance,
 ): Promise<void> {
-  app.get("/api/v1/connections", async () => ({
-    github: publicGithub(),
-    local: publicLocal(),
-  }));
+  app.get("/api/v1/connections", async (request) => {
+    await requireUser(app, request);
+    return {
+      github: publicGithub(),
+      local: publicLocal(),
+    };
+  });
 
   app.post("/api/v1/connections/github", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "connections.github.connect",
+      actorId: user.id,
+    });
     const body = connectGithubRequestSchema.parse(request.body);
     const now = new Date().toISOString();
     try {
@@ -97,7 +128,14 @@ export async function registerConnectionRoutes(
     }
   });
 
-  app.delete("/api/v1/connections/github", async () => {
+  app.delete("/api/v1/connections/github", async (request) => {
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "DELETE",
+      routeLabel: "connections.github.disconnect",
+      actorId: user.id,
+    });
     osStore.setGithubConnection(null);
     osStore.recordEvent({
       type: "connection.github.disconnected",
@@ -106,7 +144,8 @@ export async function registerConnectionRoutes(
     return { github: null };
   });
 
-  app.get("/api/v1/connections/github/repos", async () => {
+  app.get("/api/v1/connections/github/repos", async (request) => {
+    await requireUser(app, request);
     const connection = osStore.getGithubConnection();
     if (!connection?.token || connection.status !== "CONNECTED") {
       throw new AtlasError(
@@ -147,6 +186,13 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/github/import", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "connections.github.import",
+      actorId: user.id,
+    });
     const body = importGithubReposRequestSchema.parse(request.body ?? {});
     const connection = osStore.getGithubConnection();
     if (!connection?.token || connection.status !== "CONNECTED") {
@@ -184,6 +230,13 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/local", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "connections.local.connect",
+      actorId: user.id,
+    });
     const body = connectLocalRequestSchema.parse(request.body);
     const now = new Date().toISOString();
     try {
@@ -216,7 +269,14 @@ export async function registerConnectionRoutes(
     }
   });
 
-  app.delete("/api/v1/connections/local", async () => {
+  app.delete("/api/v1/connections/local", async (request) => {
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "DELETE",
+      routeLabel: "connections.local.disconnect",
+      actorId: user.id,
+    });
     osStore.setLocalConnection(null);
     osStore.recordEvent({
       type: "connection.local.disconnected",
@@ -226,6 +286,13 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/local/scan", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "connections.local.scan",
+      actorId: user.id,
+    });
     const body = scanLocalRequestSchema.parse(request.body ?? {});
     const connection = osStore.getLocalConnection();
     if (!connection?.reposRoot || connection.status === "DISCONNECTED") {

@@ -1,6 +1,26 @@
-import { describe, expect, it } from "vitest";
-import { osStore } from "../store/os-store.js";
-import { buildExecutiveReport } from "./atlas-verdict.js";
+import { afterAll, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// Isolate the singleton osStore before it's ever imported/loaded (same
+// pattern as conflicts.test.ts / db-feeds.test.ts). Without this, this
+// file's `osStore.upsertProject` calls hit the REAL `.atlas/store.json` at
+// the repo root (osStore's default storePath fallback) — confirmed while
+// widening test isolation coverage: running this suite repeatedly had been
+// silently accumulating "Exec Report Lab" test projects into that real
+// file. `ATLAS_SKIP_STORE_PERSIST` alone is not enough here since it was
+// never set at all before this fix.
+const tmpDir = mkdtempSync(join(tmpdir(), "atlas-verdict-executive-test-"));
+process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
+process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+
+const { osStore } = await import("../store/os-store.js");
+const { buildExecutiveReport } = await import("./atlas-verdict.js");
+
+afterAll(() => {
+  rmSync(tmpDir, { recursive: true, force: true });
+});
 
 describe("buildExecutiveReport", () => {
   it("composes the existing verdict into a CEO-forwardable markdown report", () => {

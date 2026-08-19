@@ -1,7 +1,7 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { hydrateKnowledgeCorpus, listKnowledgeCorpus } from "@atlas/knowledge";
 import { osStore } from "../store/os-store.js";
 import {
@@ -17,7 +17,25 @@ const env = {
   SUPABASE_SERVICE_ROLE_KEY: "",
 };
 
+// Isolation gap fix: this previously set neither `ATLAS_STORE_PATH` nor
+// `ATLAS_SKIP_STORE_PERSIST` at all, so the "fetches allow-listed pages...
+// writes the ledger" test's `refreshVerifiedKnowledge({ persist: true })`
+// really called `osStore.setMeta(KNOWLEDGE_REFRESH_META, ...)` against the
+// REAL `.atlas/store.json` at the repo root on every test run.
+const storeDir = mkdtempSync(join(tmpdir(), "atlas-knowledge-refresh-store-"));
+
 describe("verified knowledge refresh", () => {
+  beforeAll(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    process.env.ATLAS_STORE_PATH = join(storeDir, "store.json");
+  });
+
+  afterAll(() => {
+    delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    delete process.env.ATLAS_STORE_PATH;
+    rmSync(storeDir, { recursive: true, force: true });
+  });
+
   afterEach(() => {
     delete process.env.ATLAS_KNOWLEDGE_CORPUS_PATH;
   });

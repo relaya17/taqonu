@@ -1,6 +1,27 @@
-import { describe, expect, it } from "vitest";
-import { buildOracleActionQueue } from "./admin-oracle-queue.js";
+import { afterAll, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { WatchdogReport } from "./platform-watchdog.js";
+
+// Isolation gap fix: `buildOracleActionQueue` internally calls
+// `osStore.setMeta(...)` (see admin-oracle-queue.ts) even though this test
+// file never imports osStore directly — found while auditing test
+// isolation by bisecting which test files actually mutate the REAL
+// `.atlas/store.json` at the repo root (grepping test files for the
+// literal string "osStore" missed this transitive case entirely). Env vars
+// must be set BEFORE `admin-oracle-queue.js` (and therefore os-store.js) is
+// ever imported, same pattern as the route test files' "isolate before
+// import" comment.
+const tmpDir = mkdtempSync(join(tmpdir(), "atlas-admin-oracle-queue-test-"));
+process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
+process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+
+const { buildOracleActionQueue } = await import("./admin-oracle-queue.js");
+
+afterAll(() => {
+  rmSync(tmpDir, { recursive: true, force: true });
+});
 
 function emptyReport(alerts: WatchdogReport["alerts"] = []): WatchdogReport {
   return {

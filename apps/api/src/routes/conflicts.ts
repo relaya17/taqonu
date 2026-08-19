@@ -10,6 +10,12 @@ import {
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+} from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 function claimAuthority(rank: string | undefined): SourceAuthorityRank {
   const allowed = [
@@ -31,9 +37,14 @@ function claimAuthority(rank: string | undefined): SourceAuthorityRank {
 export async function registerConflictRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
 
-  app.get("/api/v1/conflicts", async () => {
+  app.get("/api/v1/conflicts", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth and iterated EVERY project across EVERY tenant
+    // with no filtering — a full cross-tenant leak of claim statements.
+    const user = await requireUser(app, request);
     const items = [];
     for (const project of osStore.listProjects()) {
+      if (!canReadProjectScoped(user, project.id)) continue;
       const snapshot = osStore.getSnapshot(project.id);
       if (!snapshot) continue;
       for (const conflict of snapshot.conflicts) {
@@ -85,8 +96,12 @@ export async function registerConflictRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/conflicts/:id/suggest", async (request) => {
+    // SECURITY FIX: same cross-tenant leak as GET /conflicts — this route
+    // had ZERO auth and scanned every project's claims with no filtering.
+    const user = await requireUser(app, request);
     const params = z.object({ id: uuidSchema }).parse(request.params);
     for (const project of osStore.listProjects()) {
+      if (!canReadProjectScoped(user, project.id)) continue;
       const snapshot = osStore.getSnapshot(project.id);
       if (!snapshot) continue;
       const conflict = snapshot.conflicts.find((c) => c.id === params.id);
@@ -120,6 +135,14 @@ export async function registerConflictRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/conflicts/:id/resolve", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth/ownership check — any caller could mutate any
+    // project's conflict-resolution state. `requireSignedInForWrite` here;
+    // ownership is checked below once the owning project is found (a
+    // conflict id doesn't reveal its project up front — same scan-then-
+    // authorize shape used elsewhere when the resource id alone doesn't
+    // carry the project id).
+    await requireSignedInForWrite(app, request);
     const params = z.object({ id: uuidSchema }).parse(request.params);
     const body = resolveConflictSchema.parse(request.body);
 
@@ -140,6 +163,14 @@ export async function registerConflictRoutes(app: FastifyInstance): Promise<void
     if (!foundProjectId) {
       throw new AtlasError("NOT_FOUND", "Conflict not found");
     }
+    const conflictUser = await assertProjectWriteAccess(app, request, foundProjectId);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "UPDATE",
+      routeLabel: "conflicts.resolve",
+      actorId: conflictUser.id,
+      projectId: foundProjectId,
+    });
 
     let resolution = body.resolution;
     let winnerClaimId = body.winnerClaimId ?? null;

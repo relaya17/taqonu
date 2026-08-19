@@ -13,7 +13,6 @@ import {
   loadSoftwareKnowledgeGraph,
   saveSoftwareKnowledgeGraph,
 } from "@atlas/observer";
-import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,6 +21,7 @@ import { defaultGoldenRoot } from "../services/golden-root.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { checkResourceAccess } from "../services/resource-access.js";
 import { getProjectOwnerId } from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const graphPageSchema = paginatedResponseSchema(graphNodeSchema).extend({
   edgesTotal: z.number().int().nonnegative(),
@@ -132,7 +132,7 @@ export async function registerGraphRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/graph/rebuild", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: rebuilding the Software Knowledge Graph recomputes
     // derived control-plane state from a workspace — it's a system/config
@@ -142,30 +142,21 @@ export async function registerGraphRoutes(app: FastifyInstance): Promise<void> {
     // triggering this write via the REST API (mirrors how a signed-in human
     // REST write is already implicitly trusted elsewhere in this codebase,
     // e.g. portfolio.ts's discovery/link route).
-    const entityDecision = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
-      mode: "WRITE",
-      writeGateOpen: true,
-      approved: true,
-    });
-    if (entityDecision.decision === "DENIED") {
-      throw new AtlasError("FORBIDDEN", entityDecision.reason, {
-        statusCode: 403,
-      });
-    }
-    if (entityDecision.decision === "APPROVAL_REQUIRED") {
-      throw new AtlasError(
-        "FORBIDDEN",
-        "CONFIGURATION.EXECUTE requires explicit approval",
-        { statusCode: 403 },
-      );
-    }
-
     const body = z
       .object({
         projectId: uuidSchema.optional(),
         workspaceRoot: z.string().max(1000).optional(),
       })
       .parse(request.body ?? {});
+
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "graph.rebuild",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
+
     const resolved = resolveGraphWorkspace({
       projectId: body.projectId ?? null,
       workspaceRoot: body.workspaceRoot ?? null,

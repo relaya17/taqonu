@@ -8,14 +8,25 @@ import { uuidSchema } from "@atlas/shared";
 import { runSentinelScan, verifySentinelFinding } from "@atlas/observer";
 import { resolveObserverWorkspace } from "../services/observe-cycle.js";
 import { proposeTruthFindingRemediation } from "../services/remediation-pipeline.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerSentinelRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/projects/:id/sentinel/scan", async (request, reply) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    assertProjectWriteAccess(app, request, projectId);
+    const user = await assertProjectWriteAccess(app, request, projectId);
+    enforceEntityWrite({
+      entityType: "CASE",
+      action: "EXECUTE",
+      routeLabel: "sentinel.scan",
+      actorId: user.id,
+      projectId,
+    });
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000).optional() })
       .parse(request.body ?? {});
@@ -35,7 +46,11 @@ export async function registerSentinelRoutes(
   });
 
   app.get("/api/v1/projects/:id/sentinel", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone who knew a project id could read its
+    // security-scan findings (a direct vulnerability-disclosure leak).
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    await assertProjectReadAccess(app, request, projectId);
     const resolved = resolveObserverWorkspace({
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
@@ -52,7 +67,14 @@ export async function registerSentinelRoutes(
 
   app.post("/api/v1/projects/:id/sentinel/propose", async (request, reply) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    assertProjectWriteAccess(app, request, projectId);
+    const user = await assertProjectWriteAccess(app, request, projectId);
+    enforceEntityWrite({
+      entityType: "CASE",
+      action: "CREATE",
+      routeLabel: "sentinel.propose",
+      actorId: user.id,
+      projectId,
+    });
     const body = z
       .object({
         findingId: z.string().min(1).max(200),
@@ -96,7 +118,14 @@ export async function registerSentinelRoutes(
 
   app.post("/api/v1/projects/:id/sentinel/verify", async (request, reply) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    assertProjectWriteAccess(app, request, projectId);
+    const user = await assertProjectWriteAccess(app, request, projectId);
+    enforceEntityWrite({
+      entityType: "CASE",
+      action: "EXECUTE",
+      routeLabel: "sentinel.verify",
+      actorId: user.id,
+      projectId,
+    });
     const body = z
       .object({
         findingId: z.string().min(1).max(200),

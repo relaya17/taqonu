@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import {
-  AtlasError,
   paginatedResponseSchema,
   portfolioDiscoveryLinkRequestSchema,
   portfolioDiscoveryRefreshRequestSchema,
@@ -9,7 +8,6 @@ import {
   portfolioPatternSchema,
   type PortfolioHealthProjectItem,
 } from "@atlas/shared";
-import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -31,6 +29,7 @@ import {
   refreshPortfolioDiscovery,
 } from "../services/portfolio-discovery.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const portfolioPatternsPageSchema = paginatedResponseSchema(
   portfolioPatternSchema,
@@ -90,36 +89,26 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
 
   /** Link a discovered local path to a registered project (under configured root). */
   app.post("/api/v1/portfolio/discovery/link", async (request, reply) => {
-    requireSignedInForWrite(app, request);
-
-    // Entity-policy gate: linking a discovered repo creates a new tracked
-    // portfolio record. `writeGateOpen: true` + `approved: true` represents
-    // the self-approved case of an authenticated human directly triggering
-    // this write via the REST API (mirrors how a signed-in human REST write
-    // is already implicitly trusted elsewhere in this codebase).
-    const entityDecision = authorizeEntityAction("RECORD", "CREATE", {
-      mode: "WRITE",
-      writeGateOpen: true,
-      approved: true,
-    });
-    if (entityDecision.decision === "DENIED") {
-      throw new AtlasError("FORBIDDEN", entityDecision.reason, {
-        statusCode: 403,
-      });
-    }
-    if (entityDecision.decision === "APPROVAL_REQUIRED") {
-      throw new AtlasError(
-        "FORBIDDEN",
-        "RECORD.CREATE requires explicit approval",
-        { statusCode: 403 },
-      );
-    }
+    const user = await requireSignedInForWrite(app, request);
 
     // No `checkResourceAccess` ownership check here: this endpoint creates a
     // brand-new portfolio link, so there's no pre-existing resourceOwnerId
     // to compare against — the calling (signed-in) actor is trivially the
     // intended owner of a record they're creating right now.
     const body = portfolioDiscoveryLinkRequestSchema.parse(request.body);
+
+    // Entity-policy gate + numeric Risk Engine + unified audit log: linking
+    // a discovered repo creates a new tracked portfolio record.
+    // Self-approved signed-in-human-write pattern (mirrors how a signed-in
+    // human REST write is already implicitly trusted elsewhere in this
+    // codebase).
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "portfolio.discovery.link",
+      actorId: user.id,
+      projectId: body.projectId,
+    });
     const result = linkDiscoveredWorkspaceRoot(body);
     return reply.status(200).send(result);
   });

@@ -24,11 +24,18 @@ const authPath = join(authDir, "users.json");
 beforeAll(() => {
   process.env.ATLAS_AUTH_PATH = authPath;
   process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+  // Isolation gap fix: this previously left `ATLAS_STORE_PATH` unset, so
+  // `osStore.ensureLoaded()` loaded the REAL `.atlas/store.json` at the
+  // repo root (only writes were suppressed by SKIP_STORE_PERSIST, not
+  // reads) — real accumulated project/subscription data could leak into
+  // this file's `osStore.resetBillingStateForTests()`-scoped tests.
+  process.env.ATLAS_STORE_PATH = join(authDir, "store.json");
 });
 
 afterAll(() => {
   delete process.env.ATLAS_AUTH_PATH;
   delete process.env.ATLAS_SKIP_STORE_PERSIST;
+  delete process.env.ATLAS_STORE_PATH;
   rmSync(authDir, { recursive: true, force: true });
 });
 

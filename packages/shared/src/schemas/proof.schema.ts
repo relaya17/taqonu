@@ -64,6 +64,14 @@ export const atlasProofReportSchema = z.object({
   evidenceReportMarkdown: z.string().max(50_000),
   plainLanguageSummary: z.string().max(8000),
   createdAt: isoDateTimeSchema,
+  /**
+   * Tenant attribution at the report level (mirrors `suite.projectId`) so
+   * `GET /proof/status` can be namespaced per-project instead of sharing one
+   * global `osStore` meta slot across every tenant. `.default(null)` keeps
+   * this backward-compatible with any report persisted before this field
+   * existed.
+   */
+  projectId: uuidSchema.nullable().default(null),
 });
 
 export const runProofRequestSchema = z.object({

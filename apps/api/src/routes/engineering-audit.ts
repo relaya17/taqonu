@@ -13,7 +13,6 @@ import {
   runContinuousSystemAudit,
   runEngineeringConstitution,
 } from "@atlas/code-intelligence";
-import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -26,6 +25,7 @@ import {
 } from "../services/architecture-contract-store.js";
 import { architectureContractSchema } from "@atlas/shared";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 import { checkResourceAccess } from "../services/resource-access.js";
 import { getProjectOwnerId } from "../services/project-access.js";
 import { getRequestUser } from "./auth.js";
@@ -67,7 +67,7 @@ function resolveWorkspace(
   );
 }
 
-function runRemediationLoop(input: {
+async function runRemediationLoop(input: {
   readonly app: FastifyInstance;
   readonly request: Parameters<typeof getRequestUser>[1];
   readonly projectId: string | null;
@@ -80,7 +80,7 @@ function runRemediationLoop(input: {
     issues: input.issues,
     workspaceRoot: input.workspaceRoot,
   });
-  const user = getRequestUser(input.app, input.request);
+  const user = await getRequestUser(input.app, input.request);
   const doAuto = shouldAutoApplyLow({
     envFlag: Boolean(input.app.atlasEnv.ATLAS_AUTO_APPLY_LOW),
     requestFlag: Boolean(input.autoApplyLow),
@@ -115,7 +115,7 @@ export async function registerEngineeringAuditRoutes(
   });
 
   app.put("/api/v1/audit-engine/contract", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: an architecture contract is control-plane
     // configuration (the allowed/forbidden layer edges that govern how
@@ -129,25 +129,14 @@ export async function registerEngineeringAuditRoutes(
     // write via the REST API (mirrors how a signed-in human REST write is
     // already implicitly trusted elsewhere in this codebase, e.g.
     // graph.ts's rebuild route and portfolio.ts's discovery/link route).
-    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
-      mode: "WRITE",
-      writeGateOpen: true,
-      approved: true,
-    });
-    if (entityDecision.decision === "DENIED") {
-      throw new AtlasError("FORBIDDEN", entityDecision.reason, {
-        statusCode: 403,
-      });
-    }
-    if (entityDecision.decision === "APPROVAL_REQUIRED") {
-      throw new AtlasError(
-        "FORBIDDEN",
-        "CONFIGURATION.CREATE requires explicit approval",
-        { statusCode: 403 },
-      );
-    }
-
     const body = architectureContractSchema.parse(request.body);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "audit-engine.contract.put",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
 
     if (body.projectId) {
       // Only checked when the contract targets a specific project (there's
@@ -233,7 +222,7 @@ export async function registerEngineeringAuditRoutes(
     constitutionReports.push(parsed);
     if (constitutionReports.length > 50) constitutionReports.shift();
 
-    const remediation = runRemediationLoop({
+    const remediation = await runRemediationLoop({
       app,
       request,
       projectId: parsed.projectId,
@@ -309,7 +298,7 @@ export async function registerEngineeringAuditRoutes(
     reports.push(parsed);
     if (reports.length > 50) reports.shift();
 
-    const remediation = runRemediationLoop({
+    const remediation = await runRemediationLoop({
       app,
       request,
       projectId: parsed.projectId,

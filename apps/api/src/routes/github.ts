@@ -25,7 +25,13 @@ import {
 } from "../services/state-reconciliation.js";
 import { discoverGitHubPortfolio } from "../services/portfolio-discovery.js";
 import { osStore } from "../store/os-store.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+} from "../services/project-access.js";
 import { atlasMetrics } from "./metrics.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const SUPPORTED_LOCALES = new Set(["he", "en", "ar"]);
 const DEFAULT_LOCALE = "he";
@@ -121,10 +127,21 @@ function resolveSetupUrl(env: {
 }
 
 export async function registerGithubRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/github", async () => {
+  app.get("/api/v1/github", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route returned `osStore.listGithubAppInstallations()` — every
+    // tenant's installationId, accountLogin, projectId mapping, etc. — to
+    // ANY caller, with zero auth. Now requires sign-in and filters the
+    // installation list with `canReadProjectScoped`, same as the other
+    // cross-tenant list-leak fixes this round (GET /engineering/loop, GET
+    // /benchmarks/suites). The rest of the payload (App config/status,
+    // setup URL) stays global — it carries no tenant data.
+    const user = await requireUser(app, request);
     const status = resolveInstallation(app.atlasEnv);
     const setup = resolveSetupUrl(app.atlasEnv);
-    const installations = osStore.listGithubAppInstallations();
+    const installations = osStore
+      .listGithubAppInstallations()
+      .filter((i) => canReadProjectScoped(user, i.projectId));
     return {
       provider: "github",
       installation: status.installation,
@@ -278,6 +295,17 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/github/discover", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone could spam-create unowned projects from
+    // arbitrary repo metadata. `requireSignedInForWrite` matches the
+    // sibling onboarding routes fixed earlier this round (commercial.ts).
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "github.discover",
+      actorId: user.id,
+    });
     const result = discoverGitHubPortfolio(request.body);
     app.atlasLogger.info("github_discover_completed", {
       created: result.created,
@@ -288,7 +316,19 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/github/sync", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone could push arbitrary GitHub sync
+    // metadata (PR/issue counts, CI status, dependency manifests) into any
+    // project id.
     const body = syncBodySchema.parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "github.sync",
+      actorId: user.id,
+      projectId: body.projectId,
+    });
     const { observation, evidence } = ingestGitHubSync(body.projectId, body);
 
     const snapshot = body.reconcile

@@ -13,6 +13,7 @@ import {
 } from "@atlas/agent-core";
 import { z } from "zod";
 import { requireAdmin } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const paramsSchema = z.object({ id: pluginManifestIdSchema });
 const querySchema = z.object({ status: pluginManifestStatusSchema.optional() });
@@ -54,7 +55,15 @@ export async function registerPluginRoutes(app: FastifyInstance): Promise<void> 
    * remaining failure mode at that point is a duplicate id (409).
    */
   app.post("/api/v1/plugins", async (request, reply) => {
-    requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // Registering a manifest is the entry point of a third-party
+    // capability grant — CONFIGURATION.CREATE.
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "plugins.register",
+      actorId: user.id,
+    });
 
     const validated = validatePluginManifest(request.body);
     if (!validated.valid) {
@@ -73,8 +82,18 @@ export async function registerPluginRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/plugins/:id/approve", async (request) => {
-    const user = requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // Approving mutates the manifest's status (PENDING_REVIEW -> APPROVED)
+    // and is what actually activates its declared capability grant —
+    // CONFIGURATION.UPDATE.
     const { id } = paramsSchema.parse(request.params);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "plugins.approve",
+      actorId: user.id,
+      input: { pluginId: id },
+    });
     const { reason } = reasonBodySchema.parse(request.body);
 
     const result = approvePlugin(id, { approvedBy: user.id, reason });
@@ -85,8 +104,17 @@ export async function registerPluginRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/plugins/:id/reject", async (request) => {
-    const user = requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // Rejecting mutates the manifest's status (PENDING_REVIEW -> REJECTED)
+    // — CONFIGURATION.UPDATE.
     const { id } = paramsSchema.parse(request.params);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "plugins.reject",
+      actorId: user.id,
+      input: { pluginId: id },
+    });
     const { reason } = reasonBodySchema.parse(request.body);
 
     const result = rejectPlugin(id, { rejectedBy: user.id, reason });
@@ -97,8 +125,17 @@ export async function registerPluginRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/plugins/:id/enable", async (request) => {
-    requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // Enabling mutates the manifest's status (APPROVED -> ENABLED), turning
+    // the plugin's already-approved capability grant live — CONFIGURATION.UPDATE.
     const { id } = paramsSchema.parse(request.params);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "plugins.enable",
+      actorId: user.id,
+      input: { pluginId: id },
+    });
 
     const result = enablePlugin(id);
     if (!result.ok) {
@@ -108,8 +145,20 @@ export async function registerPluginRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/plugins/:id/disable", async (request) => {
-    requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // Disabling mutates the manifest's status (ENABLED -> DISABLED),
+    // revoking the plugin's live capability grant without deleting its
+    // registration — DESTRUCTIVE-tier under `DEFAULT_ENTITY_POLICIES`
+    // (same tier as DELETE for CONFIGURATION), but reversible via
+    // enable again, so it maps to CONFIGURATION.UPDATE rather than DELETE.
     const { id } = paramsSchema.parse(request.params);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "plugins.disable",
+      actorId: user.id,
+      input: { pluginId: id },
+    });
 
     const result = disablePlugin(id);
     if (!result.ok) {
@@ -119,8 +168,19 @@ export async function registerPluginRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/plugins/:id/uninstall", async (request) => {
-    requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // Uninstalling permanently removes the manifest's registration
+    // (irreversible — re-adding it is a fresh `register`, not an undo) —
+    // CONFIGURATION.DELETE, the DESTRUCTIVE tier `DEFAULT_ENTITY_POLICIES`
+    // reserves for entity removal.
     const { id } = paramsSchema.parse(request.params);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "DELETE",
+      routeLabel: "plugins.uninstall",
+      actorId: user.id,
+      input: { pluginId: id },
+    });
 
     const result = uninstallPlugin(id);
     if (!result.ok) {

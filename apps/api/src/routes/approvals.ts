@@ -7,6 +7,7 @@ import {
   getApprovalRequest,
   listApprovalRequests,
 } from "../services/approvals.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const listQuerySchema = z.object({
   status: approvalRequestStatusSchema.optional(),
@@ -19,14 +20,14 @@ const decideBodySchema = z.object({
 
 export async function registerApprovalRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/approvals", async (request) => {
-    requireAdmin(app, request);
+    await requireAdmin(app, request);
     const query = listQuerySchema.parse(request.query ?? {});
     const items = listApprovalRequests(query.status);
     return { items };
   });
 
   app.get("/api/v1/approvals/:id", async (request) => {
-    requireAdmin(app, request);
+    await requireAdmin(app, request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const item = getApprovalRequest(id);
     if (!item) {
@@ -38,7 +39,20 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/approvals/:id/decide", async (request) => {
-    const user = requireAdmin(app, request);
+    const user = await requireAdmin(app, request);
+    // ENTITY-LEVEL gate independent of the `requireAdmin` ROLE-LEVEL gate:
+    // deciding a pending approval request is itself a control-plane action
+    // (CONFIGURATION.EXECUTE) — same pattern as `plugins.ts`. Note this is
+    // deliberately `mode: "WRITE"`, not `"APPROVE"` — `authorizeEntityAction`
+    // treats `"APPROVE"` as a distinct human-gate mode that always DENIES,
+    // reserved for describing an *agent's* attempted self-approval, not
+    // this admin HTTP endpoint (which IS the human gate).
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "approvals.decide",
+      actorId: user.id,
+    });
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = decideBodySchema.parse(request.body);
     const updated = decideApprovalRequest(id, {

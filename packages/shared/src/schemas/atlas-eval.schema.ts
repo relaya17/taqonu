@@ -63,6 +63,15 @@ export const atlasEvalSuiteRunSchema = z.object({
   skipped: z.number().int().min(0),
   passRate: z.number().min(0).max(1),
   unauthorizedWrites: z.number().int().min(0),
+  /**
+   * Tenant attribution — added so `GET /benchmarks/suites` can be filtered
+   * per-tenant (`canReadProjectScoped`) instead of returning every suite in
+   * the store to every signed-in caller. `.default(null)` keeps this
+   * backward-compatible with any suite persisted before this field existed.
+   */
+  projectId: uuidSchema.nullable().default(null),
+  /** Who actually triggered this run (real actorId, not fabricated). */
+  ownerId: uuidSchema.nullable().default(null),
 });
 
 export const regressionCompareSchema = z.object({
@@ -87,6 +96,9 @@ export const regressionReportSchema = z.object({
   ),
   plainLanguageSummary: z.string(),
   createdAt: isoDateTimeSchema,
+  /** Same tenant-attribution rationale as `atlasEvalSuiteRunSchema` above. */
+  projectId: uuidSchema.nullable().default(null),
+  ownerId: uuidSchema.nullable().default(null),
 });
 
 export type AtlasEvalTask = z.infer<typeof atlasEvalTaskSchema>;

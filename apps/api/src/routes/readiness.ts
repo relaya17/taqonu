@@ -4,13 +4,34 @@ import { issueProductionReadinessCertificate } from "../services/readiness-certi
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerReadinessRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/readiness/certificate", async (request, reply) => {
+    // ROLE-LEVEL gate: previously this route had NO auth guard at all —
+    // any unauthenticated caller could issue a production-readiness
+    // certificate.
+    const user = await requireSignedInForWrite(app, request);
+
+    // ENTITY-LEVEL gate, independent of the WRITE-role check above.
+    // `CONFIGURATION.EXECUTE` fits "run a control-plane evaluation and
+    // record its verdict." Issuing a certificate recomputes/records a
+    // score from already-existing project state (it does not itself take
+    // an irreversible external action), so an authenticated WRITE-session
+    // caller's own request is treated as sufficient authorization — no
+    // separate human-approval round trip is manufactured for it.
     osStore.ensureLoaded();
     const body = issueCertificateSchema.parse(request.body ?? {});
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      routeLabel: "readiness.certificate",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
     const project =
       body.projectId != null ? osStore.getProject(body.projectId) : undefined;
     const workspaceRoot =
@@ -36,6 +57,12 @@ export async function registerReadinessRoutes(
         certificateId: cert.id,
         overallScore: cert.overallScore,
         blockers: cert.blockers,
+        // The human actor who triggered this evaluation — now that this
+        // route has a real auth guard, `payload.actorId` carries a real id
+        // instead of always being null (see `automation-rules.ts`'s
+        // `onReadinessCertificateBlocked`, which was already anticipating
+        // this fix).
+        actorId: user.id,
         unknownClaims: cert.unknownClaims,
       },
     });
@@ -44,6 +71,7 @@ export async function registerReadinessRoutes(
       certificateId: cert.id,
       overallScore: cert.overallScore,
       at: cert.createdAt,
+      by: user.id,
     });
     return reply.status(201).send({ certificate: cert });
   });

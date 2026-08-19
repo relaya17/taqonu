@@ -12,6 +12,9 @@ import {
   EXPERT_CATALOG,
 } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
+import { assertProjectReadAccess } from "../services/project-access.js";
+import { requireUser } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerExpertRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/experts", async () => ({
@@ -53,6 +56,25 @@ export async function registerExpertRoutes(app: FastifyInstance): Promise<void> 
   app.post("/api/v1/experts/review", async (request, reply) => {
     osStore.ensureLoaded();
     const body = createExpertReviewSchema.parse(request.body);
+    // SECURITY FIX (closing the actorId/Risk-Engine gap — see
+    // atlas-master-checklist.md batch 9): this route previously only
+    // required auth when a projectId was given, and never ran an
+    // entity-policy / risk / audit gate at all, so a persisted
+    // ExpertReview record could exist with no real actorId anywhere in its
+    // trail. Now always requires sign-in and is gated the same way as the
+    // other "run something → persist a RECORD" routes (qa.runs.create,
+    // benchmarks.run) — `RECORD.EXECUTE` fits "run an expert review and
+    // persist its findings" better than CREATE, matching that precedent.
+    const user = body.projectId
+      ? await assertProjectReadAccess(app, request, body.projectId)
+      : await requireUser(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "experts.review",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
     const project = body.projectId ? osStore.getProject(body.projectId) : undefined;
     const review = runExpertReview(body, {
       projectName: project?.name ?? null,
@@ -73,6 +95,23 @@ export async function registerExpertRoutes(app: FastifyInstance): Promise<void> 
   app.post("/api/v1/editor/brief", async (request, reply) => {
     osStore.ensureLoaded();
     const body = createEditorBriefSchema.parse(request.body);
+    // SECURITY FIX: same class of gap as /experts/review above — this route
+    // can embed a project's decisions/snapshot into the generated brief,
+    // and previously never ran an entity-policy / risk / audit gate at all.
+    // Now always requires sign-in; `RECORD.CREATE` fits "persist a new
+    // EditorBrief document from caller-supplied inputs" (mirrors
+    // audit-engine.contract.put's CONFIGURATION.CREATE reasoning for a
+    // similar "always persists a full new document" shape).
+    const user = body.projectId
+      ? await assertProjectReadAccess(app, request, body.projectId)
+      : await requireUser(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "editor.brief.create",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
     const now = new Date().toISOString();
     const selection = selectExperts(
       body.userRequest,

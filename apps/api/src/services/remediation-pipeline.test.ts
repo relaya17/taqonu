@@ -52,14 +52,24 @@ function lowIssue() {
 
 describe("remediation-pipeline", () => {
   const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+  const prevStorePath = process.env.ATLAS_STORE_PATH;
+  // Isolation gap fix: this previously left `ATLAS_STORE_PATH` unset, so
+  // `persistAutoRemediationDrafts`/`autoApplyLowRemediations`'s osStore
+  // writes hit the REAL `.atlas/store.json` at the repo root —
+  // SKIP_STORE_PERSIST alone suppresses persistence but not the initial
+  // `ensureLoaded()` read of real accumulated patch/state data.
+  const storeDir = mkdtempSync(join(tmpdir(), "atlas-remediation-pipeline-store-"));
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    process.env.ATLAS_STORE_PATH = join(storeDir, "store.json");
   });
 
   afterEach(() => {
     if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
     else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+    if (prevStorePath === undefined) delete process.env.ATLAS_STORE_PATH;
+    else process.env.ATLAS_STORE_PATH = prevStorePath;
   });
 
   it("shouldAutoApplyLow requires WRITE user + flag", () => {

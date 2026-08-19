@@ -12,6 +12,8 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const bodySchema = z.object({
   projectId: uuidSchema,
@@ -24,7 +26,20 @@ export async function registerSecuritySarifRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/security/sarif", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone could inject arbitrary attacker-
+    // controlled SARIF content as FACT-labeled SECURITY evidence into ANY
+    // project's Current State (evidence poisoning). `assertProjectWriteAccess`
+    // matches the sibling feed-ingest routes (db-feeds.ts / deploy-feeds.ts).
     const body = bodySchema.parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    enforceEntityWrite({
+      entityType: "DOCUMENT",
+      action: "CREATE",
+      routeLabel: "security.sarif.ingest",
+      actorId: user.id,
+      projectId: body.projectId,
+    });
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");

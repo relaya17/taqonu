@@ -15,6 +15,8 @@ import { looksLikeCloudflareApiToken } from "@atlas/integrations-cloudflare";
 import { osStore } from "../store/os-store.js";
 import { resolveOwnerId } from "../services/plan-quota.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 /**
  * BYO customer cloud — Cloudflare-first.
@@ -61,6 +63,11 @@ export async function registerByoCloudRoutes(
   });
 
   app.post("/api/v1/byo-cloud/cloudflare/connect", async (request) => {
+    // ROLE-LEVEL gate: this writes a customer cloud-binding config, so it
+    // requires a signed-in caller (previously wide open — `resolveCloudIdentity`
+    // alone does not throw for an unauthenticated request, it silently falls
+    // back to a stub owner id).
+    const user = await requireSignedInForWrite(app, request);
     const body = connectByoCloudSchema.parse(request.body ?? {});
     if (body.apiToken && !looksLikeCloudflareApiToken(body.apiToken)) {
       throw new AtlasError(
@@ -69,6 +76,19 @@ export async function registerByoCloudRoutes(
         { statusCode: 400 },
       );
     }
+
+    // ENTITY-LEVEL gate: connecting a BYO-cloud binding creates new
+    // control-plane configuration for this tenant. This is self-service
+    // (the caller connects their OWN account, immediately reversible via
+    // disconnect below), so an authenticated WRITE-session caller's own
+    // request is treated as sufficient authorization — no separate
+    // human-approval round trip is manufactured for it.
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "byo-cloud.connect",
+      actorId: user.id,
+    });
 
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
@@ -99,7 +119,20 @@ export async function registerByoCloudRoutes(
   });
 
   app.post("/api/v1/byo-cloud/cloudflare/disconnect", async (request) => {
+    const user = await requireSignedInForWrite(app, request);
     disconnectByoCloudSchema.parse(request.body ?? { provider: "cloudflare" });
+
+    // ENTITY-LEVEL gate: removes stored binding config. `DELETE` is
+    // DESTRUCTIVE-tier under `DEFAULT_ENTITY_POLICIES`, but as with connect
+    // above this is self-service and reversible (reconnect any time), so
+    // an authenticated WRITE-session caller's own request is sufficient.
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "DELETE",
+      routeLabel: "byo-cloud.disconnect",
+      actorId: user.id,
+    });
+
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     osStore.clearByoCloudBinding(ownerId);

@@ -27,6 +27,9 @@ import {
   rememberProcessAuditId,
   syncProcessAuditToMemory,
 } from "../services/central-opinion.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 
 const QA_RUNS_META = "qa.runs";
@@ -214,6 +217,16 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/qa/learn", async (request, reply) => {
+    // Auth gate (P0 fix): mutates persisted "learned pattern" state — never
+    // usable anonymously (mirrors requireSignedInForWrite convention used
+    // for other WRITE routes, see memory.ts / code.ts).
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "qa.learn.suppress",
+      actorId: user.id,
+    });
     osStore.ensureLoaded();
     const body = learnBodySchema.parse(request.body);
     const keys = loadLearnedKeys();
@@ -233,6 +246,16 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.delete("/api/v1/qa/learn", async (request, reply) => {
+    // Auth gate (P0 fix): mutates persisted "learned pattern" state — never
+    // usable anonymously (mirrors requireSignedInForWrite convention used
+    // for other WRITE routes, see memory.ts / code.ts).
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "qa.learn.unsuppress",
+      actorId: user.id,
+    });
     osStore.ensureLoaded();
     const body = learnBodySchema.parse(request.body);
     const next = loadLearnedKeys().filter((k) => k !== body.patternKey);
@@ -249,6 +272,16 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/qa/runs", async (request, reply) => {
+    // Auth gate (P0 fix): runs analysis + persists reports/patterns/memories
+    // — never usable anonymously (mirrors requireSignedInForWrite
+    // convention used for other WRITE routes, see memory.ts / code.ts).
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "qa.runs.create",
+      actorId: user.id,
+    });
     const started = Date.now();
     osStore.ensureLoaded();
     const body = createQaRunSchema.parse(request.body);
@@ -305,10 +338,15 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     const seededMemories = seedPortfolioPatternMemories(newlyCrossProject);
 
     const primaryProjectId = resolvedProjectIds[0] ?? null;
+    // Tenant boundary (P0 fix): scope memory retrieval to the caller so one
+    // tenant's QA run never surfaces another tenant's memories. Admins
+    // bypass, same convention as memory.ts.
+    const callerOwnerId = user.role === "admin" ? undefined : user.id;
     const memoryContextResult = buildMemoryContext({
       projectId: primaryProjectId,
       query: body.userRequest ?? report.emittedPatternKeys.join(" "),
       budget: QA_MEMORY_BUDGET,
+      ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
     const { memories: _memories, ...memoryContext } = memoryContextResult;
     void _memories;
@@ -378,6 +416,22 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     osStore.ensureLoaded();
     assertProcessAuditQuota(app.atlasEnv);
     const body = createProcessAuditSchema.parse(request.body ?? {});
+    // Auth + ownership gate (P0 fix): this route runs an audit and writes
+    // data (report + memory sync) — never usable anonymously. When the
+    // caller supplies a projectId it must be one they own (or admin);
+    // otherwise just require a real signed-in caller. Mirrors the
+    // client-supplied-projectId-trust precedent used by
+    // observer.ts / sentinel.ts / code.ts via project-access.ts.
+    const processAuditUser = body.projectId
+      ? await assertProjectWriteAccess(app, request, body.projectId)
+      : await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "qa.process-audit",
+      actorId: processAuditUser.id,
+      projectId: body.projectId ?? null,
+    });
     const project = body.projectId ? osStore.getProject(body.projectId) : null;
     const allProjects = osStore.listProjects();
     const projectId =

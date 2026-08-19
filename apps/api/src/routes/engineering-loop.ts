@@ -32,15 +32,36 @@ import { tryPersistDecisionToSupabase } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import {
+  requireSignedInForWrite,
+  requireUser,
+} from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import {
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+} from "../services/project-access.js";
 import {
   buildAtlasVerdict,
   buildEvidenceReport,
 } from "../services/atlas-verdict.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 function evalsRoot(): string {
   return findEvalsRoot();
+}
+
+/**
+ * Per-tenant namespacing for the "last proof report" `osStore` meta slot.
+ * Previously this was a single global key (`"lastProofReport"`) shared by
+ * every tenant — whichever project ran `/proof/run` last clobbered the
+ * value everyone else read back from `/proof/status`. Namespacing by
+ * `projectId` (falling back to a `"global"` bucket for project-less runs,
+ * e.g. the default BrokerOS golden run) fixes that without a store schema
+ * migration — `osStore.meta` is already a free-form string map.
+ */
+function proofMetaKey(projectId: string | null): string {
+  return `lastProofReport:${projectId ?? "global"}`;
 }
 
 export async function registerEngineeringLoopRoutes(
@@ -51,21 +72,47 @@ export async function registerEngineeringLoopRoutes(
     return classifyActionResultSchema.parse(classifyAction(body.userRequest));
   });
 
-  app.get("/api/v1/engineering/loop", async () => {
-    const items = osStore.listLoopRuns();
+  app.get("/api/v1/engineering/loop", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth and listed every loop run (userRequest text,
+    // patch content, workspace roots) across every tenant unfiltered.
+    const user = await requireUser(app, request);
+    const items = osStore
+      .listLoopRuns()
+      .filter((run) => canReadProjectScoped(user, run.projectId));
     return { items, total: items.length };
   });
 
   app.get("/api/v1/engineering/loop/:id", async (request, reply) => {
+    // SECURITY FIX: same class of gap as the list route above.
+    const user = await requireUser(app, request);
     const id = (request.params as { id: string }).id;
     const run = osStore.getLoopRun(id);
-    if (!run) return reply.status(404).send({ error: { message: "Not found" } });
+    if (!run || !canReadProjectScoped(user, run.projectId)) {
+      return reply.status(404).send({ error: { message: "Not found" } });
+    }
     return run;
   });
 
   app.post("/api/v1/engineering/loop", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone could trigger a real engineering-loop
+    // run (compute + a workspace-root read) unauthenticated. When a
+    // projectId is given, ownership is enforced the same way as other
+    // project-scoped write routes; when it's null (portfolio-level run),
+    // sign-in alone is required, matching the rest of this file's routes.
     osStore.ensureLoaded();
     const body = startEngineeringLoopSchema.parse(request.body);
+    const startUser = body.projectId
+      ? await assertProjectWriteAccess(app, request, body.projectId)
+      : await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "engineering.loop.start",
+      actorId: startUser.id,
+      projectId: body.projectId ?? null,
+    });
     const loop = runEngineeringLoop({
       workspaceRoot:
         body.workspaceRoot ||
@@ -153,7 +200,7 @@ export async function registerEngineeringLoopRoutes(
   });
 
   app.post("/api/v1/engineering/loop/:id/approve", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
     const body = approveEngineeringLoopSchema.parse(request.body ?? {});
     const approvedBy = body.approvedBy.trim() || user.email;
@@ -161,6 +208,20 @@ export async function registerEngineeringLoopRoutes(
     if (!existing) {
       throw new AtlasError("NOT_FOUND", "Loop run not found");
     }
+    // SECURITY FIX: this route had sign-in but no ownership check — any
+    // signed-in caller could approve (and apply — writes files to disk!)
+    // ANY tenant's loop run. `existing.projectId` is only known once the
+    // run is fetched, same scan-then-authorize shape used in conflicts.ts.
+    if (existing.projectId) {
+      await assertProjectWriteAccess(app, request, existing.projectId);
+    }
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "engineering.loop.approve",
+      actorId: user.id,
+      projectId: existing.projectId ?? null,
+    });
     if (existing.status !== "AWAITING_APPROVAL") {
       throw new AtlasError(
         "VALIDATION_ERROR",
@@ -361,8 +422,18 @@ export async function registerEngineeringLoopRoutes(
     return { items, total: items.length, evalsRoot: evalsRoot() };
   });
 
-  app.get("/api/v1/benchmarks/suites", async () => {
-    const items = osStore.listEvalSuites();
+  app.get("/api/v1/benchmarks/suites", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth, and `AtlasEvalSuiteRun` carried no owner/project
+    // attribution at all — every signed-in caller saw every tenant's
+    // suites. `atlasEvalSuiteRunSchema` now carries `projectId`/`ownerId`
+    // (set by `runBenchmarkSuite`), so this is filtered the same way as the
+    // loop-run list above (`canReadProjectScoped`) instead of returning the
+    // whole store.
+    const user = await requireUser(app, request);
+    const items = osStore
+      .listEvalSuites()
+      .filter((s) => canReadProjectScoped(user, s.projectId));
     return { items, total: items.length };
   });
 
@@ -376,6 +447,19 @@ export async function registerEngineeringLoopRoutes(
       })
       .parse(request.body ?? {});
 
+    // SECURITY FIX: this route had ZERO auth — anyone could trigger a real
+    // benchmark suite run (compute + workspace-root read) unauthenticated.
+    const benchmarkUser = body.projectId
+      ? await assertProjectWriteAccess(app, request, body.projectId)
+      : await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "benchmarks.run",
+      actorId: benchmarkUser.id,
+      projectId: body.projectId ?? null,
+    });
+
     const workspaceRoot =
       body.workspaceRoot ||
       app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ||
@@ -385,6 +469,7 @@ export async function registerEngineeringLoopRoutes(
       evalsRoot: evalsRoot(),
       workspaceRoot,
       projectId: body.projectId ?? null,
+      ownerId: benchmarkUser.id,
       projectSlug: body.projectSlug ?? "brokeros",
       ...(body.taskIds ? { taskIds: body.taskIds } : {}),
       atlasVersion: "1.1.0",
@@ -403,11 +488,29 @@ export async function registerEngineeringLoopRoutes(
   });
 
   app.post("/api/v1/benchmarks/regression", async (request, reply) => {
+    // SECURITY FIX: previously gated to signed-in only, with no per-tenant
+    // check on the two suites being compared — a signed-in caller could
+    // pass another tenant's suite ids and have their (userRequest text,
+    // patch content, workspace root) leaked back inside the regression
+    // report. Now that suites carry `projectId`, both suites are checked
+    // with `canReadProjectScoped` before comparing, same as GET
+    // /benchmarks/suites above.
+    const user = await requireUser(app, request);
     const body = regressionCompareSchema.parse(request.body);
     const previous = osStore.getEvalSuite(body.previousSuiteId);
     const current = osStore.getEvalSuite(body.currentSuiteId);
     if (!previous || !current) {
       throw new AtlasError("NOT_FOUND", "Suite not found");
+    }
+    if (
+      !canReadProjectScoped(user, previous.projectId) ||
+      !canReadProjectScoped(user, current.projectId)
+    ) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Project isolation: you do not own one of these suites",
+        { statusCode: 403 },
+      );
     }
     const report = compareSuiteRuns(previous, current);
     osStore.addRegressionReport(report);
@@ -434,6 +537,9 @@ export async function registerEngineeringLoopRoutes(
 
   /** Atlas 1.1 Proof golden scenario — Engineering Loop A–F → Verdict + evidence. */
   app.post("/api/v1/proof/run", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone could trigger the full Atlas Proof
+    // golden scenario (real compute) unauthenticated.
     osStore.ensureLoaded();
     const body = runProofRequestSchema.parse(request.body ?? {});
     const slug =
@@ -449,6 +555,16 @@ export async function registerEngineeringLoopRoutes(
         null;
       projectId = project?.id ?? null;
     }
+    const proofUser = projectId
+      ? await assertProjectWriteAccess(app, request, projectId)
+      : await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "proof.run",
+      actorId: proofUser.id,
+      projectId: projectId ?? null,
+    });
 
     let verdictSummary: {
       status: string | null;
@@ -463,6 +579,7 @@ export async function registerEngineeringLoopRoutes(
       workspaceRoot: body.workspaceRoot ?? null,
       envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       projectId,
+      ownerId: proofUser.id,
       projectSlug: slug,
       ...(body.taskIds ? { taskIds: body.taskIds } : {}),
       evalsRoot: evalsRoot(),
@@ -505,7 +622,7 @@ export async function registerEngineeringLoopRoutes(
         : report.evidenceReportMarkdown,
     });
 
-    osStore.setMeta("lastProofReport", JSON.stringify(final));
+    osStore.setMeta(proofMetaKey(projectId), JSON.stringify(final));
     osStore.appendAudit({
       type: "proof.golden.completed",
       proofId: final.id,
@@ -530,9 +647,27 @@ export async function registerEngineeringLoopRoutes(
     return reply.status(201).send(final);
   });
 
-  app.get("/api/v1/proof/status", async () => {
+  app.get("/api/v1/proof/status", async (request) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth AND read a single global `osStore` meta slot
+    // shared by every tenant — whichever project ran /proof/run last
+    // clobbered what every other tenant saw here. Now namespaced per
+    // `projectId` via `proofMetaKey` (see its doc comment) and gated with
+    // `canReadProjectScoped`, matching the rest of this file's project-
+    // scoped list/read routes.
+    const q = z
+      .object({ projectId: uuidSchema.nullable().optional() })
+      .parse(request.query ?? {});
+    const user = await requireUser(app, request);
+    if (!canReadProjectScoped(user, q.projectId ?? null)) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Project isolation: you do not own this project",
+        { statusCode: 403 },
+      );
+    }
     osStore.ensureLoaded();
-    const raw = osStore.getMeta("lastProofReport");
+    const raw = osStore.getMeta(proofMetaKey(q.projectId ?? null));
     const golden = resolveGoldenWorkspace({
       envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       slug: app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros",

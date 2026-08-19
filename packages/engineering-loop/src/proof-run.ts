@@ -205,6 +205,7 @@ export interface RunAtlasProofInput {
   workspaceRoot?: string | null;
   envRoot?: string | null;
   projectId?: string | null;
+  ownerId?: string | null;
   projectSlug?: string | null;
   taskIds?: string[];
   atlasVersion?: string;
@@ -229,6 +230,7 @@ export function runAtlasProof(input: RunAtlasProofInput = {}): AtlasProofReport 
     evalsRoot,
     workspaceRoot: golden.workspaceRoot,
     projectId: input.projectId ?? null,
+    ownerId: input.ownerId ?? null,
     projectSlug: golden.slug,
     taskIds,
     atlasVersion: version,
@@ -342,5 +344,6 @@ export function runAtlasProof(input: RunAtlasProofInput = {}): AtlasProofReport 
     evidenceReportMarkdown: checkedMd,
     plainLanguageSummary,
     createdAt: new Date().toISOString(),
+    projectId: input.projectId ?? null,
   });
 }

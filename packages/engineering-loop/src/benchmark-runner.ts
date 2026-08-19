@@ -33,6 +33,7 @@ export function runBenchmarkSuite(input: {
   evalsRoot: string;
   workspaceRoot: string;
   projectId?: string | null;
+  ownerId?: string | null;
   projectSlug?: string;
   taskIds?: string[];
   atlasVersion?: string;
@@ -129,5 +130,7 @@ export function runBenchmarkSuite(input: {
     skipped,
     passRate,
     unauthorizedWrites,
+    projectId: input.projectId ?? null,
+    ownerId: input.ownerId ?? null,
   });
 }

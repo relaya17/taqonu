@@ -37,6 +37,12 @@ import {
   runPartnerAuditSpine,
 } from "../services/partner-audit-spine.js";
 import { recordSystemHealthReport } from "./engineering-audit.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import {
+  assertProjectWriteAccess,
+  bindProjectOwner,
+} from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 
 async function maybeSyncEvidenceCloud(
   app: FastifyInstance,
@@ -203,6 +209,18 @@ export async function registerCommercialValidationRoutes(
 
   /** Legacy Design Partner path — local workspace only. */
   app.post("/api/v1/onboarding/connect-repo", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth — anyone could make the API host read an
+    // arbitrary local filesystem path (`workspaceRoot`) and register it as
+    // a new, unowned project. `requireSignedInForWrite` matches every other
+    // project-creation route (`POST /api/v1/projects`).
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "onboarding.connect-repo",
+      actorId: user.id,
+    });
     const body = connectExternalRepoSchema.parse(request.body);
     const imported = await importLocal(
       app,
@@ -217,6 +235,7 @@ export async function registerCommercialValidationRoutes(
       },
       request,
       reply,
+      user.id,
     );
     return reply.status(201).send(imported);
   });
@@ -226,6 +245,17 @@ export async function registerCommercialValidationRoutes(
    * Does not upload full source to Atlas cloud.
    */
   app.post("/api/v1/onboarding/import", async (request, reply) => {
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth across all 3 branches (local/github/remote), and
+    // none of them bound an owner to the project they created — same class
+    // of gap as `/onboarding/connect-repo` above.
+    const user = await requireSignedInForWrite(app, request);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "onboarding.import",
+      actorId: user.id,
+    });
     const body = importProjectSchema.parse(request.body);
 
     if (body.source === "local") {
@@ -243,6 +273,7 @@ export async function registerCommercialValidationRoutes(
           },
           request,
           reply,
+          user.id,
         ),
       );
     }
@@ -349,6 +380,7 @@ export async function registerCommercialValidationRoutes(
       if (!project) {
         throw new AtlasError("INTERNAL_ERROR", "GitHub import produced no project");
       }
+      bindProjectOwner(project.id, user.id, "bound_on_create");
       osStore.incrementUsage("reposConnected");
       osStore.incrementUsage("designPartnerSessions");
       const cloud = await maybeSyncEvidenceCloud(
@@ -413,6 +445,7 @@ export async function registerCommercialValidationRoutes(
       updatedAt: now,
     });
     osStore.upsertProject(project);
+    bindProjectOwner(project.id, user.id, "bound_on_create");
     osStore.incrementUsage("reposConnected");
     osStore.incrementUsage("designPartnerSessions");
     appendDomainEvent({
@@ -481,6 +514,18 @@ export async function registerCommercialValidationRoutes(
   app.post("/api/v1/partners/audit-spine", async (request, reply) => {
     osStore.ensureLoaded();
     const body = partnerAuditSpineRequestSchema.parse(request.body ?? {});
+    // SECURITY FIX (found while widening Policy Engine coverage): this
+    // route had ZERO auth/ownership check — any caller could trigger a
+    // full audit run against ANY project id. `assertProjectWriteAccess`
+    // matches the sibling `POST /api/v1/projects/:id/cloud` route's fix.
+    const partnerUser = await assertProjectWriteAccess(app, request, body.projectId);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      routeLabel: "partners.audit-spine",
+      actorId: partnerUser.id,
+      projectId: body.projectId,
+    });
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -516,6 +561,7 @@ async function importLocal(
   },
   request: FastifyRequest,
   reply: FastifyReply,
+  ownerUserId: string,
 ) {
   const root = resolve(body.workspaceRoot);
   if (!existsSync(root)) {
@@ -543,6 +589,12 @@ async function importLocal(
   });
   osStore.upsertProject(project);
   osStore.setWorkspaceRoot(project.id, root);
+  // SECURITY FIX (found while widening Policy Engine coverage): this
+  // project was previously created with NO owner binding at all, leaving
+  // it in the "unowned, readable by anyone signed in" bucket forever —
+  // same class of gap `POST /api/v1/projects` already closes via
+  // `bindProjectOwner`.
+  bindProjectOwner(project.id, ownerUserId, "bound_on_create");
   osStore.incrementUsage("reposConnected");
   osStore.incrementUsage("designPartnerSessions");
   appendDomainEvent({

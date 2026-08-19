@@ -9,9 +9,11 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 import {
   approvePatchArtifact,
   applyApprovedPatch,
+  assertPatchApprovedForApply,
   isAutoRemediationDraft,
 } from "../services/patch-write.js";
 import {
@@ -67,7 +69,7 @@ export async function registerRemediationRoutes(
   app.post(
     "/api/v1/remediation/drafts/:id/approve",
     async (request, reply) => {
-      const user = requireSignedInForWrite(app, request);
+      const user = await requireSignedInForWrite(app, request);
       const id = z.object({ id: uuidSchema }).parse(request.params).id;
       const body = approvePatchSchema.parse(request.body ?? {});
       const existing = osStore.getPatch(id);
@@ -85,7 +87,7 @@ export async function registerRemediationRoutes(
   );
 
   app.post("/api/v1/remediation/drafts/:id/apply", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const id = z.object({ id: uuidSchema }).parse(request.params).id;
     const body = applyPatchSchema.parse(request.body ?? {});
     const existing = osStore.getPatch(id);
@@ -101,6 +103,23 @@ export async function registerRemediationRoutes(
         { statusCode: 403 },
       );
     }
+
+    // ENTITY-LEVEL gate, independent of the WRITE-role check above:
+    // `assertPatchApprovedForApply` is the same pre-existing "a human
+    // already approved this exact patch" signal used by
+    // `apps/api/src/routes/code.ts`'s `/code/patches/:id/apply`, so
+    // `approved: true` reflects a real, already-established sign-off
+    // rather than being manufactured here. Safe/idempotent to call before
+    // `applyApprovedPatch` also calls it internally.
+    assertPatchApprovedForApply(existing);
+    enforceEntityWrite({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      routeLabel: "remediation.drafts.apply",
+      actorId: user.id,
+      projectId: existing.projectId ?? null,
+    });
+
     return applyApprovedPatch({
       existing,
       user,
@@ -110,7 +129,7 @@ export async function registerRemediationRoutes(
   });
 
   app.post("/api/v1/remediation/drafts/:id/verify", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const id = z.object({ id: uuidSchema }).parse(request.params).id;
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000).optional() })
@@ -144,7 +163,7 @@ export async function registerRemediationRoutes(
         }),
       })
       .parse(request.body ?? {});
-    assertProjectWriteAccess(app, request, body.projectId);
+    await assertProjectWriteAccess(app, request, body.projectId);
     const draft = proposeTruthFindingRemediation({
       projectId: body.projectId,
       finding: {
@@ -178,7 +197,7 @@ export async function registerRemediationRoutes(
    * HIGH/CRITICAL never included.
    */
   app.post("/api/v1/remediation/auto-apply-low", async (request, reply) => {
-    const user = requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const body = z
       .object({
         projectId: uuidSchema.nullable().optional(),
@@ -200,6 +219,22 @@ export async function registerRemediationRoutes(
         { statusCode: 403 },
       );
     }
+
+    // ENTITY-LEVEL gate + numeric Risk Engine + unified audit log:
+    // `enabled` above is exactly the "a human already established explicit
+    // authorization for LOW auto-apply" signal (ATLAS_AUTO_APPLY_LOW env
+    // flag or an explicit body.force + WRITE session) — the code above
+    // already throws when `!enabled`, so by this point `enabled` is always
+    // `true`, equivalent to the self-approved-write pattern used
+    // elsewhere. Auto-apply is irreversible and agent-triggered, exactly
+    // what the entity-policy layer exists to gate.
+    enforceEntityWrite({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      routeLabel: "remediation.auto-apply-low",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+    });
 
     let patches = osStore
       .listPatches(body.projectId ?? undefined)
