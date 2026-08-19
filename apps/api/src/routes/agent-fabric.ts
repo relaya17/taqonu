@@ -14,6 +14,7 @@ import {
   buildVerifiedTechSourcesMarkdown,
   isAuthorizedOfficialKnowledgeUrl,
   AtlasError,
+  agentRunResultSchema,
 } from "@atlas/shared";
 import {
   dispatchAgentPlan,
@@ -42,6 +43,7 @@ import {
 import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
+import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
 import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import {
@@ -66,6 +68,52 @@ function toPublicMemoryContext(
 
 function ensureKnowledgeCorpusHydrated(): void {
   hydrateKnowledgeCorpus({ enablePersist: true });
+}
+
+/**
+ * Builds the `AgentRunResult` returned in place of a real specialist run
+ * when its per-specialist `dispatchAgentAction` gate did not come back
+ * ALLOWED. `agentRunResultSchema` (packages/shared/src/schemas/agent-fabric.schema.ts)
+ * has no "pending approval" status today — only COMPLETED / SKIPPED /
+ * FAILED / NEEDS_EVIDENCE — and widening that schema is a real design
+ * decision out of scope here (it would need a matching UI/consumer-side
+ * decision about what "pending" means downstream). `SKIPPED` is the
+ * honest fit: the specialist genuinely did not run. `epistemicState:
+ * "UNKNOWN"` mirrors that — there is no claim being made about the
+ * request, only about why no claim was made. The real reason (denial
+ * text, or the approval request id so a caller/UI can look it up later)
+ * goes into `summary`/`claims` rather than being silently dropped.
+ */
+function skippedForDispatchGate(
+  agentId: "SECURITY" | "LEGAL_MEDIA_COMMS",
+  gate: Exclude<
+    ReturnType<typeof dispatchAgentAction>,
+    { readonly decision: "ALLOWED" }
+  >,
+  startedAt: number,
+) {
+  const summary =
+    gate.decision === "DENIED"
+      ? `${agentId} specialist dispatch was denied by policy: ${gate.reason}`
+      : `${agentId} specialist dispatch is pending human approval before it can run.`;
+  const claims =
+    gate.decision === "DENIED"
+      ? [`denied:${gate.reason}`]
+      : [`approvalRequestId:${gate.approvalRequestId}`, `bucket:${gate.bucket}`];
+  return agentRunResultSchema.parse({
+    agentId,
+    status: "SKIPPED",
+    summary,
+    claims,
+    evidenceRefs: [],
+    epistemicState: "UNKNOWN",
+    costUsd: 0,
+    // Same small-elapsed-time measurement `runSpecialistStub`
+    // (packages/agent-core/src/orchestrator/dispatch.ts) uses — the gate
+    // check itself is real work (Policy Engine + Risk Engine + Audit Log),
+    // not free, so this stays an honest measurement rather than a flat 0.
+    durationMs: Math.max(1, Date.now() - startedAt),
+  });
 }
 
 export async function registerAgentFabricRoutes(
@@ -243,13 +291,77 @@ export async function registerAgentFabricRoutes(
       budgetUsd: body.budgetUsd,
       runJudge: body.runJudge,
       specialistOverride: (agentId, request) => {
+        // PER-SPECIALIST gate: this is the actual "an agent takes an
+        // action" moment for these two agents — `runSecuritySpecialistViaSentinel`
+        // and `runLegalMediaSpecialistViaReview` are real specialist
+        // actions, not the read-only `runSpecialistStub` every other
+        // agentId still falls through to below. The route-level
+        // `CONFIGURATION.EXECUTE` gate above only covers "is this caller
+        // allowed to dispatch at all" — it has no per-specialist signal.
+        // `dispatchAgentAction` (the agent/automation-actor sibling of
+        // `enforceEntityWrite`, see agent-dispatch-guard.ts) is that
+        // missing per-specialist Policy+Risk+Audit coverage.
         if (agentId === "SECURITY") {
+          const startedAt = Date.now();
+          const gate = dispatchAgentAction({
+            actor: { kind: "AGENT", agentId: "SECURITY", onBehalfOfUserId: user.id },
+            // CASE, not CONFIGURATION or RECORD: per `DEFAULT_ENTITY_POLICIES`'s
+            // doc comment (entity-policies.ts), CASE is explicitly "a
+            // tracked unit of work with a lifecycle and often legal/
+            // compliance weight (... an incident)" — a Sentinel scan's
+            // findings (critical/high severity issues, next actions) are
+            // exactly incident-shaped. CONFIGURATION is reserved for
+            // control-plane/system settings (already used, deliberately,
+            // by the coarse route-level gate above); RECORD is the
+            // generic catch-all and would lose the legal/compliance
+            // framing CASE is meant to carry through to the risk engine.
+            entityType: "CASE",
+            action: "EXECUTE",
+            routeLabel: "agent-fabric.dispatch.security",
+            // `body.request` is the authenticated caller's own free-text
+            // prompt for this dispatch — trusted at face value. A FUTURE
+            // specialist that acts on externally-ingested content (e.g.
+            // scanning a fetched GitHub issue or an inbound webhook
+            // payload) must set trustLevel:"untrusted" here instead: this
+            // `sourceContext` is exactly the hook `dispatchAgentAction`
+            // exists to floor risk through for that case (see
+            // `floorBucketForUntrustedSource` in agent-dispatch-guard.ts).
+            sourceContext: { origin: "user_message", trustLevel: "trusted" },
+            projectId: body.projectId ?? null,
+          });
+          if (gate.decision !== "ALLOWED") {
+            return skippedForDispatchGate("SECURITY", gate, startedAt);
+          }
           return runSecuritySpecialistViaSentinel({
             request,
             projectId: body.projectId ?? null,
           });
         }
         if (agentId === "LEGAL_MEDIA_COMMS") {
+          const startedAt = Date.now();
+          const gate = dispatchAgentAction({
+            actor: {
+              kind: "AGENT",
+              agentId: "LEGAL_MEDIA_COMMS",
+              onBehalfOfUserId: user.id,
+            },
+            // Same CASE reasoning as SECURITY above: a legal/media review
+            // is literally "a legal matter" per CASE's own doc comment —
+            // the closest-fit bucket, not the control-plane CONFIGURATION
+            // or the generic RECORD catch-all.
+            entityType: "CASE",
+            action: "EXECUTE",
+            routeLabel: "agent-fabric.dispatch.legal-media",
+            // Same trust reasoning as SECURITY above: `body.request` is
+            // the caller's own trusted text today; a future specialist
+            // reviewing externally-ingested content must flip this to
+            // trustLevel:"untrusted".
+            sourceContext: { origin: "user_message", trustLevel: "trusted" },
+            projectId: body.projectId ?? null,
+          });
+          if (gate.decision !== "ALLOWED") {
+            return skippedForDispatchGate("LEGAL_MEDIA_COMMS", gate, startedAt);
+          }
           return runLegalMediaSpecialistViaReview({
             request,
             projectId: body.projectId ?? null,

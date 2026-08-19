@@ -44,6 +44,48 @@ vi.mock("@atlas/agent-core", async (importOriginal) => {
   };
 });
 
+// Same mocking mechanism as above, one level up the stack: the
+// specialistOverride's per-specialist gate calls `dispatchAgentAction`
+// (agent-dispatch-guard.ts) directly, not `authorizeEntityAction` alone —
+// mocking that lets tests force ALLOWED/DENIED/APPROVAL_REQUIRED without
+// needing to reverse-engineer a real CASE.EXECUTE risk-score outcome
+// (which, per that module's own docs, is APPROVAL_REQUIRED for
+// essentially every unapproved EXECUTE-tier call in real life — see the
+// "still reaches the real specialist" test below for why that's mocked
+// too).
+const dispatchAgentAction = vi.fn();
+
+vi.mock("../services/agent-dispatch-guard.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/agent-dispatch-guard.js")>();
+  return {
+    ...actual,
+    dispatchAgentAction: (
+      ...args: Parameters<typeof actual.dispatchAgentAction>
+    ) => dispatchAgentAction(...args) ?? actual.dispatchAgentAction(...args),
+  };
+});
+
+// The real `runSecuritySpecialistViaSentinel` needs a real workspace root
+// (`osStore.getWorkspaceRoot`) to do anything — spying (not replacing) it
+// lets the "reaches the real specialist" test assert it was actually
+// invoked, and the "gate blocks it" test assert it was NOT, without
+// needing a full workspace fixture either way.
+const runSecuritySpecialistViaSentinel = vi.fn();
+
+vi.mock("../services/security-sentinel-dispatch.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../services/security-sentinel-dispatch.js")
+    >();
+  return {
+    ...actual,
+    runSecuritySpecialistViaSentinel: (
+      ...args: Parameters<typeof actual.runSecuritySpecialistViaSentinel>
+    ) => runSecuritySpecialistViaSentinel(...args),
+  };
+});
+
 const { registerAgentFabricRoutes } = await import("./agent-fabric.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
@@ -118,6 +160,10 @@ beforeEach(() => {
   getRequestUser.mockReturnValue(OWNER_A);
   authorizeEntityAction.mockReset();
   authorizeEntityAction.mockReturnValue(undefined);
+  dispatchAgentAction.mockReset();
+  dispatchAgentAction.mockReturnValue(undefined);
+  runSecuritySpecialistViaSentinel.mockReset();
+  runSecuritySpecialistViaSentinel.mockReturnValue(undefined);
 });
 
 describe("GET /api/v1/agents", () => {
@@ -336,6 +382,87 @@ describe("POST /api/v1/agents/dispatch", () => {
       .memoryContext.items.map((m: { statement: string }) => m.statement);
     expect(statements).toContain("owner A's dispatch-only secret");
     expect(statements).not.toContain("owner B's dispatch-only secret");
+  });
+
+  describe("specialistOverride per-specialist gate (SECURITY)", () => {
+    it("ALLOWED gate: still reaches the real runSecuritySpecialistViaSentinel specialist — no regression", async () => {
+      dispatchAgentAction.mockReturnValue({
+        decision: "ALLOWED",
+        score: 5,
+        bucket: "AUTO",
+        auditId: "audit-1",
+      });
+      runSecuritySpecialistViaSentinel.mockReturnValue({
+        agentId: "SECURITY",
+        status: "COMPLETED",
+        summary: "Sentinel run stub for test",
+        claims: ["SECURITY: sentinel_posture=CLEAN"],
+        evidenceRefs: [],
+        epistemicState: "OBSERVED",
+        costUsd: 0,
+        durationMs: 1,
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "run a security scan", agentIds: ["SECURITY"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(runSecuritySpecialistViaSentinel).toHaveBeenCalledTimes(1);
+      const body = res.json();
+      const run = body.runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+      expect(run.status).toBe("COMPLETED");
+      expect(run.summary).toBe("Sentinel run stub for test");
+    });
+
+    it("DENIED gate: returns a SKIPPED run carrying the denial reason and never calls the real specialist", async () => {
+      dispatchAgentAction.mockReturnValue({
+        decision: "DENIED",
+        reason: "CASE.EXECUTE blocked by policy in test",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "run a security scan", agentIds: ["SECURITY"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(runSecuritySpecialistViaSentinel).not.toHaveBeenCalled();
+      const body = res.json();
+      const run = body.runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+      expect(run.status).toBe("SKIPPED");
+      expect(run.epistemicState).toBe("UNKNOWN");
+      expect(run.summary).toMatch(/CASE.EXECUTE blocked by policy in test/);
+      expect(run.claims.some((c: string) => c.includes("CASE.EXECUTE blocked by policy in test"))).toBe(
+        true,
+      );
+    });
+
+    it("APPROVAL_REQUIRED gate: returns a SKIPPED run surfacing the real approvalRequestId and never calls the real specialist", async () => {
+      dispatchAgentAction.mockReturnValue({
+        decision: "APPROVAL_REQUIRED",
+        approvalRequestId: "approval-test-123",
+        score: 40,
+        bucket: "APPROVAL",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/dispatch",
+        payload: { request: "run a security scan", agentIds: ["SECURITY"] },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(runSecuritySpecialistViaSentinel).not.toHaveBeenCalled();
+      const body = res.json();
+      const run = body.runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+      expect(run.status).toBe("SKIPPED");
+      expect(run.epistemicState).toBe("UNKNOWN");
+      expect(run.claims).toContain("approvalRequestId:approval-test-123");
+    });
   });
 });
 
