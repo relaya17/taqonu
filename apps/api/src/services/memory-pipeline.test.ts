@@ -31,6 +31,7 @@ const {
   resolveMemoryProvenance,
   retrieveMemories,
   seedPortfolioPatternMemories,
+  supersedeMatchingMemories,
 } = await import("./memory-pipeline.js");
 
 afterAll(() => {
@@ -768,5 +769,123 @@ describe("P0.5 — retrieval honours the memory validity window", () => {
 
     const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
     expect(items.some((m) => m.id === unbounded.id)).toBe(true);
+  });
+});
+
+describe("P0 — supersedeMatchingMemories is owner-scoped", () => {
+  const PROJECT_SUPERSEDE = "66666666-6666-4666-8666-666666666666";
+
+  /** Reads a memory straight out of the store, bypassing any retrieval
+   *  filtering — supersession tests must observe the *stored* row (a
+   *  SUPERSEDED row is invisible to `retrieveMemories()`, which would make a
+   *  successful attack look like a clean pass). */
+  function stored(projectId: string | null, id: string) {
+    return osStore.getMemories(projectId ?? "global").find((m) => m.id === id);
+  }
+
+  it("cannot touch another owner's memory (A's record stays byte-identical)", () => {
+    // The breach: owner B posts an ordinary memory of their own and, purely
+    // because the statement substring matches, owner A's ACTIVE memory was
+    // flipped to SUPERSEDED/STALE with no error surfaced to anyone.
+    const victim = memory(
+      PROJECT_SUPERSEDE,
+      "rotate the signing key every quarter",
+      OWNER_A,
+    );
+    osStore.addMemory(victim);
+    const before = stored(PROJECT_SUPERSEDE, victim.id);
+    expect(before?.status).toBe("ACTIVE");
+
+    const attacker = memory(
+      PROJECT_SUPERSEDE,
+      "rotate the signing key every quarter",
+      OWNER_B,
+    );
+    osStore.addMemory(attacker);
+    const count = supersedeMatchingMemories({
+      projectId: PROJECT_SUPERSEDE,
+      statementContains: "rotate the signing key",
+      newerMemoryId: attacker.id,
+      ownerId: OWNER_B,
+    });
+
+    expect(count).toBe(0);
+    // Byte-identical, not merely still-ACTIVE: no supersededBy stamp, no
+    // epistemicState downgrade, not even an `updatedAt` touch.
+    expect(stored(PROJECT_SUPERSEDE, victim.id)).toStrictEqual(before);
+  });
+
+  it("protects the shared global bucket (projectId: null — the no-knowledge path)", () => {
+    // `projectId: null` targets the shared "global" key, so this path needed
+    // no knowledge whatsoever of the victim's project id — the cheapest
+    // version of the attack, and equally closed.
+    const victim = memory(null, "global policy: never log raw tokens", OWNER_A);
+    osStore.addMemory(victim);
+    const before = stored(null, victim.id);
+
+    const attacker = memory(null, "global policy: never log raw tokens", OWNER_B);
+    osStore.addMemory(attacker);
+    const count = supersedeMatchingMemories({
+      projectId: null,
+      statementContains: "global policy: never log raw tokens",
+      newerMemoryId: attacker.id,
+      ownerId: OWNER_B,
+    });
+
+    expect(count).toBe(0);
+    expect(stored(null, victim.id)).toStrictEqual(before);
+  });
+
+  it("counts ONLY the caller's own matches (supersededCount oracle closed)", () => {
+    // `supersededCount` is echoed back to the caller by POST /api/v1/memory,
+    // so a count that included other tenants' rows revealed how many of their
+    // memories contained an attacker-chosen substring.
+    const needle = "shared oracle phrase about deploys";
+    for (const owner of [OWNER_A, OWNER_A, OWNER_A]) {
+      osStore.addMemory(memory(PROJECT_SUPERSEDE, `${needle} (A)`, owner));
+    }
+    const mineOld = memory(PROJECT_SUPERSEDE, `${needle} (B)`, OWNER_B);
+    osStore.addMemory(mineOld);
+
+    const attacker = memory(PROJECT_SUPERSEDE, `${needle} (B, newer)`, OWNER_B);
+    osStore.addMemory(attacker);
+    const count = supersedeMatchingMemories({
+      projectId: PROJECT_SUPERSEDE,
+      statementContains: needle,
+      newerMemoryId: attacker.id,
+      ownerId: OWNER_B,
+    });
+
+    // Exactly one — B's own older memory — despite three owner-A matches.
+    expect(count).toBe(1);
+  });
+
+  it("still supersedes the caller's OWN matching memories (regression)", () => {
+    const older = memory(
+      PROJECT_SUPERSEDE,
+      "the staging database lives in eu-west-1",
+      OWNER_A,
+    );
+    osStore.addMemory(older);
+    const newer = memory(
+      PROJECT_SUPERSEDE,
+      "the staging database lives in eu-west-1 (updated)",
+      OWNER_A,
+    );
+    osStore.addMemory(newer);
+
+    const count = supersedeMatchingMemories({
+      projectId: PROJECT_SUPERSEDE,
+      statementContains: "the staging database lives in eu-west-1",
+      newerMemoryId: newer.id,
+      ownerId: OWNER_A,
+    });
+
+    expect(count).toBe(1);
+    const after = stored(PROJECT_SUPERSEDE, older.id);
+    expect(after?.status).toBe("SUPERSEDED");
+    expect(after?.supersededBy).toBe(newer.id);
+    // The newer memory itself is never self-superseded.
+    expect(stored(PROJECT_SUPERSEDE, newer.id)?.status).toBe("ACTIVE");
   });
 });

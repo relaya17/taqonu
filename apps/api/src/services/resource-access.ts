@@ -93,9 +93,23 @@ export function checkResourceAccess(input: ResourceAccessInput): ResourceAccessR
   }
 
   if (actorId !== resourceOwnerId) {
+    // SECURITY FIX (cross-tenant isolation audit): this `reason` is surfaced
+    // verbatim in the 403 HTTP body by `assertReadOwnership` in
+    // project-access.ts, so naming the real `resourceOwnerId` turned every
+    // denial into an account-enumeration oracle: guess a resource id, read
+    // back the uuid of the tenant who owns it. A denial must never disclose
+    // who the real owner is. The actor id stays — the caller already knows
+    // their own id, and it keeps the message useful in logs. Status (403)
+    // and error code (FORBIDDEN) are unchanged; only the human-readable
+    // text narrows. Note that `assertReadOwnership` also feeds this string
+    // into its `appendIsolationAudit` detail, so the READ-path audit entry no
+    // longer names the owner either; it still records `projectId` + `actorId`,
+    // and the WRITE path (`assertProjectWriteAccess`) builds its own
+    // `owner mismatch · expected <ownerId>` detail independently of this
+    // function, so that trail is unaffected.
     return {
       decision: "DENIED",
-      reason: `actor "${actorId}" does not own this resource (owner "${resourceOwnerId}")`,
+      reason: `actor "${actorId}" does not own this resource`,
     };
   }
 

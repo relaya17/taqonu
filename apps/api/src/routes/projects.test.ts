@@ -82,6 +82,43 @@ function makeProject(owner: AuthUser | null) {
   return id;
 }
 
+/**
+ * Seeds a CRITICAL memory on `projectId` — `buildCentralOpinion` copies the
+ * first 200 chars of every BUG/HIGH/CRITICAL memory statement into its
+ * findings, so this is the exact tenant data the unauthenticated
+ * central-opinion routes used to leak.
+ */
+function seedCriticalMemory(ownerId: string, projectId: string, statement: string) {
+  osStore.ensureLoaded();
+  const now = new Date().toISOString();
+  osStore.addMemory({
+    id: crypto.randomUUID(),
+    ownerId,
+    type: "BUG",
+    projectId,
+    statement,
+    reason: ["seed"],
+    status: "ACTIVE",
+    confidence: 0.9,
+    category: "GENERATED_REASONING",
+    epistemicState: "OBSERVED",
+    observationMode: "OBSERVED",
+    source: "seed",
+    sourceType: "SYSTEM",
+    sourceId: null,
+    evidence: [],
+    supersededBy: null,
+    validFrom: now,
+    validUntil: null,
+    observedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: "seed",
+    scope: "PROJECT",
+    priority: "CRITICAL",
+  });
+}
+
 let app: FastifyInstance;
 const dirs: string[] = [tmpDir];
 
@@ -316,5 +353,116 @@ describe("POST /api/v1/projects/:id/cloud", () => {
     const res = await cloudApp.inject({ method: "POST", url: `/api/v1/projects/${id}/cloud` });
     expect(res.statusCode).toBe(200);
     expect(res.json().alreadySynced).toBe(true);
+  });
+});
+
+/**
+ * SECURITY FIX (cross-tenant isolation audit): these five sub-routes checked
+ * only that the project existed — no `requireUser`, no ownership check — so a
+ * fully anonymous caller who knew a project UUID could read that tenant's
+ * reachability, manager reminders, and (worst) the central opinion, which
+ * embeds the first 200 chars of every BUG/HIGH/CRITICAL memory statement.
+ * They now use the same `assertProjectReadAccess` gate as the sibling
+ * `/resume` and `/context-export` routes, hence the identical 401/403/200
+ * expectations below.
+ */
+describe("project read-gate on previously unauthenticated sub-routes", () => {
+  const subRoutes = [
+    "reachability",
+    "central-opinion",
+    "central-opinion.html",
+    "central-opinion.pdf",
+    "manager-reminders",
+  ] as const;
+
+  for (const subRoute of subRoutes) {
+    describe(`GET /api/v1/projects/:id/${subRoute}`, () => {
+      it("401s when not signed in", async () => {
+        const id = makeProject(null);
+        getRequestUser.mockReturnValue(null);
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/projects/${id}/${subRoute}`,
+        });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("403s for a non-owning signed-in user", async () => {
+        const owner = signedInUser();
+        const id = makeProject(owner);
+        getRequestUser.mockReturnValue(otherUser);
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/projects/${id}/${subRoute}`,
+        });
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("200s for the owning user (no regression — these are real features)", async () => {
+        const owner = signedInUser();
+        const id = makeProject(owner);
+        getRequestUser.mockReturnValue(owner);
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/projects/${id}/${subRoute}`,
+        });
+        expect(res.statusCode).toBe(200);
+      });
+
+      /**
+       * FIX 2: correct status, too-talkative body. The 403 must not name the
+       * real owner — that would turn every denial into an account-enumeration
+       * oracle (guess a project id, read back the victim's user id).
+       */
+      it("403 body does not disclose the owner's user id", async () => {
+        const owner = signedInUser();
+        const id = makeProject(owner);
+        getRequestUser.mockReturnValue(otherUser);
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/projects/${id}/${subRoute}`,
+        });
+        expect(res.statusCode).toBe(403);
+        expect(res.body).not.toContain(owner.id);
+        // the actor's own id is fine — the caller already knows who they are
+        expect(res.json().error.message).toMatch(/does not own/);
+      });
+    });
+  }
+
+  it("central-opinion denial leaks none of the project's memory statements", async () => {
+    const owner = signedInUser();
+    const id = makeProject(owner);
+    const secret = "CRITICAL-MEMORY-SECRET-do-not-leak-across-tenants";
+    seedCriticalMemory(owner.id, id, secret);
+
+    // sanity: the owner really can see the statement, so the assertions below
+    // are proving the gate works and not that the fixture is empty.
+    getRequestUser.mockReturnValue(owner);
+    const allowed = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${id}/central-opinion`,
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.body).toContain(secret);
+
+    for (const subRoute of ["central-opinion", "central-opinion.html", "central-opinion.pdf"]) {
+      getRequestUser.mockReturnValue(otherUser);
+      const denied = await app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${id}/${subRoute}`,
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.body).not.toContain(secret);
+      expect(denied.body).not.toContain(owner.id);
+    }
+
+    getRequestUser.mockReturnValue(null);
+    const anonymous = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${id}/central-opinion`,
+    });
+    expect(anonymous.statusCode).toBe(401);
+    expect(anonymous.body).not.toContain(secret);
   });
 });

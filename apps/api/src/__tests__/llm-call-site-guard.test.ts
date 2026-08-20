@@ -173,3 +173,91 @@ describe("LLM call-site guard (static source scan, no mocking)", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * Known LLM provider endpoints. A raw `fetch` to one of these IS an outbound
+ * model call, regardless of which helper it does or does not use.
+ */
+const PROVIDER_HOSTS: readonly string[] = [
+  "api.openai.com",
+  "api.anthropic.com",
+  "generativelanguage.googleapis.com",
+  "api.groq.com",
+  "api.deepseek.com",
+];
+
+/**
+ * Files allowed to reach a provider without going through
+ * `completeStrict`/`completeWithFreeFallback`.
+ *
+ * Each entry MUST still apply the Phase 0 defences itself —
+ * `buildLayeredSystemPrompt` for structural isolation of untrusted content,
+ * and `redactSecrets` on what leaves. Verify both before adding one.
+ */
+const ALLOWED_RAW_PROVIDER_CALLS: readonly string[] = [
+  // Vision/image assist: builds a multimodal request body the text-only
+  // gateway cannot express, so it calls the provider directly. It DOES
+  // build its prompt via buildLayeredSystemPrompt and redact both
+  // directions — asserted below, not merely asserted here.
+  "apps/api/src/services/artifacts-assists.ts",
+  // The gateway itself: this is where provider calls are supposed to live.
+  "packages/agent-core/src/providers/llm.ts",
+];
+
+describe("LLM provider-endpoint guard (catches raw fetch bypasses)", () => {
+  it("no file reaches an LLM provider by raw fetch outside the allow-list", () => {
+    // The original guard above scans for two FUNCTION NAMES. A call site
+    // using `fetch("https://api.openai.com/...")` was invisible to it — and
+    // one really existed (artifacts-assists.ts), shipping without the
+    // structural injection defence every other call site received. Matching
+    // on the endpoint instead of the helper closes that blind spot.
+    const offenders: string[] = [];
+
+    for (const root of SCAN_ROOTS) {
+      for (const absFile of walkTsFiles(join(repoRoot, root))) {
+        const relFile = toRepoRelative(absFile);
+        if (ALLOWED_RAW_PROVIDER_CALLS.includes(relFile)) continue;
+
+        const content = readFileSync(absFile, "utf8");
+        if (PROVIDER_HOSTS.some((host) => content.includes(host))) {
+          offenders.push(relFile);
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      offenders.length === 0
+        ? undefined
+        : [
+            `These files reference an LLM provider endpoint directly:`,
+            `  ${offenders.join("\n  ")}`,
+            ``,
+            `A raw provider call skips completeStrict/completeWithFreeFallback,`,
+            `and therefore skips buildLayeredSystemPrompt — untrusted content`,
+            `reaches the model unseparated and uninspected. Route it through`,
+            `the gateway, or apply the Phase 0 defences at the call site and`,
+            `add it to ALLOWED_RAW_PROVIDER_CALLS deliberately.`,
+          ].join("\n"),
+    ).toEqual([]);
+  });
+
+  it("every allow-listed raw call site actually applies the Phase 0 defences", () => {
+    // An allow-list entry that stopped defending itself would be worse than
+    // no allow-list, so the exemption is conditional on the evidence.
+    const undefended: string[] = [];
+
+    for (const relFile of ALLOWED_RAW_PROVIDER_CALLS) {
+      if (relFile.endsWith("providers/llm.ts")) continue; // the gateway itself
+      const content = readFileSync(join(repoRoot, relFile), "utf8");
+      if (
+        !content.includes("buildLayeredSystemPrompt") ||
+        !content.includes("redactSecrets")
+      ) {
+        undefended.push(relFile);
+      }
+    }
+
+    expect(undefended).toEqual([]);
+  });
+});

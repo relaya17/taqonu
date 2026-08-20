@@ -12,12 +12,19 @@ import { isoDateTimeSchema, uuidSchema } from "./common.schema.js";
  * Lifecycle: PENDING -> APPROVED | REJECTED -> (APPROVED only) CONSUMED.
  * CONSUMED means the approval has already authorized one real action
  * execution and cannot be reused ("one approval, one execution").
+ *
+ * REVOKED is a terminal state reachable from PENDING or APPROVED: a human
+ * has explicitly taken the authorization back before it was spent. It is
+ * deliberately NOT reachable from CONSUMED — the execution already
+ * happened, and re-labelling that record would make the audit trail lie
+ * about history.
  */
 export const approvalRequestStatusSchema = z.enum([
   "PENDING",
   "APPROVED",
   "REJECTED",
   "CONSUMED",
+  "REVOKED",
 ]);
 
 export const approvalRequestSchema = z.object({
@@ -62,6 +69,32 @@ export const approvalRequestSchema = z.object({
    * job that failed to run.
    */
   expiresAt: isoDateTimeSchema.nullable().default(null),
+  /**
+   * Actor id (user id) that revoked this approval, or `null` if it has
+   * never been revoked.
+   *
+   * Revocation is a decision in its own right, so it gets its own
+   * provenance rather than overwriting `decidedBy`/`decidedAt`: the person
+   * who takes an authorization back is frequently NOT the person who
+   * granted it, and collapsing the two would erase exactly the fact a
+   * reviewer needs — that someone else intervened after sign-off.
+   */
+  revokedBy: z.string().min(1).max(200).nullable().default(null),
+  /**
+   * When the revocation was recorded. Paired with `revokedBy` so an
+   * auditor can place the revocation on the timeline relative to
+   * `decidedAt` and to any execution attempt that was refused because of
+   * it.
+   */
+  revokedAt: isoDateTimeSchema.nullable().default(null),
+  /**
+   * WHY the approval was taken back ("the patch was superseded", "the
+   * incident is over"). Stored separately from `decisionReason` for the
+   * same reason as the fields above: the justification for granting and
+   * the justification for withdrawing are different claims, and only one
+   * of them explains why a later execution was denied.
+   */
+  revocationReason: z.string().min(1).max(2000).nullable().default(null),
   decidedBy: z.string().min(1).max(200).nullable(),
   decidedAt: isoDateTimeSchema.nullable(),
   decisionReason: z.string().min(1).max(2000).nullable(),

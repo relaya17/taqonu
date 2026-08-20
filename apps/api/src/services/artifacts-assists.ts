@@ -19,7 +19,7 @@ import {
   type CreditsBalance,
   type EvidenceRecord,
 } from "@atlas/shared";
-import { redactSecrets } from "@atlas/agent-core";
+import { buildLayeredSystemPrompt, redactSecrets } from "@atlas/agent-core";
 import { osStore } from "../store/os-store.js";
 import { findRepoRoot } from "./repo-root.js";
 
@@ -220,14 +220,53 @@ export async function runAssist(
     const image = artifacts.find((a) => a.kind === "IMAGE");
     try {
       const safeRequest = redactSecrets(input.userRequest);
+
+      // SECURITY FIX: this is a real outbound LLM call that reaches the
+      // provider via raw `fetch`, NOT through `completeStrict` /
+      // `completeWithFreeFallback`. That means `llm-call-site-guard.test.ts`
+      // — which scans for those two function names — could never see it, and
+      // this call site was consequently missing the structural
+      // prompt-injection defence every other LLM call site got in Phase 0.
+      // `redactSecrets` was already applied (secrets out), but nothing
+      // separated attacker-controllable content from Atlas's own
+      // instructions (injection in).
+      //
+      // `input.userRequest` and the artifact filenames are both
+      // caller-supplied, so they are untrusted blocks; the expert's
+      // discipline text is a static catalog string and stays trusted.
+      const layered = buildLayeredSystemPrompt({
+        instructions: `${expert.systemDiscipline}\nReturn short bullet findings. Label INFERRED/PROPOSED. Never invent FACT about code.`,
+        untrustedBlocks: [
+          { label: "user_request", content: safeRequest },
+          {
+            label: "artifact_filenames",
+            content: artifacts.map((a) => a.filename).join(", "),
+          },
+        ],
+      });
+      // Defence in depth, not a hard block — matching the decision already
+      // documented at the other LLM call sites: the structural wrapping is
+      // the control, the flag is the signal. Surfaced as a real finding
+      // rather than only a log line, so whoever reads this assist's output
+      // sees that its input tried to steer the model.
+      if (layered.flagged) {
+        findings.push({
+          id: crypto.randomUUID(),
+          title: "Prompt-injection pattern detected in assist input",
+          detail: `Untrusted blocks matched: ${layered.findings
+            .map((f) => `${f.label} (${f.patternNames.join(", ")})`)
+            .join("; ")}. The content was structurally isolated before being sent to the model.`,
+          severity: "HIGH" as const,
+          epistemicState: "OBSERVED" as const,
+        });
+      }
+
       const body = {
         model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: redactSecrets(
-              `${expert.systemDiscipline}\nReturn short bullet findings. Label INFERRED/PROPOSED. Never invent FACT about code.`,
-            ),
+            content: redactSecrets(layered.systemContent),
           },
           {
             role: "user",

@@ -44,6 +44,13 @@ import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
+import {
+  resolveAgentIdentity,
+  type ToolExecutionPayload,
+  type ToolPayloadValue,
+} from "../services/agent-runtime-authz.js";
+import { executeGovernedAction } from "../services/governed-execution.js";
+import { findRepoRoot } from "../services/repo-root.js";
 import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { runCodeEngineerSpecialistViaLlm } from "../services/code-engineer-dispatch.js";
@@ -116,6 +123,151 @@ function skippedForDispatchGate(
     // not free, so this stays an honest measurement rather than a flat 0.
     durationMs: Math.max(1, Date.now() - startedAt),
   });
+}
+
+/**
+ * Values a tool payload may carry, mirroring `ToolPayloadValue`
+ * (services/agent-runtime-authz.ts). Recursive on purpose: a forged nested
+ * object must be typed, not waved through as `any`/`unknown`, or the
+ * anti-impersonation comparison below has nothing solid to compare.
+ */
+const toolPayloadValueSchema: z.ZodType<ToolPayloadValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(toolPayloadValueSchema),
+    z.record(z.string(), toolPayloadValueSchema),
+  ]),
+);
+
+/**
+ * Body of `POST /api/v1/agents/tool-execute`.
+ *
+ * `.strict()` is load-bearing, not stylistic. The one property this request
+ * must never have is a caller-supplied tenant: `ownerId`, `tenantId`,
+ * `sessionOwnerId` and friends are rejected outright (400) rather than
+ * silently ignored, so a client that believes it can set them finds out
+ * immediately instead of quietly running as somebody else's identity. The
+ * only owner in play comes from `requireSignedInForWrite` below.
+ *
+ * `payload` MAY restate the identity (`targetOwnerId`/`targetProjectId`/
+ * `targetAgentId`) — `enforceAgentToolAuthorization` inside the gate then
+ * compares that untrusted restatement against the session-derived identity
+ * and denies any contradiction. Accepting the field is what makes that
+ * check reachable; the field cannot widen anything.
+ */
+const agentToolExecuteRequestSchema = z
+  .object({
+    fabricAgentId: z.string().min(1),
+    toolName: z.string().min(1),
+    toolArgs: z.record(z.string(), z.unknown()).default({}),
+    payload: z
+      .object({
+        targetOwnerId: z.string().optional(),
+        targetProjectId: z.string().optional(),
+        targetAgentId: z.string().optional(),
+      })
+      .catchall(toolPayloadValueSchema)
+      .optional(),
+    /** Exact content the action is taken over — what the artifact hash pins. */
+    artifact: z.string().min(1).max(200_000),
+    entityType: z.enum([
+      "CUSTOMER",
+      "RECORD",
+      "DOCUMENT",
+      "FINANCIAL_TRANSACTION",
+      "CASE",
+      "COMMUNICATION",
+      "CONFIGURATION",
+    ]),
+    action: z.enum(["READ", "CREATE", "UPDATE", "DELETE", "EXECUTE"]),
+    projectId: z.string().min(1).optional(),
+    approvalRequestId: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * Narrow the parsed body's optional payload to `ToolExecutionPayload`.
+ *
+ * Zod models an absent optional as `string | undefined`; under this repo's
+ * `exactOptionalPropertyTypes` an absent property and a property explicitly
+ * set to `undefined` are different types, and the guard's anti-impersonation
+ * check keys off "was this field present at all". Rebuilding by conditional
+ * spread keeps `{ targetOwnerId: undefined }` from reading as a stated —
+ * and therefore comparable — target.
+ */
+function toToolExecutionPayload(
+  payload: z.infer<typeof agentToolExecuteRequestSchema>["payload"],
+): ToolExecutionPayload | undefined {
+  if (payload === undefined) return undefined;
+  const { targetOwnerId, targetProjectId, targetAgentId, ...rest } = payload;
+  return {
+    ...rest,
+    ...(targetOwnerId !== undefined ? { targetOwnerId } : {}),
+    ...(targetProjectId !== undefined ? { targetProjectId } : {}),
+    ...(targetAgentId !== undefined ? { targetAgentId } : {}),
+  };
+}
+
+/**
+ * Sandbox root handed to the Tool Runtime — derived server-side, never read
+ * from the request.
+ *
+ * `ToolExecutionContext.projectRoot` (packages/agent-core/src/tools/runtime.ts)
+ * is the boundary every filesystem argument is proven to resolve inside. An
+ * agent (or a client acting for one) that could name its own root would be
+ * choosing its own containment, which is the same class of mistake as an
+ * agent choosing its own trust level — the traversal guard would still pass
+ * while the "project" it guarded had become `/`.
+ *
+ * Resolution order reuses what this repo already has rather than inventing a
+ * third notion of "root":
+ *   1. the project's linked workspace root (`osStore.getWorkspaceRoot`, the
+ *      same per-project root security-sentinel-dispatch.ts / patch-write.ts
+ *      use), when the caller named a project that has one;
+ *   2. otherwise `findRepoRoot()` (services/repo-root.ts), the monorepo root
+ *      this API already resolves `.atlas`/fixture paths against.
+ *
+ * Case 2 is deliberately the fallback and not the default: a request with no
+ * project scope has no narrower root to offer. It is still a real bound
+ * (traversal above it is refused), just a wide one.
+ */
+function resolveToolProjectRoot(projectId: string | null): string {
+  const linked = projectId ? osStore.getWorkspaceRoot(projectId) : undefined;
+  return linked ?? findRepoRoot();
+}
+
+/**
+ * Strip anything path-shaped, collapse to one line, and cap the length.
+ *
+ * Refusal reasons are genuinely useful to a caller ("path escapes the
+ * project root", "tool X is not in agent Y's allowedTools") and are worth
+ * returning — but they are produced by `Error.message`s that can embed
+ * absolute server paths (`ENOENT ... open '/srv/atlas/...'`). Those describe
+ * the host's filesystem layout, not the caller's request, and must not cross
+ * the wire.
+ */
+function safeRefusalReason(reason: string): string {
+  const firstLine = reason.split("\n")[0] ?? "";
+  return firstLine
+    .replace(/(?:[A-Za-z]:)?[/\\][^\s"'`]+/g, "[path]")
+    .slice(0, 400);
+}
+
+/**
+ * Recover the approval id from a POLICY/APPROVAL_REQUIRED outcome.
+ *
+ * `GovernedExecutionOutcome` carries the id inside `reason` rather than as a
+ * field, and that type is deliberately not modified here (its adversarial
+ * suite and the bypass guard both pin it). Parsing the one string shape it
+ * emits — `approval <id> required before execution` — keeps the change on
+ * this side of the boundary; a shape change would drop the id to `null`
+ * rather than mis-report one.
+ */
+function approvalIdFromReason(reason: string): string | null {
+  return /^approval (\S+) required before execution$/.exec(reason)?.[1] ?? null;
 }
 
 export async function registerAgentFabricRoutes(
@@ -498,6 +650,120 @@ export async function registerAgentFabricRoutes(
     return reply.status(201).send({
       ...result,
       memoryContext,
+    });
+  });
+
+  /**
+   * P0.7 — the first real HTTP caller of the governed execution gate.
+   *
+   * Every control this platform has for "an agent takes an action" already
+   * existed (identity resolution, catalog tool authorization, approval↔
+   * artifact binding, Policy/Risk, the Tool Runtime, the unified audit
+   * chain) and `executeGovernedAction()` already composed them in a
+   * fail-closed order — but nothing on the network could reach it, so the
+   * composition governed nothing. This route is that path, and it does no
+   * governance of its own: it resolves identity from the session, hands the
+   * request to the gate, and translates the gate's answer to HTTP. Any
+   * decision made here instead of there would be a second, divergent gate.
+   *
+   * Note what is NOT re-checked here. There is no `enforceEntityWrite`
+   * alongside the gate (as /agents/dispatch has) because the gate's own
+   * Policy/Risk stage covers this request's entity/action pair, and a
+   * second categorical check would put two entries on the audit log for one
+   * action while being able to disagree with the first.
+   *
+   * Refusals arrive as return values, never exceptions — so the mapping
+   * below is exhaustive by construction and cannot be short-circuited by a
+   * `catch` somewhere up the stack:
+   *
+   *   EXECUTION/EXECUTED        → 200  output + artifact hash
+   *   POLICY/APPROVAL_REQUIRED  → 202  accepted, pending a human decision
+   *   AUTHORIZATION/DENIED      → 403  agent may not use this tool / identity
+   *   APPROVAL/DENIED           → 403  no live approval bound to this artifact
+   *   POLICY/DENIED             → 403  the entity-action itself is refused
+   *   EXECUTION/FAILED          → 422  authorized, but the tool could not run
+   *
+   * 403 vs 422 is the distinction that matters to a caller: a 403 means "not
+   * allowed, do not retry as-is", a 422 means "allowed, but this particular
+   * invocation failed" (bad path, oversized file, secret in output). 202 is
+   * not an error at all — the request is parked behind an approval whose id
+   * is returned so it can be redeemed later via `approvalRequestId`.
+   */
+  app.post("/api/v1/agents/tool-execute", async (request, reply) => {
+    // The ONLY source of who is asking. `resolveAgentIdentity` refuses to
+    // build an identity without it.
+    const user = await requireSignedInForWrite(app, request);
+    const body = agentToolExecuteRequestSchema.parse(request.body);
+
+    // Throws AtlasError(FORBIDDEN, 403) for an agent id outside the closed
+    // catalog — an unknown agent is rejected, never defaulted to an empty
+    // (and therefore unconstrained) policy.
+    const identity = resolveAgentIdentity({
+      fabricAgentId: body.fabricAgentId,
+      sessionOwnerId: user.id,
+      projectId: body.projectId ?? null,
+    });
+
+    const payload = toToolExecutionPayload(body.payload);
+
+    const outcome = await executeGovernedAction({
+      identity,
+      toolName: body.toolName,
+      toolArgs: body.toolArgs,
+      ...(payload !== undefined ? { payload } : {}),
+      artifact: body.artifact,
+      ...(body.approvalRequestId !== undefined
+        ? { approvalRequestId: body.approvalRequestId }
+        : {}),
+      entityType: body.entityType,
+      action: body.action,
+      // Same trust reasoning as the specialist gates in /agents/dispatch
+      // above: this body is the authenticated caller's own request. A future
+      // caller relaying externally-ingested content (a fetched issue, an
+      // inbound webhook) must pass trustLevel:"untrusted" so
+      // `floorBucketForUntrustedSource` raises the risk floor.
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectRoot: resolveToolProjectRoot(identity.projectId),
+      routeLabel: "agents.tool-execute",
+    });
+
+    if (outcome.status === "EXECUTED") {
+      return reply.status(200).send({
+        status: "EXECUTED",
+        agentId: identity.agentId,
+        toolName: body.toolName,
+        // The hash of exactly what ran — the same value an approval binds
+        // to, so a caller can correlate this execution with its sign-off.
+        artifactHash: outcome.artifactHash,
+        output: outcome.output,
+      });
+    }
+
+    if (outcome.status === "APPROVAL_REQUIRED") {
+      return reply.status(202).send({
+        status: "APPROVAL_REQUIRED",
+        stage: outcome.stage,
+        approvalRequestId: approvalIdFromReason(outcome.reason),
+        message:
+          "Human approval is required before this action can execute. Re-send this request with approvalRequestId once it is granted.",
+      });
+    }
+
+    if (outcome.stage === "EXECUTION") {
+      return reply.status(422).send({
+        error: {
+          code: "EXECUTION_FAILED",
+          message: safeRefusalReason(outcome.reason),
+        },
+        stage: outcome.stage,
+        status: outcome.status,
+      });
+    }
+
+    return reply.status(403).send({
+      error: { code: "FORBIDDEN", message: safeRefusalReason(outcome.reason) },
+      stage: outcome.stage,
+      status: outcome.status,
     });
   });
 

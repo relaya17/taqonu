@@ -3,6 +3,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { ServerEnv } from "@atlas/config";
 import { createLogger } from "@atlas/observability";
+import { registerFilesystemTools } from "@atlas/agent-core";
 import { isAllowedWebOrigin } from "./lib/web-origin.js";
 import { registerRequestTiming } from "./middleware/request-timing.js";
 import { registerHealthRoutes } from "./routes/health.js";
@@ -109,6 +110,14 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
 
   registerEventRules();
   registerBuiltinAutomationRules();
+  // Tool Runtime registry, alongside the other process-wide registries above.
+  // Without this the registry is empty and `executeTool()` refuses every tool
+  // with "has a policy but no registered implementation" — the read-only
+  // `fs.*` tools that `POST /api/v1/agents/tool-execute` exposes through the
+  // governed execution gate would be unreachable in production while passing
+  // in tests that register them by hand. `registerTool` is a Map.set, so this
+  // is idempotent and safe on repeated `buildApp()` calls (one per test app).
+  registerFilesystemTools();
 
   osStore.ensureLoaded();
   const hydrate = await hydrateOsStoreFromCloudIfEmpty(env, {

@@ -182,10 +182,17 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         classifiedType: classified.type,
       },
     });
+    // Tenant boundary (P0 fix): supersession is a destructive bulk write, so
+    // it is scoped to the same server-derived `identity.ownerId` this memory
+    // was just written under — never anything from `body`. Without this the
+    // body-supplied `statementContains` substring retired *other* tenants'
+    // ACTIVE memories (and `supersededCount` below leaked how many), see the
+    // doc comment on `supersedeMatchingMemories()`.
     const superseded = supersedeMatchingMemories({
       projectId: memory.projectId,
       statementContains: memory.statement.slice(0, 48),
       newerMemoryId: memory.id,
+      ownerId: identity.ownerId,
     });
 
     // Best-effort durable dual-write — local osStore remains the source of

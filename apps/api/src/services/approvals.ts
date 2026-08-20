@@ -45,6 +45,13 @@ export type DecideApprovalRequestInput = {
   decisionReason: string;
 };
 
+export type RevokeApprovalRequestInput = {
+  /** Actor id (user id) taking the authorization back. */
+  revokedBy: string;
+  /** WHY it is being taken back — recorded on the request and in the audit log. */
+  reason: string;
+};
+
 function inferRisk(entityType: string, action: string): "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" {
   if (action === "DELETE" || action === "EXECUTE") return "HIGH";
   if (action === "UPDATE") return "MEDIUM";
@@ -67,6 +74,9 @@ export function createApprovalRequest(
     context: input.context ?? {},
     artifactHash: input.artifactHash ?? null,
     expiresAt: input.expiresAt ?? null,
+    revokedBy: null,
+    revokedAt: null,
+    revocationReason: null,
     decidedBy: null,
     decidedAt: null,
     decisionReason: null,
@@ -171,6 +181,103 @@ export function decideApprovalRequest(
 }
 
 /**
+ * Revokes an approval, moving it to the terminal REVOKED state so it can
+ * never authorize an execution again.
+ *
+ * The governing principle is that REVOCATION BEATS APPROVAL: an approval a
+ * human has explicitly taken back is dead regardless of how valid it still
+ * looks — correct artifact hash, well within its expiry, right agent, right
+ * action. Those checks answer "does this execution match what was signed
+ * off?"; revocation answers the prior question, "is that sign-off still in
+ * force?", and a `no` there cannot be outvoted.
+ *
+ * WHICH STATES CAN BE REVOKED:
+ *
+ * - APPROVED — the central case. A live authorization is withdrawn before
+ *   anyone spends it.
+ * - PENDING — ALLOWED, deliberately. A requester or approver who realises a
+ *   request should not go ahead (the patch was superseded, the incident is
+ *   over) can withdraw it instead of leaving a live request sitting in the
+ *   queue for some later approver to rubber-stamp against a world that has
+ *   moved on. Terminating a PENDING request destroys nothing: it has never
+ *   authorized anything, so there is no history to distort. Rejecting it
+ *   via `decideApprovalRequest` is the alternative, but that records a
+ *   *review verdict* ("we looked at this and said no") which is a different
+ *   and stronger claim than "this was withdrawn before review".
+ * - REJECTED — refused. It already authorizes nothing; "revoking" it would
+ *   add noise, not safety, and would overwrite the reviewer's verdict.
+ * - CONSUMED — refused, and this one matters. The execution already
+ *   happened. Marking the record REVOKED afterwards would let it claim that
+ *   an action which really ran was never authorized. Undoing an executed
+ *   action is a compensating operation, not a bookkeeping edit.
+ * - REVOKED — refused; already terminal, and the first revocation's
+ *   provenance is the one worth keeping.
+ */
+export function revokeApprovalRequest(
+  id: string,
+  input: RevokeApprovalRequestInput,
+): ApprovalRequest {
+  const existing = approvalRequests.get(id);
+  if (!existing) {
+    throw new AtlasError("NOT_FOUND", `Approval request ${id} not found`, {
+      statusCode: 404,
+    });
+  }
+  if (existing.status === "CONSUMED") {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} has already been CONSUMED and cannot be revoked — the execution it authorized already happened`,
+      { statusCode: 409 },
+    );
+  }
+  if (existing.status !== "PENDING" && existing.status !== "APPROVED") {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} cannot be revoked (status=${existing.status}); only PENDING or APPROVED requests can be revoked`,
+      { statusCode: 409 },
+    );
+  }
+
+  const now = new Date().toISOString();
+  const updated = approvalRequestSchema.parse({
+    ...existing,
+    status: "REVOKED" as const,
+    revokedBy: input.revokedBy,
+    revokedAt: now,
+    revocationReason: input.reason,
+  });
+  approvalRequests.set(id, updated);
+
+  appendUnifiedAuditEntry({
+    type: "approval.revoked",
+    actorId: input.revokedBy,
+    actorKind: "USER",
+    reason: input.reason,
+    input: {
+      approvalId: id,
+      entityType: existing.entityType,
+      action: existing.action,
+      // The state we revoked FROM: withdrawing a live APPROVED authorization
+      // is a materially different event from withdrawing a PENDING request,
+      // and a reviewer must be able to tell them apart after the fact.
+      previousStatus: existing.status,
+      artifactHash: existing.artifactHash,
+    },
+    output: { status: updated.status },
+    policy: `${existing.entityType}.${existing.action}`,
+    risk: inferRisk(existing.entityType, existing.action),
+    // The unified audit enum has no REVOKED member (it models the approval
+    // *gate*: NOT_REQUIRED / PENDING / APPROVED / REJECTED). REJECTED is the
+    // honest projection — the outcome is "this is not authorized" — and the
+    // `type` and `previousStatus` fields carry the precise story.
+    approval: "REJECTED",
+    result: "SUCCESS",
+  });
+
+  return updated;
+}
+
+/**
  * Consumes an APPROVED approval request, flipping it to CONSUMED so it can
  * authorize exactly ONE real action execution (never replayed). Throws
  * unless the current status is APPROVED.
@@ -203,6 +310,33 @@ export function consumeApprovalRequest(
       statusCode: 404,
     });
   }
+  // REVOCATION — checked FIRST, ahead of the status check, the expiry check
+  // and the artifact binding, and that ordering is itself the control.
+  //
+  // Revocation is an explicit human decision to withdraw authorization, so
+  // it must not be maskable by any other check. If it ran later, a revoked
+  // approval that had also expired would be refused with "expired at ..." —
+  // truthful but misleading, since the reason it can never be used again is
+  // that a person took it back, not that a clock ran out. Ordering it first
+  // guarantees the denial always NAMES the revocation.
+  //
+  // It also runs ahead of the artifact-binding check so the caller can never
+  // learn "the artifact matched" about a revoked approval: a distinguishable
+  // "artifact mismatch" vs "artifact matched but revoked" pair of errors is a
+  // free oracle for probing what a withdrawn approval covered. A revoked
+  // approval answers exactly one thing — no — and reveals nothing else.
+  //
+  // Placing it before the generic `status !== "APPROVED"` guard is what makes
+  // the message specific; that guard would otherwise swallow REVOKED into a
+  // flat "not APPROVED".
+  if (existing.status === "REVOKED") {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} was REVOKED by ${existing.revokedBy ?? "unknown"} at ${existing.revokedAt ?? "unknown time"} and can never authorize an action`,
+      { statusCode: 409 },
+    );
+  }
+
   if (existing.status !== "APPROVED") {
     throw new AtlasError(
       "CONFLICT",

@@ -295,11 +295,49 @@ export function classifyMemoryType(statement: string): {
   };
 }
 
-/** Mark older ACTIVE memories STALE when a newer verified-ish statement arrives. */
+/**
+ * Mark older ACTIVE memories STALE when a newer verified-ish statement arrives.
+ *
+ * Tenant boundary (P0 fix — this was a live cross-tenant breach): this
+ * function previously took no `ownerId` at all. It read
+ * `osStore.getMemories(key)` — every owner's memories under that
+ * project/global key — and flipped *every* statement-substring match to
+ * `status: "SUPERSEDED"` / `supersededBy: <the caller's new memory id>` /
+ * `epistemicState: "STALE"`. Since `POST /api/v1/memory` calls this with a
+ * substring taken straight from the request body, any tenant could post an
+ * ordinary memory of their own, receive a normal 201, and silently retire
+ * another tenant's ACTIVE memories — destructively, with no error surfaced.
+ * `projectId: null` made it worse: it targets the shared `"global"` bucket,
+ * so the attacker needed no knowledge whatsoever of the victim's project id.
+ *
+ * `ownerId` is therefore REQUIRED, not optional — unlike `retrieveMemories()`
+ * / `approveMemory()`, where an omitted owner means "trusted system/admin
+ * read". This is a destructive bulk write with no legitimate cross-owner
+ * caller, and an optional owner filter is one forgotten argument away from
+ * reintroducing exactly this breach: making it required moves that mistake
+ * from a silent runtime data-loss bug to a compile error. Callers must pass
+ * the server-derived caller identity (`resolveCloudIdentity`/session), never
+ * anything read out of a request body.
+ *
+ * Counting is now safe to return: `count` only ever increments for rows that
+ * already passed the `m.ownerId === input.ownerId` check, so the
+ * `supersededCount` the route echoes back can no longer act as an oracle
+ * revealing how many *other* tenants' memories contain an attacker-chosen
+ * substring — it describes only the caller's own data, which the caller is
+ * already entitled to read.
+ *
+ * Like `approveMemory()`, this deliberately fetches the *unfiltered* list
+ * (not `osStore.getMemories(key, ownerId)`) and does the ownership check per
+ * row: it read-modify-writes the whole per-key array via `replaceMemories`,
+ * so writing back an ownerId-filtered subset would delete every other
+ * owner's memories under that key — a worse version of the bug being fixed.
+ */
 export function supersedeMatchingMemories(input: {
   projectId: string | null;
   statementContains: string;
   newerMemoryId: string;
+  /** REQUIRED tenant boundary — see doc comment above. Server-derived only. */
+  ownerId: string;
 }): number {
   const key = input.projectId ?? "global";
   const memories = osStore.getMemories(key);
@@ -309,6 +347,7 @@ export function supersedeMatchingMemories(input: {
   const next = memories.map((m) => {
     if (
       m.id === input.newerMemoryId ||
+      m.ownerId !== input.ownerId ||
       m.status !== "ACTIVE" ||
       !m.statement.toLowerCase().includes(needle)
     ) {
