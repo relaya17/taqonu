@@ -229,3 +229,152 @@ export function countAuditLogLines(): number {
     return 0;
   }
 }
+
+/** One broken link found while walking the chain. */
+export type AuditChainViolation =
+  | { readonly kind: "BROKEN_LINK"; readonly line: number; readonly expectedPrevHash: string; readonly actualPrevHash: string }
+  | { readonly kind: "TAMPERED_PAYLOAD"; readonly line: number; readonly recordedHash: string; readonly recomputedHash: string }
+  | { readonly kind: "UNPARSEABLE"; readonly line: number; readonly reason: string };
+
+export interface AuditChainVerification {
+  readonly intact: boolean;
+  readonly entriesChecked: number;
+  /**
+   * `id` of the first record that failed any check, or null when intact.
+   * Callers (CI gate, self-audit, an operator) need to know WHERE the chain
+   * first breaks, not just that it does — everything before this point is
+   * still trustworthy, everything after it is suspect.
+   */
+  readonly firstInvalidEventId: string | null;
+  readonly firstInvalidLine: number | null;
+  readonly violations: readonly AuditChainViolation[];
+}
+
+/**
+ * Verify the audit log's hash chain end to end.
+ *
+ * Why this exists: `appendAuditLogLine()` has always written a proper chain
+ * — `prevHash`, a SHA-256 `hash` over canonical (`stableStringify`) JSON,
+ * and a genesis anchor. But NOTHING ever read it back to check it. A hash
+ * chain's entire value is detecting tampering, deletion and reordering; a
+ * chain nobody verifies is a lock nobody checks. This is the missing half.
+ *
+ * It detects all three failure modes the structure is designed to catch:
+ *
+ *  - **TAMPERED_PAYLOAD** — a record's fields were edited in place. The
+ *    recomputed hash no longer matches the stored one.
+ *  - **BROKEN_LINK** — a record was deleted, inserted, or reordered. Its
+ *    `prevHash` no longer equals the previous record's `hash`.
+ *  - **UNPARSEABLE** — a line is not valid JSON or lacks the chain fields.
+ *
+ * Deletion of the FINAL record is the one mutation a forward walk cannot
+ * see (the remaining prefix is still perfectly consistent). Detecting that
+ * requires anchoring the tail somewhere outside the file — an external
+ * notary or a counter — which this deliberately does NOT pretend to do.
+ * Callers should treat "intact" as "no record was altered, removed from the
+ * middle, or reordered", not as "nothing was ever truncated".
+ */
+export function verifyAuditChain(path?: string): AuditChainVerification {
+  const target = path ?? resolveAuditLogPath();
+  if (!existsSync(target)) {
+    return { intact: true, entriesChecked: 0, firstInvalidEventId: null, firstInvalidLine: null, violations: [] };
+  }
+
+  const raw = readFileSync(target, "utf8");
+  const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+
+  const violations: AuditChainViolation[] = [];
+  let expectedPrev = AUDIT_GENESIS_HASH;
+  let checked = 0;
+  let firstInvalidEventId: string | null = null;
+  let firstInvalidLine: number | null = null;
+  const violationsBefore = () => violations.length;
+  const noteFirstInvalid = (before: number, lineNo: number, id: unknown): void => {
+    if (violations.length > before && firstInvalidLine === null) {
+      firstInvalidLine = lineNo;
+      firstInvalidEventId = typeof id === "string" ? id : null;
+    }
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const lineNo = i + 1;
+    const before = violationsBefore();
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(lines[i] ?? "") as Record<string, unknown>;
+    } catch {
+      violations.push({ kind: "UNPARSEABLE", line: lineNo, reason: "invalid JSON" });
+      noteFirstInvalid(before, lineNo, null);
+      // The chain cannot continue past a line whose hash is unknown.
+      break;
+    }
+
+    const recordedHash = record["hash"];
+    const recordedPrev = record["prevHash"];
+    if (typeof recordedHash !== "string" || typeof recordedPrev !== "string") {
+      violations.push({ kind: "UNPARSEABLE", line: lineNo, reason: "missing hash/prevHash" });
+      noteFirstInvalid(before, lineNo, record["id"]);
+      break;
+    }
+
+    if (recordedPrev !== expectedPrev) {
+      violations.push({
+        kind: "BROKEN_LINK",
+        line: lineNo,
+        expectedPrevHash: expectedPrev,
+        actualPrevHash: recordedPrev,
+      });
+    }
+
+    // Recompute exactly as `appendAuditLogLine` hashed it. The written
+    // record is `{id, at, type, prevHash, hash, payload}` — the hash covers
+    // the NESTED `payload` object, not the record's own top level.
+    const payload = record["payload"];
+    if (typeof payload !== "object" || payload === null) {
+      violations.push({ kind: "UNPARSEABLE", line: lineNo, reason: "missing payload" });
+      noteFirstInvalid(before, lineNo, record["id"]);
+      break;
+    }
+    const recomputed = hashAuditPayload(recordedPrev, payload as Record<string, unknown>);
+    if (recomputed !== recordedHash) {
+      violations.push({
+        kind: "TAMPERED_PAYLOAD",
+        line: lineNo,
+        recordedHash,
+        recomputedHash: recomputed,
+      });
+    }
+
+    // The hash covers `payload` only. The record ALSO carries `id`/`at`/
+    // `type` at its top level, mirrored from inside the payload — and those
+    // copies are NOT hashed. Any reader that trusts the top-level copies
+    // (e.g. a UI listing "when" and "what") could therefore be shown values
+    // that were edited without breaking the chain. Rather than silently
+    // leaving that gap, mirror-consistency is verified explicitly.
+    const payloadObj = payload as Record<string, unknown>;
+    for (const field of ["id", "at", "type"] as const) {
+      if (record[field] !== payloadObj[field]) {
+        violations.push({
+          kind: "TAMPERED_PAYLOAD",
+          line: lineNo,
+          recordedHash,
+          recomputedHash: `top-level "${field}" (${String(record[field])}) does not match hashed payload value (${String(payloadObj[field])})`,
+        });
+      }
+    }
+
+    // Continue from the RECORDED hash, so one bad record yields one
+    // violation rather than cascading a false break onto every line after.
+    noteFirstInvalid(before, lineNo, record["id"]);
+    expectedPrev = recordedHash;
+    checked += 1;
+  }
+
+  return {
+    intact: violations.length === 0,
+    entriesChecked: checked,
+    firstInvalidEventId,
+    firstInvalidLine,
+    violations,
+  };
+}

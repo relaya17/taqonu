@@ -703,8 +703,25 @@ export function retrieveMemories(input: {
   // Semantic layer (hybrid ranking, see doc comment above): computed once per
   // call, outside the per-memory map below, since it doesn't depend on `m`.
   const qVec = q ? embedTextLocalSync(q) : null;
+  // VALIDITY WINDOW (P0.5). `memorySchema` has carried `validFrom`/
+  // `validUntil` all along, but retrieval only ever checked `status`. A
+  // memory whose validity window has closed while its status is still
+  // ACTIVE was therefore retrieved and handed to the LLM as current truth —
+  // "the deploy key rotates monthly" outliving the month it described.
+  //
+  // Status and validity answer different questions: status is "has someone
+  // retired this?", validity is "does this apply right now?". A fact can be
+  // perfectly un-retired and still no longer true, so both must gate.
+  const nowMs = Date.now();
+  const withinValidityWindow = (m: Memory): boolean => {
+    if (m.validFrom !== null && Date.parse(m.validFrom) > nowMs) return false;
+    if (m.validUntil !== null && Date.parse(m.validUntil) <= nowMs) return false;
+    return true;
+  };
+
   const active = pools
     .filter((m) => m.status === "ACTIVE")
+    .filter(withinValidityWindow)
     .filter((m) => isVisibleToAgent(m, input.requestingAgentId));
   const ranked = active
     .map((m) => {

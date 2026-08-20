@@ -155,3 +155,152 @@ describe("approvals service", () => {
     expect(() => consumeApprovalRequest(request.id)).toThrow(/not APPROVED/i);
   });
 });
+
+describe("approval ↔ artifact binding (P0 governance)", () => {
+  function approvedRequest(artifactHash: string | null, expiresAt?: string) {
+    const created = createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-1",
+      reason: "apply the reviewed patch",
+      ...(artifactHash !== null ? { artifactHash } : {}),
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
+    });
+    decideApprovalRequest(created.id, {
+      decidedBy: "human-1",
+      approve: true,
+      decisionReason: "looks correct",
+    });
+    return created.id;
+  }
+
+  it("authorizes the exact artifact the approver signed off on", () => {
+    const id = approvedRequest("sha256:abc123");
+    const consumed = consumeApprovalRequest(id, { artifactHash: "sha256:abc123" });
+    expect(consumed.status).toBe("CONSUMED");
+  });
+
+  it("REFUSES a different artifact under the same approval", () => {
+    // The whole point: approving "patch A" must not authorize "patch B".
+    const id = approvedRequest("sha256:abc123");
+    expect(() => consumeApprovalRequest(id, { artifactHash: "sha256:xyz999" })).toThrow(
+      /authorizes artifact sha256:abc123, not sha256:xyz999/,
+    );
+  });
+
+  it("REFUSES to consume a bound approval when no hash is presented", () => {
+    // A caller must not be able to downgrade a bound approval back into a
+    // categorical one by simply omitting the hash.
+    const id = approvedRequest("sha256:abc123");
+    expect(() => consumeApprovalRequest(id)).toThrow(/requires presenting that artifact's hash/);
+  });
+
+  it("leaves categorical (unbound) approvals working exactly as before", () => {
+    const id = approvedRequest(null);
+    expect(consumeApprovalRequest(id).status).toBe("CONSUMED");
+  });
+
+  it("REFUSES an expired approval", () => {
+    const id = approvedRequest(null, new Date(Date.now() - 1_000).toISOString());
+    expect(() => consumeApprovalRequest(id)).toThrow(/expired at/);
+  });
+
+  it("still consumes an approval whose expiry is in the future", () => {
+    const id = approvedRequest(null, new Date(Date.now() + 60_000).toISOString());
+    expect(consumeApprovalRequest(id).status).toBe("CONSUMED");
+  });
+
+  it("checks expiry BEFORE artifact binding (an expired approval is unusable either way)", () => {
+    const id = approvedRequest("sha256:abc123", new Date(Date.now() - 1_000).toISOString());
+    expect(() => consumeApprovalRequest(id, { artifactHash: "sha256:abc123" })).toThrow(/expired at/);
+  });
+});
+
+describe("approval attack suite — substitution must always DENY", () => {
+  function approved(overrides: { artifactHash?: string } = {}) {
+    const created = createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "apply the reviewed patch",
+      ...overrides,
+    });
+    decideApprovalRequest(created.id, {
+      decidedBy: "human-1",
+      approve: true,
+      decisionReason: "reviewed",
+    });
+    return created.id;
+  }
+
+  it("ALLOWS the exact approved execution", () => {
+    const id = approved({ artifactHash: "sha256:abc" });
+    expect(
+      consumeApprovalRequest(id, {
+        artifactHash: "sha256:abc",
+        entityType: "RECORD",
+        action: "UPDATE",
+        agentId: "agent-alpha",
+      }).status,
+    ).toBe("CONSUMED");
+  });
+
+  it("DENIES a different artifact", () => {
+    const id = approved({ artifactHash: "sha256:abc" });
+    expect(() =>
+      consumeApprovalRequest(id, { artifactHash: "sha256:evil" }),
+    ).toThrow(/authorizes artifact/);
+  });
+
+  it("DENIES an escalated action (UPDATE approval used for DELETE)", () => {
+    const id = approved();
+    expect(() => consumeApprovalRequest(id, { action: "DELETE" })).toThrow(
+      /authorizes action UPDATE, not DELETE/,
+    );
+  });
+
+  it("DENIES a retargeted entity type", () => {
+    const id = approved();
+    expect(() =>
+      consumeApprovalRequest(id, { entityType: "FINANCIAL_TRANSACTION" }),
+    ).toThrow(/authorizes entityType RECORD/);
+  });
+
+  it("DENIES a different agent redeeming another agent's approval", () => {
+    const id = approved();
+    expect(() => consumeApprovalRequest(id, { agentId: "agent-beta" })).toThrow(
+      /cannot be redeemed by agent-beta/,
+    );
+  });
+
+  it("DENIES replay — an already-CONSUMED approval cannot be reused", () => {
+    const id = approved();
+    expect(consumeApprovalRequest(id).status).toBe("CONSUMED");
+    expect(() => consumeApprovalRequest(id)).toThrow(/not APPROVED/);
+  });
+
+  it("DENIES a REJECTED approval", () => {
+    const created = createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "nope",
+    });
+    decideApprovalRequest(created.id, {
+      decidedBy: "human-1",
+      approve: false,
+      decisionReason: "unsafe",
+    });
+    expect(() => consumeApprovalRequest(created.id)).toThrow(/not APPROVED/);
+  });
+
+  it("DENIES a still-PENDING approval", () => {
+    const created = createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "waiting",
+    });
+    expect(() => consumeApprovalRequest(created.id)).toThrow(/not APPROVED/);
+  });
+});

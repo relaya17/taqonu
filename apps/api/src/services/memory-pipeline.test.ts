@@ -715,3 +715,58 @@ describe("retrieveMemories semantic ranking (local hash-trick embeddings, @atlas
     }
   });
 });
+
+describe("P0.5 — retrieval honours the memory validity window", () => {
+  const PROJECT_WINDOW = "55555555-5555-4555-8555-555555555555";
+
+  /** Reuses this file's `memory()` fixture, overriding only the window. */
+  function windowed(statement: string, overrides: Record<string, unknown>) {
+    return memorySchema.parse({
+      ...memory(PROJECT_WINDOW, statement),
+      ...overrides,
+    });
+  }
+
+  it("EXCLUDES an ACTIVE memory whose validity window has already closed", () => {
+    // Status and validity answer different questions: status is "has someone
+    // retired this?", validity is "does this apply right now?". An un-retired
+    // memory can still have stopped applying, and must not reach the LLM as
+    // current truth.
+    const expired = windowed("the deploy key rotated last month", {
+      validUntil: new Date(Date.now() - 60_000).toISOString(),
+    });
+    osStore.addMemory(expired);
+
+    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
+    expect(items.some((m) => m.id === expired.id)).toBe(false);
+  });
+
+  it("EXCLUDES a memory whose validity has not started yet", () => {
+    const future = windowed("next quarter's policy", {
+      validFrom: new Date(Date.now() + 60_000).toISOString(),
+    });
+    osStore.addMemory(future);
+
+    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
+    expect(items.some((m) => m.id === future.id)).toBe(false);
+  });
+
+  it("INCLUDES a memory currently inside its window", () => {
+    const current = windowed("currently applicable fact", {
+      validFrom: new Date(Date.now() - 60_000).toISOString(),
+      validUntil: new Date(Date.now() + 60_000).toISOString(),
+    });
+    osStore.addMemory(current);
+
+    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
+    expect(items.some((m) => m.id === current.id)).toBe(true);
+  });
+
+  it("INCLUDES a memory with an open-ended window (validUntil null)", () => {
+    const unbounded = windowed("standing architectural rule", { validUntil: null });
+    osStore.addMemory(unbounded);
+
+    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
+    expect(items.some((m) => m.id === unbounded.id)).toBe(true);
+  });
+});

@@ -30,3 +30,6 @@ export * from "./plugins/plugin-registry.js";
 export * from "./plugins/plugin-lifecycle.js";
 export * from "./intelligence/anomaly-detection.js";
 export * from "./security/prompt-layers.js";
+export * from "./tools/runtime.js";
+export * from "./tools/fs-tools.js";
+export * from "./verifier/claim-integrity.js";

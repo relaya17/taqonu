@@ -2,6 +2,81 @@ import type { ToolPolicy } from "@atlas/shared";
 
 /** Default least-privilege tool policies. Write tools always require approval. */
 export const DEFAULT_TOOL_POLICIES: readonly ToolPolicy[] = [
+  // ── Tool Runtime: read-only filesystem tools ────────────────────────
+  // These are enforced at execution time by tools/runtime.ts. They are
+  // READ_ONLY and need no approval, but `secretsAccess: "NONE"` is a real
+  // control here, not a label: the runtime scans each tool's OUTPUT and
+  // denies it if a credential is detected — a `.env` committed into a repo
+  // is exactly the case a read tool would otherwise happily return.
+  {
+    toolName: "fs.read_file",
+    risk: "READ_ONLY",
+    requiresApproval: false,
+    allowedProjects: [],
+    allowedCommands: [],
+    timeoutMs: 10_000,
+    secretsAccess: "NONE",
+  },
+  {
+    toolName: "fs.read_directory",
+    risk: "READ_ONLY",
+    requiresApproval: false,
+    allowedProjects: [],
+    allowedCommands: [],
+    timeoutMs: 10_000,
+    secretsAccess: "NONE",
+  },
+  {
+    toolName: "fs.search_repo",
+    risk: "READ_ONLY",
+    requiresApproval: false,
+    allowedProjects: [],
+    allowedCommands: [],
+    timeoutMs: 30_000,
+    secretsAccess: "NONE",
+  },
+  // ── Tool Runtime: mutating / executing tools ────────────────────────
+  // Deliberately `requiresApproval: true`. `executeTool()` returns
+  // APPROVAL_REQUIRED for these and never runs them — the approval routing
+  // itself lives once, in dispatchAgentAction(). No implementation is
+  // registered for them yet, so they are doubly unreachable rather than
+  // half-governed.
+  {
+    toolName: "fs.write_patch",
+    risk: "HIGH_RISK_WRITE",
+    requiresApproval: true,
+    allowedProjects: [],
+    allowedCommands: [],
+    timeoutMs: 60_000,
+    secretsAccess: "NONE",
+  },
+  {
+    toolName: "ci.run_tests",
+    risk: "HIGH_RISK_WRITE",
+    requiresApproval: true,
+    allowedProjects: [],
+    allowedCommands: ["pnpm test", "pnpm exec vitest run"],
+    timeoutMs: 600_000,
+    secretsAccess: "NONE",
+  },
+  {
+    toolName: "ci.run_typecheck",
+    risk: "HIGH_RISK_WRITE",
+    requiresApproval: true,
+    allowedProjects: [],
+    allowedCommands: ["pnpm exec tsc -p tsconfig.json --noEmit"],
+    timeoutMs: 300_000,
+    secretsAccess: "NONE",
+  },
+  {
+    toolName: "ci.run_lint",
+    risk: "HIGH_RISK_WRITE",
+    requiresApproval: true,
+    allowedProjects: [],
+    allowedCommands: ["pnpm run lint"],
+    timeoutMs: 300_000,
+    secretsAccess: "NONE",
+  },
   {
     toolName: "github.getRepository",
     risk: "READ_ONLY",

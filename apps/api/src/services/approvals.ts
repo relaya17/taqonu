@@ -28,6 +28,15 @@ export type CreateApprovalRequestInput = {
   requestedBy: string;
   reason: string;
   context?: Record<string, unknown>;
+  /**
+   * Bind this approval to one exact artifact (patch diff, proposal payload,
+   * command). When set, `consumeApprovalRequest()` will only authorize an
+   * execution presenting this same hash — approving a category is not
+   * approving a change. Omit for categorical approvals.
+   */
+  artifactHash?: string | null;
+  /** ISO datetime after which this approval can no longer be consumed. */
+  expiresAt?: string | null;
 };
 
 export type DecideApprovalRequestInput = {
@@ -56,6 +65,8 @@ export function createApprovalRequest(
     status: "PENDING",
     reason: input.reason,
     context: input.context ?? {},
+    artifactHash: input.artifactHash ?? null,
+    expiresAt: input.expiresAt ?? null,
     decidedBy: null,
     decidedAt: null,
     decisionReason: null,
@@ -73,6 +84,10 @@ export function createApprovalRequest(
       entityType: input.entityType,
       action: input.action,
       context: request.context,
+      // On the audit entry so a reviewer can later prove WHICH artifact was
+      // put in front of the approver, not merely that something was.
+      artifactHash: request.artifactHash,
+      expiresAt: request.expiresAt,
     },
     output: { status: request.status },
     policy: `${input.entityType}.${input.action}`,
@@ -160,7 +175,28 @@ export function decideApprovalRequest(
  * authorize exactly ONE real action execution (never replayed). Throws
  * unless the current status is APPROVED.
  */
-export function consumeApprovalRequest(id: string): ApprovalRequest {
+/**
+ * What the caller is ACTUALLY about to execute. Every field present here is
+ * matched against what the approver signed off on; a mismatch is refused.
+ *
+ * Approving is not approving a category — it is approving one action, on
+ * one target, by one actor, over one artifact. Each field below closes a
+ * different substitution: swapping the patch (`artifactHash`), escalating
+ * UPDATE into DELETE (`action`), retargeting RECORD onto
+ * FINANCIAL_TRANSACTION (`entityType`), or a different agent riding another
+ * agent's approval (`agentId`).
+ */
+export type PresentedExecution = {
+  readonly artifactHash?: string;
+  readonly entityType?: string;
+  readonly action?: string;
+  readonly agentId?: string;
+};
+
+export function consumeApprovalRequest(
+  id: string,
+  presented?: PresentedExecution,
+): ApprovalRequest {
   const existing = approvalRequests.get(id);
   if (!existing) {
     throw new AtlasError("NOT_FOUND", `Approval request ${id} not found`, {
@@ -173,6 +209,67 @@ export function consumeApprovalRequest(id: string): ApprovalRequest {
       `Approval request ${id} is not APPROVED (status=${existing.status}) and cannot be consumed`,
       { statusCode: 409 },
     );
+  }
+
+  // EXPIRY — checked before the binding check, because an expired approval
+  // is unusable regardless of which artifact is presented.
+  if (existing.expiresAt !== null && Date.parse(existing.expiresAt) <= Date.now()) {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} expired at ${existing.expiresAt} and can no longer authorize an action`,
+      { statusCode: 409 },
+    );
+  }
+
+  // ARTIFACT BINDING — the load-bearing check.
+  //
+  // An artifact-bound approval authorizes exactly the artifact whose hash
+  // the approver saw. Presenting a different one (a patch edited after
+  // sign-off) is refused, and presenting none at all is ALSO refused: a
+  // caller that "forgets" the hash must not be able to downgrade a bound
+  // approval back into a categorical one — that would make the control
+  // opt-out at the point where it matters most.
+  // ACTION / TARGET / ACTOR MATCH — an approval for RECORD.UPDATE must not
+  // authorize RECORD.DELETE, and an approval requested by one agent must
+  // not be redeemed by another.
+  if (presented?.entityType !== undefined && presented.entityType !== existing.entityType) {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} authorizes entityType ${existing.entityType}, not ${presented.entityType}`,
+      { statusCode: 409 },
+    );
+  }
+  if (presented?.action !== undefined && presented.action !== existing.action) {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} authorizes action ${existing.action}, not ${presented.action}`,
+      { statusCode: 409 },
+    );
+  }
+  if (presented?.agentId !== undefined && presented.agentId !== existing.requestedBy) {
+    throw new AtlasError(
+      "CONFLICT",
+      `Approval request ${id} was requested by ${existing.requestedBy} and cannot be redeemed by ${presented.agentId}`,
+      { statusCode: 409 },
+    );
+  }
+
+  const artifactHash = presented?.artifactHash;
+  if (existing.artifactHash !== null) {
+    if (artifactHash === undefined) {
+      throw new AtlasError(
+        "CONFLICT",
+        `Approval request ${id} is bound to a specific artifact; consuming it requires presenting that artifact's hash`,
+        { statusCode: 409 },
+      );
+    }
+    if (artifactHash !== existing.artifactHash) {
+      throw new AtlasError(
+        "CONFLICT",
+        `Approval request ${id} authorizes artifact ${existing.artifactHash}, not ${artifactHash} — the approved artifact changed after sign-off`,
+        { statusCode: 409 },
+      );
+    }
   }
 
   const updated = approvalRequestSchema.parse({

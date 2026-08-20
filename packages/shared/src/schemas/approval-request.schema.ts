@@ -34,6 +34,34 @@ export const approvalRequestSchema = z.object({
   reason: z.string().min(1).max(2000),
   /** Free-form details about what's being approved (e.g. which endpoint/request). */
   context: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * Hash of the EXACT artifact this approval authorizes (a patch diff, a
+   * proposal payload, a command string).
+   *
+   * P0 governance fix. Without this, an approval was bound only to an
+   * `entityType`/`action` PAIR — so a human could approve "apply patch A",
+   * and the agent could then execute a completely different patch B under
+   * the same still-valid approval. Approving a category is not approving a
+   * change. `consumeApprovalRequest()` now refuses to authorize an artifact
+   * whose hash does not match the one that was shown to the approver.
+   *
+   * `null` means the approval is not artifact-bound (legacy/categorical
+   * approvals such as "may this caller dispatch at all"). Those keep their
+   * previous behaviour exactly; binding is opt-in per request, so nothing
+   * that never had an artifact is retroactively broken.
+   */
+  artifactHash: z.string().min(1).max(200).nullable().default(null),
+  /**
+   * When this approval stops being usable. An approval that nobody consumes
+   * must not stay live forever: a decision made against last month's state
+   * of the world is not a decision about today's.
+   *
+   * Enforced lazily at `consumeApprovalRequest()`/read time rather than by a
+   * background sweeper — this codebase has no scheduler, and an expiry that
+   * is evaluated when it actually matters cannot drift out of sync with a
+   * job that failed to run.
+   */
+  expiresAt: isoDateTimeSchema.nullable().default(null),
   decidedBy: z.string().min(1).max(200).nullable(),
   decidedAt: isoDateTimeSchema.nullable(),
   decisionReason: z.string().min(1).max(2000).nullable(),
