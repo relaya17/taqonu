@@ -181,7 +181,22 @@ describe("submitAgentProposal", () => {
     });
     expect(proposalAgain).toEqual(proposal);
 
-    const result = submitAgentProposal(proposal, {
+    // The stub generator honestly tags its evidence `LLM_INFERENCE` (see its
+    // own doc comment). `verifyProposal()`, which `submitAgentProposal()` now
+    // runs BEFORE the dispatch gate, correctly FAILS a proposal whose only
+    // evidence is the model's own inference — that is circular, and it is
+    // asserted directly in the dedicated test below. To keep exercising the
+    // dispatch→audit path this test is actually about, substitute evidence
+    // that reflects a real execution.
+    const verifiableProposal = {
+      ...proposal,
+      evidence: proposal.evidence.map((record) => ({
+        ...record,
+        authorityRank: "CI_ARTIFACT" as const,
+      })),
+    };
+
+    const result = submitAgentProposal(verifiableProposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: USER_ID,
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
@@ -220,5 +235,101 @@ describe("submitAgentProposal", () => {
     expect(result.proposal.claims).toEqual(proposal.claims);
     expect(result.proposal.rationale).toBe(proposal.rationale);
     expect(result.proposal.evidenceCount).toBe(proposal.evidence.length);
+  });
+});
+
+describe("submitAgentProposal — verification gate (runs before dispatch)", () => {
+  it("records INCONCLUSIVE (and still dispatches) when the only evidence is the model's own inference", () => {
+    // The stub generator emits `authorityRank: "LLM_INFERENCE"` verbatim.
+    // A proposal that cites only its own reasoning has proven nothing, so it
+    // must never reach the Policy/Risk gate at all — no audit entry for a
+    // dispatch that didn't happen, and no approval request manufactured for
+    // a proposal already known to be defective.
+    const proposal = generateStubAgentProposal({
+      agentId: "DEBUGGER",
+      taskId: TASK_ID,
+      projectId: PROJECT,
+      ownerId: USER_ID,
+      entityType: "RECORD",
+      action: "READ",
+    });
+
+    const result = submitAgentProposal(proposal, {
+      actorKind: "AGENT",
+      onBehalfOfUserId: USER_ID,
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      routeLabel: "test.agent-proposal.verification.inconclusive",
+    });
+
+    expect(result.verification.verdict).toBe("INCONCLUSIVE");
+    expect(
+      result.verification.checks.find(
+        (c) => c.checkId === "evidence-not-self-referential",
+      )?.verdict,
+    ).toBe("INCONCLUSIVE");
+
+    // It still reaches the gate — but the audit trail records that nothing
+    // was verified, so "unverified" is never mistaken for "verified".
+    const entry = listUnifiedAuditEntries().find(
+      (c) => c.type === "test.agent-proposal.verification.inconclusive",
+    );
+    expect(entry?.input?.["verificationVerdict"]).toBe("INCONCLUSIVE");
+  });
+
+  it("DENIES without dispatching when a proposal overclaims confidence on inference-only evidence", () => {
+    const base = generateStubAgentProposal({
+      agentId: "DEBUGGER",
+      taskId: TASK_ID,
+      projectId: PROJECT,
+      ownerId: USER_ID,
+      entityType: "RECORD",
+      action: "READ",
+    });
+    const overclaimed = { ...base, confidence: 0.97 };
+
+    const before = listUnifiedAuditEntries().length;
+    const result = submitAgentProposal(overclaimed, {
+      actorKind: "AGENT",
+      onBehalfOfUserId: USER_ID,
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      routeLabel: "test.agent-proposal.verification.overclaim",
+    });
+
+    expect(result.decision).toBe("DENIED");
+    expect(result.verification.verdict).toBe("FAILED");
+    // The gate was never reached — nothing was dispatched.
+    expect(listUnifiedAuditEntries().length).toBe(before);
+  });
+
+  it("carries the verification verdict onto the audit entry when it does dispatch", () => {
+    const proposal = generateStubAgentProposal({
+      agentId: "DEBUGGER",
+      taskId: TASK_ID,
+      projectId: PROJECT,
+      ownerId: USER_ID,
+      entityType: "RECORD",
+      action: "READ",
+    });
+    const verifiable = {
+      ...proposal,
+      evidence: proposal.evidence.map((record) => ({
+        ...record,
+        authorityRank: "CI_ARTIFACT" as const,
+      })),
+    };
+
+    const result = submitAgentProposal(verifiable, {
+      actorKind: "AGENT",
+      onBehalfOfUserId: USER_ID,
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      routeLabel: "test.agent-proposal.verification.recorded",
+    });
+
+    expect(result.verification.verdict).toBe("VERIFIED");
+    const entry = listUnifiedAuditEntries().find(
+      (candidate) => candidate.type === "test.agent-proposal.verification.recorded",
+    );
+    // "we verified this" must never be indistinguishable from "nothing objected".
+    expect(entry?.input?.["verificationVerdict"]).toBe("VERIFIED");
   });
 });

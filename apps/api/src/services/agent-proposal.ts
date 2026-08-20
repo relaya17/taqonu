@@ -1,5 +1,6 @@
 import type { BusinessEntityType, EntityAction } from "@atlas/agent-core";
 import { agentProposalSchema, type AgentProposal } from "@atlas/shared";
+import { verifyProposal, type ProposalVerificationResult } from "@atlas/agent-core";
 import {
   dispatchAgentAction,
   type DispatchActorKind,
@@ -70,6 +71,12 @@ export interface SubmittedProposalSummary {
 
 export type SubmitAgentProposalResult = DispatchAgentActionResult & {
   readonly proposal: SubmittedProposalSummary;
+  /**
+   * Result of `verifyProposal()` for this proposal — always present, so a
+   * caller (and the audit trail) can distinguish "verified" from "nothing
+   * objected". See the verification step in `submitAgentProposal()` below.
+   */
+  readonly verification: ProposalVerificationResult;
 };
 
 export function submitAgentProposal(
@@ -82,6 +89,50 @@ export function submitAgentProposal(
   // confidence out of [0,1], …), the same "throw on invalid input" pattern
   // every other service in this codebase uses (see e.g. `approvals.ts`).
   const parsed = agentProposalSchema.parse(proposal);
+
+  // VERIFICATION STEP — runs BEFORE the dispatch gate.
+  //
+  // `agentProposalSchema.parse` above checks the proposal's SHAPE. This
+  // checks its SUBSTANCE: are the claims backed by evidence that is
+  // anything more than the model's own inference, is the stated confidence
+  // actually earned, did a secret leak into the proposal text. Until now
+  // nothing in this codebase ever asked those questions — a proposal
+  // asserting confidence 0.95 off its own reasoning was indistinguishable
+  // from one backed by a passing CI run.
+  //
+  // A `FAILED` verdict is mapped onto the existing `DENIED` decision rather
+  // than a new result variant: a proposal with a real, decidable defect IS
+  // denied, and reusing the existing variant means every current caller
+  // (e.g. `llm-specialist-run.ts`, which already branches on
+  // `decision === "DENIED"`) handles it correctly with no change. The gate
+  // is never reached, so nothing is dispatched and no approval request is
+  // manufactured for a proposal we already know is defective.
+  //
+  // `INCONCLUSIVE` deliberately does NOT block. Weak evidence is not false
+  // evidence — that distinction is the same one `approveMemory()` draws
+  // between "no_evidence" and "unverified_evidence". It proceeds to the
+  // gate (which may still demand approval on its own risk grounds) and the
+  // verdict is recorded on the audit entry either way, so "we could not
+  // verify this" is never silently indistinguishable from "we verified it".
+  const verification = verifyProposal(parsed);
+
+  const proposalSummary: SubmittedProposalSummary = {
+    agentId: parsed.agentId,
+    taskId: parsed.taskId,
+    claims: parsed.claims,
+    rationale: parsed.rationale,
+    confidence: parsed.confidence,
+    evidenceCount: parsed.evidence.length,
+  };
+
+  if (verification.verdict === "FAILED") {
+    return {
+      decision: "DENIED",
+      reason: `Proposal verification failed — ${verification.rationale}`,
+      proposal: proposalSummary,
+      verification,
+    };
+  }
 
   const dispatchResult = dispatchAgentAction({
     actor: {
@@ -107,6 +158,10 @@ export function submitAgentProposal(
       rationale: parsed.rationale,
       evidenceIds: parsed.evidence.map((item) => item.id),
       evidenceCount: parsed.evidence.length,
+      // On the audit entry so an auditor can tell a verified proposal from
+      // an unverifiable one without re-running anything.
+      verificationVerdict: verification.verdict,
+      verificationRationale: verification.rationale,
     },
     confidence: parsed.confidence,
     evidenceCount: parsed.evidence.length,
@@ -114,13 +169,7 @@ export function submitAgentProposal(
 
   return {
     ...dispatchResult,
-    proposal: {
-      agentId: parsed.agentId,
-      taskId: parsed.taskId,
-      claims: parsed.claims,
-      rationale: parsed.rationale,
-      confidence: parsed.confidence,
-      evidenceCount: parsed.evidence.length,
-    },
+    proposal: proposalSummary,
+    verification,
   };
 }

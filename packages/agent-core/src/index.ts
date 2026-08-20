@@ -3,6 +3,7 @@ export * from "./policies/authorization.js";
 export * from "./policies/entity-policies.js";
 export * from "./policies/risk-score.js";
 export * from "./verifier/self-check.js";
+export * from "./verifier/verify-proposal.js";
 export * from "./secrets/detector.js";
 export * from "./security/injection-detector.js";
 export * from "./planner/intent.js";
