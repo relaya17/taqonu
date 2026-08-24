@@ -1,9 +1,10 @@
 # Atlas · Living Request Tracker
 
 **Status:** Living — update this file as work lands  
-**Last updated:** 2026-08-12  
+**Last updated:** 2026-08-24 — verified against code on disk, not just prior notes (see 2026-08-24 change log entries)  
 **Owner:** product + engineering (ArletOS / Atlas Core)  
-**Companion ADRs:** ADR-005 · ADR-009 · ADR-014–020 (Constitution Accepted)
+**Companion ADRs:** ADR-005 · ADR-009 · ADR-014–020 (Constitution Accepted)  
+**Companion spec set:** [`01-ATLAS_AGENT_SYSTEM_SPEC.md`](../../01-ATLAS_AGENT_SYSTEM_SPEC.md) · [`02-ATLAS_AGENT_GOVERNANCE_SPEC.md`](../../02-ATLAS_AGENT_GOVERNANCE_SPEC.md) · [`03-ATLAS_ENGINEERING_RUNTIME_SPEC.md`](../../03-ATLAS_ENGINEERING_RUNTIME_SPEC.md) · [`04-ATLAS_PRODUCTION_READINESS_CHECKLIST.md`](../../04-ATLAS_PRODUCTION_READINESS_CHECKLIST.md) — this file covers product/feature asks; the four-doc set covers agent behavior, governance enforcement, runtime internals, and the P0-P70 hardening queue respectively
 
 > מטרת המסמך: רשימה אחת של **מה שביקשת** · **מה בוצע** · **מה נשאר**.  
 > כל בקשה חדשה נכנסת ל־§Remaining / Change log. סטטוסים מתעדכנים תוך כדי ביצוע.
@@ -179,6 +180,18 @@ Richer per-bullet detectors / per-customer applicability editors → remaining P
 - Deploy feeds Vercel/Render — **DONE (MVP)** `POST /api/v1/providers/vercel|render/observe` → DEPLOYMENT evidence  
 - Demo seed — **DONE** `pnpm demo:seed`  
 - Investors product visual — **DONE (MVP)** Evidence Graph SVG on `/investors` (he/en/ar)
+### P0.x — Agent Execution Governance (verified 2026-08-24, was undocumented here)
+
+Not in this tracker before today — this work happened after the 2026-08-12 pass and was tracked only in code comments and session history, not in any single document. Verified directly against the code on disk (not from prior notes) on 2026-08-24; baseline that day was green — `apps/api`: 96/96 test files, 834/834 tests; `pnpm turbo run build`: 41/41 tasks.
+
+- **P0.2 — Agent Identity + Runtime Authorization** — `DONE` `apps/api/src/services/agent-runtime-authz.ts`
+- **P0.3 — Approval↔artifact binding** — `DONE` inside `governed-execution.ts` (consume approval bound to an artifact hash before the Policy/Risk gate)
+- **P0.5 — Memory provenance** — `DONE` `apps/api/src/services/memory-pipeline.ts`
+- **P0.7 — Single transactional execution gate** — `DONE` `apps/api/src/services/governed-execution.ts` (`executeGovernedAction`) composes tool authorization → approval consumption → Policy/Risk → execution → audit, in that fail-closed order. First live HTTP caller: `POST /api/v1/agents/tool-execute` (`apps/api/src/routes/agent-fabric.ts`). Enforced by a static build-breaking guard, `apps/api/src/__tests__/execution-gate-guard.test.ts`, which fails if any file outside `governed-execution.ts` calls `executeTool(` directly — confirmed passing (part of the 834/834) and confirmed by direct grep that no other real call site exists.
+- **Central Dispatcher + prompt-injection defense** — `DONE` `packages/agent-core/src/security/injection-detector.ts` + `prompt-layers.ts` (heuristic detection + delimiter-wrapping of untrusted blocks, wired into `agent.ts`/`conversation.ts`'s real LLM calls); `apps/api/src/services/agent-dispatch-guard.ts` (`dispatchAgentAction`, hard floors: untrusted source → never AUTO; AUTOMATION actor + write action → never AUTO)
+- **RESEARCHER — proposal path** — `DONE` `research-analyst-dispatch.ts` → `runProposalBackedSpecialist` → `submitAgentProposal` → `dispatchAgentAction`, `DOCUMENT.READ` (`READ_ONLY`, no approval needed)
+- **RESEARCHER — real tool execution (fs.search_repo after ALLOWED)** — `OPEN`, **not done despite being reported done in a parallel session**: verified 2026-08-24 that `research-analyst-dispatch.ts` and `llm-specialist-run.ts` are byte-identical/git-clean to the pre-change version — no `verifyResearcherProposalAgainstRepo`, no direct `executeTool()` call exists on disk. `registerFilesystemTools()` **is** already called at bootstrap (`create-app.ts:120`), so that specific concern from the parallel session is resolved once the wiring itself is built. Design note for whoever builds this: don't call `executeTool()` directly to dodge "double-gating" — that defeats the P0.7 guard's whole point (only `governed-execution.ts` may call it). The already-shipped pattern for exactly this (`POST /api/v1/agents/tool-execute` → `executeGovernedAction()`) composes identity/authz/approval/Policy/Risk/execution/audit in one call; route real RESEARCHER tool execution through that instead of a second raw call.
+
 ### P3 — Deferred by design
 - Full in-product IDE / Visual Studio clone → **WONT** (bridge only)  
 - Unofficial Elementor scrape → **WONT**  
@@ -265,6 +278,7 @@ Rule:   never confuse “not requested” with “not required”
 
 | Date | Change |
 | --- | --- |
+| 2026-08-24 | **Tracker verified + refreshed against code on disk (not prior notes):** spot-checked every file/route named in §B/§C by direct existence check — all confirmed present (`current-state-rollup.ts`, `app-auth.ts`, `resolve-identity.ts`, `decisions.ts`, `identity-reconcile.ts`, `store/store-io.ts`, `qa.ts`, `eval-ci-gate.ts`, `verdictSpread`, `match_knowledge_chunks`, `ATLAS_AUTO_APPLY_LOW`, `security-sarif.ts`, `memory.ts`/moat). Added new **§D P0.x — Agent Execution Governance** section for work done after 2026-08-12 that had never been recorded in this file: P0.2/P0.3/P0.5/P0.7 (execution gate), Central Dispatcher + prompt-injection defense, RESEARCHER proposal path. Baseline verified green same day: apps/api 96/96 test files, 834/834 tests; `pnpm turbo run build` 41/41. Flagged one open item as **not actually done despite being reported done in a parallel session**: RESEARCHER real tool-execution wiring (`fs.search_repo` after proposal `ALLOWED`) — files on disk are unmodified; see §D entry for the design note on the correct pattern (`executeGovernedAction()` via the existing `/api/v1/agents/tool-execute` route, not a second raw `executeTool()` call). Local dev environment also fixed same day: `pnpm install` had never been run (`node_modules` missing), stray `.git.old` backup (10k+ untracked files) and migration-script leftovers (`git-filter-repo`, `push-cleaned.ps1`, empty `taqonu-cleaned.bundle`) moved out of the working tree into `_to_delete/` and gitignored. |
 | 2026-08-12 | **10-item high-bar engineering batch DONE:** SARIF→SECURITY (`POST /api/v1/security/sarif`); blocking CI eval gate (`GET/POST /api/v1/eval/ci-gate` + `.github/workflows/ci.yml`); durable metrics NDJSON (`.atlas/metrics/metrics.ndjson`); Constitution +3 detectors (scanner/metrics/deploy-feed); portfolio health deepen (verdictSpread/passRate/missingWorkspaceRoot); memory moat (`GET /api/v1/memory/moat`); a11y expand (memory+investors); Vercel+Render deploy observe→DEPLOYMENT; investors Evidence Graph visual; `pnpm demo:seed` |
 | 2026-08-12 | **10/10 polish pass:** EN/AR System Health i18n complete (domain/severity/policy/profile/category); agents.category.legal he/en/ar; investors landing + AR; research API cites allow-listed gov/university only (INSUFFICIENT_EVIDENCE on miss); append-only audit + partner audit-spine + nav trim already wired |
 | 2026-08-12 | **Marketing landing deepen (theme #24 DONE):** `/investors` rebuilt — brand-first hero, problem/solution/moat/Design Partner sections, contact; alias `/marketing`; README link |

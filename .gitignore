@@ -1,5 +1,8 @@
 .atlas
 node_modules
+.git.old
+_to_delete
+.pnpm-store
 dist
 apps/api/vercel-bundle.js
 apps/api/vercel-bundle.cjs
