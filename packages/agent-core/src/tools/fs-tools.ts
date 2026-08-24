@@ -1,4 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
+import type { Dirent, PathLike, StatOptions, Stats } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { registerTool, resolveInsideRoot, type ToolImplementation } from "./runtime.js";
 
@@ -14,12 +15,47 @@ import { registerTool, resolveInsideRoot, type ToolImplementation } from "./runt
  * by something real before anything can change a file.
  *
  * Every path argument goes through `resolveInsideRoot()` in the runtime,
- * never through the tool itself — see rule 3 in `runtime.ts`.
+ * never through the tool itself.
  *
- * SECURITY: Tools are NOT exported. They are private constants that can only
- * be invoked through registerTool() and executeTool(). This prevents
- * direct invocation bypassing the runtime's policy enforcement.
+ * SECURITY: the tools are NOT exported. They are private constants reachable
+ * only through `registerTool()` and `executeTool()`, so no caller can bypass
+ * the runtime's policy enforcement by importing one directly.
+ *
+ * CANCELLATION: the `AbortSignal` on `ToolExecutionContext` is passed into
+ * every fs call and checked between loop iterations, so a policy timeout
+ * actually cancels in-flight work instead of orphaning it.
  */
+
+/**
+ * `node:fs/promises` accepts a cancellation `signal` on `stat`, `readFile`
+ * and `readdir` (Node 15+), but @types/node does not declare it on their
+ * option bags. The three bindings below restate the real runtime signatures
+ * once, so the six call sites downstream are type-checked normally: pass a
+ * wrong path type, drop `withFileTypes`, or mistype a result and the
+ * compiler still objects. No `any`, no suppressions.
+ *
+ * `StatAbortableOptions` keeps `StatOptions & { bigint?: false }` for two
+ * reasons: an option bag holding only `signal` shares no property with
+ * `StatOptions` and so trips TypeScript's weak-type check, and pinning
+ * `bigint` to `false` fixes the return as `Stats` rather than `BigIntStats`.
+ */
+interface AbortableFsOption {
+  readonly signal?: AbortSignal | undefined;
+}
+type StatAbortableOptions = StatOptions & { bigint?: false | undefined } & AbortableFsOption;
+
+const statAbortable: (path: PathLike, options: StatAbortableOptions) => Promise<Stats> = stat;
+
+const readFileUtf8Abortable: (
+  path: PathLike,
+  encoding: "utf8",
+  options: AbortableFsOption,
+) => Promise<string> = readFile;
+
+const readdirWithTypesAbortable: (
+  path: PathLike,
+  options: AbortableFsOption & { withFileTypes: true },
+) => Promise<Dirent[]> = readdir;
 
 /** Refuse to stream a huge file into an LLM context; also bounds memory. */
 const MAX_FILE_BYTES = 256 * 1024;
@@ -51,14 +87,14 @@ const readFileTool: ToolImplementation = {
     const resolved = resolveInsideRoot(context.projectRoot, requireString(args, "path"));
     if (!resolved.ok) throw new Error(resolved.reason);
 
-    const info = await stat(resolved.path, { signal: context.signal });
+    const info = await statAbortable(resolved.path, { signal: context.signal });
     if (!info.isFile()) throw new Error("path is not a file");
     if (info.size > MAX_FILE_BYTES) {
       throw new Error(
         `file is ${info.size} bytes, above the ${MAX_FILE_BYTES}-byte read limit`,
       );
     }
-    return await readFile(resolved.path, "utf8", { signal: context.signal });
+    return await readFileUtf8Abortable(resolved.path, "utf8", { signal: context.signal });
   },
 };
 
@@ -68,10 +104,13 @@ const readDirectoryTool: ToolImplementation = {
     const resolved = resolveInsideRoot(context.projectRoot, requireString(args, "path"));
     if (!resolved.ok) throw new Error(resolved.reason);
 
-    const info = await stat(resolved.path, { signal: context.signal });
+    const info = await statAbortable(resolved.path, { signal: context.signal });
     if (!info.isDirectory()) throw new Error("path is not a directory");
 
-    const entries = await readdir(resolved.path, { withFileTypes: true, signal: context.signal });
+    const entries = await readdirWithTypesAbortable(resolved.path, {
+      withFileTypes: true,
+      signal: context.signal,
+    });
     const listed = entries
       .filter((entry) => !SKIP_DIRS.has(entry.name))
       .slice(0, MAX_DIR_ENTRIES)
@@ -88,17 +127,17 @@ const readDirectoryTool: ToolImplementation = {
 };
 
 async function* walk(dir: string, root: string, signal?: AbortSignal): AsyncGenerator<string> {
-  // Check for cancellation before descending into directory
+  // Check for cancellation before descending into the directory.
   if (signal?.aborted) return;
 
-  let entries;
+  let entries: Dirent[];
   try {
-    entries = await readdir(dir, { withFileTypes: true, signal });
+    entries = await readdirWithTypesAbortable(dir, { withFileTypes: true, signal });
   } catch {
-    return; // unreadable directory is skipped, not fatal
+    return; // an unreadable directory is skipped, not fatal
   }
   for (const entry of entries) {
-    // Cooperative cancellation: check signal between iterations
+    // Cooperative cancellation: check the signal between iterations.
     if (signal?.aborted) return;
 
     if (SKIP_DIRS.has(entry.name)) continue;
@@ -127,17 +166,17 @@ const searchRepoTool: ToolImplementation = {
     const matches: string[] = [];
 
     for await (const file of walk(root.path, root.path, context.signal)) {
-      // Cooperative cancellation: check signal between files
+      // Cooperative cancellation: check the signal between files.
       if (context.signal?.aborted) break;
 
       if (matches.length >= MAX_SEARCH_MATCHES) break;
       let content: string;
       try {
-        const info = await stat(file, { signal: context.signal });
+        const info = await statAbortable(file, { signal: context.signal });
         if (info.size > MAX_FILE_BYTES) continue;
-        content = await readFile(file, "utf8", { signal: context.signal });
+        content = await readFileUtf8Abortable(file, "utf8", { signal: context.signal });
       } catch {
-        continue; // binary/unreadable file
+        continue; // binary or unreadable file
       }
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i += 1) {

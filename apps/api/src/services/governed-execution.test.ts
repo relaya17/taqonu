@@ -73,6 +73,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       sourceContext: { origin: "user_message" as const, trustLevel: "trusted" as const },
       projectRoot,
       routeLabel: "test.governed.execute",
+      requestId: "req_test_governed",
       ...overrides,
     };
   }

@@ -8,8 +8,34 @@ import {
   registerTool,
   resetToolRegistryForTests,
   resolveInsideRoot,
+  type ToolExecutionContext,
 } from "./runtime.js";
 import { registerFilesystemTools } from "./fs-tools.js";
+
+/**
+ * A complete correlation chain for the policy tests.
+ *
+ * `executeTool()` denies any call whose chain is incomplete (Invariant 10),
+ * so every call below needs one. These tests predate the chain and were
+ * passing a bare `{ projectRoot }`; the compiler never objected because
+ * `src/**\/*.test.ts` is excluded from tsconfig.json, so the omission only
+ * surfaced at runtime. `executionId` and `toolCallId` stay empty on purpose
+ * — the Runtime layer owns those and fills them in during `executeTool()`.
+ */
+function ctx(projectRoot: string): ToolExecutionContext {
+  return {
+    projectRoot,
+    correlation: {
+      requestId: "req_test",
+      agentId: "agent_test",
+      proposalId: "prop_test",
+      governanceDecisionId: "gov_test",
+      authorizationId: "auth_test",
+      executionId: "",
+      toolCallId: "",
+    },
+  };
+}
 
 describe("Tool Runtime — containment (resolveInsideRoot)", () => {
   const root = "/srv/app";
@@ -59,14 +85,14 @@ describe("Tool Runtime — policy enforcement", () => {
       run: async () => "should never run",
     });
 
-    const result = await executeTool("totally.unpoliced", {}, { projectRoot: "/tmp" });
+    const result = await executeTool("totally.unpoliced", {}, ctx("/tmp"));
     expect(result.status).toBe("DENIED");
     if (result.status !== "DENIED") throw new Error("expected DENIED");
     expect(result.reason).toContain("No ToolPolicy");
   });
 
   it("DENIES a policed tool that has no registered implementation", async () => {
-    const result = await executeTool("fs.read_file", { path: "a.txt" }, { projectRoot: "/tmp" });
+    const result = await executeTool("fs.read_file", { path: "a.txt" }, ctx("/tmp"));
     expect(result.status).toBe("DENIED");
   });
 
@@ -80,7 +106,7 @@ describe("Tool Runtime — policy enforcement", () => {
       },
     });
 
-    const result = await executeTool("fs.write_patch", {}, { projectRoot: "/tmp" });
+    const result = await executeTool("fs.write_patch", {}, ctx("/tmp"));
     expect(result.status).toBe("APPROVAL_REQUIRED");
     // The load-bearing assertion: the side effect never happened.
     expect(ran).toBe(false);
@@ -101,7 +127,7 @@ describe("Tool Runtime — policy enforcement", () => {
           }),
       });
 
-      const pending = executeTool("fs.read_file", { path: "a" }, { projectRoot: "/tmp" });
+      const pending = executeTool("fs.read_file", { path: "a" }, ctx("/tmp"));
       await vi.advanceTimersByTimeAsync(10_001);
       const result = await pending;
 
@@ -120,7 +146,7 @@ describe("Tool Runtime — policy enforcement", () => {
         throw new Error("boom");
       },
     });
-    const result = await executeTool("fs.read_file", { path: "a" }, { projectRoot: "/tmp" });
+    const result = await executeTool("fs.read_file", { path: "a" }, ctx("/tmp"));
     expect(result.status).toBe("ERROR");
     if (result.status !== "ERROR") throw new Error("expected ERROR");
     expect(result.reason).toBe("boom");
@@ -153,7 +179,7 @@ describe("Tool Runtime — filesystem tools against a real directory", () => {
   });
 
   it("reads a file inside the project root", async () => {
-    const result = await executeTool("fs.read_file", { path: "src/index.ts" }, { projectRoot: root });
+    const result = await executeTool("fs.read_file", { path: "src/index.ts" }, ctx(root));
     expect(result.status).toBe("OK");
     if (result.status !== "OK") throw new Error("expected OK");
     expect(result.output).toContain("answer = 42");
@@ -163,7 +189,7 @@ describe("Tool Runtime — filesystem tools against a real directory", () => {
     const result = await executeTool(
       "fs.read_file",
       { path: "../../../etc/passwd" },
-      { projectRoot: root },
+      ctx(root),
     );
     expect(result.status).toBe("ERROR");
     if (result.status !== "ERROR") throw new Error("expected ERROR");
@@ -171,7 +197,7 @@ describe("Tool Runtime — filesystem tools against a real directory", () => {
   });
 
   it("lists a directory", async () => {
-    const result = await executeTool("fs.read_directory", { path: "." }, { projectRoot: root });
+    const result = await executeTool("fs.read_directory", { path: "." }, ctx(root));
     expect(result.status).toBe("OK");
     if (result.status !== "OK") throw new Error("expected OK");
     expect(result.output).toContain("README.md");
@@ -179,7 +205,7 @@ describe("Tool Runtime — filesystem tools against a real directory", () => {
   });
 
   it("searches file contents and reports file:line", async () => {
-    const result = await executeTool("fs.search_repo", { query: "answer" }, { projectRoot: root });
+    const result = await executeTool("fs.search_repo", { query: "answer" }, ctx(root));
     expect(result.status).toBe("OK");
     if (result.status !== "OK") throw new Error("expected OK");
     expect(result.output).toContain("src/index.ts:1");
@@ -189,7 +215,7 @@ describe("Tool Runtime — filesystem tools against a real directory", () => {
     // secretsAccess: "NONE" is enforced on the OUTPUT, not merely assumed of
     // the tool — a .env committed into a repo is exactly this case.
     writeFileSync(join(root, ".env"), "AWS_KEY=AKIAIOSFODNN7EXAMPLE\n", "utf8");
-    const result = await executeTool("fs.read_file", { path: ".env" }, { projectRoot: root });
+    const result = await executeTool("fs.read_file", { path: ".env" }, ctx(root));
     expect(result.status).toBe("DENIED");
     if (result.status !== "DENIED") throw new Error("expected DENIED");
     expect(result.reason).toContain("secret");

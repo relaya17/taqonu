@@ -86,6 +86,13 @@ export interface GovernedExecutionRequest {
   readonly sourceContext: DispatchSourceContext;
   readonly projectRoot: string;
   readonly routeLabel: string;
+  /**
+   * The HTTP request boundary this execution belongs to — Fastify's
+   * `request.id`. Supplied by the route rather than minted here: an id
+   * generated inside this function would identify the call, not the request,
+   * and Invariant 10 exists so an auditor can walk back to the request.
+   */
+  readonly requestId: string;
 }
 
 export function computeArtifactHash(artifact: string): string {
@@ -207,6 +214,26 @@ export async function executeGovernedAction(
     toolResult = await executeTool(request.toolName, request.toolArgs, {
       projectRoot: request.projectRoot,
       projectId: request.identity.projectId,
+      // Invariant 10 — the correlation chain. Every id here is a real one
+      // this layer actually holds; none is minted to satisfy the check.
+      correlation: {
+        requestId: request.requestId,
+        agentId: request.identity.agentId,
+        // This route executes a tool directly; no `AgentProposal` precedes
+        // it, so there is no proposal to point at. Stated as null rather
+        // than omitted — see `ExecutionCorrelation` on why the key stays.
+        proposalId: null,
+        // The gate's audit entry is the governance decision. It is nullable
+        // at the source, and that null is carried through rather than
+        // papered over with a placeholder.
+        governanceDecisionId: gate.auditId,
+        // Present only when this action actually redeemed an approval.
+        authorizationId: request.approvalRequestId ?? null,
+        // Runtime-owned per the ownership rules: `executeTool()` mints both
+        // and overwrites these. No layer may create ids outside its domain.
+        executionId: "",
+        toolCallId: "",
+      },
     });
   } catch (err) {
     const outcome: GovernedExecutionOutcome = {

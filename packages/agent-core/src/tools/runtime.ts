@@ -75,11 +75,23 @@ import { detectSecrets } from "../secrets/detector.js";
  * architectural impossibility enforced by type system + code organization.
  */
 export interface ExecutionCorrelation {
-  readonly requestId: string;           // request boundary
-  readonly agentId: string;             // who proposed
-  readonly proposalId: string;          // what was proposed
-  readonly governanceDecisionId: string; // what was decided
-  readonly authorizationId: string;     // what was authorized
+  readonly requestId: string; // request boundary
+  readonly agentId: string; // who acted
+  /**
+   * What was proposed, or `null` for a direct execution that did not
+   * originate from an `AgentProposal` — the proposal layer above
+   * `dispatchAgentAction()` is a gate only today and mints no proposal.
+   *
+   * The three nullable fields below keep their KEY required on purpose. An
+   * explicit `null` records "this path produced none"; an omitted key means
+   * the caller lost track of it. An auditor has to be able to tell those
+   * apart, and a chain that cannot distinguish them is not a chain.
+   */
+  readonly proposalId: string | null;
+  /** What was decided — `null` when the gate recorded no audit entry. */
+  readonly governanceDecisionId: string | null;
+  /** What was authorized — `null` when the action needed no approval. */
+  readonly authorizationId: string | null;
   readonly executionId: string;         // execution instance
   readonly toolCallId: string;          // tool invocation instance
   readonly verificationId?: string;     // verification instance (added by verification layer)
@@ -285,20 +297,54 @@ export async function executeTool(
 ): Promise<ToolExecutionOutcome> {
   // Invariant 10: Validate correlation chain is complete before proceeding
   // A missing ID means the chain is broken. Execution must be denied.
-  const requiredIds = [
-    "requestId",
-    "agentId",
-    "proposalId",
-    "governanceDecisionId",
-    "authorizationId",
-  ];
+  //
+  // Narrowed from "all five IDs must be non-empty". Two of them name WHO
+  // acted and WITHIN WHICH request; neither has a legitimate absent case, so
+  // a call that cannot supply them cannot be traced and is denied.
+  const requiredIds = ["requestId", "agentId"] as const;
+
+  // The other three have real absent cases — a direct execution has no
+  // proposal, a gate may record no audit entry, an action may need no
+  // approval. Their KEY is still mandatory: `null` is an assertion that the
+  // path produced none, which is auditable; a missing key is an oversight,
+  // which is not. Requiring the key is what keeps this a control rather
+  // than a formality satisfied by whatever the caller happened to pass.
+  const nullableIds = ["proposalId", "governanceDecisionId", "authorizationId"] as const;
+
+  // The chain must exist at all before its fields can be read. A caller can
+  // reach this boundary from untyped code — a JSON body at the API layer, a
+  // JS test — and omit it entirely. That is the most broken chain there is,
+  // so it has to deny like every other break rather than throw: a guard that
+  // crashes on malformed input is a guard that stopped guarding.
+  if (context.correlation === undefined || context.correlation === null) {
+    return {
+      status: "DENIED",
+      reason: "Correlation chain is missing entirely. Execution cannot be traced.",
+    };
+  }
 
   for (const idField of requiredIds) {
-    const value = context.correlation[idField as keyof ExecutionCorrelation];
-    if (!value || typeof value !== "string" || value.length === 0) {
+    const value = context.correlation[idField];
+    if (typeof value !== "string" || value.length === 0) {
       return {
         status: "DENIED",
         reason: `Correlation chain is incomplete: missing or empty ${idField}. Execution cannot be traced.`,
+      };
+    }
+  }
+
+  for (const idField of nullableIds) {
+    if (!(idField in context.correlation)) {
+      return {
+        status: "DENIED",
+        reason: `Correlation chain is incomplete: ${idField} was omitted. Pass null to record that this path produced none.`,
+      };
+    }
+    const value = context.correlation[idField];
+    if (value !== null && (typeof value !== "string" || value.length === 0)) {
+      return {
+        status: "DENIED",
+        reason: `Correlation chain is incomplete: ${idField} must be a non-empty string or null. Execution cannot be traced.`,
       };
     }
   }
@@ -318,11 +364,6 @@ export async function executeTool(
     };
   }
 
-  const impl = registry.get(toolName);
-  if (!impl) {
-    return { status: "DENIED", reason: `Tool "${toolName}" has a policy but no registered implementation.` };
-  }
-
   // An empty `allowedProjects` means "no project restriction" — the shape
   // every entry in DEFAULT_TOOL_POLICIES currently uses. A non-empty list
   // is a real restriction and is enforced.
@@ -337,8 +378,22 @@ export async function executeTool(
   }
 
   // Rule 2 — the runtime reports the requirement; it never satisfies it.
+  //
+  // This runs BEFORE the registry lookup on purpose. Whether a tool has a
+  // registered implementation is internal state, and disclosing it to a
+  // caller that has not been approved yet leaks the shape of the runtime.
+  // The policy is the public contract: an approval-gated tool answers
+  // APPROVAL_REQUIRED whether or not it happens to be implemented.
+  //
+  // The project restriction above stays ahead of this check — a tool barred
+  // from the caller's project is denied outright, never routed to a human.
   if (policy.requiresApproval) {
     return { status: "APPROVAL_REQUIRED", policy };
+  }
+
+  const impl = registry.get(toolName);
+  if (!impl) {
+    return { status: "DENIED", reason: `Tool "${toolName}" has a policy but no registered implementation.` };
   }
 
   // Rule 4 — a fresh controller per call, handed to the implementation via

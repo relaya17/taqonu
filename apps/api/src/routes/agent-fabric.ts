@@ -725,6 +725,8 @@ export async function registerAgentFabricRoutes(
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       projectRoot: resolveToolProjectRoot(identity.projectId),
       routeLabel: "agents.tool-execute",
+      // The request boundary for Invariant 10's correlation chain.
+      requestId: request.id,
     });
 
     if (outcome.status === "EXECUTED") {
