@@ -62,6 +62,32 @@ const MAX_FILE_BYTES = 256 * 1024;
 const MAX_DIR_ENTRIES = 500;
 const MAX_SEARCH_MATCHES = 200;
 
+/**
+ * Bounds on a repo walk. `MAX_SEARCH_MATCHES` caps what comes back but not what
+ * gets traversed: a deep or huge tree could be walked in full and still return
+ * few matches, so the work is unbounded where it matters. The runtime timeout
+ * eventually stops it, but a limit that only trips as a timeout looks like a
+ * hang to the caller instead of a bounded, reported result.
+ *
+ * A symlinked directory needs no separate loop guard here: `readdir` with
+ * `withFileTypes` reports a symlink as `isSymbolicLink()`, and `isDirectory()`
+ * is false for it, so `walk()` never descends through one.
+ */
+const MAX_WALK_DEPTH = 12;
+const MAX_SCAN_FILES = 20_000;
+
+/**
+ * Traversal budget, shared by every frame of one `walk()`. Mutable by design —
+ * the caps are per-walk, not per-directory, and the flags let the caller say
+ * the result was clipped rather than leaving the agent to assume it saw the
+ * whole repo.
+ */
+interface WalkBudget {
+  filesSeen: number;
+  depthCapped: boolean;
+  volumeCapped: boolean;
+}
+
 /** Directories never worth walking, and whose contents are not source. */
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -126,9 +152,20 @@ const readDirectoryTool: ToolImplementation = {
   },
 };
 
-async function* walk(dir: string, root: string, signal?: AbortSignal): AsyncGenerator<string> {
+async function* walk(
+  dir: string,
+  root: string,
+  signal: AbortSignal | undefined,
+  budget: WalkBudget,
+  depth = 0,
+): AsyncGenerator<string> {
   // Check for cancellation before descending into the directory.
   if (signal?.aborted) return;
+
+  if (depth > MAX_WALK_DEPTH) {
+    budget.depthCapped = true;
+    return;
+  }
 
   let entries: Dirent[];
   try {
@@ -143,8 +180,13 @@ async function* walk(dir: string, root: string, signal?: AbortSignal): AsyncGene
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      yield* walk(full, root, signal);
+      yield* walk(full, root, signal, budget, depth + 1);
     } else if (entry.isFile()) {
+      if (budget.filesSeen >= MAX_SCAN_FILES) {
+        budget.volumeCapped = true;
+        return;
+      }
+      budget.filesSeen += 1;
       yield full;
     }
   }
@@ -164,8 +206,9 @@ const searchRepoTool: ToolImplementation = {
     // racing it.
     const needle = query.toLowerCase();
     const matches: string[] = [];
+    const budget: WalkBudget = { filesSeen: 0, depthCapped: false, volumeCapped: false };
 
-    for await (const file of walk(root.path, root.path, context.signal)) {
+    for await (const file of walk(root.path, root.path, context.signal, budget)) {
       // Cooperative cancellation: check the signal between files.
       if (context.signal?.aborted) break;
 
@@ -192,12 +235,18 @@ const searchRepoTool: ToolImplementation = {
       }
     }
 
-    if (matches.length === 0) return `No match for "${query}".`;
-    const header =
-      matches.length >= MAX_SEARCH_MATCHES
-        ? `${matches.length} matches (capped — more may exist):`
-        : `${matches.length} match(es):`;
-    return `${header}\n${matches.join("\n")}`;
+    // Same rule as the directory listing: never let a clipped result read as a
+    // complete one. Every cap that actually tripped is named, so an agent can
+    // tell "no match in this repo" from "no match in the part I was allowed
+    // to look at".
+    const caps: string[] = [];
+    if (matches.length >= MAX_SEARCH_MATCHES) caps.push(`${MAX_SEARCH_MATCHES} matches`);
+    if (budget.depthCapped) caps.push(`depth ${MAX_WALK_DEPTH}`);
+    if (budget.volumeCapped) caps.push(`${MAX_SCAN_FILES} files scanned`);
+    const capNote = caps.length > 0 ? ` (capped at ${caps.join(", ")} — more may exist)` : "";
+
+    if (matches.length === 0) return `No match for "${query}"${capNote}.`;
+    return `${matches.length} match(es)${capNote}:\n${matches.join("\n")}`;
   },
 };
 

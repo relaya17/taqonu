@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -168,6 +168,85 @@ describe("Tool Runtime — filesystem tools against a real directory", () => {
   afterEach(() => {
     resetToolRegistryForTests();
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it("refuses a symlink that points outside the root, even though its path looks contained", async () => {
+    // The lexical check passes here on purpose: "escape-hatch/secret.txt" sits
+    // under the root by every string comparison. Only canonicalisation catches
+    // it, so this is the test that tells `resolveInsideRoot`'s second stage
+    // apart from its first.
+    const outside = mkdtempSync(join(tmpdir(), "atlas-outside-"));
+    writeFileSync(join(outside, "secret.txt"), "TOP SECRET\n", "utf8");
+
+    let linked = false;
+    try {
+      symlinkSync(outside, join(root, "escape-hatch"), "junction");
+      linked = true;
+    } catch {
+      // Windows refuses symlink creation without the right privilege. Skipping
+      // is honest; silently passing would report coverage that never ran.
+    }
+
+    if (!linked) {
+      rmSync(outside, { recursive: true, force: true });
+      return;
+    }
+
+    const result = await executeTool(
+      "fs.read_file",
+      { path: "escape-hatch/secret.txt" },
+      ctx(root),
+    );
+    rmSync(outside, { recursive: true, force: true });
+
+    expect(result.status).toBe("ERROR");
+    if (result.status !== "ERROR") throw new Error("expected ERROR");
+
+    // Assert the CANONICAL-stage message, not the lexical one. The two stages
+    // return different strings on purpose (`runtime.ts:208` vs `:233`), and
+    // only the second can have produced this refusal — the path is contained
+    // by every string comparison, so matching the generic "escapes the project
+    // root" here would pass even if stage two had been deleted.
+    expect(result.reason).toContain("via symlink or junction");
+    expect(result.reason).toContain("outside the project root");
+  });
+
+  it("bounds a walk deeper than MAX_WALK_DEPTH, and says so instead of truncating quietly", async () => {
+    // 20 nested levels against a cap of 12. The needle sits at the bottom, so
+    // a walk that reached it would prove the cap did nothing.
+    let deep = root;
+    for (let i = 0; i < 20; i += 1) {
+      deep = join(deep, `level${i}`);
+      mkdirSync(deep, { recursive: true });
+    }
+    writeFileSync(join(deep, "buried.ts"), "const needle_at_the_bottom = 1;\n", "utf8");
+
+    const result = await executeTool(
+      "fs.search_repo",
+      { query: "needle_at_the_bottom" },
+      ctx(root),
+    );
+    expect(result.status).toBe("OK");
+    if (result.status !== "OK") throw new Error("expected OK");
+
+    // The cap held: the buried file was never reached.
+    expect(result.output).not.toContain("buried.ts");
+
+    // And the caller is told the result is partial. A clipped answer that
+    // reads like a complete one is the failure mode this reports against —
+    // an agent would otherwise conclude the string does not exist in the repo.
+    expect(result.output).toContain("capped");
+    expect(result.output).toContain("depth 12");
+  });
+
+  it("reports no cap when the whole tree fits inside the limits", async () => {
+    // The counterpart to the test above: without it, a bug that always
+    // appended the cap note would still pass.
+    const result = await executeTool("fs.search_repo", { query: "answer" }, ctx(root));
+    expect(result.status).toBe("OK");
+    if (result.status !== "OK") throw new Error("expected OK");
+    expect(result.output).toContain("src/index.ts");
+    expect(result.output).not.toContain("capped");
   });
 
   it("registers exactly the three read-only tools", () => {

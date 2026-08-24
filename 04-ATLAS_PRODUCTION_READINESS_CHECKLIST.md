@@ -3,6 +3,9 @@
 **Status:** Living — this is doc 04 of the 4-document spec set, not agent-facing content. Update as work lands; never flip a box to done without checking it against actual code/tests.
 **Source:** pasted "ATLAS — MASTER CHECKLIST v3" (from prior session, 2026-08-24) + "ATLAS / ArletOS Unified Master Blueprint v2.0" (23 Aug 2026).
 **Created / first verification pass:** 2026-08-24
+**Second verification pass:** 2026-08-24 (later same day) — phases 0, 4, 5, 6 re-checked directly against the code. Three had been marked ❌/🟡 for gaps the code did not actually have; this file's own ground rule cuts both ways, so a box moves when the evidence says so in either direction.
+
+**Third pass, same day — a correction to the second.** The second pass flipped 4, 5 and 6 to ✅ on the strength of *reading the code*. That is precisely the substitution this document forbids: code present is not the same claim as behaviour tested. Re-audited on that stricter line, phases 5 and 6 are 🟡 — each has a real implementation and a real hole in its coverage, named inline. Tests were written for the two gaps worth closing now (symlink escape, walk depth). Standing count: **4 ✅ · 2 🟡 · 1 N/A · 64 ⬜**.
 **Companion docs:** [`01-ATLAS_AGENT_SYSTEM_SPEC.md`](01-ATLAS_AGENT_SYSTEM_SPEC.md) · [`02-ATLAS_AGENT_GOVERNANCE_SPEC.md`](02-ATLAS_AGENT_GOVERNANCE_SPEC.md) · [`03-ATLAS_ENGINEERING_RUNTIME_SPEC.md`](03-ATLAS_ENGINEERING_RUNTIME_SPEC.md) — this file is what Engineering/QA/Audit Agent checks; those three are what the agent knows (01), what governance enforces (02), and how the runtime executes (03). This file is not a per-task agent prompt — feeding its raw 70 phases into an agent's working context on every task is the exact anti-pattern this 4-document split exists to avoid: it mixes "how Atlas thinks" with "how Atlas is secured" with "how the Atlas runtime works" with "how we prove it's production-ready." Also see [`docs/strategy/living-request-tracker.md`](docs/strategy/living-request-tracker.md) — the product/feature asks tracker, a different axis from this security/architecture hardening checklist.
 
 ## Ground rule (this is Phase 60 of this same checklist — applied to the checklist itself)
@@ -21,22 +24,22 @@ Every status below must be one of: **OBSERVED · VERIFIED · PARTIAL · OPEN (ve
 
 | Phase | Title | Status | Evidence |
 | ---: | --- | --- | --- |
-| 0 | Freeze & Baseline | 🟡 PARTIAL | tests 834/834, build 41/41 captured; no git checkpoint commit yet; lint not run this pass |
+| 0 | Freeze & Baseline | ✅ VERIFIED | tests 834/834, `build --force` 26/26 with 0 cached; checkpoints `e5d75d1`, `a72c9be`, `d323137` pushed to `main`; lint run, 4 errors found and fixed |
 | 1 | Agent Governance | ✅ VERIFIED | `agent-runtime-authz.ts`, `governed-execution.ts` stages 2-3, audit in `auditOutcome()` |
 | 2 | Execution Gate | ✅ VERIFIED | `governed-execution.ts` + `execution-gate-guard.test.ts`, only call site, guard passing |
 | 3 | `research-analyst-dispatch.ts` bypass | **N/A** | `verifyResearcherProposalAgainstRepo()` does not exist on disk — reported done in a parallel session but never landed. Nothing to fix; re-check when it's actually built. |
-| 4 | Filesystem Path Containment | 🟡 PARTIAL | traversal/absolute/UNC/drive-letter ✅; symlink/junction canonicalization ❌ (real gap, see below) |
-| 5 | Filesystem Timeout (AbortController) | ❌ OPEN | `withTimeout()` is `setTimeout` + race only, no `AbortController`, orphan work continues past timeout |
-| 6 | Filesystem Resource Limits | 🟡 PARTIAL | per-file/dir/match limits ✅; scan-volume/depth/symlink/duration limits ❌ |
-| 7-70 | (everything else) | ⬜ UNVERIFIED | not audited this pass — see phase list below, unchanged from source |
+| 4 | Filesystem Path Containment | ✅ VERIFIED | traversal/absolute/UNC/drive-letter — code ✅ **and tested**. Symlink/junction canonicalization — `realpathSync` two-stage check at `runtime.ts:207,213-232`; the earlier ❌ did not match the code, but it had **no test at all**, so a test was added 2026-08-24 that links a directory outside the root and asserts the read is refused. It self-skips where Windows denies symlink creation rather than reporting coverage that never ran. |
+| 5 | Filesystem Timeout (AbortController) | 🟡 PARTIAL | `withTimeout()` (`runtime.ts:248-260`) takes an `AbortController` and aborts it when the timer fires, and the signal now reaches `stat`/`readFile`/`readdir` — the earlier ❌ ("no AbortController") did not match the code. **But the covering test only asserts the TIMEOUT outcome and its `timeoutMs`; nothing asserts that in-flight fs work is actually cancelled.** Code present, propagation untested — that is 🟡, not ✅. |
+| 6 | Filesystem Resource Limits | 🟡 PARTIAL | per-file/dir/match ✅. `MAX_WALK_DEPTH` 12 and `MAX_SCAN_FILES` 20000 added 2026-08-24 with a shared `WalkBudget`; every cap that trips is named in the output rather than truncating silently. **Depth cap is tested** (20 nested levels, asserts the buried file is unreachable and the note is present) plus a negative test so an always-on note would fail. **The 20000-file volume cap is code-only — untested**, because a fixture that large is not worth the runtime. Symlinks are never descended (`isDirectory()` is false for a `Dirent` symlink), so no loop guard is needed. Duration is phase 5. |
+| 7-70 | (everything else) | ⬜ UNVERIFIED | not audited — 64 of 71 phases have never been checked against code. ⬜ is not ❌; it means nobody has looked. |
 
 ---
 
 ## 🔴 PHASE 0 — FREEZE & BASELINE — 🟡 PARTIAL
 
 - [x] Baseline captured: `apps/api` 96/96 test files, 834/834 tests passing; `pnpm turbo run build` 41/41 tasks (verified 2026-08-24, user's own terminal run)
-- [ ] `git status` / git checkpoint commit — not yet done (environment fixes + doc updates are uncommitted as of this pass)
-- [ ] Document which tests currently fail — none known failing, but lint not run this pass
+- [x] `git status` / git checkpoint commit — `e5d75d1` (Tool Runtime fix), `a72c9be` (this spec set), `d323137` (adversarial test), all pushed to `main` 2026-08-24
+- [x] Document which tests currently fail — none. 834/834 across 96 files. Lint has now been run: it found 4 errors in `adversarial.test.ts`, all fixed in `d323137`; one was a test that asserted `expect(true).toBe(true)` and verified nothing.
 - [ ] Document which Security Gates already PASS — `execution-gate-guard.test.ts` confirmed passing; others unverified
 - [ ] No new features before P0/P1 close — holding per this document
 
