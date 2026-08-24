@@ -37,13 +37,13 @@ describe("ATLAS Adversarial Tests — System Invariant Enforcement", () => {
   });
 
   it("INVARIANT 2: Direct tool invocation is architecturally impossible", () => {
-    expect(() => {
-      // @ts-expect-error -- trying to access private registry
-      const registry = (global as any).__atlasToolRegistry;
-      if (registry) {
-        throw new Error("Registry must not be globally accessible");
-      }
-    }).not.toThrow();
+    // The registry is module-private. Reaching it through the global object is
+    // the obvious escape hatch, so assert the hatch is simply not there —
+    // indexing globalThis needs no `any`, and the old
+    // `expect(() => {...}).not.toThrow()` shape passed whether or not the
+    // registry was exposed, because the throw was inside a conditional.
+    const registry = (globalThis as Record<string, unknown>)["__atlasToolRegistry"];
+    expect(registry).toBeUndefined();
   });
 
   it("INVARIANT 10: Correlation chain validation blocks incomplete chains", async () => {
@@ -136,7 +136,21 @@ describe("ATLAS Adversarial Tests — System Invariant Enforcement", () => {
     }
   });
 
-  it("INVARIANT 1 & 10: Runtime creates executionId and toolCallId (agent cannot)", async () => {
+  it("INVARIANT 1 & 10: Runtime creates executionId and toolCallId (agent cannot forge them)", async () => {
+    // This used to end in `expect(true).toBe(true)` with a comment saying the
+    // ids could not be observed. They can: override the policed, approval-free
+    // `fs.read_file` with an implementation that records the context it is
+    // handed, and the runtime-owned ids are readable right there.
+    let seen: ExecutionCorrelation | undefined;
+    const capturingTool: ToolImplementation = {
+      name: "fs.read_file",
+      run: async (_args, ctx) => {
+        seen = ctx.correlation;
+        return "captured";
+      },
+    };
+    registerTool(capturingTool);
+
     const contextWithForgedIds: ToolExecutionContext = {
       projectRoot: "/tmp",
       projectId: "proj_123",
@@ -146,18 +160,24 @@ describe("ATLAS Adversarial Tests — System Invariant Enforcement", () => {
         proposalId: "prop_1",
         governanceDecisionId: "gov_1",
         authorizationId: "auth_1",
-        executionId: "FORGED_EXEC_ID",  // Agent cannot set this
-        toolCallId: "FORGED_CALL_ID",   // Agent cannot set this
+        executionId: "FORGED_EXEC_ID", // an agent must not be able to set this
+        toolCallId: "FORGED_CALL_ID", // nor this
       },
     };
 
-    // If execution happens, runtime will have replaced these with new IDs.
-    // We can't directly verify the IDs changed, but the architecture ensures
-    // agent-provided IDs are ignored and new ones are created.
+    const result = await executeTool("fs.read_file", { path: "a.txt" }, contextWithForgedIds);
+    expect(result.status).toBe("OK");
+    expect(seen).toBeDefined();
 
-    // The test documents the architectural guarantee:
-    // Agent cannot create executionId or toolCallId.
-    expect(true).toBe(true);
+    // The forged values must not survive: the Runtime owns these two ids.
+    expect(seen?.executionId).not.toBe("FORGED_EXEC_ID");
+    expect(seen?.toolCallId).not.toBe("FORGED_CALL_ID");
+    expect(seen?.executionId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(seen?.toolCallId).toMatch(/^[0-9a-f-]{36}$/);
+
+    // Everything the caller legitimately owns is carried through untouched.
+    expect(seen?.requestId).toBe("req_1");
+    expect(seen?.agentId).toBe("agent_1");
   });
 
   it("ALL INVARIANTS: Production gate requires all mandatory gates to pass", async () => {
