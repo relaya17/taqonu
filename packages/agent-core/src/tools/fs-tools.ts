@@ -15,6 +15,10 @@ import { registerTool, resolveInsideRoot, type ToolImplementation } from "./runt
  *
  * Every path argument goes through `resolveInsideRoot()` in the runtime,
  * never through the tool itself — see rule 3 in `runtime.ts`.
+ *
+ * SECURITY: Tools are NOT exported. They are private constants that can only
+ * be invoked through registerTool() and executeTool(). This prevents
+ * direct invocation bypassing the runtime's policy enforcement.
  */
 
 /** Refuse to stream a huge file into an LLM context; also bounds memory. */
@@ -41,33 +45,33 @@ function requireString(args: Readonly<Record<string, unknown>>, key: string): st
   return value;
 }
 
-export const readFileTool: ToolImplementation = {
+const readFileTool: ToolImplementation = {
   name: "fs.read_file",
   async run(args, context) {
     const resolved = resolveInsideRoot(context.projectRoot, requireString(args, "path"));
     if (!resolved.ok) throw new Error(resolved.reason);
 
-    const info = await stat(resolved.path);
+    const info = await stat(resolved.path, { signal: context.signal });
     if (!info.isFile()) throw new Error("path is not a file");
     if (info.size > MAX_FILE_BYTES) {
       throw new Error(
         `file is ${info.size} bytes, above the ${MAX_FILE_BYTES}-byte read limit`,
       );
     }
-    return await readFile(resolved.path, "utf8");
+    return await readFile(resolved.path, "utf8", { signal: context.signal });
   },
 };
 
-export const readDirectoryTool: ToolImplementation = {
+const readDirectoryTool: ToolImplementation = {
   name: "fs.read_directory",
   async run(args, context) {
     const resolved = resolveInsideRoot(context.projectRoot, requireString(args, "path"));
     if (!resolved.ok) throw new Error(resolved.reason);
 
-    const info = await stat(resolved.path);
+    const info = await stat(resolved.path, { signal: context.signal });
     if (!info.isDirectory()) throw new Error("path is not a directory");
 
-    const entries = await readdir(resolved.path, { withFileTypes: true });
+    const entries = await readdir(resolved.path, { withFileTypes: true, signal: context.signal });
     const listed = entries
       .filter((entry) => !SKIP_DIRS.has(entry.name))
       .slice(0, MAX_DIR_ENTRIES)
@@ -83,25 +87,31 @@ export const readDirectoryTool: ToolImplementation = {
   },
 };
 
-async function* walk(dir: string, root: string): AsyncGenerator<string> {
+async function* walk(dir: string, root: string, signal?: AbortSignal): AsyncGenerator<string> {
+  // Check for cancellation before descending into directory
+  if (signal?.aborted) return;
+
   let entries;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    entries = await readdir(dir, { withFileTypes: true, signal });
   } catch {
     return; // unreadable directory is skipped, not fatal
   }
   for (const entry of entries) {
+    // Cooperative cancellation: check signal between iterations
+    if (signal?.aborted) return;
+
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      yield* walk(full, root);
+      yield* walk(full, root, signal);
     } else if (entry.isFile()) {
       yield full;
     }
   }
 }
 
-export const searchRepoTool: ToolImplementation = {
+const searchRepoTool: ToolImplementation = {
   name: "fs.search_repo",
   async run(args, context) {
     const query = requireString(args, "query");
@@ -116,13 +126,16 @@ export const searchRepoTool: ToolImplementation = {
     const needle = query.toLowerCase();
     const matches: string[] = [];
 
-    for await (const file of walk(root.path, root.path)) {
+    for await (const file of walk(root.path, root.path, context.signal)) {
+      // Cooperative cancellation: check signal between files
+      if (context.signal?.aborted) break;
+
       if (matches.length >= MAX_SEARCH_MATCHES) break;
       let content: string;
       try {
-        const info = await stat(file);
+        const info = await stat(file, { signal: context.signal });
         if (info.size > MAX_FILE_BYTES) continue;
-        content = await readFile(file, "utf8");
+        content = await readFile(file, "utf8", { signal: context.signal });
       } catch {
         continue; // binary/unreadable file
       }

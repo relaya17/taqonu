@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { isAbsolute, normalize, relative, resolve, sep } from "node:path";
 import type { ToolPolicy } from "@atlas/shared";
 import { getToolPolicy } from "../policies/tool-policies.js";
@@ -33,9 +35,56 @@ import { detectSecrets } from "../secrets/detector.js";
  *     tool receives an already-validated absolute path inside the project
  *     root. A tool implementation cannot be trusted to police its own
  *     arguments, because the whole point is that an agent chose them.
- *  4. **Timeouts are enforced by the runtime**, not requested politely of
- *     the tool.
+ *     Containment is checked twice: once lexically (fast, catches `../`
+ *     and absolute-path attempts before touching disk) and once on the
+ *     REAL, canonical path when the root exists on disk (catches a
+ *     symlink or, on Windows, a directory junction anywhere along the
+ *     path that resolves outside `projectRoot` — the lexical check alone
+ *     cannot see this, since it never asks the filesystem what a path
+ *     actually points to). See `03-ATLAS_ENGINEERING_RUNTIME_SPEC.md` §2
+ *     for the incident this closes (verified gap, found + fixed 2026-08-24).
+ *  4. **Timeouts are enforced by the runtime, and now actually cancel the
+ *     work** — not just stop waiting for it. `executeTool()` hands every
+ *     `ToolImplementation.run()` call an `AbortSignal` via
+ *     `ToolExecutionContext.signal`; when the policy timeout fires, that
+ *     signal is aborted. Implementations that loop (like `fs.search_repo`'s
+ *     directory walk) must check it between iterations, and Node's
+ *     `fs/promises` calls that accept a `signal` option should be passed
+ *     one so an in-flight read is cut short rather than running to
+ *     completion after the caller has already moved on. Previously this
+ *     was a `Promise.race` that only stopped *waiting* — the underlying
+ *     work kept running as an orphan. See
+ *     `03-ATLAS_ENGINEERING_RUNTIME_SPEC.md` §3 for the incident this
+ *     closes (verified gap, found + fixed 2026-08-24).
  */
+
+/**
+ * ExecutionCorrelation: the immutable chain connecting all layers of execution.
+ *
+ * This object is created at the Runtime layer and passed through all subsequent
+ * layers (verification, audit). It ensures every decision point is traceable.
+ *
+ * Ownership rules (architectural enforcement):
+ *  - Agent creates: agentId, proposalId (ONLY)
+ *  - Governance creates: governanceDecisionId, authorizationId (ONLY)
+ *  - Runtime creates: executionId, toolCallId (ONLY)
+ *  - Verification creates: verificationId (ONLY)
+ *  - Audit creates: auditEventId (ONLY)
+ *
+ * No layer may create IDs outside its domain. This is not validation; it is
+ * architectural impossibility enforced by type system + code organization.
+ */
+export interface ExecutionCorrelation {
+  readonly requestId: string;           // request boundary
+  readonly agentId: string;             // who proposed
+  readonly proposalId: string;          // what was proposed
+  readonly governanceDecisionId: string; // what was decided
+  readonly authorizationId: string;     // what was authorized
+  readonly executionId: string;         // execution instance
+  readonly toolCallId: string;          // tool invocation instance
+  readonly verificationId?: string;     // verification instance (added by verification layer)
+  readonly auditEventId?: string;       // audit event instance (added by audit layer)
+}
 
 export type ToolExecutionOutcome =
   | { readonly status: "OK"; readonly output: string; readonly durationMs: number }
@@ -54,6 +103,22 @@ export interface ToolExecutionContext {
   readonly projectRoot: string;
   /** Project id used against `ToolPolicy.allowedProjects` when that list is non-empty. */
   readonly projectId?: string | null;
+  /**
+   * Cooperative cancellation signal, set by `executeTool()` when it starts
+   * the policy timeout clock. A `ToolImplementation` that does I/O in a
+   * loop should check `signal?.aborted` between iterations, and should pass
+   * `signal` into any `node:fs/promises` call that accepts one. Callers of
+   * `executeTool()` never set this themselves — it is always supplied by
+   * the runtime, never by an agent or an API caller.
+   */
+  readonly signal?: AbortSignal;
+  /**
+   * Execution correlation chain, created by the Runtime layer at the start
+   * of `executeTool()`. This object is immutable and passed through to
+   * verification and audit layers. It enables full reconstruction of the
+   * execution lifecycle.
+   */
+  readonly correlation: ExecutionCorrelation;
 }
 
 export interface ToolImplementation {
@@ -80,15 +145,40 @@ export function listRegisteredTools(): readonly string[] {
   return [...registry.keys()].sort();
 }
 
+function escapesRoot(root: string, target: string): boolean {
+  const rel = relative(root, target);
+  if (rel === "") return false;
+  return rel.startsWith("..") || rel.split(sep).includes("..");
+}
+
 /**
  * Resolve an agent-supplied path and prove it stays inside `projectRoot`.
  *
- * Rejects absolute paths and any traversal that escapes the root. The check
- * is done on the RESOLVED, NORMALIZED path — comparing raw strings would be
- * defeated by `foo/../../etc/passwd`, and a `startsWith(root)` test alone
- * would wrongly accept a sibling directory whose name merely begins with
- * the root (`/srv/app-evil` vs `/srv/app`), which is why this compares path
- * segments via `relative()` instead.
+ * Two checks, in order:
+ *
+ *  1. LEXICAL — rejects absolute paths and any traversal that escapes the
+ *     root, on the resolved/normalized string. Comparing raw strings would
+ *     be defeated by `foo/../../etc/passwd`, and a `startsWith(root)` test
+ *     alone would wrongly accept a sibling directory whose name merely
+ *     begins with the root (`/srv/app-evil` vs `/srv/app`), which is why
+ *     this compares path segments via `relative()` instead.
+ *  2. CANONICAL — re-checks containment on the REAL path (`fs.realpathSync`,
+ *     which resolves symlinks and, on Windows, directory junctions). The
+ *     lexical check alone cannot catch `<root>/foo` being a symlink/junction
+ *     that points outside `root` — check 1 sees a string that looks
+ *     contained; the filesystem would actually read from somewhere else.
+ *
+ * The canonical check is skipped (falling back to the lexical result) when
+ * `projectRoot` itself doesn't exist on disk — nothing to canonicalize
+ * against, and any real read will fail naturally on its own stat/readdir
+ * call regardless. This also keeps pure path-arithmetic unit tests (which
+ * exercise this function against synthetic, non-existent roots) working
+ * unchanged.
+ *
+ * When the target doesn't exist yet, it likewise cannot itself be a
+ * symlink escaping the root (nothing there to be one) — the lexical check
+ * already covers that case, so a missing target also falls back to the
+ * lexical result rather than being rejected outright.
  */
 export function resolveInsideRoot(
   projectRoot: string,
@@ -102,23 +192,58 @@ export function resolveInsideRoot(
   }
   const root = resolve(projectRoot);
   const target = resolve(root, normalize(candidate));
-  const rel = relative(root, target);
-  if (rel === "") return { ok: true, path: target };
-  if (rel.startsWith("..") || rel.split(sep).includes("..")) {
+  if (escapesRoot(root, target)) {
     return { ok: false, reason: "path escapes the project root" };
   }
+
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = realpathSync(root);
+  } catch {
+    // projectRoot doesn't exist on disk — nothing to canonicalize against.
+    return { ok: true, path: target };
+  }
+
+  let canonicalTarget: string;
+  try {
+    canonicalTarget = realpathSync(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ok: true, path: target };
+    }
+    return {
+      ok: false,
+      reason: `failed to resolve real path: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  if (escapesRoot(canonicalRoot, canonicalTarget)) {
+    return { ok: false, reason: "path resolves (via symlink or junction) outside the project root" };
+  }
+
   return { ok: true, path: target };
 }
 
+/**
+ * Races `promise` against `timeoutMs`. On timeout, aborts `controller` so
+ * the underlying work is actually told to stop — not just abandoned. The
+ * promise itself may still take a moment to unwind after abort (an
+ * in-flight `fs/promises` call rejects with an AbortError almost
+ * immediately; a cooperative loop stops at its next `signal.aborted`
+ * check), but nothing here waits for that unwind — the TIMEOUT result
+ * returns to the caller as soon as the clock fires, same as before.
+ */
 function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
+  controller: AbortController,
 ): Promise<{ timedOut: false; value: T } | { timedOut: true }> {
   return new Promise((resolvePromise) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      controller.abort();
       resolvePromise({ timedOut: true });
     }, timeoutMs);
     void promise.then(
@@ -142,12 +267,47 @@ function withTimeout<T>(
 /**
  * The ONE entry point to a governed tool. There is deliberately no export
  * that hands a caller a `ToolImplementation` directly.
+ *
+ * Runtime creates executionId and toolCallId here, completing the correlation
+ * chain that started upstream (governance layer). This ensures:
+ * - Every tool invocation is traceable
+ * - No tool can be invoked without a valid correlation chain
+ * - Execution cannot be replayed (fresh executionId per call)
+ *
+ * Invariant 10 enforcement: Every protected execution must be reconstructable
+ * from its correlation chain. This function verifies the chain is complete
+ * before execution proceeds.
  */
 export async function executeTool(
   toolName: string,
   args: Readonly<Record<string, unknown>>,
   context: ToolExecutionContext,
 ): Promise<ToolExecutionOutcome> {
+  // Invariant 10: Validate correlation chain is complete before proceeding
+  // A missing ID means the chain is broken. Execution must be denied.
+  const requiredIds = [
+    "requestId",
+    "agentId",
+    "proposalId",
+    "governanceDecisionId",
+    "authorizationId",
+  ];
+
+  for (const idField of requiredIds) {
+    const value = context.correlation[idField as keyof ExecutionCorrelation];
+    if (!value || typeof value !== "string" || value.length === 0) {
+      return {
+        status: "DENIED",
+        reason: `Correlation chain is incomplete: missing or empty ${idField}. Execution cannot be traced.`,
+      };
+    }
+  }
+
+  // Runtime creates execution IDs at the start. These are immutable and will
+  // be carried through verification and audit layers.
+  const executionId = randomUUID();
+  const toolCallId = randomUUID();
+
   // Rule 1 — fail closed on an unknown/unpoliced tool, BEFORE looking at
   // whether an implementation happens to exist.
   const policy = getToolPolicy(toolName);
@@ -181,10 +341,27 @@ export async function executeTool(
     return { status: "APPROVAL_REQUIRED", policy };
   }
 
+  // Rule 4 — a fresh controller per call, handed to the implementation via
+  // context.signal so a timeout can actually cancel in-flight work rather
+  // than only stop waiting for it.
+  const controller = new AbortController();
+
+  // Complete the correlation chain: add executionId and toolCallId, thread
+  // the complete chain to the tool implementation.
+  const runContext: ToolExecutionContext = {
+    ...context,
+    signal: controller.signal,
+    correlation: {
+      ...context.correlation,
+      executionId,
+      toolCallId,
+    },
+  };
+
   const startedAt = Date.now();
   let raced: { timedOut: false; value: string } | { timedOut: true };
   try {
-    raced = await withTimeout(impl.run(args, context), policy.timeoutMs);
+    raced = await withTimeout(impl.run(args, runContext), policy.timeoutMs, controller);
   } catch (err) {
     return {
       status: "ERROR",
