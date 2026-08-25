@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "typecheck:tests": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@atlas/shared": "workspace:*",

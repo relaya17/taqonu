@@ -1,0 +1,23 @@
+{
+  // Typechecks what tsconfig.json deliberately leaves out.
+  //
+  // The build config excludes src/**/*.test.ts because tests must not be
+  // emitted into dist. That exclusion also means the compiler never reads
+  // them — which is how ten call sites in runtime.test.ts passed an
+  // incomplete ToolExecutionContext for a long time with nothing to catch
+  // it: `correlation` is a required field, and every one of those calls
+  // omitted it. Vitest found out at runtime; tsc was never asked.
+  //
+  // This config checks the same source WITH the tests, and emits nothing.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  // Only the test exclusion is lifted. Clearing this outright would also
+  // drop the defaults and pull dist/ and node_modules into the program.
+  "exclude": ["node_modules", "dist"]
+}
