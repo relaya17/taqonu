@@ -62,6 +62,8 @@ export interface GatewayRequest {
   readonly evidenceCount?: number;
   readonly evidenceConflicting?: boolean;
   readonly evidenceStale?: boolean;
+  readonly boundEvidenceIds?: readonly string[];
+  readonly conflictingClaimIds?: readonly string[];
 }
 
 export interface GatewayEvaluation {
@@ -366,6 +368,12 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
       ? { evidenceConflicting: input.evidenceConflicting }
       : {}),
     ...(input.evidenceStale !== undefined ? { evidenceStale: input.evidenceStale } : {}),
+    ...(input.boundEvidenceIds !== undefined
+      ? { boundEvidenceIds: input.boundEvidenceIds }
+      : {}),
+    ...(input.conflictingClaimIds !== undefined
+      ? { conflictingClaimIds: input.conflictingClaimIds }
+      : {}),
   });
 
   const base = {

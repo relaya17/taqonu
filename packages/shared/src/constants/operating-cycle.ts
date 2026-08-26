@@ -85,6 +85,9 @@ export interface OperatingCycleInput {
   readonly evidenceCount?: number;
   readonly evidenceConflicting?: boolean;
   readonly evidenceStale?: boolean;
+  /** Claim→evidence binding. Count alone is not a bound claim. */
+  readonly boundEvidenceIds?: readonly string[];
+  readonly conflictingClaimIds?: readonly string[];
   /** Agent A → B → privileged tool. Each hop must not inherit unlimited authority. */
   readonly delegationHopCount?: number;
   readonly reauthenticated?: boolean;
@@ -149,15 +152,7 @@ export function evaluateOperatingCycle(
   stages.push("POLICY");
   stages.push("RISK");
 
-  const sufficiency = assessEvidenceSufficiency({
-    evidenceCount: input.evidenceCount ?? 0,
-    mutation: input.readOnly !== true,
-    claimedState: input.readOnly === true ? "OBSERVED" : "VERIFIED",
-    ...(input.evidenceConflicting !== undefined
-      ? { conflicting: input.evidenceConflicting }
-      : {}),
-    ...(input.evidenceStale !== undefined ? { stale: input.evidenceStale } : {}),
-  });
+  const sufficiency = assessEvidenceSufficiency(sufficiencyArgs(input));
   if (sufficiency.decision === "HALT") {
     return deny("EVIDENCE", sufficiency.reason, stages, input);
   }
@@ -224,8 +219,8 @@ export function evaluateOperatingCycle(
   };
 }
 
-function epistemicOf(input: OperatingCycleInput): EpistemicGap {
-  const sufficiency = assessEvidenceSufficiency({
+function sufficiencyArgs(input: OperatingCycleInput) {
+  return {
     evidenceCount: input.evidenceCount ?? 0,
     mutation: input.readOnly !== true,
     claimedState: input.readOnly === true ? "OBSERVED" : "VERIFIED",
@@ -233,11 +228,23 @@ function epistemicOf(input: OperatingCycleInput): EpistemicGap {
       ? { conflicting: input.evidenceConflicting }
       : {}),
     ...(input.evidenceStale !== undefined ? { stale: input.evidenceStale } : {}),
-  });
+    ...(input.boundEvidenceIds !== undefined
+      ? { boundEvidenceIds: input.boundEvidenceIds }
+      : {}),
+    ...(input.conflictingClaimIds !== undefined
+      ? { conflictingClaimIds: input.conflictingClaimIds }
+      : {}),
+  };
+}
+
+function epistemicOf(input: OperatingCycleInput): EpistemicGap {
+  const sufficiency = assessEvidenceSufficiency(sufficiencyArgs(input));
   if (sufficiency.decision === "HALT" || sufficiency.decision === "INCONCLUSIVE") {
     return "UNVERIFIED";
   }
-  if ((input.evidenceCount ?? 0) <= 0) return "UNVERIFIED";
+  const bound =
+    input.boundEvidenceIds?.filter((id) => id.trim().length > 0).length ?? 0;
+  if ((input.evidenceCount ?? 0) <= 0 && bound <= 0) return "UNVERIFIED";
   return "UNCERTAIN";
 }
 

@@ -12,6 +12,8 @@ const bodySchema = z.object({
   artifact: z.string().optional(),
   projectId: z.string().uuid().nullable().optional(),
   approvalRequestId: z.string().uuid().optional(),
+  expectedObservations: z.array(z.string().trim().min(1)).max(32).optional(),
+  baselineObservations: z.array(z.string().trim().min(1)).max(32).optional(),
 });
 
 /**
@@ -36,6 +38,12 @@ export async function registerGatewayFulfillRoutes(
       ...(body.artifact ? { artifact: body.artifact } : {}),
       ...(body.approvalRequestId
         ? { approvalRequestId: body.approvalRequestId }
+        : {}),
+      ...(body.expectedObservations
+        ? { expectedObservations: body.expectedObservations }
+        : {}),
+      ...(body.baselineObservations
+        ? { baselineObservations: body.baselineObservations }
         : {}),
     });
   });

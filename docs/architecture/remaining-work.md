@@ -22,8 +22,12 @@ Wired. Control Plane does not run tools. See commit `e7773e0`.
 Application → Gateway → Identity → Registries → Capability
 → Entity Policy / Risk (existing) → ALLOW|DENY|APPROVAL
 → executeGovernedAction → executeTool
-→ Receipt → Observation → Verification → Audit → Memory
+→ Receipt → Observation → Verification → Regression → Audit → Memory
 ```
+
+Regression is a **gate on this hop**, not a QA product: optional `baselineObservations`
+on fulfill. No baseline → INCONCLUSIVE (not a pass). Missing a prior observation
+after mutation → FAILED, which overrides VERIFIED. Memory stays OBSERVED.
 
 ## 03 IDENTITY / AUTHZ
 Real principals. No default `atlas-owner`. Customer admin ≠ operator.
@@ -77,9 +81,12 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - `captureExpectedState` → execute → `compareExpectedActual` on Gateway fulfill
   (the only execution hop). Empty expected observations → INCONCLUSIVE.
   Bound observations that match actual output → VERIFIED; memory stays OBSERVED.
+- `assessRegression` on the same fulfill hop. No baseline → INCONCLUSIVE
+  (cannot claim absence of regression). Missing baseline observation → FAILED,
+  composed over verification so VERIFIED cannot survive a regression fail.
 
-**Not claimed:** a general world-state expected-vs-actual checker; regression
-product; diagnosis.
+**Not claimed:** a general world-state expected-vs-actual checker; a regression
+product / suite engine; diagnosis.
 
 ## 08 EGRESS GOVERNANCE
 **Implemented:**
@@ -96,8 +103,9 @@ via `memoryEpistemicAfterAction`. Gateway memory is OBSERVED. No new memory type
 
 **GEAL sufficiency (same operating cycle, not a second path):**
 `assessEvidenceSufficiency` → CONTINUE | HALT | INCONCLUSIVE.
-Conflicting evidence on a mutation DENY at EVIDENCE. Empty evidence is not
-VERIFIED. Inspect may CONTINUE in order to observe.
+Conflicting evidence or bound `conflictingClaimIds` on a mutation DENY at EVIDENCE.
+`boundEvidenceIds` count as present evidence; emptiness is not VERIFIED.
+Inspect may CONTINUE in order to observe. This is not a Truth Engine.
 
 ## 10 AGENT GOVERNANCE
 **Implemented:** `agentMayExecute` (ACTIVE/DEGRADED only). Delegation hops floor to approval. Do not add agents. CP `fs.*` names remain oversight labels — execution uses the fabric catalog.

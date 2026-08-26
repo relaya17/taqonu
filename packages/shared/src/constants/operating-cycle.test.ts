@@ -82,6 +82,20 @@ describe("evaluateOperatingCycle", () => {
     expect(result.blockedAt).toBe("EVIDENCE");
   });
 
+  it("halts a write when conflicting claim ids are bound — count is not enough", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "request_remediation",
+      approved: true,
+      verificationPlanPresent: true,
+      conflictingClaimIds: ["claim-a"],
+    });
+    expect(result.decision).toBe("DENY");
+    expect(result.blockedAt).toBe("EVIDENCE");
+  });
+
   it("only ACTIVE and DEGRADED agents may execute", () => {
     expect(agentMayExecute("ACTIVE")).toBe(true);
     expect(agentMayExecute("DEGRADED")).toBe(true);

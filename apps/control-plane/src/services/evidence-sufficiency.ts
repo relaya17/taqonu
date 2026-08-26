@@ -11,6 +11,8 @@ export interface EvidenceSufficiencyInput {
   readonly stale?: boolean;
   readonly claimedState?: string;
   readonly mutation?: boolean;
+  readonly boundEvidenceIds?: readonly string[];
+  readonly conflictingClaimIds?: readonly string[];
 }
 
 export interface EvidenceSufficiencyResult {
@@ -23,18 +25,21 @@ const HIGH_CLAIMS = new Set(["FACT", "VERIFIED", "CONFIRMED", "KNOWN"]);
 export function assessEvidenceSufficiency(
   input: EvidenceSufficiencyInput,
 ): EvidenceSufficiencyResult {
-  const count = Math.max(0, input.evidenceCount);
+  const bound = input.boundEvidenceIds?.filter((id) => id.trim().length > 0) ?? [];
+  const conflicts = input.conflictingClaimIds?.filter((id) => id.trim().length > 0) ?? [];
+  const count = Math.max(0, input.evidenceCount, bound.length);
   const mutation = input.mutation === true;
   const claimed = (input.claimedState ?? "").toUpperCase();
+  const conflicting = input.conflicting === true || conflicts.length > 0;
 
-  if (input.conflicting === true && mutation) {
+  if (conflicting && mutation) {
     return {
       decision: "HALT",
       reason: "Conflicting evidence — Atlas cannot conclude or mutate as if the claim were known",
     };
   }
 
-  if (input.conflicting === true) {
+  if (conflicting) {
     return {
       decision: "INCONCLUSIVE",
       reason: "Conflicting evidence — observe only; do not conclude VERIFIED",
@@ -51,7 +56,7 @@ export function assessEvidenceSufficiency(
   if (count <= 0 && mutation && HIGH_CLAIMS.has(claimed)) {
     return {
       decision: "INCONCLUSIVE",
-      reason: "No bound evidence — cannot conclude FACT/VERIFIED; approval may still be required",
+      reason: "Claim is not bound to evidence ids — cannot conclude FACT/VERIFIED",
     };
   }
 

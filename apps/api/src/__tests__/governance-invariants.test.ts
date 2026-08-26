@@ -8,7 +8,7 @@ import {
   verifyAuditChain,
   verifyAuditLogChain,
 } from "../services/audit-log.js";
-import { verificationVerdictFromOutcome } from "../services/verification.js";
+import { composeLoopVerdict, verificationVerdictFromOutcome } from "../services/verification.js";
 import { checkResourceAccess } from "../services/resource-access.js";
 
 const ACTOR = "11111111-1111-4111-8111-111111111111";
@@ -54,6 +54,10 @@ describe("governance invariants (stability)", () => {
         output: "ok",
       }),
     ).toBe("INCONCLUSIVE");
+  });
+
+  it("regression FAILED is not verified", () => {
+    expect(composeLoopVerdict("VERIFIED", "FAILED")).toBe("FAILED");
   });
 });
 

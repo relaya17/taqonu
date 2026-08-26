@@ -299,6 +299,8 @@ export function createApiRouter(): Router {
     const needsReauth = writeOps.has(operation);
     const reauthenticated = needsReauth ? verifyReauthTicket(reauthHeader) : true;
     const principal = resolveControlPlanePrincipal();
+    const boundEvidenceIds = stringArray(record["boundEvidenceIds"]);
+    const conflictingClaimIds = stringArray(record["conflictingClaimIds"]);
     const evaluation = dispatchGatewayOperation({
       actorId: principal.id,
       actorKind: principal.actorKind,
@@ -315,6 +317,12 @@ export function createApiRouter(): Router {
       ...(typeof record["delegationHopCount"] === "number"
         ? { delegationHopCount: record["delegationHopCount"] }
         : {}),
+      ...(record["evidenceConflicting"] === true ? { evidenceConflicting: true } : {}),
+      ...(typeof record["evidenceCount"] === "number"
+        ? { evidenceCount: record["evidenceCount"] }
+        : {}),
+      ...(boundEvidenceIds ? { boundEvidenceIds } : {}),
+      ...(conflictingClaimIds ? { conflictingClaimIds } : {}),
     });
     const status =
       evaluation.decision === "DENY"
@@ -379,6 +387,14 @@ export function createApiRouter(): Router {
   });
 
   return router;
+}
+
+function stringArray(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter(
+    (item): item is string => typeof item === "string" && item.trim().length > 0,
+  );
+  return items.length > 0 ? items : undefined;
 }
 
 function headerValue(

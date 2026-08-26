@@ -189,4 +189,20 @@ describe("Atlas Gateway", () => {
     expect(result.blockedAt).toBe("EVIDENCE");
     expect(result.executed).toBe(false);
   });
+
+  it("halts writes when conflicting claim ids are bound on the same Gateway cycle", () => {
+    const result = dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      reason: "apply fix",
+      approved: true,
+      verificationPlanPresent: true,
+      conflictingClaimIds: ["claim-a"],
+    });
+    expect(result.decision).toBe("DENY");
+    expect(result.blockedAt).toBe("EVIDENCE");
+    expect(result.executed).toBe(false);
+  });
 });

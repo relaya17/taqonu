@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessRegression,
   captureExpectedState,
   compareExpectedActual,
+  composeLoopVerdict,
   verificationVerdictFromOutcome,
 } from "./verification.js";
 
@@ -86,5 +88,47 @@ describe("compareExpectedActual", () => {
         output: "ok",
       }).verdict,
     ).toBe("FAILED");
+  });
+});
+
+describe("assessRegression", () => {
+  it("is INCONCLUSIVE without a baseline — not a pass", () => {
+    expect(
+      assessRegression({
+        baselineObservations: [],
+        actualOutput: "ok",
+        executed: true,
+      }).verdict,
+    ).toBe("INCONCLUSIVE");
+  });
+
+  it("FAILS when a prior observation is missing after mutation", () => {
+    expect(
+      assessRegression({
+        baselineObservations: ["login still works"],
+        actualOutput: "patched checkout",
+        executed: true,
+      }).verdict,
+    ).toBe("FAILED");
+  });
+
+  it("does not treat preserved baseline as VERIFIED", () => {
+    expect(
+      assessRegression({
+        baselineObservations: ["login still works"],
+        actualOutput: "patched checkout; login still works",
+        executed: true,
+      }).verdict,
+    ).toBe("INCONCLUSIVE");
+  });
+});
+
+describe("composeLoopVerdict", () => {
+  it("lets regression FAILED override VERIFIED", () => {
+    expect(composeLoopVerdict("VERIFIED", "FAILED")).toBe("FAILED");
+  });
+
+  it("keeps expected-vs-actual VERIFIED when regression is only INCONCLUSIVE", () => {
+    expect(composeLoopVerdict("VERIFIED", "INCONCLUSIVE")).toBe("VERIFIED");
   });
 });

@@ -86,6 +86,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     expect(result.executed).toBe(true);
     expect(result.verified).toBe(false);
     expect(result.verificationVerdict).toBe("INCONCLUSIVE");
+    expect(result.regressionVerdict).toBe("INCONCLUSIVE");
     expect(result.observation).toMatchObject({
       output: "observation: 3 TypeScript files",
     });
@@ -127,10 +128,40 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     expect(result.executed).toBe(true);
     expect(result.verified).toBe(true);
     expect(result.verificationVerdict).toBe("VERIFIED");
+    expect(result.regressionVerdict).toBe("INCONCLUSIVE");
     const memory = osStore
       .listDomainEvents()
       .filter((e) => e.payload["requestId"] === "req_gw_nu");
     expect(memory[0]?.epistemicState).toBe("OBSERVED");
+  });
+
+  it("FAILS the loop when a baseline observation is missing after mutation", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "observation: 3 TypeScript files",
+    });
+
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_reg",
+      expectedObservations: ["3 TypeScript files"],
+      baselineObservations: ["authz still enforced"],
+    });
+
+    expect(result.executed).toBe(true);
+    expect(result.verified).toBe(false);
+    expect(result.regressionVerdict).toBe("FAILED");
+    expect(result.verificationVerdict).toBe("FAILED");
+    const memory = osStore
+      .listDomainEvents()
+      .filter((e) => e.payload["requestId"] === "req_gw_reg");
+    expect(memory[0]?.epistemicState).toBe("OBSERVED");
+    expect(memory[0]?.payload["regressionVerdict"]).toBe("FAILED");
   });
 
   it("does not treat an unmapped Control Plane agent id as executable", async () => {

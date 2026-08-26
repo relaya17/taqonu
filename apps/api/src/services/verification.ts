@@ -88,6 +88,50 @@ export function compareExpectedActual(
   };
 }
 
+/**
+ * Regression gate — same loop, not a QA product.
+ * No baseline means we cannot claim "no regression".
+ * Missing a prior observation after mutation is a FAILED repair, not VERIFIED.
+ */
+export function assessRegression(input: {
+  readonly baselineObservations: readonly string[];
+  readonly actualOutput: string;
+  readonly executed: boolean;
+}): { readonly verdict: VerificationVerdict; readonly detail: string } {
+  if (!input.executed) {
+    return { verdict: "BLOCKED", detail: "No execution — regression not evaluated" };
+  }
+  const baseline = input.baselineObservations.filter((s) => s.trim().length > 0);
+  if (baseline.length === 0) {
+    return {
+      verdict: "INCONCLUSIVE",
+      detail: "No baseline observations — cannot claim absence of regression",
+    };
+  }
+  const missing = baseline.filter((n) => !input.actualOutput.includes(n));
+  if (missing.length > 0) {
+    return {
+      verdict: "FAILED",
+      detail: `Regression: ${missing.length} prior observation(s) missing after mutation`,
+    };
+  }
+  return {
+    verdict: "INCONCLUSIVE",
+    detail: "Prior observations still present — not a verification of the new change",
+  };
+}
+
+export function composeLoopVerdict(
+  verification: VerificationVerdict,
+  regression: VerificationVerdict,
+): VerificationVerdict {
+  if (regression === "FAILED") return "FAILED";
+  if (verification === "BLOCKED" || regression === "BLOCKED") {
+    return verification === "BLOCKED" ? verification : regression;
+  }
+  return verification;
+}
+
 export function verificationVerdictFromOutcome(
   outcome: GovernedExecutionOutcome,
 ): VerificationVerdict {

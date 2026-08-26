@@ -15,8 +15,10 @@ import { resolveAgentIdentity } from "./agent-runtime-authz.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import type { DispatchSourceContext } from "./agent-dispatch-guard.js";
 import {
+  assessRegression,
   captureExpectedState,
   compareExpectedActual,
+  composeLoopVerdict,
   verificationVerdictFromOutcome,
   type VerificationVerdict,
 } from "./verification.js";
@@ -34,6 +36,8 @@ export interface GatewayHandoff {
   readonly approvalRequestId?: string;
   readonly sourceContext?: DispatchSourceContext;
   readonly expectedObservations?: readonly string[];
+  /** Prior observations that must still hold after mutation. Empty → not "no regression". */
+  readonly baselineObservations?: readonly string[];
 }
 
 export interface GatewayFulfillmentResult {
@@ -45,6 +49,7 @@ export interface GatewayFulfillmentResult {
   readonly executed: boolean;
   readonly verified: boolean;
   readonly verificationVerdict: VerificationVerdict;
+  readonly regressionVerdict: VerificationVerdict;
   readonly observation: Record<string, unknown> | null;
   readonly verificationDetail: string;
 }
@@ -72,6 +77,7 @@ export async function fulfillGatewayHandoff(
       executed: false,
       verified: false,
       verificationVerdict: verificationVerdictFromOutcome(outcome),
+      regressionVerdict: "BLOCKED",
       observation: null,
       verificationDetail: outcome.reason,
     };
@@ -128,6 +134,14 @@ export async function fulfillGatewayHandoff(
         verdict: verificationVerdictFromOutcome(outcome),
         detail: `Not executed: ${outcome.stage}/${outcome.status}`,
       };
+  const regression = assessRegression({
+    baselineObservations: handoff.baselineObservations ?? [],
+    actualOutput: outcome.status === "EXECUTED" ? outcome.output : "",
+    executed,
+  });
+  const loopVerdict = composeLoopVerdict(compared.verdict, regression.verdict);
+  const verificationDetail =
+    regression.verdict === "FAILED" ? regression.detail : compared.detail;
 
   if (outcome.status === "EXECUTED") {
     appendDomainEvent({
@@ -141,7 +155,8 @@ export async function fulfillGatewayHandoff(
         requestId: handoff.requestId,
         toolName: mapping.toolName,
         artifactHash: outcome.artifactHash,
-        verificationVerdict: compared.verdict,
+        verificationVerdict: loopVerdict,
+        regressionVerdict: regression.verdict,
       },
     });
   }
@@ -153,8 +168,9 @@ export async function fulfillGatewayHandoff(
     principalId: identity.ownerId,
     outcome,
     executed,
-    verified: compared.verdict === "VERIFIED",
-    verificationVerdict: compared.verdict,
+    verified: loopVerdict === "VERIFIED",
+    verificationVerdict: loopVerdict,
+    regressionVerdict: regression.verdict,
     observation:
       outcome.status === "EXECUTED"
         ? {
@@ -162,6 +178,6 @@ export async function fulfillGatewayHandoff(
             artifactHash: outcome.artifactHash,
           }
         : null,
-    verificationDetail: compared.detail,
+    verificationDetail,
   };
 }
