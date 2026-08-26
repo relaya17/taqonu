@@ -1,11 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { issueCertificateSchema } from "@atlas/shared";
+import { AtlasError, issueCertificateSchema } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { issueProductionReadinessCertificate } from "../services/readiness-certificate.js";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerReadinessRoutes(
   app: FastifyInstance,
@@ -23,15 +23,21 @@ export async function registerReadinessRoutes(
     // an irreversible external action), so an authenticated WRITE-session
     // caller's own request is treated as sufficient authorization — no
     // separate human-approval round trip is manufactured for it.
+    const entityAuthz = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "readiness.certificate (CONFIGURATION.EXECUTE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     osStore.ensureLoaded();
     const body = issueCertificateSchema.parse(request.body ?? {});
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "EXECUTE",
-      routeLabel: "readiness.certificate",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
-    });
     const project =
       body.projectId != null ? osStore.getProject(body.projectId) : undefined;
     const workspaceRoot =

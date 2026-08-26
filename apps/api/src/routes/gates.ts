@@ -5,12 +5,12 @@ import {
   waiveGateSchema,
   AtlasError,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { evaluateReleaseGateGraph } from "../services/gate-engine.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerGateRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/gates", async (request) => {
@@ -36,14 +36,20 @@ export async function registerGateRoutes(app: FastifyInstance): Promise<void> {
     // irreversible external action), so an authenticated WRITE-session
     // caller's own request is treated as sufficient authorization — no
     // separate human-approval round trip is manufactured for it.
-    const projectId = body.projectId ?? null;
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "EXECUTE",
-      routeLabel: "gates.evaluate",
-      actorId: user.id,
-      projectId,
+    const entityAuthz = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
     });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "gates.evaluate (CONFIGURATION.EXECUTE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
+    const projectId = body.projectId ?? null;
     const graph = evaluateReleaseGateGraph(projectId);
     appendDomainEvent({
       type: "gate.evaluated",
@@ -65,7 +71,7 @@ export async function registerGateRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/v1/gates/:graphId/waive", async (request, reply) => {
     // ROLE-LEVEL gate: previously this route had NO auth guard at all.
-    const user = await requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
     const params = z.object({ graphId: uuidSchema }).parse(request.params);
     const body = waiveGateSchema.parse(request.body);
 
@@ -76,12 +82,18 @@ export async function registerGateRoutes(app: FastifyInstance): Promise<void> {
     // authenticated WRITE-session caller's own request is treated as
     // sufficient authorization here (no separate human-approval round
     // trip is manufactured for it).
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "UPDATE",
-      routeLabel: "gates.waive",
-      actorId: user.id,
+    const entityAuthz = authorizeEntityAction("CONFIGURATION", "UPDATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
     });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "gates.waive (CONFIGURATION.UPDATE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
 
     const graph = osStore.getGateGraphById(params.graphId);
     if (!graph) {

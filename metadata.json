@@ -1,0 +1,6 @@
+{
+  "name": "Atlas",
+  "description": "Atlas Core — engineering memory platform and AI companion system",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

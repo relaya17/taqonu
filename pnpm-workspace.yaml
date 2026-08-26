@@ -1,9 +1,0 @@
-packages:
-  - "apps/*"
-  - "packages/*"
-  - "packages/integrations/*"
-
-# Moved here from package.json's "pnpm" field: pnpm 10 reads build-script
-# settings from the workspace file and silently ignores the package.json one.
-onlyBuiltDependencies:
-  - esbuild

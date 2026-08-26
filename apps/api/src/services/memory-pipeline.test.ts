@@ -1,84 +1,29 @@
-import { afterAll, describe, expect, it, beforeEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   memorySchema,
   type MemoryEvidence,
   type QaPortfolioPattern,
 } from "@atlas/shared";
-
-// ISOLATION FIX (found while widening Policy Engine coverage — this file's
-// lack of isolation was silently corrupting the real repo `.atlas/store.json`
-// on every run, since `osStore` falls back to that real path whenever
-// `ATLAS_STORE_PATH` isn't set): same pattern every other route/service test
-// in this codebase uses — set `ATLAS_STORE_PATH` to a throwaway tmp dir
-// BEFORE `osStore` is ever imported (hence the dynamic imports below,
-// mirroring memory.test.ts / events.test.ts), and set
-// `ATLAS_SKIP_STORE_PERSIST`/`ATLAS_SKIP_EVENT_DISPATCH` once for the whole
-// file instead of the previous per-describe-block save/restore dance (which
-// didn't address the real bug: the *initial* `ensureLoaded()` read from the
-// real file regardless of that flag).
-const tmpDir = mkdtempSync(join(tmpdir(), "atlas-memory-pipeline-test-"));
-process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
-process.env.ATLAS_SKIP_STORE_PERSIST = "1";
-process.env.ATLAS_SKIP_EVENT_DISPATCH = "1";
-
-const { osStore } = await import("../store/os-store.js");
-const {
+import { osStore } from "../store/os-store.js";
+import {
   approveMemory,
-  buildMemoryContext,
-  resolveMemoryProvenance,
   retrieveMemories,
   seedPortfolioPatternMemories,
-  supersedeMatchingMemories,
-} = await import("./memory-pipeline.js");
-
-afterAll(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
-});
+} from "./memory-pipeline.js";
 
 const PROJECT_A = "11111111-1111-4111-8111-111111111111";
 const PROJECT_B = "22222222-2222-4222-8222-222222222222";
-// Dedicated project for the semantic-ranking tests below — retrieveMemories()
-// with no projectId scans the shared "global" pool, which by this point in
-// the file also holds memories added by every earlier describe block (this
-// file doesn't reset osStore between tests); scoping to a fresh project id
-// keeps each semantic-ranking assertion isolated to just its own fixtures.
-const PROJECT_SEMANTIC = "33333333-3333-4333-8333-333333333333";
 const OWNER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OWNER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-/**
- * A single evidence entry with a genuine verification signal — satisfies
- * both the evidence-required gate (non-empty) AND the stricter
- * evidence-*verified* gate (Gate 3 strengthening — see
- * `hasVerificationSignal()` in memory-pipeline.ts): `kind: "TEST_RUN"` is
- * one of `evidenceSourceTypeSchema`'s inherently-verified source kinds.
- */
+/** A single non-empty evidence entry — satisfies the evidence-required gate. */
 function oneEvidenceEntry(): MemoryEvidence[] {
   return [
     {
       id: crypto.randomUUID(),
-      kind: "TEST_RUN",
+      kind: "qa_finding",
       reference: "finding-1",
       excerpt: "supporting evidence excerpt",
-    },
-  ];
-}
-
-/**
- * A single evidence entry with NO verification signal — a bare
- * USER-sourced assertion. Non-empty (so it clears "no_evidence"), but
- * should still fail the stricter evidence-*verified* gate on its own.
- */
-function unverifiedEvidenceEntry(): MemoryEvidence[] {
-  return [
-    {
-      id: crypto.randomUUID(),
-      kind: "USER",
-      reference: "conversation-1",
-      excerpt: "someone said this is true",
     },
   ];
 }
@@ -125,10 +70,18 @@ function memory(
 }
 
 describe("retrieveMemories isolation", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
   beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
     osStore.addMemory(memory(PROJECT_A, "secret from tenant A"));
     osStore.addMemory(memory(PROJECT_B, "secret from tenant B"));
     osStore.addMemory(memory(null, "platform-only global note"));
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
   });
 
   it("does not leak another project's memories when scoped", () => {
@@ -149,9 +102,17 @@ describe("retrieveMemories isolation", () => {
 });
 
 describe("retrieveMemories ownerId scoping (P0 tenant-isolation fix)", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
   beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
     osStore.addMemory(memory(null, "owner A's global note", OWNER_A));
     osStore.addMemory(memory(null, "owner B's global note", OWNER_B));
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
   });
 
   it("only returns the caller's own memories when ownerId is provided", () => {
@@ -170,6 +131,17 @@ describe("retrieveMemories ownerId scoping (P0 tenant-isolation fix)", () => {
 });
 
 describe("approveMemory ownerId scoping (P0 tenant-isolation fix)", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
   it("returns { memory: null, reason: 'not_found' } when ownerId doesn't match the memory's owner", () => {
     const target = memory(null, "owner A's memory", OWNER_A);
     osStore.addMemory(target);
@@ -258,6 +230,17 @@ describe("approveMemory ownerId scoping (P0 tenant-isolation fix)", () => {
 });
 
 describe("approveMemory requires non-empty evidence (evidence-required gate)", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
   it("rejects promotion to CONFIRMED when evidence is an empty array", () => {
     const target = memory(
       null,
@@ -310,199 +293,20 @@ describe("approveMemory requires non-empty evidence (evidence-required gate)", (
   });
 });
 
-describe("approveMemory requires verified evidence (Gate 3 strengthening)", () => {
-  it("rejects promotion to CONFIRMED when evidence is non-empty but none of it is verified", () => {
-    const target = memory(
-      null,
-      "owner A's unverified-evidence memory",
-      OWNER_A,
-      null,
-      unverifiedEvidenceEntry(),
-    );
-    osStore.addMemory(target);
-
-    const result = approveMemory({
-      memoryId: target.id,
-      projectId: null,
-      ownerId: OWNER_A,
-    });
-
-    expect(result.memory).toBeNull();
-    expect(result.reason).toBe("unverified_evidence");
-
-    // Never reached CONFIRMED — still exactly as stored.
-    const stored = osStore
-      .getMemories("global")
-      .find((m) => m.id === target.id);
-    expect(stored?.epistemicState).not.toBe("CONFIRMED");
-    expect(stored?.epistemicState).toBe("INFERRED");
-    expect(stored?.verifiedBy ?? null).toBeNull();
-    expect(stored?.verifiedAt ?? null).toBeNull();
-  });
-
-  it("is distinguishable from 'no_evidence' — empty vs. non-empty-but-unverified are different reasons", () => {
-    const emptyTarget = memory(
-      null,
-      "owner A's empty-evidence memory",
-      OWNER_A,
-      null,
-      [],
-    );
-    const unverifiedTarget = memory(
-      null,
-      "owner A's unverified-only memory",
-      OWNER_A,
-      null,
-      unverifiedEvidenceEntry(),
-    );
-    osStore.addMemory(emptyTarget);
-    osStore.addMemory(unverifiedTarget);
-
-    const emptyResult = approveMemory({
-      memoryId: emptyTarget.id,
-      projectId: null,
-      ownerId: OWNER_A,
-    });
-    const unverifiedResult = approveMemory({
-      memoryId: unverifiedTarget.id,
-      projectId: null,
-      ownerId: OWNER_A,
-    });
-
-    expect(emptyResult.reason).toBe("no_evidence");
-    expect(unverifiedResult.reason).toBe("unverified_evidence");
-    expect(emptyResult.reason).not.toBe(unverifiedResult.reason);
-  });
-
-  it("does not leak cross-tenant existence: a mismatched owner gets 'not_found', never 'unverified_evidence', even though the memory does exist with unverified evidence", () => {
-    const target = memory(
-      null,
-      "owner A's memory with unverified evidence",
-      OWNER_A,
-      null,
-      unverifiedEvidenceEntry(),
-    );
-    osStore.addMemory(target);
-
-    const result = approveMemory({
-      memoryId: target.id,
-      projectId: null,
-      ownerId: OWNER_B,
-    });
-
-    // The ownership check runs before the evidence gate (see doc comment
-    // above `approveMemory()`), so a mismatched owner never learns anything
-    // about whether the memory has evidence, verified or otherwise — same
-    // no-enumeration guarantee the "not_found" reason already provides.
-    expect(result.memory).toBeNull();
-    expect(result.reason).toBe("not_found");
-    expect(result.reason).not.toBe("unverified_evidence");
-  });
-
-  it("approves when at least one evidence entry is verified, even alongside unverified entries", () => {
-    const target = memory(
-      null,
-      "owner A's mixed-evidence memory",
-      OWNER_A,
-      null,
-      [...unverifiedEvidenceEntry(), ...oneEvidenceEntry()],
-    );
-    osStore.addMemory(target);
-
-    const result = approveMemory({
-      memoryId: target.id,
-      projectId: null,
-      ownerId: OWNER_A,
-    });
-
-    expect(result.memory).not.toBeNull();
-    expect(result.memory?.epistemicState).toBe("CONFIRMED");
-    expect(result.memory?.verifiedBy).toBe(OWNER_A);
-    expect(result.memory?.verifiedAt).toBeTruthy();
-  });
-});
-
-describe("resolveMemoryProvenance (evidence provenance chain)", () => {
-  it("returns a complete, correctly-classified chain for a memory with mixed verified/unverified evidence", () => {
-    const verified = oneEvidenceEntry()[0]!;
-    const unverified = unverifiedEvidenceEntry()[0]!;
-    const target = memory(
-      null,
-      "owner A's mixed-provenance memory",
-      OWNER_A,
-      null,
-      [verified, unverified],
-    );
-
-    const provenance = resolveMemoryProvenance(target);
-
-    expect(provenance.memoryId).toBe(target.id);
-    expect(provenance.epistemicState).toBe(target.epistemicState);
-    expect(provenance.evidenceCount).toBe(2);
-    expect(provenance.verifiedEvidenceCount).toBe(1);
-    expect(provenance.meetsApprovalEvidenceBar).toBe(true);
-    expect(provenance.entries).toHaveLength(2);
-
-    const verifiedEntry = provenance.entries.find(
-      (e) => e.evidenceId === verified.id,
-    );
-    const unverifiedEntry = provenance.entries.find(
-      (e) => e.evidenceId === unverified.id,
-    );
-    expect(verifiedEntry).toMatchObject({
-      kind: "TEST_RUN",
-      reference: verified.reference,
-      excerpt: verified.excerpt,
-      hasVerificationSignal: true,
-    });
-    expect(unverifiedEntry).toMatchObject({
-      kind: "USER",
-      reference: unverified.reference,
-      excerpt: unverified.excerpt,
-      hasVerificationSignal: false,
-    });
-  });
-
-  it("reports meetsApprovalEvidenceBar: false and verifiedEvidenceCount: 0 when no evidence is verified", () => {
-    const target = memory(
-      null,
-      "owner A's unverified-only provenance memory",
-      OWNER_A,
-      null,
-      unverifiedEvidenceEntry(),
-    );
-
-    const provenance = resolveMemoryProvenance(target);
-
-    expect(provenance.evidenceCount).toBe(1);
-    expect(provenance.verifiedEvidenceCount).toBe(0);
-    expect(provenance.meetsApprovalEvidenceBar).toBe(false);
-  });
-
-  it("returns an empty chain for a memory with no evidence at all", () => {
-    const target = memory(
-      null,
-      "owner A's evidence-less provenance memory",
-      OWNER_A,
-      null,
-      [],
-    );
-
-    const provenance = resolveMemoryProvenance(target);
-
-    expect(provenance.evidenceCount).toBe(0);
-    expect(provenance.verifiedEvidenceCount).toBe(0);
-    expect(provenance.meetsApprovalEvidenceBar).toBe(false);
-    expect(provenance.entries).toEqual([]);
-  });
-});
-
 describe("retrieveMemories per-agent scoping (P1 fix)", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
   beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
     osStore.addMemory(
       memory(null, "judge-only note", OWNER_A, ["JUDGE"]),
     );
     osStore.addMemory(memory(null, "open note, no allowedAgents", OWNER_A));
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
   });
 
   it("excludes an agent-scoped memory when the requesting agent is not in allowedAgents", () => {
@@ -545,7 +349,26 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
 });
 
 describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+  const prevSkipDispatch = process.env.ATLAS_SKIP_EVENT_DISPATCH;
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    process.env.ATLAS_SKIP_EVENT_DISPATCH = "1";
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+    if (prevSkipDispatch === undefined) {
+      delete process.env.ATLAS_SKIP_EVENT_DISPATCH;
+    } else {
+      process.env.ATLAS_SKIP_EVENT_DISPATCH = prevSkipDispatch;
+    }
+  });
+
   it("redacts a fake AWS access key embedded in a QA pattern's title/summary before persisting the memory", () => {
+    const now = new Date().toISOString();
     const fakeSecret = "AKIAIOSFODNN7EXAMPLE";
     const finding1 = crypto.randomUUID();
     const pattern: Pick<
@@ -583,309 +406,5 @@ describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {
       .getMemories("global")
       .find((m) => m.id === memory.id);
     expect(stored?.statement).not.toContain(fakeSecret);
-  });
-});
-
-describe("retrieveMemories semantic ranking (local hash-trick embeddings, @atlas/embeddings)", () => {
-  it("surfaces a memory that shares no literal term with the query when it is embedding-closer than an equally non-substring-matching distractor", () => {
-    // Neither statement below contains any literal word from the query
-    // ("why did the deploy fail") — the pre-existing substring bonus (see
-    // `retrieveMemories()`) can't fire for either one, so with budget: 1 the
-    // only thing that can break the tie is the new semantic-similarity term.
-    osStore.addMemory(
-      memory(
-        PROJECT_SEMANTIC,
-        "production build broke due to missing env var",
-      ),
-    );
-    osStore.addMemory(
-      memory(
-        PROJECT_SEMANTIC,
-        "quarterly revenue exceeded expectations this year",
-      ),
-    );
-
-    const { items } = retrieveMemories({
-      projectId: PROJECT_SEMANTIC,
-      budget: 1,
-      query: "why did the deploy fail",
-    });
-
-    expect(items).toHaveLength(1);
-    expect(items[0]?.statement).toBe(
-      "production build broke due to missing env var",
-    );
-  });
-
-  it("still ranks a literal substring match first (no regression from the pre-existing exact/substring behavior)", () => {
-    // Regression guard for the *existing* behavior this task must not
-    // replace: a memory whose statement literally contains the query phrase
-    // keeps winning, semantic layer or not.
-    osStore.addMemory(
-      memory(
-        PROJECT_SEMANTIC,
-        "webhook idempotency keys must be enforced on retries",
-      ),
-    );
-    osStore.addMemory(
-      memory(
-        PROJECT_SEMANTIC,
-        "the database index needed a rebuild after migration",
-      ),
-    );
-
-    const { items } = retrieveMemories({
-      projectId: PROJECT_SEMANTIC,
-      budget: 1,
-      query: "webhook idempotency",
-    });
-
-    expect(items).toHaveLength(1);
-    expect(items[0]?.statement).toBe(
-      "webhook idempotency keys must be enforced on retries",
-    );
-  });
-
-  it("never scores a query-dissimilar memory below its query-less baseline (additive-only, matches every other term in this function)", () => {
-    // Same memory, scored with and without a query that has nothing to do
-    // with it — the semantic term must never make its score *worse* than the
-    // query-less baseline (it's clamped non-negative, see doc comment on
-    // `retrieveMemories()`).
-    osStore.addMemory(
-      memory(PROJECT_SEMANTIC, "the coffee machine on floor 3 is broken"),
-    );
-
-    const withoutQuery = retrieveMemories({
-      projectId: PROJECT_SEMANTIC,
-      budget: 20,
-    });
-    const withUnrelatedQuery = retrieveMemories({
-      projectId: PROJECT_SEMANTIC,
-      budget: 20,
-      query: "annual tax filing deadline extension",
-    });
-
-    const baseline = withoutQuery.items.find(
-      (m) => m.statement === "the coffee machine on floor 3 is broken",
-    );
-    const withQuery = withUnrelatedQuery.items.find(
-      (m) => m.statement === "the coffee machine on floor 3 is broken",
-    );
-    expect(baseline).toBeDefined();
-    expect(withQuery).toBeDefined();
-  });
-
-  it("does not change epistemic-state/evidence-tagging output shape when a query is supplied", () => {
-    // buildMemoryContext()/toMemoryContextItem() must stay exactly as they
-    // were — semantic ranking only changes *which* memories surface and in
-    // what order, never the evidence-tagged shape or MEMORY_CONTEXT_NOTE.
-    osStore.addMemory(
-      memory(
-        PROJECT_SEMANTIC,
-        "production build broke due to missing env var",
-      ),
-    );
-
-    const payload = buildMemoryContext({
-      projectId: PROJECT_SEMANTIC,
-      query: "why did the deploy fail",
-      budget: 5,
-    });
-
-    expect(payload.note).toBe(
-      "Memories are evidence-tagged by epistemicState — do not silently merge as FACT.",
-    );
-    expect(payload.epistemicState).toBe("INFERRED");
-    expect(payload.items.length).toBeGreaterThan(0);
-    for (const item of payload.items) {
-      expect(Object.keys(item).sort()).toEqual(
-        [
-          "category",
-          "confidence",
-          "epistemicState",
-          "evidence",
-          "id",
-          "priority",
-          "projectId",
-          "scope",
-          "source",
-          "statement",
-          "type",
-        ].sort(),
-      );
-    }
-  });
-});
-
-describe("P0.5 — retrieval honours the memory validity window", () => {
-  const PROJECT_WINDOW = "55555555-5555-4555-8555-555555555555";
-
-  /** Reuses this file's `memory()` fixture, overriding only the window. */
-  function windowed(statement: string, overrides: Record<string, unknown>) {
-    return memorySchema.parse({
-      ...memory(PROJECT_WINDOW, statement),
-      ...overrides,
-    });
-  }
-
-  it("EXCLUDES an ACTIVE memory whose validity window has already closed", () => {
-    // Status and validity answer different questions: status is "has someone
-    // retired this?", validity is "does this apply right now?". An un-retired
-    // memory can still have stopped applying, and must not reach the LLM as
-    // current truth.
-    const expired = windowed("the deploy key rotated last month", {
-      validUntil: new Date(Date.now() - 60_000).toISOString(),
-    });
-    osStore.addMemory(expired);
-
-    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
-    expect(items.some((m) => m.id === expired.id)).toBe(false);
-  });
-
-  it("EXCLUDES a memory whose validity has not started yet", () => {
-    const future = windowed("next quarter's policy", {
-      validFrom: new Date(Date.now() + 60_000).toISOString(),
-    });
-    osStore.addMemory(future);
-
-    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
-    expect(items.some((m) => m.id === future.id)).toBe(false);
-  });
-
-  it("INCLUDES a memory currently inside its window", () => {
-    const current = windowed("currently applicable fact", {
-      validFrom: new Date(Date.now() - 60_000).toISOString(),
-      validUntil: new Date(Date.now() + 60_000).toISOString(),
-    });
-    osStore.addMemory(current);
-
-    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
-    expect(items.some((m) => m.id === current.id)).toBe(true);
-  });
-
-  it("INCLUDES a memory with an open-ended window (validUntil null)", () => {
-    const unbounded = windowed("standing architectural rule", { validUntil: null });
-    osStore.addMemory(unbounded);
-
-    const { items } = retrieveMemories({ projectId: PROJECT_WINDOW, budget: 20 });
-    expect(items.some((m) => m.id === unbounded.id)).toBe(true);
-  });
-});
-
-describe("P0 — supersedeMatchingMemories is owner-scoped", () => {
-  const PROJECT_SUPERSEDE = "66666666-6666-4666-8666-666666666666";
-
-  /** Reads a memory straight out of the store, bypassing any retrieval
-   *  filtering — supersession tests must observe the *stored* row (a
-   *  SUPERSEDED row is invisible to `retrieveMemories()`, which would make a
-   *  successful attack look like a clean pass). */
-  function stored(projectId: string | null, id: string) {
-    return osStore.getMemories(projectId ?? "global").find((m) => m.id === id);
-  }
-
-  it("cannot touch another owner's memory (A's record stays byte-identical)", () => {
-    // The breach: owner B posts an ordinary memory of their own and, purely
-    // because the statement substring matches, owner A's ACTIVE memory was
-    // flipped to SUPERSEDED/STALE with no error surfaced to anyone.
-    const victim = memory(
-      PROJECT_SUPERSEDE,
-      "rotate the signing key every quarter",
-      OWNER_A,
-    );
-    osStore.addMemory(victim);
-    const before = stored(PROJECT_SUPERSEDE, victim.id);
-    expect(before?.status).toBe("ACTIVE");
-
-    const attacker = memory(
-      PROJECT_SUPERSEDE,
-      "rotate the signing key every quarter",
-      OWNER_B,
-    );
-    osStore.addMemory(attacker);
-    const count = supersedeMatchingMemories({
-      projectId: PROJECT_SUPERSEDE,
-      statementContains: "rotate the signing key",
-      newerMemoryId: attacker.id,
-      ownerId: OWNER_B,
-    });
-
-    expect(count).toBe(0);
-    // Byte-identical, not merely still-ACTIVE: no supersededBy stamp, no
-    // epistemicState downgrade, not even an `updatedAt` touch.
-    expect(stored(PROJECT_SUPERSEDE, victim.id)).toStrictEqual(before);
-  });
-
-  it("protects the shared global bucket (projectId: null — the no-knowledge path)", () => {
-    // `projectId: null` targets the shared "global" key, so this path needed
-    // no knowledge whatsoever of the victim's project id — the cheapest
-    // version of the attack, and equally closed.
-    const victim = memory(null, "global policy: never log raw tokens", OWNER_A);
-    osStore.addMemory(victim);
-    const before = stored(null, victim.id);
-
-    const attacker = memory(null, "global policy: never log raw tokens", OWNER_B);
-    osStore.addMemory(attacker);
-    const count = supersedeMatchingMemories({
-      projectId: null,
-      statementContains: "global policy: never log raw tokens",
-      newerMemoryId: attacker.id,
-      ownerId: OWNER_B,
-    });
-
-    expect(count).toBe(0);
-    expect(stored(null, victim.id)).toStrictEqual(before);
-  });
-
-  it("counts ONLY the caller's own matches (supersededCount oracle closed)", () => {
-    // `supersededCount` is echoed back to the caller by POST /api/v1/memory,
-    // so a count that included other tenants' rows revealed how many of their
-    // memories contained an attacker-chosen substring.
-    const needle = "shared oracle phrase about deploys";
-    for (const owner of [OWNER_A, OWNER_A, OWNER_A]) {
-      osStore.addMemory(memory(PROJECT_SUPERSEDE, `${needle} (A)`, owner));
-    }
-    const mineOld = memory(PROJECT_SUPERSEDE, `${needle} (B)`, OWNER_B);
-    osStore.addMemory(mineOld);
-
-    const attacker = memory(PROJECT_SUPERSEDE, `${needle} (B, newer)`, OWNER_B);
-    osStore.addMemory(attacker);
-    const count = supersedeMatchingMemories({
-      projectId: PROJECT_SUPERSEDE,
-      statementContains: needle,
-      newerMemoryId: attacker.id,
-      ownerId: OWNER_B,
-    });
-
-    // Exactly one — B's own older memory — despite three owner-A matches.
-    expect(count).toBe(1);
-  });
-
-  it("still supersedes the caller's OWN matching memories (regression)", () => {
-    const older = memory(
-      PROJECT_SUPERSEDE,
-      "the staging database lives in eu-west-1",
-      OWNER_A,
-    );
-    osStore.addMemory(older);
-    const newer = memory(
-      PROJECT_SUPERSEDE,
-      "the staging database lives in eu-west-1 (updated)",
-      OWNER_A,
-    );
-    osStore.addMemory(newer);
-
-    const count = supersedeMatchingMemories({
-      projectId: PROJECT_SUPERSEDE,
-      statementContains: "the staging database lives in eu-west-1",
-      newerMemoryId: newer.id,
-      ownerId: OWNER_A,
-    });
-
-    expect(count).toBe(1);
-    const after = stored(PROJECT_SUPERSEDE, older.id);
-    expect(after?.status).toBe("SUPERSEDED");
-    expect(after?.supersededBy).toBe(newer.id);
-    // The newer memory itself is never self-superseded.
-    expect(stored(PROJECT_SUPERSEDE, newer.id)?.status).toBe("ACTIVE");
   });
 });

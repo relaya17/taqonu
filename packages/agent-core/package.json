@@ -16,15 +16,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "lint": "eslint src",
-    "typecheck:tests": "tsc -p tsconfig.test.json"
+    "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/shared": "workspace:*",
-    "@atlas/knowledge": "workspace:*"
+    "@atlas/shared": "*",
+    "@atlas/knowledge": "*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
     "typescript": "^5.8.2",
     "vitest": "^3.0.8"
   }

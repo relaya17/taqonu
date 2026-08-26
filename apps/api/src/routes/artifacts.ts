@@ -11,9 +11,8 @@ import {
 } from "../services/artifacts-assists.js";
 import { osStore } from "../store/os-store.js";
 import { resolveTier } from "../services/plan-quota.js";
-import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import { requireUser } from "../middleware/auth-guards.js";
 import { canReadProjectScoped } from "../services/project-access.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerArtifactRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
@@ -27,19 +26,7 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/artifacts", async (request, reply) => {
-    // SECURITY FIX (found while widening Policy Engine coverage): this
-    // route had ZERO auth — anyone could upload an artifact (consuming
-    // storage) with no attribution. `requireSignedInForWrite` matches the
-    // sibling `GET /api/v1/artifacts` route's `requireUser` gate.
-    const user = await requireSignedInForWrite(app, request);
     const body = createArtifactSchema.parse(request.body);
-    enforceEntityWrite({
-      entityType: "DOCUMENT",
-      action: "CREATE",
-      routeLabel: "artifacts.upload",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
-    });
     try {
       const result = createArtifactFromUpload(body);
       return reply.status(201).send(result);
@@ -63,20 +50,7 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/assists/runs", async (request, reply) => {
-    // SECURITY FIX (found while widening Policy Engine coverage): this
-    // route had ZERO auth — anyone could burn AI-assist credits with no
-    // attribution or rate limiting via ownership. `requireSignedInForWrite`
-    // matches the sibling `GET /api/v1/assists/runs` route's `requireUser`
-    // gate.
-    const user = await requireSignedInForWrite(app, request);
     const body = createAssistRunSchema.parse(request.body);
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "EXECUTE",
-      routeLabel: "assists.run",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
-    });
     const { tier } = resolveTier(app.atlasEnv);
     ensureCreditsInitialized(tier);
     try {

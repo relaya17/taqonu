@@ -35,15 +35,8 @@ const basePatch = {
 
 describe("patchArtifactSchema", () => {
   it("accepts a well-formed patch and defaults epistemicState/confidence/authorityHint", () => {
-    // Destructured only to OMIT these three keys from `withoutDefaults` —
-    // the bindings themselves are intentionally unused, hence the `_`
-    // prefix required by this repo's no-unused-vars convention (/^_/u).
-    const {
-      epistemicState: _epistemicState,
-      confidence: _confidence,
-      authorityHint: _authorityHint,
-      ...withoutDefaults
-    } = basePatch as Record<string, unknown>;
+    const { epistemicState, confidence, authorityHint, ...withoutDefaults } =
+      basePatch as Record<string, unknown>;
     const parsed = patchArtifactSchema.parse(withoutDefaults);
     expect(parsed.epistemicState).toBe("PROPOSED");
     expect(parsed.confidence).toBe(0.5);

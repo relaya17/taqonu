@@ -5,11 +5,11 @@ import {
   approvePatchSchema,
   uuidSchema,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 import {
   approvePatchArtifact,
   applyApprovedPatch,
@@ -112,13 +112,18 @@ export async function registerRemediationRoutes(
     // rather than being manufactured here. Safe/idempotent to call before
     // `applyApprovedPatch` also calls it internally.
     assertPatchApprovedForApply(existing);
-    enforceEntityWrite({
-      entityType: "DOCUMENT",
-      action: "EXECUTE",
-      routeLabel: "remediation.drafts.apply",
-      actorId: user.id,
-      projectId: existing.projectId ?? null,
+    const entityAuthz = authorizeEntityAction("DOCUMENT", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
     });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "remediation.drafts.apply (DOCUMENT.EXECUTE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
 
     return applyApprovedPatch({
       existing,
@@ -220,21 +225,24 @@ export async function registerRemediationRoutes(
       );
     }
 
-    // ENTITY-LEVEL gate + numeric Risk Engine + unified audit log:
-    // `enabled` above is exactly the "a human already established explicit
-    // authorization for LOW auto-apply" signal (ATLAS_AUTO_APPLY_LOW env
-    // flag or an explicit body.force + WRITE session) — the code above
-    // already throws when `!enabled`, so by this point `enabled` is always
-    // `true`, equivalent to the self-approved-write pattern used
-    // elsewhere. Auto-apply is irreversible and agent-triggered, exactly
-    // what the entity-policy layer exists to gate.
-    enforceEntityWrite({
-      entityType: "DOCUMENT",
-      action: "EXECUTE",
-      routeLabel: "remediation.auto-apply-low",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
+    // ENTITY-LEVEL gate: `enabled` above is exactly the "a human already
+    // established explicit authorization for LOW auto-apply" signal
+    // (ATLAS_AUTO_APPLY_LOW env flag or an explicit body.force + WRITE
+    // session), so it is reused directly as `approved` here rather than
+    // re-deriving a separate signal — auto-apply is irreversible and
+    // agent-triggered, exactly what the entity-policy layer exists to gate.
+    const entityAuthz = authorizeEntityAction("DOCUMENT", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: enabled,
     });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "remediation.auto-apply-low (DOCUMENT.EXECUTE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
 
     let patches = osStore
       .listPatches(body.projectId ?? undefined)

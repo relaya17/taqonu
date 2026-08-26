@@ -1,11 +1,8 @@
 import cors from "@fastify/cors";
-import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { ServerEnv } from "@atlas/config";
 import { createLogger } from "@atlas/observability";
-import { registerFilesystemTools } from "@atlas/agent-core";
 import { isAllowedWebOrigin } from "./lib/web-origin.js";
-import { registerRequestTiming } from "./middleware/request-timing.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerStateRoutes } from "./routes/state.js";
@@ -36,7 +33,6 @@ import { registerContactRoutes } from "./routes/contact.js";
 import { registerAiProviderRoutes } from "./routes/ai-providers.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerGateRoutes } from "./routes/gates.js";
-import { registerCostIntelligenceRoutes } from "./routes/cost-intelligence.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerProviderAdapterRoutes } from "./routes/provider-adapters.js";
 import { registerEngineeringLoopRoutes } from "./routes/engineering-loop.js";
@@ -44,10 +40,7 @@ import { registerReadinessRoutes } from "./routes/readiness.js";
 import { registerCommercialValidationRoutes } from "./routes/commercial.js";
 import { registerByoCloudRoutes } from "./routes/byo-cloud.js";
 import { registerAdminOpsRoutes } from "./routes/admin-ops.js";
-import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerAgentFabricRoutes } from "./routes/agent-fabric.js";
-import { registerAgentLifecycleRoutes } from "./routes/agent-lifecycle.js";
-import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerKernelRoutes } from "./routes/kernel.js";
 import { registerEngineeringAuditRoutes } from "./routes/engineering-audit.js";
 import { registerRemediationRoutes } from "./routes/remediation.js";
@@ -61,7 +54,6 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { registerEventRules } from "./services/event-rules.js";
-import { registerBuiltinAutomationRules } from "./services/automation-rules.js";
 import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
 import {
   KNOWLEDGE_REFRESH_INTERVAL_MS,
@@ -85,39 +77,11 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
     credentials: true,
   });
 
-  // Global backstop rate limit, applied per-IP across every route. 300
-  // req/min (5 req/s sustained) is generous enough for normal dashboard/API
-  // polling and burst UI interactions, but caps abusive/misbehaving clients
-  // and protects shared downstream resources (DB, LLM providers) before they
-  // saturate. This does NOT replace the tighter per-endpoint limiter on auth
-  // routes (see services/auth-rate-limit.ts, used by routes/auth.ts) — that
-  // one targets credential-stuffing / brute-force specifically with a much
-  // stricter budget, and stays in place unchanged as the first line of
-  // defense on those routes; this hook is a coarser net behind it.
-  await app.register(rateLimit, {
-    max: 300,
-    timeWindow: "1 minute",
-    // Default in-memory store (keyed by request.ip), scoped to this Fastify
-    // instance — each `buildApp()` call (e.g. one per test) gets its own
-    // isolated limiter state, so this needs no extra config for tests.
-  });
-
-  registerRequestTiming(app);
-
   app.setErrorHandler(errorHandler);
   app.decorate("atlasEnv", env);
   app.decorate("atlasLogger", logger);
 
   registerEventRules();
-  registerBuiltinAutomationRules();
-  // Tool Runtime registry, alongside the other process-wide registries above.
-  // Without this the registry is empty and `executeTool()` refuses every tool
-  // with "has a policy but no registered implementation" — the read-only
-  // `fs.*` tools that `POST /api/v1/agents/tool-execute` exposes through the
-  // governed execution gate would be unreachable in production while passing
-  // in tests that register them by hand. `registerTool` is a Map.set, so this
-  // is idempotent and safe on repeated `buildApp()` calls (one per test app).
-  registerFilesystemTools();
 
   osStore.ensureLoaded();
   const hydrate = await hydrateOsStoreFromCloudIfEmpty(env, {
@@ -176,7 +140,6 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerAiProviderRoutes(app);
   await registerCodeRoutes(app);
   await registerGateRoutes(app);
-  await registerCostIntelligenceRoutes(app);
   await registerEventRoutes(app);
   await registerProviderAdapterRoutes(app);
   await registerSecuritySarifRoutes(app);
@@ -185,10 +148,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerCommercialValidationRoutes(app);
   await registerByoCloudRoutes(app);
   await registerAdminOpsRoutes(app);
-  await registerApprovalRoutes(app);
   await registerAgentFabricRoutes(app);
-  await registerAgentLifecycleRoutes(app);
-  await registerPluginRoutes(app);
   await registerKernelRoutes(app);
   await registerEngineeringAuditRoutes(app);
   await registerRemediationRoutes(app);

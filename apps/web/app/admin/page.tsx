@@ -19,9 +19,6 @@ import { HealthPanel } from "@/components/admin/CommandCenter/HealthPanel";
 import { ApprovalQueuePanel } from "@/components/admin/CommandCenter/ApprovalQueuePanel";
 import { AgentLifecyclePanel } from "@/components/admin/CommandCenter/AgentLifecyclePanel";
 import { CostIntelligencePanel } from "@/components/admin/CommandCenter/CostIntelligencePanel";
-import { PluginsPanel } from "@/components/admin/CommandCenter/PluginsPanel";
-import { ConnectionsPanel } from "@/components/admin/CommandCenter/ConnectionsPanel";
-import { AuditLogPanel } from "@/components/admin/CommandCenter/AuditLogPanel";
 
 interface WatchAlert {
   id: string;
@@ -290,9 +287,6 @@ export default function AdminHomePage() {
         <Tab label="תור אישורים" />
         <Tab label="סוכנים" />
         <Tab label="עלויות AI" />
-        <Tab label="פלאגינים" />
-        <Tab label="חיבורים" />
-        <Tab label="יומן ביקורת" />
       </Tabs>
 
       {tab === 0 ? (
@@ -395,12 +389,6 @@ export default function AdminHomePage() {
       {tab === 6 ? <AgentLifecyclePanel /> : null}
 
       {tab === 7 ? <CostIntelligencePanel /> : null}
-
-      {tab === 8 ? <PluginsPanel /> : null}
-
-      {tab === 9 ? <ConnectionsPanel /> : null}
-
-      {tab === 10 ? <AuditLogPanel /> : null}
     </Stack>
   );
 }

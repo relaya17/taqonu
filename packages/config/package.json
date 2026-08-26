@@ -19,7 +19,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/shared": "workspace:*",
+    "@atlas/shared": "*",
     "dotenv": "^17.4.2",
     "zod": "^3.24.2"
   },

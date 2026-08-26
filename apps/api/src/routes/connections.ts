@@ -22,7 +22,6 @@ import {
   requireSignedInForWrite,
   requireUser,
 } from "../middleware/auth-guards.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 /**
  * KNOWN LIMITATION (flagged, not fixed here — see task scope): the GitHub
@@ -90,13 +89,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/github", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "connections.github.connect",
-      actorId: user.id,
-    });
+    await requireSignedInForWrite(app, request);
     const body = connectGithubRequestSchema.parse(request.body);
     const now = new Date().toISOString();
     try {
@@ -129,13 +122,7 @@ export async function registerConnectionRoutes(
   });
 
   app.delete("/api/v1/connections/github", async (request) => {
-    const user = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "DELETE",
-      routeLabel: "connections.github.disconnect",
-      actorId: user.id,
-    });
+    await requireSignedInForWrite(app, request);
     osStore.setGithubConnection(null);
     osStore.recordEvent({
       type: "connection.github.disconnected",
@@ -186,13 +173,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/github/import", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "EXECUTE",
-      routeLabel: "connections.github.import",
-      actorId: user.id,
-    });
+    await requireSignedInForWrite(app, request);
     const body = importGithubReposRequestSchema.parse(request.body ?? {});
     const connection = osStore.getGithubConnection();
     if (!connection?.token || connection.status !== "CONNECTED") {
@@ -230,13 +211,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/local", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "connections.local.connect",
-      actorId: user.id,
-    });
+    await requireSignedInForWrite(app, request);
     const body = connectLocalRequestSchema.parse(request.body);
     const now = new Date().toISOString();
     try {
@@ -270,13 +245,7 @@ export async function registerConnectionRoutes(
   });
 
   app.delete("/api/v1/connections/local", async (request) => {
-    const user = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "DELETE",
-      routeLabel: "connections.local.disconnect",
-      actorId: user.id,
-    });
+    await requireSignedInForWrite(app, request);
     osStore.setLocalConnection(null);
     osStore.recordEvent({
       type: "connection.local.disconnected",
@@ -286,13 +255,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/local/scan", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "EXECUTE",
-      routeLabel: "connections.local.scan",
-      actorId: user.id,
-    });
+    await requireSignedInForWrite(app, request);
     const body = scanLocalRequestSchema.parse(request.body ?? {});
     const connection = osStore.getLocalConnection();
     if (!connection?.reposRoot || connection.status === "DISCONNECTED") {

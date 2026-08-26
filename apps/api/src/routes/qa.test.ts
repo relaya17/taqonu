@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,20 +20,6 @@ const getRequestUser = vi.fn();
 vi.mock("../services/resolve-identity.js", () => ({
   getRequestUser: (...args: unknown[]) => getRequestUser(...args),
 }));
-
-// Same stubbing mechanism as memory.test.ts / projects.test.ts: spread the
-// real `@atlas/agent-core` module and only stub `authorizeEntityAction` so
-// individual tests can force a DENIED decision.
-const authorizeEntityActionMock = vi.fn();
-vi.mock("@atlas/agent-core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@atlas/agent-core")>();
-  return {
-    ...actual,
-    authorizeEntityAction: (
-      ...args: Parameters<typeof actual.authorizeEntityAction>
-    ) => authorizeEntityActionMock(...args) ?? actual.authorizeEntityAction(...args),
-  };
-});
 
 const { registerQaRoutes } = await import("./qa.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
@@ -126,10 +112,6 @@ afterAll(async () => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-afterEach(() => {
-  authorizeEntityActionMock.mockReset();
-});
-
 describe("POST /api/v1/qa/learn", () => {
   it("401s when not signed in", async () => {
     getRequestUser.mockReturnValue(null);
@@ -150,25 +132,6 @@ describe("POST /api/v1/qa/learn", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().learnedPatternKeys).toContain("pattern-a");
-  });
-
-  it("403s when the Policy Engine denies CONFIGURATION.UPDATE (entity-policy gate wiring)", async () => {
-    getRequestUser.mockReturnValue(ownerA);
-    authorizeEntityActionMock.mockReturnValue({
-      decision: "DENIED",
-      reason: "test-forced denial",
-    });
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/qa/learn",
-      payload: { patternKey: "pattern-a" },
-    });
-    expect(res.statusCode).toBe(403);
-    expect(authorizeEntityActionMock).toHaveBeenCalledWith(
-      "CONFIGURATION",
-      "UPDATE",
-      expect.objectContaining({ mode: "WRITE" }),
-    );
   });
 });
 

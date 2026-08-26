@@ -31,14 +31,6 @@ export const evidenceSourceTypeSchema = z.enum([
   "PRODUCTION",
 ]);
 
-/**
- * Additive (Gate 3): the plain source-type union, exported so callers that
- * only need to reason about *which kinds* of evidence exist — e.g.
- * memory-pipeline.ts's evidence-verification gate — don't need to import
- * the schema object just to spell the type.
- */
-export type EvidenceSourceType = z.infer<typeof evidenceSourceTypeSchema>;
-
 export const dataClassificationSchema = z.enum(DATA_CLASSIFICATIONS);
 
 /** Engineering evidence categories — same keys as Current State slices. */

@@ -168,17 +168,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "مهندس شيفرة",
     specialty: "Generate · fix · refactor · migrate — Patch Artifact only",
     category: "engineering",
-    // See RESEARCHER's note: the `fs.*` entries are Tool Runtime names.
-    // Read-only only — `fs.write_patch` is deliberately absent, and remains
-    // `requiresApproval: true` in DEFAULT_TOOL_POLICIES besides.
-    allowedTools: [
-      "propose_patch",
-      "analyze_repo",
-      "impact",
-      "fs.read_file",
-      "fs.read_directory",
-      "fs.search_repo",
-    ],
+    allowedTools: ["propose_patch", "analyze_repo", "impact"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["failing test or explicit requirement"],
     maxCostUsd: 0.8,
@@ -570,21 +560,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "باحث",
     specialty: "Authorized external sources → Evidence packages",
     category: "research",
-    // The last three are Tool Runtime tool names (DEFAULT_TOOL_POLICIES),
-    // not catalog-only labels. They are listed explicitly because the two
-    // vocabularies are separate namespaces: `enforceAgentToolAuthorization`
-    // checks THIS list, while `executeTool()` resolves the runtime policy —
-    // an agent whose catalog entry omits the runtime name is denied at the
-    // gate no matter what its policy allows. Fail-closed is correct, but it
-    // has to be reachable to be useful.
-    allowedTools: [
-      "knowledge_search",
-      "ingest_source",
-      "verify_url",
-      "fs.read_file",
-      "fs.read_directory",
-      "fs.search_repo",
-    ],
+    allowedTools: ["knowledge_search", "ingest_source", "verify_url"],
     forbiddenTools: ["apply_patch", "unofficial_scrape_as_official"],
     evidenceRequirements: ["query", "allowed source classes"],
     maxCostUsd: 0.4,

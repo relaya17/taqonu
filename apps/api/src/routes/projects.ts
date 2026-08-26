@@ -28,7 +28,6 @@ import {
   resolveProjectReachability,
   listManagerPartnerReminders,
 } from "../services/central-opinion.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
@@ -77,14 +76,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   /** Explicit local folder permission — Atlas never scans whole disk. */
   app.put("/api/v1/projects/:id/workspace-root", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    const workspaceRootUser = await assertProjectWriteAccess(app, request, params.id);
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "UPDATE",
-      routeLabel: "projects.workspace-root",
-      actorId: workspaceRootUser.id,
-      projectId: params.id,
-    });
+    await assertProjectWriteAccess(app, request, params.id);
     const body = z
       .object({
         workspaceRoot: z.string().min(1).max(1000).nullable(),
@@ -110,12 +102,6 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   app.post("/api/v1/projects", async (request, reply) => {
     const user = await requireSignedInForWrite(app, request);
     const body = createProjectSchema.parse(request.body);
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "CREATE",
-      routeLabel: "projects.create",
-      actorId: user.id,
-    });
     const now = new Date().toISOString();
     const existing = osStore.getProjectBySlug(body.slug);
     if (existing) {
@@ -170,20 +156,6 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.post("/api/v1/projects/:id/cloud", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    // SECURITY FIX (found while widening Policy Engine coverage): this
-    // route had ZERO auth/ownership check — any caller could trigger a
-    // cloud-sync for ANY project id, consuming that project owner's cloud
-    // quota slot and exfiltrating project name/slug/description/techStack
-    // to the response. `assertProjectWriteAccess` matches the sibling
-    // `PUT /:id/workspace-root` route's gate.
-    const cloudSyncUser = await assertProjectWriteAccess(app, request, params.id);
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "UPDATE",
-      routeLabel: "projects.cloud-sync",
-      actorId: cloudSyncUser.id,
-      projectId: params.id,
-    });
     const project = osStore.getProject(params.id);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -366,52 +338,41 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     };
   });
 
-  /**
-   * Can Studio/files reach local disk and/or repo/cloud link?
-   *
-   * SECURITY FIX (cross-tenant isolation audit): this route — like the four
-   * central-opinion / manager-reminders routes below — only checked that the
-   * project *existed*, so any caller (including a fully anonymous one) who
-   * knew a project UUID could read another tenant's project state. The gate
-   * is `assertProjectReadAccess`, exactly as the sibling `/resume` and
-   * `/context-export` routes use: 401 unsigned, 404 unknown project, 403
-   * non-owner (admins and unowned projects still pass). It also subsumes the
-   * old existence check, which is why that `NOT_FOUND` throw is gone.
-   */
+  /** Can Studio/files reach local disk and/or repo/cloud link? */
   app.get("/api/v1/projects/:id/reachability", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
     return resolveProjectReachability(params.id);
   });
 
   /**
    * Single central opinion: sync process audits + memories + reachability.
    * HTML is print-to-PDF ready; /pdf returns a downloadable PDF summary.
-   *
-   * SECURITY FIX (cross-tenant isolation audit): unauthenticated before —
-   * and the most sensitive of the group, because `buildCentralOpinion` walks
-   * `osStore.getMemories(projectId)` and copies the first 200 characters of
-   * every BUG/HIGH/CRITICAL memory statement into its output. The read gate
-   * runs *first*, so no memory is ever read for a caller who will be denied.
    */
   app.get("/api/v1/projects/:id/central-opinion", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
     return buildCentralOpinion(params.id);
   });
 
   app.get("/api/v1/projects/:id/central-opinion.html", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    // Gate before rendering: the HTML body embeds the same memory statements.
-    await assertProjectReadAccess(app, request, params.id);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
     const opinion = buildCentralOpinion(params.id);
     return reply.type("text/html; charset=utf-8").send(opinion.html);
   });
 
   app.get("/api/v1/projects/:id/central-opinion.pdf", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    // Gate before any rendering/PDF-encoding work begins.
-    await assertProjectReadAccess(app, request, params.id);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
     const opinion = buildCentralOpinion(params.id);
     const bytes = buildCentralOpinionPdfBytes(opinion);
     const slug = opinion.projectName.replace(/[^\w.-]+/g, "_").slice(0, 40);
@@ -424,16 +385,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       .send(Buffer.from(bytes));
   });
 
-  /**
-   * Manager-partner reminders (process/studio memories the agent tracks).
-   *
-   * SECURITY FIX (cross-tenant isolation audit): unauthenticated before, and
-   * `listManagerPartnerReminders` reads project-scoped memories — same
-   * `assertProjectReadAccess` gate as `/resume`.
-   */
+  /** Manager-partner reminders (process/studio memories the agent tracks). */
   app.get("/api/v1/projects/:id/manager-reminders", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    if (!osStore.getProject(params.id)) {
+      throw new AtlasError("NOT_FOUND", "Project not found");
+    }
     const reachability = resolveProjectReachability(params.id);
     return {
       projectId: params.id,

@@ -14,7 +14,6 @@ import {
 } from "../services/memory-pipeline.js";
 import { atlasMetrics } from "./metrics.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 /**
  * Tenant boundary (P0 fix): a signed-in user only sees memories they own;
@@ -91,34 +90,15 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/memory", async (request, reply) => {
-    // SECURITY FIX (found while widening Policy Engine coverage): this
-    // route had ZERO auth — any unauthenticated caller could inject a
-    // fabricated memory statement into the shared stub-owner bucket
-    // (memory poisoning, exactly the class of risk the original security
-    // brief flagged). `requireSignedInForWrite` closes that; combined with
-    // `resolveCloudIdentity` below (which now always resolves a real
-    // signed-in caller's id, not the stub-owner fallback), every memory
-    // this route creates is attributable to a real account.
-    const user = await requireSignedInForWrite(app, request);
     const body = createMemorySchema.parse(request.body);
-
-    // Entity-policy gate + numeric Risk Engine + unified audit log: creating
-    // a memory record is RECORD.CREATE (LOW_RISK_WRITE, no approval
-    // required by default — mirrors how a human simply saving a note
-    // doesn't need a separate approval step). Same self-approved
-    // signed-in-human-write rationale as billing.ts/connections.ts.
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "CREATE",
-      routeLabel: "memory.create",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
-    });
     const now = new Date().toISOString();
     const classified = classifyMemoryType(body.statement);
 
-    // Server-derived ownerId — never client-supplied, to prevent a caller
-    // from writing memories into another tenant's bucket.
+    // Resolved first (P0 fix): the locally-stored memory needs a real,
+    // server-derived ownerId — never client-supplied, to prevent a caller
+    // from writing memories into another tenant's bucket. Unauthenticated /
+    // system callers fall back to the stub owner (same convention used
+    // elsewhere for cloud dual-write, see cloud-identity.ts).
     const identity = await resolveCloudIdentity(app, request);
     if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
 
@@ -182,17 +162,10 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         classifiedType: classified.type,
       },
     });
-    // Tenant boundary (P0 fix): supersession is a destructive bulk write, so
-    // it is scoped to the same server-derived `identity.ownerId` this memory
-    // was just written under — never anything from `body`. Without this the
-    // body-supplied `statementContains` substring retired *other* tenants'
-    // ACTIVE memories (and `supersededCount` below leaked how many), see the
-    // doc comment on `supersedeMatchingMemories()`.
     const superseded = supersedeMatchingMemories({
       projectId: memory.projectId,
       statementContains: memory.statement.slice(0, 48),
       newerMemoryId: memory.id,
-      ownerId: identity.ownerId,
     });
 
     // Best-effort durable dual-write — local osStore remains the source of
@@ -241,20 +214,6 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
             message:
               "Memory cannot be approved: it has no evidence entries",
             code: "NO_EVIDENCE",
-          },
-        });
-      }
-      if (result.reason === "unverified_evidence") {
-        // Gate 3 strengthening (see `approveMemory()`'s doc comment): the
-        // memory exists, is the caller's own, and has ≥1 evidence entry —
-        // but none of them carry a genuine verification signal. Same
-        // rationale as "no_evidence" above (not a tenancy/existence signal,
-        // safe to explain distinctly rather than collapsing into 404).
-        return reply.status(400).send({
-          error: {
-            message:
-              "Memory cannot be approved: none of its evidence entries are verified",
-            code: "UNVERIFIED_EVIDENCE",
           },
         });
       }

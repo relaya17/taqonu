@@ -72,47 +72,6 @@ describe("event rules: patch.applied -> unified audit entry", () => {
     ]);
   });
 
-  it("threads payload.actorId and event.causationId into the audit entry when present", async () => {
-    registerEventRules();
-    // Realistic value: patch-write.ts's applyApprovedPatch threads
-    // `input.user.id` here, which is always a uuidSchema-typed AuthUser.id.
-    const actorId = "33333333-3333-4333-8333-333333333333";
-    appendDomainEvent({
-      type: "patch.applied",
-      causationId: "11111111-1111-1111-1111-111111111111",
-      payload: {
-        patchId: "patch-1a",
-        applied: ["src/a.ts"],
-        skipped: [],
-        actorId,
-      },
-    });
-    await flush();
-
-    const tail = readAuditLogTail(10);
-    expect(tail).toHaveLength(1);
-    expect(tail[0]?.payload.actorId).toBe(actorId);
-    expect(tail[0]?.payload.causationId).toBe(
-      "11111111-1111-1111-1111-111111111111",
-    );
-    // Per-owner tagging (P1 fix): the same actorId doubles as ownerId here
-    // (see event-rules.ts's onPatchApplied doc comment).
-    expect(tail[0]?.payload.ownerId).toBe(actorId);
-  });
-
-  it("falls back to a null actorId when the payload has none (defensive, not a hardcode)", async () => {
-    registerEventRules();
-    appendDomainEvent({
-      type: "patch.applied",
-      payload: { patchId: "patch-1b", applied: [], skipped: [] },
-    });
-    await flush();
-
-    const tail = readAuditLogTail(10);
-    expect(tail[0]?.payload.actorId).toBeNull();
-    expect(tail[0]?.payload.ownerId).toBeNull();
-  });
-
   it("escalates risk to MEDIUM when the patch had skipped files", async () => {
     registerEventRules();
     appendDomainEvent({

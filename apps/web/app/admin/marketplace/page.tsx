@@ -17,7 +17,7 @@ import { PLUGIN_STATUSES, STATUS_LABELS } from "@/components/admin/Marketplace/t
 
 const TABS: Array<{ label: string; status: PluginManifestStatus | "ALL" }> = [
   { label: "הכל", status: "ALL" },
-  ...PLUGIN_STATUSES.map((s) => ({ label: STATUS_LABELS[s], status: s })),
+  ...PLUGIN_STATUSES.map((s) => ({ label: STATUS_LABELS[s] ?? s, status: s })),
 ];
 
 type ReasonAction = { kind: "approve" | "reject"; plugin: PluginManifest } | null;

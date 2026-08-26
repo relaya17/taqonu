@@ -47,23 +47,6 @@ export const unifiedAuditEntrySchema = z.object({
   result: auditResultStatusSchema,
   projectId: uuidSchema.nullable().optional(),
   correlationId: uuidSchema.optional(),
-  /**
-   * WHICH event/action directly caused this one, per `DomainEvent.causationId`
-   * (the audit-log's own prior gap: `correlationId` was threaded through but
-   * `causationId` was dropped even though `DomainEvent` always carries both).
-   * Null/absent when the triggering event has no known cause (e.g. a
-   * top-of-chain event).
-   */
-  causationId: uuidSchema.nullable().optional(),
-  /**
-   * Per-owner tagging (P1 fix): the tenant this audit entry belongs to, so
-   * `listUnifiedAuditEntries({ ownerId })` (audit-log.ts) can filter "show me
-   * only tenant X's audit trail" instead of every consumer reading the one
-   * shared hash-chained log/stream. Null/absent when the entry is genuinely
-   * system-wide or the owner can't be resolved at the call site (e.g. an
-   * unauthenticated route) — callers must never fabricate a value here.
-   */
-  ownerId: uuidSchema.nullable().optional(),
 });
 
 export type UnifiedAuditEntry = z.infer<typeof unifiedAuditEntrySchema>;

@@ -52,30 +52,4 @@ describe("unifiedAuditEntrySchema", () => {
     expect(parsed.input).toEqual({ patchId: "p1" });
     expect(parsed.output).toEqual({ filesChanged: 3 });
   });
-
-  describe("ownerId (per-owner tagging, P1 fix)", () => {
-    it("accepts a valid ownerId", () => {
-      const parsed = unifiedAuditEntrySchema.parse({
-        ...base,
-        ownerId: "11111111-1111-4111-8111-111111111111",
-      });
-      expect(parsed.ownerId).toBe("11111111-1111-4111-8111-111111111111");
-    });
-
-    it("accepts a null ownerId (system-wide entry, no resolvable tenant)", () => {
-      const parsed = unifiedAuditEntrySchema.parse({ ...base, ownerId: null });
-      expect(parsed.ownerId).toBeNull();
-    });
-
-    it("defaults ownerId to undefined when omitted (strictly additive)", () => {
-      const parsed = unifiedAuditEntrySchema.parse(base);
-      expect(parsed.ownerId).toBeUndefined();
-    });
-
-    it("rejects a non-uuid ownerId", () => {
-      expect(() =>
-        unifiedAuditEntrySchema.parse({ ...base, ownerId: "not-a-uuid" }),
-      ).toThrow();
-    });
-  });
 });

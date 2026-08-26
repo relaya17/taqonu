@@ -14,7 +14,6 @@ import {
   assertEntityReadAccess,
   canReadProjectScoped,
 } from "../services/project-access.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const listQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
@@ -90,7 +89,6 @@ function capEpistemicStateAtCreate(
   return requestedRank > ceilingRank ? CREATE_EPISTEMIC_CEILING : requested;
 }
 
-
 export async function registerDecisionRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/decisions", async (request) => {
     const user = await requireUser(app, request);
@@ -130,15 +128,8 @@ export async function registerDecisionRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/decisions", async (request, reply) => {
-    const user = await requireUser(app, request);
+    await requireUser(app, request);
     const body = createDecisionSchema.parse(request.body);
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "CREATE",
-      routeLabel: "decisions.create",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
-    });
     const now = new Date().toISOString();
     const status = body.status ?? "PROPOSED";
     const rawEpistemicState =
@@ -181,20 +172,13 @@ export async function registerDecisionRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/decisions/:id/transition", async (request, reply) => {
-    const user = await requireUser(app, request);
+    await requireUser(app, request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = transitionDecisionSchema.parse(request.body);
     const existing = osStore.getDecision(id);
     if (!existing) {
       return reply.status(404).send({ error: "Decision not found" });
     }
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "UPDATE",
-      routeLabel: "decisions.transition",
-      actorId: user.id,
-      projectId: existing.projectId ?? null,
-    });
 
     const allowed = allowedTransitions(existing.status);
     if (!allowed.includes(body.status)) {

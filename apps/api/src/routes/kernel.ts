@@ -14,6 +14,7 @@ import {
   type FabricAgentId,
 } from "@atlas/shared";
 import {
+  authorizeEntityAction,
   createTaskPlan,
   listRegisteredAgents,
   getRegisteredAgent,
@@ -39,7 +40,6 @@ import { osStore } from "../store/os-store.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { z } from "zod";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 export async function registerKernelRoutes(app: FastifyInstance): Promise<void> {
   hydrateKnowledgeCorpus({ enablePersist: true });
@@ -129,13 +129,18 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     // no separate human-approval round trip is manufactured for it. This
     // still genuinely exercises the entity-policy engine: DENIED/blocked
     // outcomes (e.g. write gate closed) are enforced, not bypassed.
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "EXECUTE",
-      routeLabel: "kernel.run",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
+    const entityAuthz = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
     });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "kernel.run (CONFIGURATION.EXECUTE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
 
     const sentinel = runSecuritySpecialistViaSentinel({
       request: body.request,
@@ -301,13 +306,19 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     // scanned lessons — an irreversible, agent-triggered control-plane
     // change, so it gets the same two-axis (role + entity) gating as
     // kernel/run above rather than staying open to any caller.
-    const improveUser = await requireSignedInForWrite(app, request);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "EXECUTE",
-      routeLabel: "kernel.improve",
-      actorId: improveUser.id,
+    await requireSignedInForWrite(app, request);
+    const entityAuthz = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
     });
+    if (entityAuthz.decision !== "ALLOWED") {
+      const reason =
+        entityAuthz.decision === "DENIED"
+          ? entityAuthz.reason
+          : "kernel.improve (CONFIGURATION.EXECUTE) was not ALLOWED.";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
 
     const result = runSelfImprovement();
     osStore.recordEvent({

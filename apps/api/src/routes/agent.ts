@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import {
   authorizeToolCall,
   buildAgentContext,
-  buildLayeredSystemPrompt,
   buildPortfolioContextBlocks,
   classifyIntent,
   completeWithFreeFallback,
@@ -247,54 +246,27 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         ),
       ].join("\n");
 
-      // Prompt layering (injection-hardening): only text Atlas itself
-      // authored — the fixed instruction lines, the static Sentinel
-      // knowledge catalog, and the expert-council block (built from the
-      // static EXPERT_CATALOG, not from retrieved documents) — goes in
-      // `instructions`. `evidenceBlock` and `context` are both built from
-      // retrieved/ingested content (evidence records, memories, decisions,
-      // knowledge search) that Atlas did not author, so they're kept as
-      // `untrustedBlocks`: structurally delimited and scanned for injection
-      // patterns rather than flattened into the trusted instruction text.
-      const instructions = [
-        "You are the ArletOS Engineering + QA Intelligence OS agent.",
-        "Use only retrieved context and cited verified sources. Label FACT vs INFERRED vs PROPOSED.",
-        "For languages (JS/TS/Python/Java/C++/C#/Go/Rust), UI, game engines, and cybersecurity: cite official docs from the evidence block (MDN, ECMA, python.org, Oracle, cppreference, Unity/Unreal/Godot, OWASP, NIST, CISA).",
-        "Never invent APIs, standards, or CVE details. If evidence is thin, say INSUFFICIENT_EVIDENCE.",
-        "Never claim deployment/DB facts without labeled evidence.",
-        "Never expose secrets.",
-        "WRITE actions require eval gate + human APPROVE.",
-        "Reply in the user's language (Hebrew, Arabic, or English).",
-        "For coding handoff: produce a concise editor brief with steps and constraints.",
-        "",
-        SENTINEL_AGENT_KNOWLEDGE,
-        "",
-        expertBlock,
-      ].join("\n");
-
-      const layeredPrompt = buildLayeredSystemPrompt({
-        instructions,
-        untrustedBlocks: [
-          { label: "evidence", content: evidenceBlock },
-          { label: "context", content: context },
-        ],
-      });
-      if (layeredPrompt.flagged) {
-        // Defense-in-depth signal only (see prompt-layers.ts/injection-
-        // detector.ts design notes) — the structural delimiter + meta-
-        // instruction are the primary defense at this layer, so a flagged
-        // block downgrades to a warn log for observability, not a block.
-        app.atlasLogger.warn("agent_prompt_injection_flagged", {
-          labels: layeredPrompt.findings.map((f) => f.label),
-          patternNames: [
-            ...new Set(layeredPrompt.findings.flatMap((f) => f.patternNames)),
-          ],
-        });
-      }
-      // Redaction applied to the fully layered content (after wrapping),
-      // same as before, so it still covers everything that ends up in the
-      // prompt — this is an orthogonal, already-working control.
-      const system = redactSecrets(layeredPrompt.systemContent);
+      const system = redactSecrets(
+        [
+          "You are the ArletOS Engineering + QA Intelligence OS agent.",
+          "Use only retrieved context and cited verified sources. Label FACT vs INFERRED vs PROPOSED.",
+          "For languages (JS/TS/Python/Java/C++/C#/Go/Rust), UI, game engines, and cybersecurity: cite official docs from the evidence block (MDN, ECMA, python.org, Oracle, cppreference, Unity/Unreal/Godot, OWASP, NIST, CISA).",
+          "Never invent APIs, standards, or CVE details. If evidence is thin, say INSUFFICIENT_EVIDENCE.",
+          "Never claim deployment/DB facts without labeled evidence.",
+          "Never expose secrets.",
+          "WRITE actions require eval gate + human APPROVE.",
+          "Reply in the user's language (Hebrew, Arabic, or English).",
+          "For coding handoff: produce a concise editor brief with steps and constraints.",
+          "",
+          SENTINEL_AGENT_KNOWLEDGE,
+          "",
+          expertBlock,
+          "",
+          evidenceBlock,
+          "",
+          context,
+        ].join("\n"),
+      );
       const userRequest = redactedUserRequest;
       assertNoSecrets(system, "llm.system");
       assertNoSecrets(userRequest, "llm.user");

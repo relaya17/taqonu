@@ -19,7 +19,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/shared": "workspace:*",
+    "@atlas/shared": "*",
     "@supabase/supabase-js": "^2.49.1"
   },
   "devDependencies": {

@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import {
   authorizeToolCall,
   buildAgentContext,
-  buildLayeredSystemPrompt,
   buildPortfolioContextBlocks,
   classifyIntent,
   completeWithFreeFallback,
@@ -36,7 +35,6 @@ import {
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -120,17 +118,6 @@ export async function registerConversationRoutes(
     const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
     const body = createConversationMessageSchema.parse(request.body);
-    // ENTITY-LEVEL gate + numeric Risk Engine + unified audit log: a
-    // conversation message triggers an LLM run and can charge credits —
-    // same RECORD.EXECUTE class as artifacts.ts's assists/runs.
-    // Self-approved signed-in-human-write pattern used across this round.
-    enforceEntityWrite({
-      entityType: "RECORD",
-      action: "EXECUTE",
-      routeLabel: "conversation.message",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
-    });
     assertAgentMessageQuota(app.atlasEnv);
     const now = new Date().toISOString();
     const locale = body.locale ?? "en";
@@ -237,49 +224,22 @@ export async function registerConversationRoutes(
         ),
       ].join("\n");
 
-      // Prompt layering (injection-hardening): only text Atlas itself
-      // authored — the fixed instruction lines and the expert-council block
-      // (built from the static EXPERT_CATALOG, not from retrieved
-      // documents) — goes in `instructions`. `evidenceBlock` and `context`
-      // are both built from retrieved/ingested content (evidence records,
-      // memories, decisions, knowledge search) that Atlas did not author,
-      // so they're kept as `untrustedBlocks`: structurally delimited and
-      // scanned for injection patterns rather than flattened into the
-      // trusted instruction text.
-      const instructions = [
-        "You are Atlas — ArletOS Engineering + QA Intelligence OS.",
-        "Evidence discipline: cite packages; FACT vs INFERRED vs PROPOSED.",
-        "Language / UI / game / cyber answers must cite verified official sources when present (MDN, ECMA, TypeScript, Python.org, Oracle Java, cppreference, .NET, Go, Rust, Unity, Unreal, Godot, OWASP, NIST).",
-        "Never invent language semantics, CVEs, or standards. If evidence is thin, say INSUFFICIENT_EVIDENCE — do not hallucinate.",
-        "Never claim deployment/DB facts without labeled evidence.",
-        "Reply in the user's language (Hebrew, Arabic, or English).",
-        "",
-        expertBlock,
-      ].join("\n");
-
-      const layeredPrompt = buildLayeredSystemPrompt({
-        instructions,
-        untrustedBlocks: [
-          { label: "evidence", content: evidenceBlock },
-          { label: "context", content: context },
-        ],
-      });
-      if (layeredPrompt.flagged) {
-        // Defense-in-depth signal only (see prompt-layers.ts/injection-
-        // detector.ts design notes) — the structural delimiter + meta-
-        // instruction are the primary defense at this layer, so a flagged
-        // block downgrades to a warn log for observability, not a block.
-        app.atlasLogger.warn("conversation_prompt_injection_flagged", {
-          labels: layeredPrompt.findings.map((f) => f.label),
-          patternNames: [
-            ...new Set(layeredPrompt.findings.flatMap((f) => f.patternNames)),
-          ],
-        });
-      }
-      // Redaction applied to the fully layered content (after wrapping),
-      // same as before, so it still covers everything that ends up in the
-      // prompt — this is an orthogonal, already-working control.
-      const system = redactSecrets(layeredPrompt.systemContent);
+      const system = redactSecrets(
+        [
+          "You are Atlas — ArletOS Engineering + QA Intelligence OS.",
+          "Evidence discipline: cite packages; FACT vs INFERRED vs PROPOSED.",
+          "Language / UI / game / cyber answers must cite verified official sources when present (MDN, ECMA, TypeScript, Python.org, Oracle Java, cppreference, .NET, Go, Rust, Unity, Unreal, Godot, OWASP, NIST).",
+          "Never invent language semantics, CVEs, or standards. If evidence is thin, say INSUFFICIENT_EVIDENCE — do not hallucinate.",
+          "Never claim deployment/DB facts without labeled evidence.",
+          "Reply in the user's language (Hebrew, Arabic, or English).",
+          "",
+          expertBlock,
+          "",
+          evidenceBlock,
+          "",
+          context,
+        ].join("\n"),
+      );
       const userMessage = redactSecrets(body.message);
       assertNoSecrets(system, "llm.system");
       assertNoSecrets(userMessage, "llm.user");

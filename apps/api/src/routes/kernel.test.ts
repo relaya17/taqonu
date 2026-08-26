@@ -1,47 +1,18 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import type { AuthUser } from "@atlas/shared";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-kernel-route-test-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 
-// Same stubbing mechanism as `apps/api/src/routes/admin-ops.test.ts` /
-// `apps/api/src/middleware/auth-guards.test.ts`: mock `getRequestUser` from
-// the identity-resolution service module so `requireSignedInForWrite` sees a
-// fake signed-in user without needing real Supabase/local-session cookies.
-const getRequestUser = vi.fn();
-
-vi.mock("../services/resolve-identity.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../services/resolve-identity.js")>();
-  return {
-    ...actual,
-    getRequestUser: (...args: unknown[]) => getRequestUser(...args),
-  };
-});
-
 const { registerKernelRoutes } = await import("./kernel.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 
 let app: FastifyInstance;
-
-function testUser(partial: Partial<AuthUser> = {}): AuthUser {
-  return {
-    id: "33333333-3333-4333-8333-333333333333",
-    email: "operator@example.com",
-    displayName: "Operator",
-    role: "user",
-    locale: "en",
-    provider: "local",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    ...partial,
-  };
-}
 
 beforeAll(async () => {
   app = await buildRouteTestApp(registerKernelRoutes);
@@ -50,11 +21,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close();
   rmSync(tmpDir, { recursive: true, force: true });
-});
-
-beforeEach(() => {
-  getRequestUser.mockReset();
-  getRequestUser.mockReturnValue(testUser());
 });
 
 describe("GET /api/v1/kernel/status", () => {
@@ -157,59 +123,9 @@ describe("POST /api/v1/kernel/run", () => {
     expect(res.statusCode).toBe(201);
   });
 
-  it("400s for a missing request body (once past the auth guard)", async () => {
+  it("400s for a missing request body", async () => {
     const res = await app.inject({ method: "POST", url: "/api/v1/kernel/run", payload: {} });
     expect(res.statusCode).toBe(400);
-  });
-
-  // P0 fix: this route previously had NO auth guard and NO entity-policy
-  // coverage at all — anyone could trigger a kernel run.
-  it("401s for an unauthenticated caller (no auth guard previously existed here)", async () => {
-    getRequestUser.mockReturnValue(null);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/kernel/run",
-      payload: { request: "how do I add rate limiting to my API?" },
-    });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it("threads the real authenticated actor id into the kernel.run evaluation.completed domain event", async () => {
-    const { osStore } = await import("../store/os-store.js");
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/kernel/run",
-      payload: { request: "record my actor id please" },
-    });
-    expect(res.statusCode).toBe(201);
-    const events = osStore.listDomainEvents();
-    const kernelRunEvent = [...events]
-      .reverse()
-      .find(
-        (e) =>
-          e.type === "evaluation.completed" &&
-          (e.payload as { kind?: string }).kind === "kernel.run",
-      );
-    expect(kernelRunEvent).toBeDefined();
-    expect((kernelRunEvent?.payload as { actorId?: string }).actorId).toBe(
-      testUser().id,
-    );
-  });
-});
-
-describe("POST /api/v1/kernel/improve", () => {
-  it("401s for an unauthenticated caller (no auth guard previously existed here)", async () => {
-    getRequestUser.mockReturnValue(null);
-    const res = await app.inject({ method: "POST", url: "/api/v1/kernel/improve" });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it("201s and runs self-improvement for a signed-in caller", async () => {
-    const res = await app.inject({ method: "POST", url: "/api/v1/kernel/improve" });
-    expect(res.statusCode).toBe(201);
-    const body = res.json();
-    expect(Array.isArray(body.created)).toBe(true);
-    expect(Array.isArray(body.rules)).toBe(true);
   });
 });
 

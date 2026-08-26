@@ -62,10 +62,7 @@ describe("agentRunResultSchema", () => {
   };
 
   it("accepts a well-formed run result and defaults claims/evidenceRefs to []", () => {
-    // Destructured only to OMIT these two keys from `withoutDefaults` — the
-    // bindings themselves are intentionally unused, hence the `_` prefix
-    // required by this repo's no-unused-vars convention (/^_/u).
-    const { claims: _claims, evidenceRefs: _evidenceRefs, ...withoutDefaults } = base;
+    const { claims, evidenceRefs, ...withoutDefaults } = base;
     const parsed = agentRunResultSchema.parse(withoutDefaults);
     expect(parsed.claims).toEqual([]);
     expect(parsed.evidenceRefs).toEqual([]);

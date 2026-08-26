@@ -13,7 +13,6 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const vercelObserveSchema = z.object({
   projectId: uuidSchema,
@@ -115,14 +114,7 @@ export async function registerProviderAdapterRoutes(
 
   app.post("/api/v1/providers/vercel/observe", async (request, reply) => {
     const body = vercelObserveSchema.parse(request.body);
-    const user = await assertProjectWriteAccess(app, request, body.projectId);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "providers.vercel.observe",
-      actorId: user.id,
-      projectId: body.projectId,
-    });
+    await assertProjectWriteAccess(app, request, body.projectId);
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -200,14 +192,7 @@ export async function registerProviderAdapterRoutes(
 
   app.post("/api/v1/providers/render/observe", async (request, reply) => {
     const body = renderObserveSchema.parse(request.body);
-    const user = await assertProjectWriteAccess(app, request, body.projectId);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "providers.render.observe",
-      actorId: user.id,
-      projectId: body.projectId,
-    });
+    await assertProjectWriteAccess(app, request, body.projectId);
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");

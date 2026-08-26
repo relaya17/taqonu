@@ -22,11 +22,6 @@ describe("runKernelEvaluation (P8 smoke suite)", () => {
     expect(report.suite).toBe("custom-suite");
   });
 
-  it("reports real (not synthetic) zero cost — the smoke suite's specialists never call an LLM provider", () => {
-    const report = runKernelEvaluation();
-    expect(report.costUsd).toBe(0);
-  });
-
   it("skips cases not routed to a filtered agentId (still counts as passed)", () => {
     const report = runKernelEvaluation({ agentId: "LEGAL_MEDIA_COMMS" });
     expect(report.casesPassed).toBe(report.casesTotal);

@@ -20,9 +20,9 @@
     "proof:run": "tsx src/cli-proof.ts"
   },
   "dependencies": {
-    "@atlas/code-intelligence": "workspace:*",
-    "@atlas/experts": "workspace:*",
-    "@atlas/shared": "workspace:*"
+    "@atlas/code-intelligence": "*",
+    "@atlas/experts": "*",
+    "@atlas/shared": "*"
   },
   "devDependencies": {
     "tsx": "^4.19.3",

@@ -12,11 +12,7 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
-import {
-  assertProjectReadAccess,
-  assertProjectWriteAccess,
-} from "../services/project-access.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 
 /**
  * Customer Mongo/Supabase as **observation feeds** → DATABASE evidence.
@@ -25,14 +21,7 @@ import { enforceEntityWrite } from "../services/risk-audit.js";
 export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/v1/feeds/supabase", async (request, reply) => {
     const body = supabaseFeedInputSchema.parse(request.body);
-    const user = await assertProjectWriteAccess(app, request, body.projectId);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "feeds.supabase",
-      actorId: user.id,
-      projectId: body.projectId,
-    });
+    await assertProjectWriteAccess(app, request, body.projectId);
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeSupabaseFeed(body);
     const now = new Date().toISOString();
@@ -83,14 +72,7 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
 
   app.post("/api/v1/feeds/mongodb", async (request, reply) => {
     const body = mongoFeedInputSchema.parse(request.body);
-    const user = await assertProjectWriteAccess(app, request, body.projectId);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "feeds.mongodb",
-      actorId: user.id,
-      projectId: body.projectId,
-    });
+    await assertProjectWriteAccess(app, request, body.projectId);
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeMongoFeed(body);
     const now = new Date().toISOString();
@@ -139,12 +121,7 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.get("/api/v1/feeds/:projectId", async (request) => {
-    // SECURITY FIX (found while widening Policy Engine coverage): this
-    // route had ZERO auth — anyone who knew (or scanned) a project id could
-    // read its DB schema names, table/collection counts, and deployment
-    // feed data. Standard project-scoped read gate.
     const params = z.object({ projectId: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.projectId);
     return {
       items: osStore.getDbFeeds(params.projectId),
       deployment: osStore.getDeployFeeds(params.projectId),

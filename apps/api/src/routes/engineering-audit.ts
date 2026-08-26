@@ -13,6 +13,7 @@ import {
   runContinuousSystemAudit,
   runEngineeringConstitution,
 } from "@atlas/code-intelligence";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -25,7 +26,6 @@ import {
 } from "../services/architecture-contract-store.js";
 import { architectureContractSchema } from "@atlas/shared";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 import { checkResourceAccess } from "../services/resource-access.js";
 import { getProjectOwnerId } from "../services/project-access.js";
 import { getRequestUser } from "./auth.js";
@@ -129,14 +129,25 @@ export async function registerEngineeringAuditRoutes(
     // write via the REST API (mirrors how a signed-in human REST write is
     // already implicitly trusted elsewhere in this codebase, e.g.
     // graph.ts's rebuild route and portfolio.ts's discovery/link route).
-    const body = architectureContractSchema.parse(request.body);
-    enforceEntityWrite({
-      entityType: "CONFIGURATION",
-      action: "CREATE",
-      routeLabel: "audit-engine.contract.put",
-      actorId: user.id,
-      projectId: body.projectId ?? null,
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
     });
+    if (entityDecision.decision === "DENIED") {
+      throw new AtlasError("FORBIDDEN", entityDecision.reason, {
+        statusCode: 403,
+      });
+    }
+    if (entityDecision.decision === "APPROVAL_REQUIRED") {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "CONFIGURATION.CREATE requires explicit approval",
+        { statusCode: 403 },
+      );
+    }
+
+    const body = architectureContractSchema.parse(request.body);
 
     if (body.projectId) {
       // Only checked when the contract targets a specific project (there's

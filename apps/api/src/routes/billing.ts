@@ -2,10 +2,12 @@ import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  AtlasError,
   setPlanSchema,
   purchaseCreditsSchema,
   CREDIT_PACKS,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import {
   getAccountPlan,
   getAccountUsage,
@@ -27,7 +29,6 @@ import {
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import { getRequestUser } from "./auth.js";
-import { enforceEntityWrite } from "../services/risk-audit.js";
 
 /**
  * Stripe freemium (ADR-011 / ADR-013):
@@ -54,24 +55,39 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post("/api/v1/billing/plan", async (request) => {
-    const user = await requireSignedInForWrite(app, request);
+    await requireSignedInForWrite(app, request);
 
-    // Entity-policy gate + numeric Risk Engine + unified audit log:
-    // changing a tenant's plan tier mutates the subscription/billing
-    // arrangement that governs quotas and (when Stripe is live) what the
-    // account is charged, so it is classified as
+    // Entity-policy gate: changing a tenant's plan tier mutates the
+    // subscription/billing arrangement that governs quotas and (when Stripe
+    // is live) what the account is charged, so it is classified as
     // FINANCIAL_TRANSACTION.UPDATE — `setTenantPlanTier` upserts the
     // existing (or newly-initialized) tenant subscription row in place
-    // rather than creating a brand-new transaction record. Self-approved
-    // signed-in-human-write pattern (mirrors how a signed-in human REST
-    // write is already implicitly trusted elsewhere in this codebase, e.g.
-    // graph.ts's rebuild route and portfolio.ts's discovery/link route).
-    enforceEntityWrite({
-      entityType: "FINANCIAL_TRANSACTION",
-      action: "UPDATE",
-      routeLabel: "billing.plan.update",
-      actorId: user.id,
-    });
+    // rather than creating a brand-new transaction record. `writeGateOpen:
+    // true` + `approved: true` represents the self-approved case of an
+    // authenticated human directly triggering this write via the REST API
+    // (mirrors how a signed-in human REST write is already implicitly
+    // trusted elsewhere in this codebase, e.g. graph.ts's rebuild route and
+    // portfolio.ts's discovery/link route). This is a manual/staging tier
+    // flip on the caller's own account (not, e.g., an irreversible
+    // platform-wide action), so it stays in the default-allow bucket rather
+    // than admin-ops.ts's `approved: false` APPROVAL_REQUIRED case.
+    const entityDecision = authorizeEntityAction(
+      "FINANCIAL_TRANSACTION",
+      "UPDATE",
+      { mode: "WRITE", writeGateOpen: true, approved: true },
+    );
+    if (entityDecision.decision === "DENIED") {
+      throw new AtlasError("FORBIDDEN", entityDecision.reason, {
+        statusCode: 403,
+      });
+    }
+    if (entityDecision.decision === "APPROVAL_REQUIRED") {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "FINANCIAL_TRANSACTION.UPDATE requires explicit approval",
+        { statusCode: 403 },
+      );
+    }
 
     // No `checkResourceAccess` ownership check here: `identity.ownerId` is
     // always resolved from the signed-in caller's own id (see
@@ -106,21 +122,7 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
 
   /** Staging pack purchase until Stripe webhook. */
   app.post("/api/v1/billing/credits/purchase", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
-
-    // Same entity-policy + Risk Engine + audit gate as POST /billing/plan
-    // above: granting credits is a financial-transaction CREATE
-    // (HIGH_RISK_WRITE, requires approval by default). Same
-    // self-approved-human-write rationale applies — this is a signed-in
-    // caller directly purchasing credits for their own account via the
-    // REST API, not an agent-initiated action.
-    enforceEntityWrite({
-      entityType: "FINANCIAL_TRANSACTION",
-      action: "CREATE",
-      routeLabel: "billing.credits.purchase",
-      actorId: user.id,
-    });
-
+    await requireSignedInForWrite(app, request);
     const body = purchaseCreditsSchema.parse(request.body);
     const balance = purchaseCreditPack(body.pack);
     return reply.status(201).send({
@@ -140,19 +142,7 @@ export async function registerBillingRoutes(app: FastifyInstance): Promise<void>
     });
 
   app.post("/api/v1/billing/stripe/checkout", async (request, reply) => {
-    const stripeUser = await requireSignedInForWrite(app, request);
-
-    // Same FINANCIAL_TRANSACTION.CREATE gate as /billing/credits/purchase —
-    // this route either creates a real Stripe Checkout Session (live mode)
-    // or returns a stub description of one; both branches represent the
-    // caller initiating a financial transaction for their own account.
-    enforceEntityWrite({
-      entityType: "FINANCIAL_TRANSACTION",
-      action: "CREATE",
-      routeLabel: "billing.stripe.checkout",
-      actorId: stripeUser.id,
-    });
-
+    await requireSignedInForWrite(app, request);
     const rawBody =
       request.body && typeof request.body === "object"
         ? request.body

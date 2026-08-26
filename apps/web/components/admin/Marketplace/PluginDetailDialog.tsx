@@ -83,7 +83,7 @@ export function PluginDetailDialog({ plugin, onClose }: PluginDetailDialogProps)
                   </Typography>
                 ) : (
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    {plugin.declaredTools.map((tool) => (
+                    {plugin.declaredTools.map((tool: string) => (
                       <Chip key={tool} size="small" label={tool} />
                     ))}
                   </Stack>
@@ -97,7 +97,7 @@ export function PluginDetailDialog({ plugin, onClose }: PluginDetailDialogProps)
                   </Typography>
                 ) : (
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    {plugin.declaredCapabilities.map((cap) => (
+                    {plugin.declaredCapabilities.map((cap: string) => (
                       <Chip key={cap} size="small" variant="outlined" color="secondary" label={cap} />
                     ))}
                   </Stack>
@@ -111,7 +111,7 @@ export function PluginDetailDialog({ plugin, onClose }: PluginDetailDialogProps)
                   </Typography>
                 ) : (
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    {plugin.declaredEntityActions.map((ea, i) => (
+                    {plugin.declaredEntityActions.map((ea: { entityType: string; action: string }, i: number) => (
                       <Chip
                         key={`${ea.entityType}.${ea.action}.${i}`}
                         size="small"
