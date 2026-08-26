@@ -35,6 +35,7 @@ import {
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { assertLlmEgressAllowed } from "../services/egress-gate.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -245,6 +246,10 @@ export async function registerConversationRoutes(
       assertNoSecrets(userMessage, "llm.user");
 
       const llmEnv = llmEnvForProvider(selectedId, app.atlasEnv, catalog);
+      assertLlmEgressAllowed({
+        provider: llmEnv.LLM_PROVIDER,
+        purpose: "llm.conversation",
+      });
       let llm: { provider: string; text: string };
       try {
         llm = paidRun

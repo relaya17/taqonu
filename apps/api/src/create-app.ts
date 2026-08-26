@@ -47,6 +47,7 @@ import { registerEngineeringAuditRoutes } from "./routes/engineering-audit.js";
 import { registerRemediationRoutes } from "./routes/remediation.js";
 import { registerMetricsRoutes } from "./routes/metrics.js";
 import { registerLegalMediaRoutes } from "./routes/legal-media.js";
+import { registerGatewayFulfillRoutes } from "./routes/gateway-fulfill.js";
 import { registerSecuritySarifRoutes } from "./routes/security-sarif.js";
 import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { registerObserverRoutes } from "./routes/observer.js";
@@ -57,6 +58,7 @@ import { requireUser } from "./middleware/auth-guards.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { registerEventRules } from "./services/event-rules.js";
+import { registerControlPlaneBridge } from "./services/control-plane-bridge.js";
 import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
 import {
   KNOWLEDGE_REFRESH_INTERVAL_MS,
@@ -90,6 +92,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   });
 
   registerEventRules();
+  registerControlPlaneBridge();
 
   osStore.ensureLoaded();
   const hydrate = await hydrateOsStoreFromCloudIfEmpty(env, {
@@ -163,6 +166,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerRemediationRoutes(app);
   await registerMetricsRoutes(app);
   await registerLegalMediaRoutes(app);
+  await registerGatewayFulfillRoutes(app);
   await registerObserverRoutes(app);
   await registerSentinelRoutes(app);
 

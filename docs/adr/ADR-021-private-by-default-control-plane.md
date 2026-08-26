@@ -68,8 +68,10 @@ The user-directory UI **must not** grant `operator` or `owner`.
 not be reachable because “someone knows the URL.” Bind loopback by default;
 require a bearer token except for liveness `GET /api/v1/status`.
 
-P1 (not this ADR’s full scope): `apps/admin` + Control API + immutable audit
-append-only + data classification engine + break-glass.
+P1 (incremental): `apps/admin` Owner UI on :3200; Control API application
+registry + Atlas Gateway events/ops; data classification + egress policy on
+LLM call sites; DEF-000 self-audit (detect/propose only); audit DELETE/PUT/PATCH
+returns 405. Break-glass and a physically separate Control Plane DB remain later.
 
 ## Consequences
 

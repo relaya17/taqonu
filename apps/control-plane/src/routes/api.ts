@@ -1,8 +1,10 @@
-import { Router, json } from "./router.js";
+import type { IncomingMessage } from "node:http";
+import { Router, json, readJsonBody } from "./router.js";
 import {
   listRegisteredAgents,
   getRegisteredAgent,
   getRegistryStats,
+  setAgentRuntimeStatus,
 } from "../services/agent-registry.js";
 import {
   listAuditEntries,
@@ -11,24 +13,54 @@ import {
   getPolicyForAction,
   listApprovalRecords,
   computeHealthMetrics,
+  verifyAuditChain,
 } from "../services/governance-state.js";
+import {
+  applicationIntegrationContract,
+  getRegisteredApplication,
+  listRegisteredApplications,
+} from "../services/application-registry.js";
+import {
+  dispatchGatewayOperation,
+  ingestGatewayEvent,
+} from "../services/atlas-gateway.js";
+import { ownerBrief, runSelfAudit } from "../services/self-audit.js";
+import {
+  issueReauthTicket,
+  verifyReauthTicket,
+} from "../control-plane-auth.js";
 
 /**
  * Control Plane API routes.
  *
  * All routes are prefixed with `/api/v1/` and return JSON.
- * The control plane is a READ-ONLY surface — no mutation endpoints.
+ * The control plane is a governance surface. Reads are unrestricted to
+ * authenticated operators. Writes go through the Atlas Gateway and are
+ * ALLOW / DENY / REQUIRE_APPROVAL — never a silent self-mutation.
  *
  * ── Route inventory ────────────────────────────────────────────────────
  *
- * Agent Registry:
- *   GET /api/v1/agents           — list all registered agents
- *   GET /api/v1/agents/:id       — single agent detail + capabilities
- *   GET /api/v1/agents/stats     — registry summary stats
+ * Applications:
+ *   GET /api/v1/applications
+ *   GET /api/v1/applications/:id
  *
- * Audit Trail:
- *   GET /api/v1/audit            — paginated audit entries (newest first)
- *   GET /api/v1/audit/count      — total entry count
+ * Agent Registry:
+ *   GET /api/v1/agents
+ *   GET /api/v1/agents/:id
+ *   GET /api/v1/agents/stats
+ *
+ * Gateway:
+ *   POST /api/v1/gateway/events   — application → Atlas (X-Atlas-Reason)
+ *   POST /api/v1/gateway/ops      — Atlas → application (governed)
+ *
+ * Audit Trail (append/read/verify only — DELETE/PUT/PATCH → 405):
+ *   GET /api/v1/audit
+ *   GET /api/v1/audit/count
+ *   GET /api/v1/audit/verify
+ *
+ * Self-governance:
+ *   GET /api/v1/self-audit
+ *   GET /api/v1/owner/brief
  *
  * Policies:
  *   GET /api/v1/policies         — all policy definitions
@@ -86,7 +118,14 @@ export function createApiRouter(): Router {
 
     json(
       res,
-      listAuditEntries({ actorId, type, risk, result, limit, offset }),
+      listAuditEntries({
+        ...(actorId ? { actorId } : {}),
+        ...(type ? { type } : {}),
+        ...(risk ? { risk } : {}),
+        ...(result ? { result } : {}),
+        limit,
+        offset,
+      }),
     );
   });
 
@@ -117,7 +156,13 @@ export function createApiRouter(): Router {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const status = url.searchParams.get("status") ?? undefined;
     const agentId = url.searchParams.get("agentId") ?? undefined;
-    json(res, listApprovalRecords({ status, agentId }));
+    json(
+      res,
+      listApprovalRecords({
+        ...(status ? { status } : {}),
+        ...(agentId ? { agentId } : {}),
+      }),
+    );
   });
 
   // ── Health & Status ─────────────────────────────────────────────────
@@ -135,5 +180,200 @@ export function createApiRouter(): Router {
     });
   });
 
+  router.get("/api/v1/applications", (_req, res) => {
+    json(res, { items: listRegisteredApplications() });
+  });
+
+  router.get("/api/v1/applications/:id", (_req, res, params) => {
+    const id = params["id"];
+    if (!id) {
+      json(res, { error: "Application ID required" }, 400);
+      return;
+    }
+    const app = getRegisteredApplication(id);
+    if (!app) {
+      json(res, { error: `Application "${id}" not found` }, 404);
+      return;
+    }
+    json(res, { ...app, contract: applicationIntegrationContract(app) });
+  });
+
+  router.get("/api/v1/audit/verify", (_req, res) => {
+    json(res, verifyAuditChain());
+  });
+
+  router.get("/api/v1/self-audit", (_req, res) => {
+    json(res, runSelfAudit());
+  });
+
+  router.get("/api/v1/owner/brief", (_req, res) => {
+    json(res, ownerBrief());
+  });
+
+  router.post("/api/v1/gateway/events", async (req, res) => {
+    const reason = headerReason(req);
+    if (!reason) {
+      json(res, { error: "X-Atlas-Reason is required for gateway writes" }, 400);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      json(
+        res,
+        { error: error instanceof Error ? error.message : "invalid json" },
+        400,
+      );
+      return;
+    }
+    const record = body as Record<string, unknown>;
+    const type = typeof record["type"] === "string" ? record["type"] : "";
+    const applicationId =
+      typeof record["applicationId"] === "string" ? record["applicationId"] : "";
+    if (!type || !applicationId) {
+      json(res, { error: "type and applicationId are required" }, 400);
+      return;
+    }
+    const result = ingestGatewayEvent({
+      type,
+      applicationId,
+      ...(typeof record["agentId"] === "string" ? { agentId: record["agentId"] } : {}),
+      ...(record["payload"] && typeof record["payload"] === "object"
+        ? { payload: record["payload"] as Record<string, unknown> }
+        : {}),
+    });
+    json(res, { ...result, reasonHeader: reason }, result.accepted ? 202 : 400);
+  });
+
+  router.post("/api/v1/gateway/ops", async (req, res) => {
+    const reason = headerReason(req);
+    if (!reason) {
+      json(res, { error: "X-Atlas-Reason is required for gateway writes" }, 400);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      json(
+        res,
+        { error: error instanceof Error ? error.message : "invalid json" },
+        400,
+      );
+      return;
+    }
+    const record = body as Record<string, unknown>;
+    const operation =
+      typeof record["operation"] === "string" ? record["operation"] : "";
+    const applicationId =
+      typeof record["applicationId"] === "string" ? record["applicationId"] : "";
+    if (!operation || !applicationId) {
+      json(res, { error: "operation and applicationId are required" }, 400);
+      return;
+    }
+    const writeOps = new Set([
+      "request_agent_run",
+      "request_test",
+      "request_verify",
+      "request_remediation",
+    ]);
+    const reauthHeader = headerValue(req, "x-atlas-reauth");
+    const needsReauth = writeOps.has(operation);
+    const reauthenticated = needsReauth ? verifyReauthTicket(reauthHeader) : true;
+    const evaluation = dispatchGatewayOperation({
+      actorId:
+        typeof record["actorId"] === "string" ? record["actorId"] : "atlas-owner",
+      applicationId,
+      operation,
+      reason,
+      requiresReauth: needsReauth,
+      reauthenticated,
+      ...(typeof record["agentId"] === "string" ? { agentId: record["agentId"] } : {}),
+      ...(record["approved"] === true ? { approved: true } : {}),
+      ...(record["verificationPlanPresent"] === true
+        ? { verificationPlanPresent: true }
+        : {}),
+      ...(typeof record["delegationHopCount"] === "number"
+        ? { delegationHopCount: record["delegationHopCount"] }
+        : {}),
+    });
+    const status =
+      evaluation.decision === "DENY"
+        ? 403
+        : evaluation.decision === "REQUIRE_APPROVAL"
+          ? 202
+          : 200;
+    json(res, evaluation, status);
+  });
+
+  router.post("/api/v1/auth/reauth", (_req, res) => {
+    json(res, issueReauthTicket());
+  });
+
+  router.post("/api/v1/agents/:id/control", async (req, res, params) => {
+    const reason = headerReason(req);
+    if (!reason) {
+      json(res, { error: "X-Atlas-Reason is required" }, 400);
+      return;
+    }
+    if (!verifyReauthTicket(headerValue(req, "x-atlas-reauth"))) {
+      json(res, { error: "Recent re-authentication required" }, 401);
+      return;
+    }
+    const id = params["id"];
+    if (!id) {
+      json(res, { error: "Agent ID required" }, 400);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      json(
+        res,
+        { error: error instanceof Error ? error.message : "invalid json" },
+        400,
+      );
+      return;
+    }
+    const rawAction = (body as Record<string, unknown>)["action"];
+    const action = typeof rawAction === "string" ? rawAction : "";
+    const statusMap: Record<string, "PAUSED" | "ACTIVE" | "DISABLED" | "QUARANTINED" | "REVOKED"> = {
+      pause: "PAUSED",
+      resume: "ACTIVE",
+      disable: "DISABLED",
+      quarantine: "QUARANTINED",
+      revoke: "REVOKED",
+    };
+    const next = statusMap[action];
+    if (!next) {
+      json(res, { error: "action must be pause|resume|disable|quarantine|revoke" }, 400);
+      return;
+    }
+    const agent = setAgentRuntimeStatus(id, next);
+    if (!agent) {
+      json(res, { error: `Agent "${id}" not found` }, 404);
+      return;
+    }
+    json(res, { agent, reason });
+  });
+
   return router;
+}
+
+function headerValue(
+  req: { headers: IncomingMessage["headers"] },
+  name: string,
+): string | null {
+  const raw = req.headers[name];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === "string" ? value : null;
+}
+
+function headerReason(req: { headers: IncomingMessage["headers"] }): string | null {
+  const value = headerValue(req, "x-atlas-reason");
+  if (!value) return null;
+  const reason = value.trim();
+  return reason.length >= 8 ? reason : null;
 }

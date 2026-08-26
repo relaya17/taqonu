@@ -101,3 +101,38 @@ export function html(res: ServerResponse, body: string, status = 200): void {
 export function notFound(res: ServerResponse): void {
   json(res, { error: "Not found" }, 404);
 }
+
+export function methodNotAllowed(res: ServerResponse, message: string): void {
+  json(res, { error: message }, 405);
+}
+
+export function readJsonBody(
+  req: IncomingMessage,
+  limit = 256_000,
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (chunks.length === 0) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        reject(new Error("invalid json"));
+      }
+    });
+    req.on("error", reject);
+  });
+}

@@ -2,8 +2,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { createApiRouter } from "./routes/api.js";
 import { getDashboardHtml } from "./routes/dashboard.js";
 import { getLandingHtml } from "./routes/landing.js";
-import { html, notFound } from "./routes/router.js";
+import { html, methodNotAllowed, notFound } from "./routes/router.js";
 import { authorizeControlPlaneRequest } from "./control-plane-auth.js";
+import { refuseAuditMutation } from "./services/governance-state.js";
 
 /**
  * Atlas Control Plane — governance, oversight, and AI agent management.
@@ -52,8 +53,11 @@ async function requestHandler(
 ): Promise<void> {
   // ── CORS headers (allow engineering surface to call control plane) ──
   res.setHeader("Access-Control-Allow-Origin", process.env["WEB_ORIGIN"] ?? "http://localhost:3000");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Atlas-Reason, X-Atlas-Reauth",
+  );
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -65,8 +69,18 @@ async function requestHandler(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   ).pathname;
+  const method = (req.method ?? "GET").toUpperCase();
 
   if (!authorizeControlPlaneRequest(req, res, pathname)) return;
+
+  if (
+    pathname.startsWith("/api/v1/audit") &&
+    (method === "DELETE" || method === "PUT" || method === "PATCH")
+  ) {
+    const refused = refuseAuditMutation(method);
+    methodNotAllowed(res, refused.error);
+    return;
+  }
 
   // ── API routes ─────────────────────────────────────────────────────
   const handled = await apiRouter.handle(req, res);

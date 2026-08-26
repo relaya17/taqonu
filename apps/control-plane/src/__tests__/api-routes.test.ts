@@ -5,6 +5,8 @@ import {
   resetGovernanceStateForTests,
   type AuditEntry,
 } from "../services/governance-state.js";
+import { resetAgentRuntimeForTests } from "../services/agent-registry.js";
+import { resetApplicationRegistryForTests } from "../services/application-registry.js";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -16,11 +18,30 @@ interface MockResponseData {
   body: string;
 }
 
-function createMockReq(method: string, url: string): IncomingMessage {
-  const readable = new Readable({ read() { /* noop */ } }) as IncomingMessage;
+function createMockReq(
+  method: string,
+  url: string,
+  options?: { readonly body?: unknown; readonly headers?: Record<string, string> },
+): IncomingMessage {
+  const payload =
+    options?.body !== undefined ? JSON.stringify(options.body) : "";
+  let sent = false;
+  const readable = new Readable({
+    read() {
+      if (!sent && payload) {
+        sent = true;
+        this.push(payload);
+      }
+      this.push(null);
+    },
+  }) as IncomingMessage;
   readable.method = method;
   readable.url = url;
-  readable.headers = { host: "localhost:3100" };
+  readable.headers = {
+    host: "localhost:3100",
+    "content-type": "application/json",
+    ...options?.headers,
+  };
   return readable;
 }
 
@@ -77,6 +98,8 @@ describe("Control Plane — API Routes", () => {
 
   beforeEach(() => {
     resetGovernanceStateForTests();
+    resetApplicationRegistryForTests();
+    resetAgentRuntimeForTests();
   });
 
   // ── Status ─────────────────────────────────────────────────────────
@@ -257,6 +280,59 @@ describe("Control Plane — API Routes", () => {
       expect(typeof body["totalExecutions"]).toBe("number");
       expect(typeof body["successfulExecutions"]).toBe("number");
       expect(typeof body["failedExecutions"]).toBe("number");
+    });
+  });
+
+  describe("GET /api/v1/applications", () => {
+    it("includes DEF-000 as a generic managed application", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/applications"), res);
+      const body = JSON.parse(res._mock.body) as { items: Array<{ applicationId: string }> };
+      expect(body.items.some((item) => item.applicationId === "def-000")).toBe(true);
+    });
+  });
+
+  describe("POST /api/v1/gateway/ops", () => {
+    it("requires X-Atlas-Reason", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/ops", {
+          body: { operation: "inspect", applicationId: "def-000" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(400);
+    });
+
+    it("inspects through the gateway when a reason is supplied", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/ops", {
+          body: { operation: "inspect", applicationId: "def-000", actorId: "owner" },
+          headers: { "x-atlas-reason": "owner inspect def-000" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(200);
+      const body = JSON.parse(res._mock.body) as { decision: string };
+      expect(body.decision).toBe("ALLOW");
+    });
+
+    it("refuses a write op without re-authentication", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/ops", {
+          body: {
+            operation: "request_agent_run",
+            applicationId: "def-000",
+            agentId: "CODE_ENGINEER",
+            actorId: "owner",
+          },
+          headers: { "x-atlas-reason": "run agent without reauth" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(403);
     });
   });
 

@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import {
   unifiedAuditEntrySchema,
+  type UnifiedAuditEntry,
   type UnifiedAuditEntryInput,
 } from "@atlas/shared";
 import { findRepoRoot } from "./repo-root.js";
@@ -193,5 +194,98 @@ export function countAuditLogLines(): number {
     return raw.split("\n").filter((l) => l.trim().length > 0).length;
   } catch {
     return 0;
+  }
+}
+
+export function verifyAuditLogChain(): {
+  readonly ok: boolean;
+  readonly checked: number;
+  readonly error: string | null;
+} {
+  const path = resolveAuditLogPath();
+  if (!existsSync(path)) {
+    return { ok: true, checked: 0, error: null };
+  }
+  try {
+    const raw = readFileSync(path, "utf8");
+    const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+    let prev = AUDIT_GENESIS_HASH;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line) continue;
+      const parsed = JSON.parse(line) as AuditLogRecord;
+      if (parsed.prevHash !== prev) {
+        return {
+          ok: false,
+          checked: i,
+          error: `audit chain break at index ${i}`,
+        };
+      }
+      const expected = hashAuditPayload(parsed.prevHash, parsed.payload);
+      if (expected !== parsed.hash) {
+        return {
+          ok: false,
+          checked: i,
+          error: `audit hash mismatch at index ${i}`,
+        };
+      }
+      prev = parsed.hash;
+    }
+    return { ok: true, checked: lines.length, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      checked: 0,
+      error: error instanceof Error ? error.message : "audit verify failed",
+    };
+  }
+}
+
+export function verifyAuditChain(): {
+  readonly intact: boolean;
+  readonly ok: boolean;
+  readonly checked: number;
+  readonly entriesChecked: number;
+  readonly error: string | null;
+  readonly firstInvalidEventId: string | null;
+} {
+  const result = verifyAuditLogChain();
+  return {
+    ...result,
+    intact: result.ok,
+    entriesChecked: result.checked,
+    firstInvalidEventId: result.ok ? null : result.error,
+  };
+}
+
+export function listUnifiedAuditEntries(filter?: {
+  readonly ownerId?: string;
+  readonly actorId?: string;
+  readonly limit?: number;
+}): UnifiedAuditEntry[] {
+  const path = resolveAuditLogPath();
+  if (!existsSync(path)) return [];
+  try {
+    const raw = readFileSync(path, "utf8");
+    const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+    const out: UnifiedAuditEntry[] = [];
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line) as AuditLogRecord;
+        const candidate = parsed.payload ?? parsed;
+        const entry = unifiedAuditEntrySchema.safeParse(candidate);
+        if (!entry.success) continue;
+        if (filter?.ownerId && entry.data.ownerId !== filter.ownerId) continue;
+        if (filter?.actorId && entry.data.actorId !== filter.actorId) continue;
+        out.push(entry.data);
+      } catch {
+        // skip corrupt line
+      }
+    }
+    const limit = filter?.limit;
+    if (limit !== undefined) return out.slice(-limit);
+    return out;
+  } catch {
+    return [];
   }
 }

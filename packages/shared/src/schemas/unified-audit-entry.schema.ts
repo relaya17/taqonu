@@ -46,6 +46,7 @@ export const unifiedAuditEntrySchema = z.object({
   approval: auditApprovalStatusSchema,
   result: auditResultStatusSchema,
   projectId: uuidSchema.nullable().optional(),
+  ownerId: uuidSchema.nullable().optional(),
   correlationId: uuidSchema.optional(),
 });
 

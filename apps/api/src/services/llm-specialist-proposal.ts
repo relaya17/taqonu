@@ -13,6 +13,7 @@ import {
   type FabricAgentId,
 } from "@atlas/shared";
 import { z } from "zod";
+import { assertLlmEgressAllowed } from "./egress-gate.js";
 
 /**
  * REAL LLM-backed `AgentProposal` generator — the Phase 1a replacement for
@@ -236,6 +237,10 @@ export async function generateSpecialistProposalViaLlm(
   };
   let provider = "none";
   try {
+    assertLlmEgressAllowed({
+      provider: input.env?.LLM_PROVIDER,
+      purpose: "llm.specialist",
+    });
     const llm = await completeWithFreeFallback(input.env ?? {}, [
       { role: "system", content: system },
       {

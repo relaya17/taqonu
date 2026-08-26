@@ -43,6 +43,7 @@ import {
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
 import { SENTINEL_AGENT_KNOWLEDGE } from "../services/sentinel-agent-knowledge.js";
+import { assertLlmEgressAllowed } from "../services/egress-gate.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -270,6 +271,10 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       const userRequest = redactedUserRequest;
       assertNoSecrets(system, "llm.system");
       assertNoSecrets(userRequest, "llm.user");
+      assertLlmEgressAllowed({
+        provider: llmEnvOverride.LLM_PROVIDER,
+        purpose: "llm.agent",
+      });
 
       try {
         const llm = paidRun

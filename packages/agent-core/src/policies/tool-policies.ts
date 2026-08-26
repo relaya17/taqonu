@@ -104,6 +104,27 @@ export const DEFAULT_TOOL_POLICIES: readonly ToolPolicy[] = [
     timeoutMs: 15_000,
     secretsAccess: "NONE",
   },
+  // Fabric catalog names used by Gateway handoff. Policy exists so
+  // executeTool can reach a registered implementation; without a policy the
+  // runtime fail-closes before the registry. No new runtime — same table.
+  {
+    toolName: "analyze_repo",
+    risk: "READ_ONLY",
+    requiresApproval: false,
+    allowedProjects: [],
+    allowedCommands: [],
+    timeoutMs: 30_000,
+    secretsAccess: "NONE",
+  },
+  {
+    toolName: "knowledge_search",
+    risk: "READ_ONLY",
+    requiresApproval: false,
+    allowedProjects: [],
+    allowedCommands: [],
+    timeoutMs: 30_000,
+    secretsAccess: "NONE",
+  },
   {
     toolName: "research.verifiedSearch",
     risk: "READ_ONLY",

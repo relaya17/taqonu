@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { json } from "./routes/router.js";
 
@@ -39,6 +39,48 @@ function tokensEqual(a: string, b: string): boolean {
 
 export function isControlPlanePublicPath(pathname: string): boolean {
   return pathname === "/api/v1/status";
+}
+
+const REAUTH_TTL_MS = 5 * 60 * 1000;
+
+function reauthSecret(): string {
+  return controlPlaneToken() ?? "atlas-dev-loopback-reauth";
+}
+
+export function issueReauthTicket(now = Date.now()): {
+  readonly ticket: string;
+  readonly expiresAt: string;
+} {
+  const expires = now + REAUTH_TTL_MS;
+  const body = String(expires);
+  const mac = createHmac("sha256", reauthSecret()).update(body).digest("hex");
+  return { ticket: `${body}.${mac}`, expiresAt: new Date(expires).toISOString() };
+}
+
+export function verifyReauthTicket(
+  ticket: string | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!ticket) return false;
+  const dot = ticket.indexOf(".");
+  if (dot <= 0) return false;
+  const body = ticket.slice(0, dot);
+  const mac = ticket.slice(dot + 1);
+  const expires = Number(body);
+  if (!Number.isFinite(expires) || expires < now) return false;
+  const expected = createHmac("sha256", reauthSecret()).update(body).digest("hex");
+  const left = Buffer.from(mac);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+export function isSensitiveControlMutation(pathname: string, method: string): boolean {
+  if (method !== "POST") return false;
+  return (
+    pathname === "/api/v1/gateway/ops" ||
+    (pathname.startsWith("/api/v1/agents/") && pathname.endsWith("/control"))
+  );
 }
 
 /**

@@ -5,8 +5,10 @@
 ArletOS is an **Engineering Intelligence OS**, not an AI agent product and not an IDE.  
 Managed System abstraction: [managed-system.md](./managed-system.md).
 
-Trust planes (ADR-021): **PUBLIC** / **USER PLANE** / **CONTROL PLANE**.  
-Principles: private-by-default, controlled egress, separate Control Plane, self-governance with human approval.
+Trust planes (ADR-021): **PUBLIC** / **USER PLANE** (`apps/web` + tenant API) / **CONTROL PLANE** (`apps/admin` UI on :3200 + `apps/control-plane` API on :3100).
+The Owner UI is not `apps/web/app/admin` (customer Oracle). Integration with managed apps/agents goes through the **Atlas Gateway** (`POST /api/v1/gateway/events` and `/ops`) — not direct database or filesystem access.
+Canonical authority graph (`evaluateOperatingCycle`): IDENTITY → AUTHORIZATION → POLICY → RISK → DECISION → APPROVAL → PLAN → EXECUTE → EVIDENCE → VERIFY → REGRESSION → AUDIT → MEMORY. Agents and tools must not implement a second authorization path. A successful command is not a successful repair: mutation requires a verification plan. Agent-to-agent delegation cannot inherit unlimited authority. Pause/quarantine is checked at dispatch time, not only at run start.
+Principles: private-by-default, controlled egress, separate Control Plane, self-governance with human approval. Atlas-self is **DEF-000**.
 
 ```
 Evidence + Current State

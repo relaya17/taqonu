@@ -41,6 +41,7 @@ export * from "./conversation.schema.js";
 export * from "./legal-media.schema.js";
 export * from "./observer.schema.js";
 export * from "./managed-system.schema.js";
+export * from "./agent-proposal.schema.js";
 export * from "./approval-request.schema.js";
 export * from "./plugin-manifest.schema.js";
 export * from "./exemplar.schema.js";

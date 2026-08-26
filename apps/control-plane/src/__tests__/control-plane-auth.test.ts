@@ -3,6 +3,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   authorizeControlPlaneRequest,
   isControlPlanePublicPath,
+  issueReauthTicket,
+  verifyReauthTicket,
 } from "../control-plane-auth.js";
 
 function fakeReq(auth?: string, remote = "127.0.0.1"): IncomingMessage {
@@ -79,5 +81,14 @@ describe("Control Plane auth (ADR-021)", () => {
       authorizeControlPlaneRequest(fakeReq(undefined, "10.0.0.8"), remote, "/dashboard"),
     ).toBe(false);
     expect(remote.status).toBe(403);
+  });
+
+  it("issues a time-bounded reauth ticket and rejects a forged one", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    const { ticket } = issueReauthTicket();
+    expect(verifyReauthTicket(ticket)).toBe(true);
+    expect(verifyReauthTicket("not-a-ticket")).toBe(false);
+    const expired = issueReauthTicket(Date.now() - 10 * 60 * 1000);
+    expect(verifyReauthTicket(expired.ticket)).toBe(false);
   });
 });

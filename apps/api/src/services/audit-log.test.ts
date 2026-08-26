@@ -17,6 +17,7 @@ import {
   listUnifiedAuditEntries,
   readAuditLogTail,
   setAuditLogPathForTests,
+  verifyAuditLogChain,
 } from "./audit-log.js";
 
 describe("append-only audit log", () => {
@@ -63,6 +64,18 @@ describe("append-only audit log", () => {
     }
     expect(countAuditLogLines()).toBe(7);
     expect(existsSync(logFile)).toBe(true);
+  });
+
+  it("verifyAuditLogChain detects a tampered historical line", () => {
+    appendAuditLogLine({ type: "agent.run.completed", runId: "r1" });
+    appendAuditLogLine({ type: "agents.plan", planId: "p1" });
+    expect(verifyAuditLogChain().ok).toBe(true);
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((l) => l.trim());
+    const first = JSON.parse(lines[0] ?? "{}") as { hash?: string };
+    first.hash = "0".repeat(64);
+    lines[0] = JSON.stringify(first);
+    writeFileSync(logFile, `${lines.join("\n")}\n`, "utf8");
+    expect(verifyAuditLogChain().ok).toBe(false);
   });
 
   it("continues the chain after process restart (tail hash from file)", () => {

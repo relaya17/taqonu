@@ -216,4 +216,31 @@ describe("dispatchAgentAction", () => {
     const entry = listUnifiedAuditEntries().find((e) => e.type === "test.automation.record.delete");
     expect(entry?.ownerId ?? null).toBeNull();
   });
+
+  it("denies a quarantined agent at dispatch time, not only at run start", () => {
+    const result = dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.agent.quarantined",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      agentRuntimeStatus: "QUARANTINED",
+    });
+    expect(result.decision).toBe("DENIED");
+    if (result.decision !== "DENIED") throw new Error("expected DENIED");
+    expect(result.reason).toMatch(/QUARANTINED/);
+  });
+
+  it("floors agent-to-agent delegation to approval", () => {
+    const result = dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.agent.delegation",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      delegationHopCount: 2,
+    });
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+  });
 });

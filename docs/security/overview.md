@@ -8,5 +8,7 @@
 - Webhook signature verification for GitHub
 - Untrusted external content (repos, web) cannot redefine system policy
 - **PRIVATE-BY-DEFAULT** (ADR-021): non-public API routes require a session; robots/noindex are not access control
-- **SEPARATE-CONTROL-PLANE**: `owner`/`operator` vs customer `admin`; Control Plane :3100 requires a bearer token
+- **SEPARATE-CONTROL-PLANE**: `owner`/`operator` vs customer `admin`; Control Plane :3100 requires a bearer token; Owner UI is `apps/admin` (:3200), not `apps/web/app/admin`
+- Atlas Gateway is the only Control Plane ↔ application/agent integration boundary
 - Atlas may propose self-fixes; it cannot silently weaken security or rewrite audit history
+- LLM egress is classified and policy-gated (secrets never go to external providers)

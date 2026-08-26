@@ -100,16 +100,20 @@ export function listAuditEntries(filter?: {
   let filtered = auditEntries;
 
   if (filter?.actorId) {
-    filtered = filtered.filter((e) => e.actorId === filter.actorId);
+    const actorId = filter.actorId;
+    filtered = filtered.filter((e) => e.actorId === actorId);
   }
   if (filter?.type) {
-    filtered = filtered.filter((e) => e.type.includes(filter.type));
+    const type = filter.type;
+    filtered = filtered.filter((e) => e.type.includes(type));
   }
   if (filter?.risk) {
-    filtered = filtered.filter((e) => e.risk === filter.risk);
+    const risk = filter.risk;
+    filtered = filtered.filter((e) => e.risk === risk);
   }
   if (filter?.result) {
-    filtered = filtered.filter((e) => e.result === filter.result);
+    const result = filter.result;
+    filtered = filtered.filter((e) => e.result === result);
   }
 
   // Most recent first
@@ -122,6 +126,40 @@ export function listAuditEntries(filter?: {
 
 export function getAuditEntryCount(): number {
   return auditEntries.length;
+}
+
+export function verifyAuditChain(): {
+  readonly ok: boolean;
+  readonly checked: number;
+  readonly error: string | null;
+} {
+  const ordered = [...auditEntries].sort((a, b) => a.seq - b.seq);
+  for (let i = 1; i < ordered.length; i += 1) {
+    const prev = ordered[i - 1];
+    const cur = ordered[i];
+    if (!prev || !cur) continue;
+    if (cur.prevHash !== prev.hash) {
+      return {
+        ok: false,
+        checked: i,
+        error: `audit chain break at seq ${cur.seq}`,
+      };
+    }
+  }
+  return { ok: true, checked: ordered.length, error: null };
+}
+
+/** Historical audit cannot be deleted or rewritten from the Control Plane. */
+export function refuseAuditMutation(method: string): {
+  readonly allowed: false;
+  readonly status: 405;
+  readonly error: string;
+} {
+  return {
+    allowed: false,
+    status: 405,
+    error: `${method} on audit is forbidden — append/read/export/verify only`,
+  };
 }
 
 // ── Policies ────────────────────────────────────────────────────────────

@@ -47,6 +47,14 @@ describe("Control Plane — Agent Registry", () => {
         expect(agent.status).toBe("ACTIVE");
       }
     });
+
+    it("every agent explicitly denies secrets.read and audit.delete", () => {
+      for (const agent of listRegisteredAgents()) {
+        expect(agent.deniedCapabilities).toContain("secrets.read");
+        expect(agent.deniedCapabilities).toContain("audit.delete");
+        expect(agent.allowedCapabilities.length).toBeGreaterThan(0);
+      }
+    });
   });
 
   // ── Single agent lookup ────────────────────────────────────────────

@@ -7,6 +7,7 @@ import {
   type EntityAction,
   type RiskBucket,
 } from "@atlas/agent-core";
+import { agentMayExecute, type AgentRuntimeControl } from "@atlas/shared";
 import type { UnifiedAuditEntryInput } from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
 import { createApprovalRequest } from "./approvals.js";
@@ -93,6 +94,21 @@ export interface DispatchAgentActionOptions {
   /** Known confidence/evidence signal if the caller has one (threaded to the risk scorer). Optional. */
   readonly confidence?: number;
   readonly evidenceCount?: number;
+  /**
+   * Control Plane runtime status. Checked at dispatch time, not only at
+   * run start — PAUSED/QUARANTINED/REVOKED agents cannot take a new action.
+   */
+  readonly agentRuntimeStatus?:
+    | "ACTIVE"
+    | "PAUSED"
+    | "DISABLED"
+    | "REVOKED"
+    | "QUARANTINED"
+    | "SUSPENDED"
+    | "DEGRADED"
+    | "UNKNOWN";
+  /** Agent A → B hops. Each hop floors to approval; never inherits unlimited authority. */
+  readonly delegationHopCount?: number;
 }
 
 export type DispatchAgentActionResult =
@@ -185,6 +201,30 @@ export function dispatchAgentAction(
   const { actor, entityType, action, routeLabel, sourceContext } = options;
   const policyLabel = `${entityType}.${action}`;
 
+  if (
+    options.agentRuntimeStatus &&
+    !agentMayExecute(options.agentRuntimeStatus as AgentRuntimeControl)
+  ) {
+    appendUnifiedAuditEntry({
+      type: routeLabel,
+      actorId: actor.agentId,
+      actorKind: "AGENT",
+      reason: `Agent runtime control ${options.agentRuntimeStatus} blocks execution`,
+      input: options.input ?? {},
+      output: {},
+      policy: policyLabel,
+      risk: "CRITICAL",
+      approval: "REJECTED",
+      result: "FAILURE",
+      projectId: options.projectId ?? null,
+      ownerId: actor.onBehalfOfUserId,
+    });
+    return {
+      decision: "DENIED",
+      reason: `Agent ${actor.agentId} is ${options.agentRuntimeStatus} and cannot execute`,
+    };
+  }
+
   // Step 1: agent/automation actions are never self-approved (unlike
   // `enforceEntityWrite`'s `approved:true` human-write pattern) — only a
   // real approval-request decision, or an AUTO/AUTO_LOG risk bucket computed
@@ -239,7 +279,14 @@ export function dispatchAgentAction(
   // raw score already implied.
   const untrustedFloored = floorBucketForUntrustedSource(rawBucket, sourceContext.trustLevel);
   const automationFloored = floorBucketForAutomationActor(rawBucket, actor.kind, action);
-  const bucket = stricterBucket(untrustedFloored, automationFloored);
+  const delegationFloored =
+    (options.delegationHopCount ?? 0) > 0
+      ? stricterBucket(rawBucket, "APPROVAL")
+      : rawBucket;
+  const bucket = stricterBucket(
+    stricterBucket(untrustedFloored, automationFloored),
+    delegationFloored,
+  );
   const riskLevel = BUCKET_TO_AUDIT_RISK[bucket];
 
   const needsApproval =
