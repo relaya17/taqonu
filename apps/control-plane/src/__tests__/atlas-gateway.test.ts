@@ -172,4 +172,21 @@ describe("Atlas Gateway", () => {
     expect(result.decision).toBe("DENY");
     expect(result.blockedAt).toBe("IDENTITY");
   });
+
+  it("halts conflicting-evidence writes on the same Gateway cycle", () => {
+    const result = dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      reason: "apply fix",
+      approved: true,
+      verificationPlanPresent: true,
+      evidenceCount: 2,
+      evidenceConflicting: true,
+    });
+    expect(result.decision).toBe("DENY");
+    expect(result.blockedAt).toBe("EVIDENCE");
+    expect(result.executed).toBe(false);
+  });
 });

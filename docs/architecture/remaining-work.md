@@ -73,10 +73,13 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 **Implemented:**
 - Receipt verdicts: `VERIFIED | FAILED | PARTIAL | INCONCLUSIVE | BLOCKED`.
 - Reads against the application registry can be VERIFIED.
-- Writes/handoff stay INCONCLUSIVE. Gateway fulfill: `executed: true` never implies `verified: true`.
-- DENY/REQUIRE_APPROVAL receipts are BLOCKED.
+- Default writes: `executed: true` never implies `verified: true`.
+- `captureExpectedState` → execute → `compareExpectedActual` on Gateway fulfill
+  (the only execution hop). Empty expected observations → INCONCLUSIVE.
+  Bound observations that match actual output → VERIFIED; memory stays OBSERVED.
 
-**Not claimed:** expected-vs-actual checkers for write outcomes (PARTIAL unused until a real partial check exists).
+**Not claimed:** a general world-state expected-vs-actual checker; regression
+product; diagnosis.
 
 ## 08 EGRESS GOVERNANCE
 **Implemented:**
@@ -87,7 +90,14 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 **Not claimed:** wrapping every `fetch` in the repo; a new egress product.
 
 ## 09 MEMORY / KNOWLEDGE INTEGRITY
-**Implemented:** `capEpistemicStateForSource` — AGENT ceiling is PROPOSED (AGENT+FACT cannot become FACT). Gateway memory is OBSERVED. No new memory types.
+**Implemented:** `capEpistemicStateForSource` — AGENT ceiling is PROPOSED
+(AGENT+FACT cannot become FACT). `agent.run.completed` is forced to OBSERVED
+via `memoryEpistemicAfterAction`. Gateway memory is OBSERVED. No new memory types.
+
+**GEAL sufficiency (same operating cycle, not a second path):**
+`assessEvidenceSufficiency` → CONTINUE | HALT | INCONCLUSIVE.
+Conflicting evidence on a mutation DENY at EVIDENCE. Empty evidence is not
+VERIFIED. Inspect may CONTINUE in order to observe.
 
 ## 10 AGENT GOVERNANCE
 **Implemented:** `agentMayExecute` (ACTIVE/DEGRADED only). Delegation hops floor to approval. Do not add agents. CP `fs.*` names remain oversight labels — execution uses the fabric catalog.

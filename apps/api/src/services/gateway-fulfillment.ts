@@ -5,12 +5,21 @@
  * It calls `executeGovernedAction`, which already composes
  * catalog authz → approval → dispatchAgentAction → executeTool → audit.
  */
-import { mapGatewayHandoff } from "@atlas/shared";
-import { executeGovernedAction, type GovernedExecutionOutcome } from "./governed-execution.js";
+import { mapGatewayHandoff, memoryEpistemicAfterAction } from "@atlas/shared";
+import {
+  computeArtifactHash,
+  executeGovernedAction,
+  type GovernedExecutionOutcome,
+} from "./governed-execution.js";
 import { resolveAgentIdentity } from "./agent-runtime-authz.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import type { DispatchSourceContext } from "./agent-dispatch-guard.js";
-import { verificationVerdictFromOutcome, type VerificationVerdict } from "./verification.js";
+import {
+  captureExpectedState,
+  compareExpectedActual,
+  verificationVerdictFromOutcome,
+  type VerificationVerdict,
+} from "./verification.js";
 
 export interface GatewayHandoff {
   readonly sessionOwnerId: string;
@@ -24,6 +33,7 @@ export interface GatewayHandoff {
   readonly requestId: string;
   readonly approvalRequestId?: string;
   readonly sourceContext?: DispatchSourceContext;
+  readonly expectedObservations?: readonly string[];
 }
 
 export interface GatewayFulfillmentResult {
@@ -33,7 +43,7 @@ export interface GatewayFulfillmentResult {
   readonly principalId: string;
   readonly outcome: GovernedExecutionOutcome;
   readonly executed: boolean;
-  readonly verified: false;
+  readonly verified: boolean;
   readonly verificationVerdict: VerificationVerdict;
   readonly observation: Record<string, unknown> | null;
   readonly verificationDetail: string;
@@ -81,6 +91,11 @@ export async function fulfillGatewayHandoff(
       agentId: handoff.agentId,
       toolName: mapping.toolName,
     });
+  const expected = captureExpectedState({
+    artifactHash: computeArtifactHash(artifact),
+    toolName: mapping.toolName,
+    expectedObservations: handoff.expectedObservations,
+  });
 
   const outcome = await executeGovernedAction({
     identity,
@@ -102,11 +117,23 @@ export async function fulfillGatewayHandoff(
   });
 
   const executed = outcome.status === "EXECUTED";
+  const compared = executed
+    ? compareExpectedActual(expected, {
+        artifactHash: outcome.artifactHash,
+        toolName: mapping.toolName,
+        executed: true,
+        output: outcome.output,
+      })
+    : {
+        verdict: verificationVerdictFromOutcome(outcome),
+        detail: `Not executed: ${outcome.stage}/${outcome.status}`,
+      };
+
   if (outcome.status === "EXECUTED") {
     appendDomainEvent({
       type: "agent.run.completed",
       projectId: handoff.projectId,
-      epistemicState: "OBSERVED",
+      epistemicState: memoryEpistemicAfterAction(),
       payload: {
         applicationId: handoff.applicationId,
         operation: handoff.operation,
@@ -114,6 +141,7 @@ export async function fulfillGatewayHandoff(
         requestId: handoff.requestId,
         toolName: mapping.toolName,
         artifactHash: outcome.artifactHash,
+        verificationVerdict: compared.verdict,
       },
     });
   }
@@ -125,8 +153,8 @@ export async function fulfillGatewayHandoff(
     principalId: identity.ownerId,
     outcome,
     executed,
-    verified: false,
-    verificationVerdict: verificationVerdictFromOutcome(outcome),
+    verified: compared.verdict === "VERIFIED",
+    verificationVerdict: compared.verdict,
     observation:
       outcome.status === "EXECUTED"
         ? {
@@ -134,9 +162,6 @@ export async function fulfillGatewayHandoff(
             artifactHash: outcome.artifactHash,
           }
         : null,
-    verificationDetail:
-      outcome.status === "EXECUTED"
-        ? "Executed through executeGovernedAction; executed ≠ verified"
-        : `Not executed: ${outcome.stage}/${outcome.status}`,
+    verificationDetail: compared.detail,
   };
 }

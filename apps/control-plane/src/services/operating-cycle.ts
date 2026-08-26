@@ -8,6 +8,8 @@
  * APPROVAL → PLAN → EXECUTE → EVIDENCE → VERIFY → REGRESSION → AUDIT → MEMORY
  */
 
+import { assessEvidenceSufficiency } from "./evidence-sufficiency.js";
+
 export const OPERATING_CYCLE_STAGES = [
   "IDENTITY",
   "AUTHORIZATION",
@@ -81,6 +83,8 @@ export interface OperatingCycleInput {
   /** A verification plan must exist before mutation is authorized to run. */
   readonly verificationPlanPresent?: boolean;
   readonly evidenceCount?: number;
+  readonly evidenceConflicting?: boolean;
+  readonly evidenceStale?: boolean;
   /** Agent A → B → privileged tool. Each hop must not inherit unlimited authority. */
   readonly delegationHopCount?: number;
   readonly reauthenticated?: boolean;
@@ -145,6 +149,19 @@ export function evaluateOperatingCycle(
   stages.push("POLICY");
   stages.push("RISK");
 
+  const sufficiency = assessEvidenceSufficiency({
+    evidenceCount: input.evidenceCount ?? 0,
+    mutation: input.readOnly !== true,
+    claimedState: input.readOnly === true ? "OBSERVED" : "VERIFIED",
+    ...(input.evidenceConflicting !== undefined
+      ? { conflicting: input.evidenceConflicting }
+      : {}),
+    ...(input.evidenceStale !== undefined ? { stale: input.evidenceStale } : {}),
+  });
+  if (sufficiency.decision === "HALT") {
+    return deny("EVIDENCE", sufficiency.reason, stages, input);
+  }
+
   const hops = input.delegationHopCount ?? 0;
   if (hops > 0 && input.approved !== true) {
     return {
@@ -208,9 +225,19 @@ export function evaluateOperatingCycle(
 }
 
 function epistemicOf(input: OperatingCycleInput): EpistemicGap {
-  const n = input.evidenceCount ?? 0;
-  if (n <= 0) return "UNVERIFIED";
-  if (input.verificationPlanPresent === true) return "KNOWN";
+  const sufficiency = assessEvidenceSufficiency({
+    evidenceCount: input.evidenceCount ?? 0,
+    mutation: input.readOnly !== true,
+    claimedState: input.readOnly === true ? "OBSERVED" : "VERIFIED",
+    ...(input.evidenceConflicting !== undefined
+      ? { conflicting: input.evidenceConflicting }
+      : {}),
+    ...(input.evidenceStale !== undefined ? { stale: input.evidenceStale } : {}),
+  });
+  if (sufficiency.decision === "HALT" || sufficiency.decision === "INCONCLUSIVE") {
+    return "UNVERIFIED";
+  }
+  if ((input.evidenceCount ?? 0) <= 0) return "UNVERIFIED";
   return "UNCERTAIN";
 }
 

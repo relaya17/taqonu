@@ -59,6 +59,9 @@ export interface GatewayRequest {
   readonly requiresReauth?: boolean;
   readonly delegationHopCount?: number;
   readonly verificationPlanPresent?: boolean;
+  readonly evidenceCount?: number;
+  readonly evidenceConflicting?: boolean;
+  readonly evidenceStale?: boolean;
 }
 
 export interface GatewayEvaluation {
@@ -358,6 +361,11 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
     ...(input.verificationPlanPresent !== undefined
       ? { verificationPlanPresent: input.verificationPlanPresent }
       : {}),
+    ...(input.evidenceCount !== undefined ? { evidenceCount: input.evidenceCount } : {}),
+    ...(input.evidenceConflicting !== undefined
+      ? { evidenceConflicting: input.evidenceConflicting }
+      : {}),
+    ...(input.evidenceStale !== undefined ? { evidenceStale: input.evidenceStale } : {}),
   });
 
   const base = {

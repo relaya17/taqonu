@@ -1,6 +1,7 @@
 import {
   STUB_OWNER_ID,
   domainEventSchema,
+  memoryEpistemicAfterAction,
   memorySchema,
   type DomainEvent,
   type DomainEventType,
@@ -220,7 +221,10 @@ export function appendDomainEvent(input: {
     projectId: input.projectId ?? null,
     correlationId: input.correlationId ?? crypto.randomUUID(),
     causationId: input.causationId ?? null,
-    epistemicState: input.epistemicState ?? "OBSERVED",
+    epistemicState:
+      input.type === "agent.run.completed"
+        ? memoryEpistemicAfterAction()
+        : (input.epistemicState ?? "OBSERVED"),
     payload: input.payload,
   });
   osStore.appendDomainEvent(event);

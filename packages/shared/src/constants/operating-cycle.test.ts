@@ -67,6 +67,21 @@ describe("evaluateOperatingCycle", () => {
     ).toBe("DENY");
   });
 
+  it("halts a write when evidence conflicts — not a second path, same cycle", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "request_remediation",
+      approved: true,
+      verificationPlanPresent: true,
+      evidenceCount: 2,
+      evidenceConflicting: true,
+    });
+    expect(result.decision).toBe("DENY");
+    expect(result.blockedAt).toBe("EVIDENCE");
+  });
+
   it("only ACTIVE and DEGRADED agents may execute", () => {
     expect(agentMayExecute("ACTIVE")).toBe(true);
     expect(agentMayExecute("DEGRADED")).toBe(true);

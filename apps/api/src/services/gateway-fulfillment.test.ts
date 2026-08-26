@@ -98,12 +98,39 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       );
     expect(memory.length).toBeGreaterThanOrEqual(1);
     expect(memory[0]?.epistemicState).toBe("OBSERVED");
+    expect(memory[0]?.epistemicState).not.toBe("FACT");
 
     const audit = listUnifiedAuditEntries().filter(
       (e) => e.type === "gateway.fulfill.request_agent_run",
     );
     expect(audit.some((e) => e.result === "SUCCESS")).toBe(true);
     expect(verifyAuditChain().intact).toBe(true);
+  });
+
+  it("can VERIFIED only when expected observations match — memory stays OBSERVED", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "observation: 3 TypeScript files",
+    });
+
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_nu",
+      expectedObservations: ["3 TypeScript files"],
+    });
+
+    expect(result.executed).toBe(true);
+    expect(result.verified).toBe(true);
+    expect(result.verificationVerdict).toBe("VERIFIED");
+    const memory = osStore
+      .listDomainEvents()
+      .filter((e) => e.payload["requestId"] === "req_gw_nu");
+    expect(memory[0]?.epistemicState).toBe("OBSERVED");
   });
 
   it("does not treat an unmapped Control Plane agent id as executable", async () => {
