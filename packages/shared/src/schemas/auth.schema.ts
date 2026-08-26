@@ -1,7 +1,16 @@
 import { z } from "zod";
 import { isoDateTimeSchema, uuidSchema } from "./common.schema.js";
 
-export const userRoleSchema = z.enum(["user", "admin"]);
+import {
+  CUSTOMER_GRANTABLE_ROLES,
+  isControlPlaneRole,
+} from "../constants/trust-boundary.js";
+
+/** Tenant `user`/`admin` plus Control Plane `operator`/`owner` (ADR-021). */
+export const userRoleSchema = z.enum(["user", "admin", "operator", "owner"]);
+
+/** Roles a customer admin may assign in the user directory. Never operator/owner. */
+export const customerGrantableRoleSchema = z.enum(CUSTOMER_GRANTABLE_ROLES);
 
 export const authUserSchema = z.object({
   id: uuidSchema,
@@ -88,7 +97,7 @@ export const mfaRequiredResponseSchema = z.object({
 });
 
 export const adminUpdateUserSchema = z.object({
-  role: userRoleSchema.optional(),
+  role: customerGrantableRoleSchema.optional(),
   disabled: z.boolean().optional(),
 });
 
@@ -117,6 +126,7 @@ export const authCapabilitySchema = z.enum([
   "write.billing.plan",
   "write.billing.credits",
   "admin",
+  "operator",
 ]);
 
 export const authSessionDetailSchema = z.object({
@@ -179,8 +189,11 @@ export function capabilitiesForRole(role: UserRole): readonly AuthCapability[] {
     "write.billing.plan",
     "write.billing.credits",
   ];
-  if (role === "admin") {
+  if (role === "admin" || isControlPlaneRole(role)) {
     base.push("admin");
+  }
+  if (isControlPlaneRole(role)) {
+    base.push("operator");
   }
   return base;
 }

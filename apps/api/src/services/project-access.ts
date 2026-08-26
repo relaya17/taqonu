@@ -5,7 +5,7 @@
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AtlasError, type AuthUser } from "@atlas/shared";
+import { AtlasError, isControlPlaneRole, type AuthUser } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import { checkResourceAccess } from "./resource-access.js";
@@ -144,7 +144,7 @@ export async function assertProjectWriteAccess(
     throw new AtlasError("NOT_FOUND", "Project not found", { statusCode: 404 });
   }
 
-  if (user.role === "admin") {
+  if (user.role === "admin" || isControlPlaneRole(user.role)) {
     return user;
   }
 

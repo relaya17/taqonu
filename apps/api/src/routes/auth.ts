@@ -302,6 +302,12 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         ...(app.atlasEnv.ATLAS_ADMIN_EMAIL
           ? { adminEmail: app.atlasEnv.ATLAS_ADMIN_EMAIL }
           : {}),
+        ...(app.atlasEnv.ATLAS_OWNER_EMAIL
+          ? { ownerEmail: app.atlasEnv.ATLAS_OWNER_EMAIL }
+          : {}),
+        ...(app.atlasEnv.ATLAS_OPERATOR_EMAILS
+          ? { operatorEmails: app.atlasEnv.ATLAS_OPERATOR_EMAILS }
+          : {}),
       });
       const { token, expiresAt, sessionId } = signSession(
         user.id,
@@ -511,6 +517,12 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       ...(body.locale !== undefined ? { locale: body.locale } : {}),
       ...(app.atlasEnv.ATLAS_ADMIN_EMAIL
         ? { adminEmail: app.atlasEnv.ATLAS_ADMIN_EMAIL }
+        : {}),
+      ...(app.atlasEnv.ATLAS_OWNER_EMAIL
+        ? { ownerEmail: app.atlasEnv.ATLAS_OWNER_EMAIL }
+        : {}),
+      ...(app.atlasEnv.ATLAS_OPERATOR_EMAILS
+        ? { operatorEmails: app.atlasEnv.ATLAS_OPERATOR_EMAILS }
         : {}),
     });
 
@@ -769,6 +781,13 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     let updated = listUsers().find((u) => u.id === id) ?? null;
     if (!updated) {
       throw new AtlasError("NOT_FOUND", "User not found", { statusCode: 404 });
+    }
+    if (updated.role === "owner" || updated.role === "operator") {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Control Plane principals cannot be modified from the customer admin directory",
+        { statusCode: 403 },
+      );
     }
     if (body.role !== undefined) {
       // MFA-for-admin policy (P1 audit finding): the admin role can only be

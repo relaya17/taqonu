@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   AtlasError,
+  isControlPlaneRole,
   graphImpactQuerySchema,
   graphImpactResultSchema,
   graphNodeSchema,
@@ -19,9 +20,9 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { osStore } from "../store/os-store.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import { checkResourceAccess } from "../services/resource-access.js";
-import { getProjectOwnerId } from "../services/project-access.js";
+import { assertProjectReadAccess, getProjectOwnerId } from "../services/project-access.js";
 
 const graphPageSchema = paginatedResponseSchema(graphNodeSchema).extend({
   edgesTotal: z.number().int().nonnegative(),
@@ -69,6 +70,7 @@ function resolveGraphWorkspace(input: {
 
 export async function registerGraphRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/graph/nodes", async (request) => {
+    const user = await requireUser(app, request);
     const q = z
       .object({
         projectId: uuidSchema.optional(),
@@ -82,13 +84,25 @@ export async function registerGraphRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(request.query);
 
+    if (q.projectId) {
+      await assertProjectReadAccess(app, request, q.projectId);
+    } else if (!isControlPlaneRole(user.role)) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Graph reads require a project you own. Unscoped workspaceRoot is Control Plane only.",
+        { statusCode: 403 },
+      );
+    }
+
     let workspaceRoot: string | null = null;
     let projectId: string | null = q.projectId ?? null;
     let projectSlug: string | null = null;
     try {
       const resolved = resolveGraphWorkspace({
         projectId,
-        workspaceRoot: q.workspaceRoot ?? null,
+        workspaceRoot: isControlPlaneRole(user.role)
+          ? (q.workspaceRoot ?? null)
+          : null,
         envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       });
       workspaceRoot = resolved.workspaceRoot;

@@ -85,6 +85,20 @@ describe("PUT /api/v1/studio/file", () => {
     getRequestUser.mockReset();
   });
 
+  it("401s tree and file reads when not signed in", async () => {
+    getRequestUser.mockResolvedValue(null);
+    const tree = await app.inject({
+      method: "GET",
+      url: "/api/v1/studio/tree?workspaceRoot=/tmp",
+    });
+    expect(tree.statusCode).toBe(401);
+    const file = await app.inject({
+      method: "GET",
+      url: "/api/v1/studio/file?path=readme.md",
+    });
+    expect(file.statusCode).toBe(401);
+  });
+
   it("401s when not signed in", async () => {
     getRequestUser.mockResolvedValue(null);
     const projectId = crypto.randomUUID();
@@ -166,5 +180,32 @@ describe("PUT /api/v1/studio/file", () => {
     expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe(
       "# original\n",
     );
+  });
+
+  it("ignores a query workspaceRoot and uses the owned project root", async () => {
+    const actor = testUser();
+    getRequestUser.mockResolvedValue(actor);
+    const projectId = seedOwnedProject(actor, workspaceRoot);
+    const decoy = mkdtempSync(join(tmpdir(), "atlas-studio-decoy-"));
+    dirs.push(decoy);
+    writeFileSync(join(decoy, "secret.txt"), "should-not-read", "utf8");
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/file?projectId=${projectId}&path=readme.md&workspaceRoot=${encodeURIComponent(decoy)}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { content: string; workspaceRoot: string };
+    expect(body.content).toContain("# original");
+    expect(body.workspaceRoot).toBe(workspaceRoot);
+  });
+
+  it("403s tree reads that only pass a raw workspaceRoot for a tenant user", async () => {
+    getRequestUser.mockResolvedValue(testUser());
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/tree?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

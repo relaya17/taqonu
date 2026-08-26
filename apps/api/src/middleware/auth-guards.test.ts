@@ -11,6 +11,7 @@ vi.mock("../services/resolve-identity.js", () => ({
 const {
   requireUser,
   requireAdmin,
+  requireOperator,
   requireSignedInForWrite,
 } = await import("./auth-guards.js");
 
@@ -78,5 +79,13 @@ describe("auth-guards", () => {
     const admin = user({ role: "admin" });
     getRequestUser.mockReturnValue(admin);
     expect(await requireAdmin(app, request)).toEqual(admin);
+  });
+
+  it("requireOperator rejects customer admin and allows owner", async () => {
+    getRequestUser.mockReturnValue(user({ role: "admin" }));
+    await expect(requireOperator(app, request)).rejects.toThrow(/operator or owner/);
+    const owner = user({ role: "owner" });
+    getRequestUser.mockReturnValue(owner);
+    expect(await requireOperator(app, request)).toEqual(owner);
   });
 });

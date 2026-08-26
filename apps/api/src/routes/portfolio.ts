@@ -57,7 +57,8 @@ function persistPortfolioHealth(
 
 export async function registerPortfolioRoutes(app: FastifyInstance): Promise<void> {
   /** Portfolio discovery status: sources, unlinked projects, local candidates. */
-  app.get("/api/v1/portfolio/discovery", async () => {
+  app.get("/api/v1/portfolio/discovery", async (request) => {
+    await requireSignedInForWrite(app, request);
     return buildPortfolioDiscoveryStatus({
       githubAppConfigured: Boolean(
         app.atlasEnv.GITHUB_APP_ID && app.atlasEnv.GITHUB_PRIVATE_KEY,
@@ -124,7 +125,8 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     return reply.status(200).send(result);
   });
 
-  app.get("/api/v1/portfolio/overview", async () => {
+  app.get("/api/v1/portfolio/overview", async (request) => {
+    await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
     const now = new Date().toISOString();
     const projects = osStore.listProjects();
@@ -154,7 +156,8 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
   });
 
   /** Last persisted cross-portfolio health snapshot (if any). */
-  app.get("/api/v1/portfolio/health", async (_request, reply) => {
+  app.get("/api/v1/portfolio/health", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
     const snap = loadPersistedPortfolioHealth();
     if (!snap) {
       return reply.status(200).send({
@@ -283,7 +286,8 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
   });
 
   /** P2.2 — Design Partner truth counters side-by-side (linked workspaces only). */
-  app.get("/api/v1/portfolio/truth-benchmark", async () => {
+  app.get("/api/v1/portfolio/truth-benchmark", async (request) => {
+    await requireSignedInForWrite(app, request);
     const projects = osStore.listProjects();
     const items = [];
     for (const project of projects) {
@@ -337,7 +341,8 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     };
   });
 
-  app.get("/api/v1/portfolio/patterns", async () => {
+  app.get("/api/v1/portfolio/patterns", async (request) => {
+    await requireSignedInForWrite(app, request);
     const projects = osStore.listProjects();
     const stacks = new Map<string, string[]>();
     for (const project of projects) {

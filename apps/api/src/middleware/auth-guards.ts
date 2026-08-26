@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AtlasError, type AuthUser } from "@atlas/shared";
+import { AtlasError, isControlPlaneRole, type AuthUser } from "@atlas/shared";
 import { getRequestUser } from "../services/resolve-identity.js";
 
 /**
@@ -28,10 +28,28 @@ export async function requireAdmin(
   request: FastifyRequest,
 ): Promise<AuthUser> {
   const user = await requireUser(app, request);
-  if (user.role !== "admin") {
+  if (user.role !== "admin" && !isControlPlaneRole(user.role)) {
     throw new AtlasError("FORBIDDEN", "Admin role required", {
       statusCode: 403,
     });
+  }
+  return user;
+}
+
+/**
+ * Atlas Control Plane: owner or operator. Customer `admin` is not enough (ADR-021).
+ */
+export async function requireOperator(
+  app: FastifyInstance,
+  request: FastifyRequest,
+): Promise<AuthUser> {
+  const user = await requireUser(app, request);
+  if (!isControlPlaneRole(user.role)) {
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Atlas operator or owner role required",
+      { statusCode: 403 },
+    );
   }
   return user;
 }

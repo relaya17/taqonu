@@ -1,0 +1,83 @@
+import { afterEach, describe, expect, it } from "vitest";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  authorizeControlPlaneRequest,
+  isControlPlanePublicPath,
+} from "../control-plane-auth.js";
+
+function fakeReq(auth?: string, remote = "127.0.0.1"): IncomingMessage {
+  return {
+    headers: auth ? { authorization: auth } : {},
+    socket: { remoteAddress: remote },
+  } as IncomingMessage;
+}
+
+function fakeRes(): ServerResponse & { status: number; body: string } {
+  const out = {
+    status: 200,
+    body: "",
+    headersSent: false,
+    writeHead(code: number) {
+      out.status = code;
+      return out;
+    },
+    setHeader() {
+      return out;
+    },
+    end(chunk?: string) {
+      if (chunk) out.body = chunk;
+      return out;
+    },
+  };
+  return out as unknown as ServerResponse & { status: number; body: string };
+}
+
+describe("Control Plane auth (ADR-021)", () => {
+  afterEach(() => {
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    delete process.env.NODE_ENV;
+  });
+
+  it("status is always public", () => {
+    expect(isControlPlanePublicPath("/api/v1/status")).toBe(true);
+    expect(isControlPlanePublicPath("/dashboard")).toBe(false);
+  });
+
+  it("requires bearer token when configured", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    const denied = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(fakeReq(), denied, "/dashboard"),
+    ).toBe(false);
+    expect(denied.status).toBe(401);
+
+    const allowed = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(
+        fakeReq("Bearer unit-test-token-value"),
+        allowed,
+        "/dashboard",
+      ),
+    ).toBe(true);
+  });
+
+  it("fails closed in production without a token", () => {
+    process.env.NODE_ENV = "production";
+    const res = fakeRes();
+    expect(authorizeControlPlaneRequest(fakeReq(), res, "/dashboard")).toBe(false);
+    expect(res.status).toBe(503);
+  });
+
+  it("dev without a token is loopback-only", () => {
+    process.env.NODE_ENV = "development";
+    const local = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(fakeReq(undefined, "127.0.0.1"), local, "/dashboard"),
+    ).toBe(true);
+    const remote = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(fakeReq(undefined, "10.0.0.8"), remote, "/dashboard"),
+    ).toBe(false);
+    expect(remote.status).toBe(403);
+  });
+});

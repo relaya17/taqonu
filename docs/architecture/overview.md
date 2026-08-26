@@ -5,6 +5,9 @@
 ArletOS is an **Engineering Intelligence OS**, not an AI agent product and not an IDE.  
 Managed System abstraction: [managed-system.md](./managed-system.md).
 
+Trust planes (ADR-021): **PUBLIC** / **USER PLANE** / **CONTROL PLANE**.  
+Principles: private-by-default, controlled egress, separate Control Plane, self-governance with human approval.
+
 ```
 Evidence + Current State
         ↓

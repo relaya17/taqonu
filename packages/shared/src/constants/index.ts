@@ -22,3 +22,4 @@ export * from "./knowledge.js";
 export * from "./legal-media-sources.js";
 export * from "./verified-tech-sources.js";
 export * from "./official-knowledge.js";
+export * from "./trust-boundary.js";

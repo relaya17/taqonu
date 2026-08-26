@@ -41,6 +41,13 @@ const serverEnvSchema = baseEnvSchema.extend({
     emptyToUndefined,
     z.string().email().optional(),
   ),
+  /** Atlas Owner (Control Plane root). Bootstrap only — never grantable via UI. */
+  ATLAS_OWNER_EMAIL: z.preprocess(
+    emptyToUndefined,
+    z.string().email().optional(),
+  ),
+  /** Comma-separated Atlas Operator emails. Never grantable via UI. */
+  ATLAS_OPERATOR_EMAILS: optionalString,
   /** Atlas 1.1 Golden Project (BrokerOS path) */
   ATLAS_GOLDEN_PROJECT_ROOT: optionalString,
   ATLAS_GOLDEN_PROJECT_SLUG: optionalString,

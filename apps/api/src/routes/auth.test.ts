@@ -413,6 +413,22 @@ describe("MFA is not silently a no-op for admin promotion", () => {
     expect(res.statusCode).toBe(200);
     expect(findUserByEmail(target.email)?.role).toBe("admin");
   });
+
+  it("PATCH /admin/users/:id cannot grant operator or owner", async () => {
+    const admin = makeSignedInUser({ role: "admin" });
+    const target = createLocalUser({
+      email: "no-operator@example.com",
+      password: "correct-horse-battery",
+    });
+    getRequestUser.mockReturnValue(admin);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/users/${target.id}`,
+      payload: { role: "operator" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(findUserByEmail(target.email)?.role).not.toBe("operator");
+  });
 });
 
 describe("POST /api/v1/auth/oauth/sync — accessToken role claims must be verified", () => {

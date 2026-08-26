@@ -389,7 +389,7 @@ export function consumeApprovalRequest(
   }
 
   const artifactHash = presented?.artifactHash;
-  if (existing.artifactHash !== null) {
+  if (existing.artifactHash) {
     if (artifactHash === undefined) {
       throw new AtlasError(
         "CONFLICT",

@@ -8,7 +8,7 @@ import {
 } from "@atlas/shared";
 import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
-import { requireAdmin } from "../middleware/auth-guards.js";
+import { requireOperator } from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import { resolveOwnerId, resolveTier } from "../services/plan-quota.js";
 import {
@@ -33,7 +33,7 @@ export async function registerAdminOpsRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.get("/api/v1/admin/command-center", async (request) => {
-    await requireAdmin(app, request);
+    await requireOperator(app, request);
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     const { tier } = resolveTier(app.atlasEnv, ownerId);
@@ -59,7 +59,7 @@ export async function registerAdminOpsRoutes(
   });
 
   app.get("/api/v1/admin/oracle", async (request) => {
-    await requireAdmin(app, request);
+    await requireOperator(app, request);
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     const { tier } = resolveTier(app.atlasEnv, ownerId);
@@ -84,7 +84,7 @@ export async function registerAdminOpsRoutes(
   });
 
   app.get("/api/v1/admin/oracle/digest", async (request) => {
-    await requireAdmin(app, request);
+    await requireOperator(app, request);
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     const { tier } = resolveTier(app.atlasEnv, ownerId);
@@ -95,7 +95,7 @@ export async function registerAdminOpsRoutes(
   });
 
   app.get("/api/v1/admin/oracle/audit", async (request) => {
-    await requireAdmin(app, request);
+    await requireOperator(app, request);
     return {
       items: listOracleAudit(50),
       total: listOracleAudit(50).length,
@@ -104,7 +104,7 @@ export async function registerAdminOpsRoutes(
   });
 
   app.post("/api/v1/admin/oracle/refresh-queue", async (request) => {
-    await requireAdmin(app, request);
+    await requireOperator(app, request);
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     const { tier } = resolveTier(app.atlasEnv, ownerId);
@@ -143,9 +143,9 @@ export async function registerAdminOpsRoutes(
   });
 
   app.post("/api/v1/admin/automation/run-checks", async (request, reply) => {
-    const user = await requireAdmin(app, request);
+    const user = await requireOperator(app, request);
 
-    // SECOND, INDEPENDENT authorization axis: `requireAdmin` above only
+    // SECOND, INDEPENDENT authorization axis: `requireOperator` above only
     // proves the caller holds the admin *role* — it says nothing about
     // whether this particular *class* of action (triggering platform-wide
     // automation checks/remediation) has been approved. Role authority and
@@ -246,7 +246,7 @@ export async function registerAdminOpsRoutes(
   });
 
   app.get("/api/v1/admin/knowledge-graph", async (request) => {
-    await requireAdmin(app, request);
+    await requireOperator(app, request);
     const identity = await resolveCloudIdentity(app, request);
     const ownerId = resolveOwnerId(app.atlasEnv, identity.ownerId);
     const { tier } = resolveTier(app.atlasEnv, ownerId);

@@ -1,3 +1,4 @@
+import { parseAtlasRole } from "@atlas/shared";
 import { createDatabaseClients, isLiveSupabase } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
 import type { SupabaseSessionEnv } from "./supabase-session.js";
@@ -37,7 +38,7 @@ export interface AccessTokenClaims {
   readonly sub: string;
   readonly email: string | null;
   /** Atlas app role from `app_metadata.atlas_role` (not Supabase's JWT `role` claim). */
-  readonly atlasRole: "user" | "admin" | null;
+  readonly atlasRole: "user" | "admin" | "operator" | "owner" | null;
   readonly displayName: string | null;
   readonly avatarUrl: string | null;
   readonly provider: "email" | "google" | "github" | "apple" | "local" | null;
@@ -64,7 +65,7 @@ export function accessTokenClaimsFromMetadata(input: {
   const app = input.appMetadata ?? {};
   const user = input.userMetadata ?? {};
   const rawRole = app.atlas_role ?? app.atlasRole;
-  const atlasRole = rawRole === "admin" || rawRole === "user" ? rawRole : null;
+  const atlasRole = parseAtlasRole(rawRole);
   const providerRaw =
     (typeof app.provider === "string" ? app.provider : null) ??
     (typeof user.provider === "string" ? user.provider : null);

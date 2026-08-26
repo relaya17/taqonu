@@ -13,7 +13,7 @@
  * `AtlasError`), matching how `assertProjectWriteAccess` layers its own
  * `AtlasError` throw on top of the raw ownership comparison.
  */
-import { capabilitiesForRole, type AuthCapability, type UserRole } from "@atlas/shared";
+import { capabilitiesForRole, isControlPlaneRole, type AuthCapability, type UserRole } from "@atlas/shared";
 
 /** Input to `checkResourceAccess`. */
 export interface ResourceAccessInput {
@@ -85,10 +85,10 @@ export function checkResourceAccess(input: ResourceAccessInput): ResourceAccessR
     };
   }
 
-  if (role === "admin") {
+  if (role === "admin" || isControlPlaneRole(role)) {
     return {
       decision: "ALLOWED",
-      reason: `capability "${requiredCapability}" granted; admin role bypasses ownership check`,
+      reason: `capability "${requiredCapability}" granted; ${role} role bypasses ownership check`,
     };
   }
 

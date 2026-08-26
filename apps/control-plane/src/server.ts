@@ -3,6 +3,7 @@ import { createApiRouter } from "./routes/api.js";
 import { getDashboardHtml } from "./routes/dashboard.js";
 import { getLandingHtml } from "./routes/landing.js";
 import { html, notFound } from "./routes/router.js";
+import { authorizeControlPlaneRequest } from "./control-plane-auth.js";
 
 /**
  * Atlas Control Plane — governance, oversight, and AI agent management.
@@ -39,7 +40,9 @@ import { html, notFound } from "./routes/router.js";
  */
 
 const PORT = parseInt(process.env["PORT"] ?? "3100", 10);
-const HOST = process.env["HOST"] ?? "0.0.0.0";
+const HOST =
+  process.env["HOST"] ??
+  (process.env["NODE_ENV"] === "production" ? "127.0.0.1" : "127.0.0.1");
 
 const apiRouter = createApiRouter();
 
@@ -48,9 +51,9 @@ async function requestHandler(
   res: ServerResponse,
 ): Promise<void> {
   // ── CORS headers (allow engineering surface to call control plane) ──
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", process.env["WEB_ORIGIN"] ?? "http://localhost:3000");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -58,16 +61,18 @@ async function requestHandler(
     return;
   }
 
-  // ── API routes ─────────────────────────────────────────────────────
-  const handled = await apiRouter.handle(req, res);
-  if (handled) return;
-
-  // ── Dashboard (root) ───────────────────────────────────────────────
   const pathname = new URL(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   ).pathname;
 
+  if (!authorizeControlPlaneRequest(req, res, pathname)) return;
+
+  // ── API routes ─────────────────────────────────────────────────────
+  const handled = await apiRouter.handle(req, res);
+  if (handled) return;
+
+  // ── Dashboard (root) ───────────────────────────────────────────────
   if (pathname === "/" || pathname === "/index.html") {
     html(res, getLandingHtml());
     return;

@@ -2,7 +2,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { AuthUser, UserRole } from "@atlas/shared";
-import { authUserSchema } from "@atlas/shared";
+import { authUserSchema, parseAtlasRole } from "@atlas/shared";
 import {
   generateSecret as generateTotpSecret,
   generateURI as generateTotpUri,
@@ -66,7 +66,7 @@ function normalizeUser(raw: Partial<StoredUser> & Pick<StoredUser, "id" | "email
     id: raw.id,
     email: raw.email,
     displayName: raw.displayName ?? null,
-    role: raw.role === "admin" ? "admin" : "user",
+    role: parseAtlasRole(raw.role) ?? "user",
     locale: raw.locale === "en" || raw.locale === "ar" ? raw.locale : "he",
     provider:
       raw.provider === "google" ||
@@ -224,12 +224,38 @@ export function listUsers(): AuthUser[] {
   return load().users.map(toPublicUser);
 }
 
+function parseOperatorEmails(raw?: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function bootstrapRole(input: {
+  email: string;
+  ownerEmail?: string;
+  adminEmail?: string;
+  operatorEmails?: string;
+  isFirstUser: boolean;
+}): UserRole {
+  const email = input.email.trim().toLowerCase();
+  if (input.ownerEmail?.trim().toLowerCase() === email) return "owner";
+  if (parseOperatorEmails(input.operatorEmails).includes(email)) return "operator";
+  // Historical ATLAS_ADMIN_EMAIL is the founder bootstrap → Control Plane owner.
+  if (input.adminEmail?.trim().toLowerCase() === email) return "owner";
+  if (input.isFirstUser) return "admin";
+  return "user";
+}
+
 export function createLocalUser(input: {
   email: string;
   password: string;
   displayName?: string;
   locale?: "he" | "en" | "ar";
   adminEmail?: string;
+  ownerEmail?: string;
+  operatorEmails?: string;
 }): AuthUser {
   const file = load();
   const email = input.email.trim().toLowerCase();
@@ -237,15 +263,18 @@ export function createLocalUser(input: {
     throw new Error("EMAIL_TAKEN");
   }
   const salt = randomBytes(16);
-  const isAdmin =
-    Boolean(input.adminEmail) &&
-    input.adminEmail!.trim().toLowerCase() === email;
   const now = new Date().toISOString();
   const user: StoredUser = {
     id: crypto.randomUUID(),
     email,
     displayName: input.displayName?.trim() || email.split("@")[0] || "user",
-    role: isAdmin || file.users.length === 0 ? "admin" : "user",
+    role: bootstrapRole({
+      email,
+      ownerEmail: input.ownerEmail,
+      adminEmail: input.adminEmail,
+      operatorEmails: input.operatorEmails,
+      isFirstUser: file.users.length === 0,
+    }),
     locale: input.locale ?? "he",
     provider: "local",
     passwordHash: hashPassword(input.password, salt),
@@ -260,10 +289,6 @@ export function createLocalUser(input: {
     mfaEnabled: false,
     mfaBackupCodes: null,
   };
-  // First user always admin for personal instance bootstrap
-  if (file.users.length === 0) {
-    user.role = "admin";
-  }
   file.users.push(user);
   save(file);
   return toPublicUser(user);
@@ -459,9 +484,18 @@ export function upsertOAuthUser(input: {
   avatarUrl?: string | null;
   locale?: "he" | "en" | "ar";
   adminEmail?: string;
+  ownerEmail?: string;
+  operatorEmails?: string;
 }): OAuthUpsertResult {
   const file = load();
   const email = input.email.trim().toLowerCase();
+  const bootstrapped = bootstrapRole({
+    email,
+    ownerEmail: input.ownerEmail,
+    adminEmail: input.adminEmail,
+    operatorEmails: input.operatorEmails,
+    isFirstUser: file.users.length === 0,
+  });
   const existing = file.users.find((u) => u.email === email);
   if (existing) {
     let reconciledFromId: string | null = null;
@@ -480,24 +514,18 @@ export function upsertOAuthUser(input: {
     if (!existing.emailVerifiedAt) {
       existing.emailVerifiedAt = existing.updatedAt;
     }
-    if (
-      input.adminEmail &&
-      input.adminEmail.trim().toLowerCase() === email
-    ) {
-      existing.role = "admin";
+    if (bootstrapped === "owner" || bootstrapped === "operator") {
+      existing.role = bootstrapped;
     }
     save(file);
     return { user: toPublicUser(existing), reconciledFromId };
   }
-  const isAdmin =
-    Boolean(input.adminEmail) &&
-    input.adminEmail!.trim().toLowerCase() === email;
   const now = new Date().toISOString();
   const user: StoredUser = {
     id: input.id ?? crypto.randomUUID(),
     email,
     displayName: input.displayName ?? email.split("@")[0] ?? "user",
-    role: isAdmin || file.users.length === 0 ? "admin" : "user",
+    role: bootstrapped,
     locale: input.locale ?? "he",
     provider: input.provider,
     passwordHash: null,

@@ -52,6 +52,8 @@ import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { registerObserverRoutes } from "./routes/observer.js";
 import { registerSentinelRoutes } from "./routes/sentinel.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { isPublicAtlasRoute } from "./middleware/public-routes.js";
+import { requireUser } from "./middleware/auth-guards.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { registerEventRules } from "./services/event-rules.js";
@@ -81,6 +83,11 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   app.setErrorHandler(errorHandler);
   app.decorate("atlasEnv", env);
   app.decorate("atlasLogger", logger);
+
+  app.addHook("onRequest", async (request) => {
+    if (isPublicAtlasRoute(request.method, request.url)) return;
+    await requireUser(app, request);
+  });
 
   registerEventRules();
 

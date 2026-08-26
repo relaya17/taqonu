@@ -38,7 +38,7 @@ function adminUser(partial: Partial<AuthUser> = {}): AuthUser {
     id: "22222222-2222-4222-8222-222222222222",
     email: "admin@example.com",
     displayName: "Admin",
-    role: "admin",
+    role: "owner",
     locale: "en",
     provider: "local",
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -154,7 +154,16 @@ describe("GET /api/v1/admin/command-center (untouched read endpoint)", () => {
     expect(res.json().platform).toBeDefined();
   });
 
-  it("still 403s for a non-admin (requireAdmin unaffected)", async () => {
+  it("403s for a customer admin (Control Plane requires owner/operator)", async () => {
+    getRequestUser.mockReturnValue(adminUser({ role: "admin" }));
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/command-center",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("403s for a non-admin (requireOperator unaffected for users)", async () => {
     getRequestUser.mockReturnValue(adminUser({ role: "user" }));
     const res = await app.inject({
       method: "GET",

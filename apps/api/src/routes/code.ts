@@ -7,6 +7,7 @@ import {
   studioWriteFileBodySchema,
   AtlasError,
   ENGINEERING_AGENT_MODES,
+  isControlPlaneRole,
   memorySchema,
   type EngineeringAgentMode,
   type PatchArtifact,
@@ -39,6 +40,7 @@ import { getRequestUser } from "../services/resolve-identity.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import {
   assertEntityReadAccess,
+  assertProjectReadAccess,
   assertProjectWriteAccess,
   canReadProjectScoped,
 } from "../services/project-access.js";
@@ -150,6 +152,30 @@ const proposeBody = z.object({
 });
 
 export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
+  async function resolveStudioWorkspaceRoot(
+    request: FastifyRequest,
+    q: { projectId?: string; workspaceRoot?: string },
+  ): Promise<string> {
+    const user = await requireUser(app, request);
+    const control = isControlPlaneRole(user.role);
+    if (q.projectId) {
+      await assertProjectReadAccess(app, request, q.projectId);
+      const stored = osStore.getWorkspaceRoot(q.projectId);
+      if (stored) return resolve(stored);
+      if (control && q.workspaceRoot) return resolve(q.workspaceRoot);
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot on the project to open Studio.",
+      );
+    }
+    if (control && q.workspaceRoot) return resolve(q.workspaceRoot);
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Studio requires a project you own. Raw workspaceRoot is Control Plane only.",
+      { statusCode: 403 },
+    );
+  }
+
   /** Studio project tree (view). Humans save files via PUT /studio/file. */
   app.get("/api/v1/studio/tree", async (request) => {
     const q = z
@@ -158,21 +184,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         workspaceRoot: z.string().min(1).max(1000).optional(),
       })
       .parse(request.query);
-
-    let root: string | null = q.workspaceRoot ? resolve(q.workspaceRoot) : null;
-    if (q.projectId) {
-      const project = osStore.getProject(q.projectId);
-      if (!project) {
-        throw new AtlasError("NOT_FOUND", "Project not found");
-      }
-      root = osStore.getWorkspaceRoot(q.projectId) ?? root;
-    }
-    if (!root) {
-      throw new AtlasError(
-        "VALIDATION_ERROR",
-        "Link a local workspaceRoot on the project (or pass workspaceRoot) to open Studio.",
-      );
-    }
+    const root = await resolveStudioWorkspaceRoot(request, q);
     if (!existsSync(root)) {
       throw new AtlasError(
         "VALIDATION_ERROR",
@@ -203,21 +215,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         path: z.string().min(1).max(1000),
       })
       .parse(request.query);
-
-    let root: string | null = q.workspaceRoot ? resolve(q.workspaceRoot) : null;
-    if (q.projectId) {
-      const project = osStore.getProject(q.projectId);
-      if (!project) {
-        throw new AtlasError("NOT_FOUND", "Project not found");
-      }
-      root = osStore.getWorkspaceRoot(q.projectId) ?? root;
-    }
-    if (!root) {
-      throw new AtlasError(
-        "VALIDATION_ERROR",
-        "Link a local workspaceRoot to open files in Studio.",
-      );
-    }
+    const root = await resolveStudioWorkspaceRoot(request, q);
     try {
       return {
         projectId: q.projectId ?? null,
@@ -341,7 +339,19 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  async function requireControlPlaneWorkspace(request: FastifyRequest): Promise<void> {
+    const user = await requireUser(app, request);
+    if (!isControlPlaneRole(user.role)) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Code analysis of a raw workspaceRoot is Control Plane only.",
+        { statusCode: 403 },
+      );
+    }
+  }
+
   app.post("/api/v1/code/analyze", async (request) => {
+    await requireControlPlaneWorkspace(request);
     const body = analyzeBody.parse(request.body);
     const root = resolve(body.workspaceRoot);
     const analysis = analyzeRepository(root);
@@ -350,6 +360,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/impact", async (request) => {
+    await requireControlPlaneWorkspace(request);
     const body = analyzeBody.extend({ query: z.string().min(1) }).parse(request.body);
     return {
       impact: analyzeImpact(resolve(body.workspaceRoot), body.query),
@@ -478,6 +489,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/explain", async (request) => {
+    await requireControlPlaneWorkspace(request);
     const body = proposeBody.parse(request.body);
     const analysis = analyzeRepository(resolve(body.workspaceRoot));
     return {
