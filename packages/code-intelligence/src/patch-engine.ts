@@ -39,12 +39,39 @@ function safeRelPath(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
+function memoryLessonComment(
+  items: Array<{ statement: string; type: string; epistemicState: string }> | undefined,
+): string {
+  if (!items?.length) return "";
+  const hit = items.find((item) =>
+    /must|idempoten|HMAC|session/i.test(item.statement),
+  );
+  if (!hit) return "";
+  return `// MEMORY: ${hit.statement.slice(0, 160).replace(/\n/g, " ")}\n`;
+}
+
+function memorySummaryBlock(
+  items: Array<{ statement: string; type: string; epistemicState: string }> | undefined,
+): string[] {
+  if (!items?.length) return [];
+  return [
+    "",
+    "## Agent memory (do not treat as FACT unless CONFIRMED)",
+    ...items.slice(0, 8).map(
+      (item) => `- [${item.epistemicState}/${item.type}] ${item.statement.slice(0, 280)}`,
+    ),
+  ];
+}
+
 /** Propose a governed patch from a natural-language engineering request. */
 export function proposePatch(input: {
   workspaceRoot: string;
   mode: EngineeringAgentMode;
   userRequest: string;
   title?: string;
+  memoryContext?: {
+    items: Array<{ statement: string; type: string; epistemicState: string }>;
+  };
 }): PatchProposal {
   const root = resolve(input.workspaceRoot);
   const analysis = analyzeRepository(root);
@@ -69,6 +96,7 @@ export function proposePatch(input: {
         "",
         "## Impact heuristic",
         ...impact.riskNotes.map((n) => `- ${n}`),
+        ...memorySummaryBlock(input.memoryContext?.items),
         "",
         "Epistemic: INFERRED — use Generate/Fix/… to propose an applyable Patch.",
       ].join("\n"),
@@ -90,8 +118,11 @@ export function proposePatch(input: {
       "",
       `// ATLAS-PATCH (${input.mode}): ${input.userRequest.slice(0, 120).replace(/\n/g, " ")}`,
       `// Status: PROPOSED — apply only after human APPROVE (ADR-015)`,
+      memoryLessonComment(input.memoryContext?.items).trimEnd(),
       "",
-    ].join("\n");
+    ]
+      .filter((line) => line !== "")
+      .join("\n") + "\n";
     const after = previous ? `${previous.trimEnd()}\n${banner}` : banner;
     filesChanged.push({
       path: safeRelPath(target),
@@ -167,7 +198,8 @@ export function proposePatch(input: {
       `Risk ${risk}.`,
       "WRITE remains approval-gated — Approve & Apply required.",
       ...impact.riskNotes,
-    ].join(" "),
+      ...memorySummaryBlock(input.memoryContext?.items),
+    ].join("\n"),
     analysisGraph: analysis.graphHint,
   };
 }

@@ -1,0 +1,14 @@
+{
+  "name": "exemplar-saas-mini",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Atlas teaching exemplar — complete mini SaaS slice",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test src/auth.test.mjs src/payments.test.mjs"
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -20,7 +20,7 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
 interface Project {
@@ -44,7 +44,7 @@ interface TreeResponse {
   tree: TreeNode;
   truncated: boolean;
   entryCount: number;
-  readOnly: true;
+  readOnly: boolean;
   note: string;
 }
 
@@ -54,13 +54,36 @@ interface FileResponse {
   bytes: number;
   truncated: boolean;
   languageHint: string | null;
-  readOnly: true;
+  readOnly: boolean;
   note: string;
 }
 
 interface AskResult {
   patch: { id: string; title: string; status: string } | null;
   note: string;
+  memoryUsed?: number;
+}
+
+interface ExemplarUnit {
+  id: string;
+  kind: string;
+  title: string;
+}
+
+interface ExemplarItem {
+  id: string;
+  slug: string;
+  title: string;
+  visibility: "catalog" | "personal";
+  completeness: Record<string, boolean>;
+  units: ExemplarUnit[];
+}
+
+interface CloneResult {
+  note: string;
+  cloneReady: boolean;
+  files: number;
+  patch: { id: string } | null;
 }
 
 type StudioIntent = "propose" | "remind" | "summary";
@@ -142,6 +165,8 @@ export default function StudioPage() {
   const [instruction, setInstruction] = useState("");
   const [intent, setIntent] = useState<StudioIntent>("propose");
   const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
+  const [draft, setDraft] = useState<string | null>(null);
+  const [cloneUnitId, setCloneUnitId] = useState("WHOLE");
 
   // Studio-only dark surface — does not flip the rest of the app.
   const panelBorder = "1px solid rgba(232,234,238,0.12)";
@@ -176,6 +201,44 @@ export default function StudioPage() {
     queryFn: () =>
       apiGet<FileResponse>(
         `/api/v1/studio/file?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(selectedPath!)}`,
+      ),
+  });
+
+  useEffect(() => {
+    setDraft(fileQuery.data?.content ?? null);
+  }, [fileQuery.data?.path, fileQuery.data?.content]);
+
+  const exemplarsQuery = useQuery({
+    queryKey: ["exemplars"],
+    queryFn: () => apiGet<{ items: ExemplarItem[] }>("/api/v1/exemplars"),
+  });
+
+  const [exemplarId, setExemplarId] = useState("");
+  const exemplars = exemplarsQuery.data?.items ?? [];
+  const selectedExemplar =
+    exemplars.find((item) => item.id === exemplarId) ?? exemplars[0] ?? null;
+
+  const saveFile = useMutation({
+    mutationFn: () =>
+      apiPut("/api/v1/studio/file", {
+        projectId,
+        path: selectedPath,
+        content: draft ?? "",
+      }),
+    onSuccess: () => {
+      void fileQuery.refetch();
+      void treeQuery.refetch();
+    },
+  });
+
+  const cloneEx = useMutation({
+    mutationFn: () =>
+      apiPost<CloneResult>(
+        `/api/v1/exemplars/${encodeURIComponent(selectedExemplar!.id)}/clone`,
+        {
+          projectId,
+          unitId: cloneUnitId,
+        },
       ),
   });
 
@@ -371,7 +434,7 @@ export default function StudioPage() {
               {treeQuery.data?.truncated ? (
                 <Chip size="small" label={t("truncated")} />
               ) : null}
-              <Chip size="small" variant="outlined" label={t("readOnly")} sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }} />
+              <Chip size="small" variant="outlined" label={t("editable")} sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }} />
             </Stack>
             {treeQuery.data ? (
               <List dense disablePadding sx={{ py: 0.75 }}>
@@ -419,17 +482,60 @@ export default function StudioPage() {
                 >
                   {selectedPath ?? t("pickFile")}
                 </Typography>
-                <Chip size="small" label={t("noEdit")} />
+                <Chip
+                  size="small"
+                  label={
+                    fileQuery.data?.truncated
+                      ? t("fileTruncated")
+                      : draft !== null &&
+                          fileQuery.data &&
+                          draft !== fileQuery.data.content
+                        ? t("dirty")
+                        : t("editable")
+                  }
+                />
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={
+                    saveFile.isPending ||
+                    !selectedPath ||
+                    draft === null ||
+                    Boolean(fileQuery.data?.truncated) ||
+                    Boolean(fileQuery.data?.readOnly) ||
+                    draft === fileQuery.data?.content
+                  }
+                  onClick={() => saveFile.mutate()}
+                >
+                  {saveFile.isPending ? t("asking") : t("saveFile")}
+                </Button>
               </Stack>
               {fileQuery.isError ? (
                 <Alert severity="warning" sx={{ m: 1.5 }}>
                   {(fileQuery.error as Error).message}
                 </Alert>
               ) : null}
+              {saveFile.isError ? (
+                <Alert severity="error" sx={{ m: 1.5 }}>
+                  {(saveFile.error as Error).message}
+                </Alert>
+              ) : null}
+              {saveFile.isSuccess ? (
+                <Alert severity="success" sx={{ m: 1.5 }}>
+                  {t("savedFile")}
+                </Alert>
+              ) : null}
               {fileQuery.data ? (
                 <Box
-                  component="pre"
-                  aria-readonly="true"
+                  component="textarea"
+                  value={draft ?? ""}
+                  onChange={(e) => setDraft(e.target.value)}
+                  disabled={
+                    Boolean(fileQuery.data.truncated) ||
+                    fileQuery.data.readOnly
+                  }
+                  spellCheck={false}
+                  aria-label={selectedPath ?? t("pickFile")}
                   sx={{
                     m: 0,
                     p: 2,
@@ -439,15 +545,14 @@ export default function StudioPage() {
                     fontSize: 12.5,
                     lineHeight: 1.55,
                     fontFamily:
-                      'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                    userSelect: "text",
+                      "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
                     bgcolor: codeBg,
-                    color: "text.primary",
+                    color: "#DCDDE1",
+                    border: 0,
+                    resize: "vertical",
+                    outline: "none",
                   }}
-                >
-                  {fileQuery.data.content}
-                  {fileQuery.data.truncated ? `\n\n… ${t("fileTruncated")}` : ""}
-                </Box>
+                />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 2.5 }}>
                   {selectedPath && fileQuery.isLoading
@@ -572,6 +677,9 @@ export default function StudioPage() {
                   sx={{ mt: 1.5 }}
                 >
                   {resultNote}
+                  {intent === "propose" && typeof propose.data?.memoryUsed === "number"
+                    ? ` (${t("memoryHint")}: ${propose.data.memoryUsed})`
+                    : null}
                   {intent === "propose" && propose.data?.patch ? (
                     <Box sx={{ mt: 1 }}>
                       <Button
@@ -596,6 +704,105 @@ export default function StudioPage() {
                       </Button>
                     </Box>
                   ) : null}
+                </Alert>
+              ) : null}
+            </Box>
+
+            <Box
+              sx={{
+                border: panelBorder,
+                borderRadius: 3,
+                p: 2.25,
+                bgcolor: panelBg,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
+              }}
+            >
+              <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>
+                {t("cloneTitle")}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
+                {t("cloneHelp")}
+              </Typography>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1.5}
+                sx={{ mt: 1.75 }}
+              >
+                <TextField
+                  select
+                  size="small"
+                  label={t("catalog")}
+                  value={selectedExemplar?.id ?? ""}
+                  onChange={(e) => {
+                    setExemplarId(e.target.value);
+                    setCloneUnitId("WHOLE");
+                  }}
+                  sx={{ minWidth: 220 }}
+                >
+                  {exemplars.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>
+                      {item.title}
+                      {item.visibility === "personal"
+                        ? ` (${t("personalExemplars")})`
+                        : ""}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label={t("cloneUnit")}
+                  value={cloneUnitId}
+                  onChange={(e) => setCloneUnitId(e.target.value)}
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="WHOLE">{t("cloneWhole")}</MenuItem>
+                  {(selectedExemplar?.units ?? [])
+                    .filter((u) => u.kind !== "WHOLE")
+                    .map((unit) => (
+                      <MenuItem key={unit.id} value={unit.id}>
+                        {unit.title}
+                      </MenuItem>
+                    ))}
+                </TextField>
+                <Button
+                  variant="outlined"
+                  disabled={!selectedExemplar || cloneEx.isPending || !projectId}
+                  onClick={() => cloneEx.mutate()}
+                >
+                  {cloneEx.isPending ? t("cloning") : t("cloneAction")}
+                </Button>
+              </Stack>
+              {exemplarsQuery.isError ? (
+                <Alert severity="warning" sx={{ mt: 1.5 }}>
+                  {(exemplarsQuery.error as Error).message}
+                </Alert>
+              ) : null}
+              {selectedExemplar ? (
+                <Typography variant="caption" sx={{ mt: 1, display: "block", color: "#8B9099" }}>
+                  {Object.values(selectedExemplar.completeness).every(Boolean)
+                    ? t("cloneReady")
+                    : t("cloneNotReady")}
+                </Typography>
+              ) : null}
+              {cloneEx.isError ? (
+                <Alert severity="error" sx={{ mt: 1.5 }}>
+                  {(cloneEx.error as Error).message}
+                </Alert>
+              ) : null}
+              {cloneEx.data ? (
+                <Alert severity="success" sx={{ mt: 1.5 }}>
+                  {t("cloneDone")} {cloneEx.data.note}
+                  <Box sx={{ mt: 1 }}>
+                    <Button
+                      component={Link}
+                      href="/patches"
+                      size="small"
+                      variant="outlined"
+                    >
+                      {t("openPatches")}
+                    </Button>
+                  </Box>
                 </Alert>
               ) : null}
             </Box>

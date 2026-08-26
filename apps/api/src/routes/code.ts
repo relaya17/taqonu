@@ -4,8 +4,10 @@ import {
   approvePatchSchema,
   createPatchSchema,
   patchArtifactSchema,
+  studioWriteFileBodySchema,
   AtlasError,
   ENGINEERING_AGENT_MODES,
+  memorySchema,
   type EngineeringAgentMode,
   type PatchArtifact,
   type PatchRisk,
@@ -19,6 +21,7 @@ import {
   rankRisks,
   readWorkspaceFile,
   rollbackPatchFiles,
+  writeWorkspaceFile,
 } from "@atlas/code-intelligence";
 import {
   authorizeEntityAction,
@@ -32,6 +35,8 @@ import { osStore } from "../store/os-store.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import { getRequestUser } from "../services/resolve-identity.js";
+import { buildMemoryContext } from "../services/memory-pipeline.js";
 import {
   assertEntityReadAccess,
   assertProjectWriteAccess,
@@ -145,7 +150,7 @@ const proposeBody = z.object({
 });
 
 export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
-  /** Read-only studio: project tree (human may view; never mutate here). */
+  /** Studio project tree (view). Humans save files via PUT /studio/file. */
   app.get("/api/v1/studio/tree", async (request) => {
     const q = z
       .object({
@@ -179,7 +184,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       return {
         projectId: q.projectId ?? null,
         ...listed,
-        note: "Read-only. Only the agent may add or change code (Patch propose) — humans Approve & Apply.",
+        note: "Tree is viewable. Humans save via PUT /api/v1/studio/file. Agent clone/ask remain Patch propose — Approve then Apply.",
       };
     } catch (error) {
       throw new AtlasError(
@@ -189,7 +194,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  /** Read-only studio: single file contents. */
+  /** Studio: single file contents. Humans may save via PUT. */
   app.get("/api/v1/studio/file", async (request) => {
     const q = z
       .object({
@@ -218,7 +223,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         projectId: q.projectId ?? null,
         workspaceRoot: root,
         ...readWorkspaceFile(root, q.path),
-        note: "Read-only. Only the agent proposes add/change — Apply only after Approve on /patches.",
+        note: "Editable in Studio via PUT /api/v1/studio/file. Agent patches still require Approve then Apply.",
       };
     } catch (error) {
       throw new AtlasError(
@@ -238,14 +243,14 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         projectId: z.string().uuid().nullable().optional(),
         workspaceRoot: z.string().min(1).max(1000).optional(),
         path: z.string().max(1000).optional(),
-        mode: z.enum(["fix", "generate", "implement", "refactor", "secure"]).default("fix"),
+        mode: z
+          .enum(["fix", "generate", "implement", "refactor", "secure"])
+          .default("fix"),
         instruction: z.string().min(3).max(4000),
       })
       .parse(request.body);
 
-    let root: string | null = body.workspaceRoot
-      ? resolve(body.workspaceRoot)
-      : null;
+    let root: string | null = body.workspaceRoot ? resolve(body.workspaceRoot) : null;
     if (body.projectId) {
       root = osStore.getWorkspaceRoot(body.projectId) ?? root;
     }
@@ -257,7 +262,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const focus = body.path?.trim()
-      ? `Focus file (read-only context): ${body.path.trim()}\n\n`
+      ? `Focus file: ${body.path.trim()}\n\n`
       : "";
     return createProposal(
       {
@@ -270,16 +275,77 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           : `Studio · ${body.mode}`,
       },
       reply,
+      request,
     );
+  });
+
+  app.put("/api/v1/studio/file", async (request) => {
+    const body = studioWriteFileBodySchema.parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    const root = osStore.getWorkspaceRoot(body.projectId);
+    if (!root || !existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot before saving a file in Studio.",
+        { statusCode: 400 },
+      );
+    }
+    try {
+      const written = writeWorkspaceFile(root, body.path, body.content);
+      const now = new Date().toISOString();
+      osStore.appendAudit({
+        type: "studio.file.written",
+        projectId: body.projectId,
+        path: written.path,
+        bytes: written.bytes,
+        by: user.id,
+        at: now,
+      });
+      const memory = memorySchema.parse({
+        id: crypto.randomUUID(),
+        ownerId: user.id,
+        type: "PROJECT_STATE",
+        projectId: body.projectId,
+        statement: `Human edited ${written.path} in Studio (${written.bytes} bytes).`,
+        reason: ["studio-human-write"],
+        status: "ACTIVE",
+        confidence: 0.7,
+        category: "EVENT_MEMORY",
+        epistemicState: "PROPOSED",
+        observationMode: "OBSERVED",
+        source: "studio",
+        sourceType: "USER",
+        sourceId: written.path,
+        evidence: [],
+        supersededBy: null,
+        validFrom: now,
+        validUntil: null,
+        observedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: user.email,
+        scope: "PROJECT",
+        priority: "MEDIUM",
+      });
+      osStore.addMemory(memory);
+      return {
+        ...written,
+        note: "Saved to disk. Personal agent recorded PROJECT_STATE in memory.",
+      };
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to save file",
+        { statusCode: 400 },
+      );
+    }
   });
 
   app.post("/api/v1/code/analyze", async (request) => {
     const body = analyzeBody.parse(request.body);
     const root = resolve(body.workspaceRoot);
     const analysis = analyzeRepository(root);
-    const impact = body.query
-      ? analyzeImpact(root, body.query)
-      : null;
+    const impact = body.query ? analyzeImpact(root, body.query) : null;
     return { analysis, impact, epistemicState: "OBSERVED" as const };
   });
 
@@ -315,12 +381,36 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   async function createProposal(
     body: z.infer<typeof proposeBody>,
     reply: { status: (c: number) => { send: (b: unknown) => unknown } },
+    request?: FastifyRequest,
   ) {
+    let memoryItems: Array<{
+      statement: string;
+      type: string;
+      epistemicState: string;
+    }> = [];
+    if (request) {
+      try {
+        const user = await getRequestUser(app, request);
+        if (user) {
+          const ctx = buildMemoryContext({
+            projectId: body.projectId ?? null,
+            query: body.userRequest,
+            budget: 12,
+            ownerId: user.id,
+            requestingAgentId: "CODE_ENGINEER",
+          });
+          memoryItems = ctx.items;
+        }
+      } catch {
+        memoryItems = [];
+      }
+    }
     const proposal = proposePatch({
       workspaceRoot: body.workspaceRoot,
       mode: body.mode as EngineeringAgentMode,
       userRequest: body.userRequest,
       ...(body.title ? { title: body.title } : {}),
+      ...(memoryItems.length > 0 ? { memoryContext: { items: memoryItems } } : {}),
     });
     if (proposal.filesChanged.length === 0) {
       return reply.status(200).send({
@@ -328,6 +418,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         analysisGraph: proposal.analysisGraph,
         evaluationSummary: proposal.evaluationSummary,
         note: "Analyze/plan — no Patch created. Switch mode to Generate/Fix/… for applyable changes.",
+        memoryUsed: memoryItems.length,
       });
     }
     const now = new Date().toISOString();
@@ -376,13 +467,14 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send({
       patch,
       analysisGraph: proposal.analysisGraph,
+      memoryUsed: memoryItems.length,
       note: "Patch proposed — Approve then Apply (ADR-015). Not applied yet.",
     });
   }
 
   app.post("/api/v1/code/patch", async (request, reply) => {
     const body = proposeBody.parse(request.body);
-    return createProposal(body, reply);
+    return createProposal(body, reply, request);
   });
 
   app.post("/api/v1/code/explain", async (request) => {
@@ -460,14 +552,12 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     // get routed into a brand-new approval-request round trip instead.
     assertPatchApprovedForApply(existing);
 
-    const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk(
-      {
-        patch: existing,
-        // assertPatchApprovedForApply above already proved a human approved
-        // this exact patch via POST /patches/:id/approve.
-        entityApproved: true,
-      },
-    );
+    const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk({
+      patch: existing,
+      // assertPatchApprovedForApply above already proved a human approved
+      // this exact patch via POST /patches/:id/approve.
+      entityApproved: true,
+    });
     if (entityAuthz.decision === "DENIED") {
       throw new AtlasError("FORBIDDEN", entityAuthz.reason, {
         statusCode: 403,
@@ -482,7 +572,11 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           action: "EXECUTE",
           requestedBy: user.id,
           reason: `apply patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
-          context: { route: "code.patch.apply", patchId: existing.id, risk: existing.risk },
+          context: {
+            route: "code.patch.apply",
+            patchId: existing.id,
+            risk: existing.risk,
+          },
         });
         return reply.status(202).send({
           status: "APPROVAL_REQUIRED" as const,
@@ -508,7 +602,10 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           "FORBIDDEN",
           `Approval request ${query.approvalId} is not APPROVED (status=${approval.status}) — ` +
             "it must be approved via POST /api/v1/approvals/:id/decide before this action can run.",
-          { statusCode: 403, details: { approvalId: query.approvalId, status: approval.status } },
+          {
+            statusCode: 403,
+            details: { approvalId: query.approvalId, status: approval.status },
+          },
         );
       }
       consumeApprovalRequest(query.approvalId);
@@ -525,7 +622,11 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       actorId: user.id,
       actorKind: "USER",
       reason: `${explanation.bucket} (score=${explanation.score}): ${explanation.factors.join("; ")}`,
-      input: { patchId: existing.id, patchRisk: existing.risk, applyWorkspaceRoot: body.workspaceRoot ?? null },
+      input: {
+        patchId: existing.id,
+        patchRisk: existing.risk,
+        applyWorkspaceRoot: body.workspaceRoot ?? null,
+      },
       output: { status: result.patch.status, applied: result.apply.applied },
       policy: "DOCUMENT.EXECUTE",
       risk: existing.risk,
@@ -561,9 +662,10 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     // Rollback has no pre-existing human-approval step of its own (unlike
     // apply, which rides on POST /patches/:id/approve) — it reverts changes
     // that were already live, so it is never treated as pre-approved here.
-    const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk(
-      { patch: existing, entityApproved: false },
-    );
+    const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk({
+      patch: existing,
+      entityApproved: false,
+    });
     if (entityAuthz.decision === "DENIED") {
       throw new AtlasError("FORBIDDEN", entityAuthz.reason, {
         statusCode: 403,
@@ -578,7 +680,11 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           action: "EXECUTE",
           requestedBy: user.id,
           reason: `rollback patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
-          context: { route: "code.patch.rollback", patchId: existing.id, risk: existing.risk },
+          context: {
+            route: "code.patch.rollback",
+            patchId: existing.id,
+            risk: existing.risk,
+          },
         });
         return reply.status(202).send({
           status: "APPROVAL_REQUIRED" as const,
@@ -604,16 +710,16 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           "FORBIDDEN",
           `Approval request ${query.approvalId} is not APPROVED (status=${approval.status}) — ` +
             "it must be approved via POST /api/v1/approvals/:id/decide before this action can run.",
-          { statusCode: 403, details: { approvalId: query.approvalId, status: approval.status } },
+          {
+            statusCode: 403,
+            details: { approvalId: query.approvalId, status: approval.status },
+          },
         );
       }
       consumeApprovalRequest(query.approvalId);
     }
 
-    const restored = rollbackPatchFiles(
-      body.workspaceRoot,
-      existing.rollbackSnapshot,
-    );
+    const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);
     const now = new Date().toISOString();
     const patch = patchArtifactSchema.parse({
       ...existing,
@@ -634,7 +740,11 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       actorId: user.id,
       actorKind: "USER",
       reason: `${explanation.bucket} (score=${explanation.score}): ${explanation.factors.join("; ")}`,
-      input: { patchId: existing.id, patchRisk: existing.risk, rollbackWorkspaceRoot: body.workspaceRoot },
+      input: {
+        patchId: existing.id,
+        patchRisk: existing.risk,
+        rollbackWorkspaceRoot: body.workspaceRoot,
+      },
       output: { status: patch.status, restored },
       policy: "DOCUMENT.EXECUTE",
       risk: existing.risk,
@@ -651,7 +761,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       ...(request.body as object),
       mode: "refactor",
     });
-    return createProposal(body, reply);
+    return createProposal(body, reply, request);
   });
 
   app.post("/api/v1/code/fix", async (request, reply) => {
@@ -659,7 +769,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       ...(request.body as object),
       mode: "fix",
     });
-    return createProposal(body, reply);
+    return createProposal(body, reply, request);
   });
 
   app.post("/api/v1/code/tests", async (request, reply) => {
@@ -667,7 +777,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       ...(request.body as object),
       mode: "test",
     });
-    return createProposal(body, reply);
+    return createProposal(body, reply, request);
   });
 
   app.post("/api/v1/code/review", async (request) => {

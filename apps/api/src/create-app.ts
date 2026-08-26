@@ -32,6 +32,7 @@ import { registerArtifactRoutes } from "./routes/artifacts.js";
 import { registerContactRoutes } from "./routes/contact.js";
 import { registerAiProviderRoutes } from "./routes/ai-providers.js";
 import { registerCodeRoutes } from "./routes/code.js";
+import { registerExemplarRoutes } from "./routes/exemplars.js";
 import { registerGateRoutes } from "./routes/gates.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerProviderAdapterRoutes } from "./routes/provider-adapters.js";
@@ -139,6 +140,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerContactRoutes(app);
   await registerAiProviderRoutes(app);
   await registerCodeRoutes(app);
+  await registerExemplarRoutes(app);
   await registerGateRoutes(app);
   await registerEventRoutes(app);
   await registerProviderAdapterRoutes(app);

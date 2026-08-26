@@ -1,0 +1,99 @@
+{
+  "slug": "exemplar-saas-mini",
+  "title": "Mini SaaS teaching exemplar",
+  "description": "Complete small SaaS slice for display and learning — not a production company product. Clone WHOLE or AUTH/PAYMENTS/CONFIG units.",
+  "kind": "saas",
+  "version": "1.0.0",
+  "completeness": {
+    "builds": true,
+    "runsLocally": true,
+    "hasAuth": true,
+    "hasConfigAndVersions": true,
+    "hasTests": true,
+    "hasDeployPath": true,
+    "hasEnvExample": true,
+    "hasCloneMap": true
+  },
+  "units": [
+    {
+      "id": "whole",
+      "kind": "WHOLE",
+      "title": "Entire mini SaaS",
+      "description": "All source, tests, env example, and deploy notes.",
+      "paths": ["package.json", ".env.example", "README.md", "DEPLOY.md", "src", "atlas-exemplar.json"],
+      "dependsOn": []
+    },
+    {
+      "id": "auth",
+      "kind": "AUTH",
+      "title": "Register and login",
+      "description": "In-memory users plus HMAC session tokens.",
+      "paths": ["src/auth.mjs", "src/auth.test.mjs"],
+      "dependsOn": ["session", "config"]
+    },
+    {
+      "id": "session",
+      "kind": "SESSION",
+      "title": "Session cookie",
+      "description": "Parse cookie and requireSession.",
+      "paths": ["src/session.mjs"],
+      "dependsOn": ["config"]
+    },
+    {
+      "id": "config",
+      "kind": "CONFIG",
+      "title": "Config and version",
+      "description": "PORT, COOKIE_SECRET, APP_VERSION from env.",
+      "paths": ["src/config.mjs", ".env.example"],
+      "dependsOn": []
+    },
+    {
+      "id": "versioning",
+      "kind": "VERSIONING",
+      "title": "App version",
+      "description": "Version exposed on health and config.",
+      "paths": ["src/config.mjs", "package.json"],
+      "dependsOn": ["config"]
+    },
+    {
+      "id": "payments",
+      "kind": "PAYMENTS",
+      "title": "Checkout and webhook",
+      "description": "Stub checkout plus idempotent webhook credits.",
+      "paths": ["src/payments.mjs", "src/payments.test.mjs"],
+      "dependsOn": ["auth"]
+    },
+    {
+      "id": "health",
+      "kind": "HEALTH",
+      "title": "Health endpoint",
+      "description": "GET /health with version.",
+      "paths": ["src/health.mjs"],
+      "dependsOn": ["config"]
+    },
+    {
+      "id": "deploy",
+      "kind": "DEPLOY",
+      "title": "Deploy outline",
+      "description": "BYO process + reverse proxy notes.",
+      "paths": ["DEPLOY.md"],
+      "dependsOn": []
+    },
+    {
+      "id": "tests",
+      "kind": "TESTS",
+      "title": "Node test suite",
+      "description": "Auth and webhook idempotency tests.",
+      "paths": ["src/auth.test.mjs", "src/payments.test.mjs", "package.json"],
+      "dependsOn": ["auth", "payments"]
+    },
+    {
+      "id": "structure",
+      "kind": "STRUCTURE",
+      "title": "Layout",
+      "description": "Package manifest and readme map.",
+      "paths": ["package.json", "README.md"],
+      "dependsOn": []
+    }
+  ]
+}

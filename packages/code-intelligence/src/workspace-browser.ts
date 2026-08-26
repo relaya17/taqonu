@@ -1,11 +1,13 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 /** Directories never shown in the read-only studio browser. */
 const SKIP_DIRS = new Set([
@@ -43,7 +45,7 @@ export interface WorkspaceFileView {
   readonly bytes: number;
   readonly truncated: boolean;
   readonly languageHint: string | null;
-  readonly readOnly: true;
+  readonly readOnly: boolean;
 }
 
 function toPosix(rel: string): string {
@@ -215,7 +217,7 @@ export function readWorkspaceFile(
   const name = relativePath.split("/").pop() ?? relativePath;
   if (!isProbablyText(name, buf)) {
     throw new Error(
-      "Binary or non-text file — studio is read-only text view only.",
+      "Binary or non-text file — Studio opens text files only.",
     );
   }
   let truncated = false;
@@ -230,6 +232,38 @@ export function readWorkspaceFile(
     bytes: buf.length,
     truncated,
     languageHint: languageHint(relativePath),
-    readOnly: true,
+    readOnly: truncated,
+  };
+}
+
+export interface WorkspaceFileWrite {
+  readonly path: string;
+  readonly bytes: number;
+  readonly readOnly: false;
+}
+
+/** Write a text file under the workspace. Never escapes the root. */
+export function writeWorkspaceFile(
+  workspaceRoot: string,
+  relativePath: string,
+  content: string,
+): WorkspaceFileWrite {
+  if (content.length > MAX_FILE_BYTES) {
+    throw new Error(
+      `File too large to save in studio (${content.length} chars).`,
+    );
+  }
+  const full = resolveUnderWorkspace(workspaceRoot, relativePath);
+  const name = relativePath.split("/").pop() ?? relativePath;
+  const sample = Buffer.from(content.slice(0, 512), "utf8");
+  if (!isProbablyText(name, sample)) {
+    throw new Error("Studio only writes text files.");
+  }
+  mkdirSync(dirname(full), { recursive: true });
+  writeFileSync(full, content, "utf8");
+  return {
+    path: toPosix(relativePath),
+    bytes: Buffer.byteLength(content, "utf8"),
+    readOnly: false,
   };
 }

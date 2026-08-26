@@ -20,6 +20,7 @@ import type {
   AtlasEvalSuiteRun,
   RegressionReport,
   ProductionReadinessCertificate,
+  ExemplarRecord,
 } from "@atlas/shared";
 import { parseEvidenceRecord } from "@atlas/shared";
 import type { ConnectorObservation } from "@atlas/state";
@@ -131,6 +132,8 @@ interface PersistedShape {
   evalSuites?: AtlasEvalSuiteRun[];
   regressionReports?: RegressionReport[];
   readinessCertificates?: ProductionReadinessCertificate[];
+  /** Complete systems the personal agent can clone (whole or unit). */
+  exemplars?: ExemplarRecord[];
   meta?: Record<string, string>;
   /** Local absolute paths for BYO project roots (explicit permissions). */
   workspaceRoots?: Record<string, string>;
@@ -252,6 +255,7 @@ function emptyShape(): PersistedShape {
     workspaceRoots: {},
     conversationThreads: {},
     byoCloudBindings: {},
+    exemplars: [],
   };
 }
 
@@ -294,6 +298,7 @@ class OsStore {
   private workspaceRoots: Record<string, string> = {};
   private conversationThreads = new Map<string, ConversationThreadTurn[]>();
   private byoCloudBindings = new Map<string, StoredByoCloudBinding>();
+  private exemplars: ExemplarRecord[] = [];
   private loaded = false;
 
   ensureLoaded(): void {
@@ -389,6 +394,7 @@ class OsStore {
     this.evalSuites = raw.evalSuites ?? [];
     this.regressionReports = raw.regressionReports ?? [];
     this.readinessCertificates = raw.readinessCertificates ?? [];
+    this.exemplars = raw.exemplars ?? [];
     this.meta = raw.meta ?? {};
     this.workspaceRoots = raw.workspaceRoots ?? {};
     this.conversationThreads = new Map(
@@ -436,6 +442,7 @@ class OsStore {
       evalSuites: this.evalSuites.slice(-50),
       regressionReports: this.regressionReports.slice(-50),
       readinessCertificates: this.readinessCertificates.slice(-50),
+      exemplars: this.exemplars.slice(-200),
       meta: this.meta,
       workspaceRoots: this.workspaceRoots,
       conversationThreads: Object.fromEntries(this.conversationThreads),
@@ -601,6 +608,7 @@ class OsStore {
     this.evalSuites = [];
     this.regressionReports = [];
     this.readinessCertificates = [];
+    this.exemplars = [];
     this.meta = {};
     this.workspaceRoots = {};
     this.loaded = false;
@@ -1292,6 +1300,48 @@ class OsStore {
   listWorkspaceRoots(): Readonly<Record<string, string>> {
     this.ensureLoaded();
     return { ...this.workspaceRoots };
+  }
+
+  listExemplars(): readonly ExemplarRecord[] {
+    this.ensureLoaded();
+    return this.exemplars;
+  }
+
+  getExemplar(id: string): ExemplarRecord | undefined {
+    this.ensureLoaded();
+    return this.exemplars.find((item) => item.id === id);
+  }
+
+  getExemplarBySlug(slug: string): ExemplarRecord | undefined {
+    this.ensureLoaded();
+    return this.exemplars.find((item) => item.slug === slug);
+  }
+
+  upsertExemplar(record: ExemplarRecord): ExemplarRecord {
+    this.ensureLoaded();
+    const idx = this.exemplars.findIndex((item) => item.id === record.id);
+    if (idx >= 0) this.exemplars[idx] = record;
+    else {
+      const bySlug = this.exemplars.findIndex((item) => item.slug === record.slug);
+      if (bySlug >= 0) {
+        this.exemplars[bySlug] = { ...record, id: this.exemplars[bySlug]!.id };
+        this.persist();
+        return this.exemplars[bySlug]!;
+      }
+      this.exemplars.push(record);
+    }
+    this.persist();
+    return record;
+  }
+
+  deleteExemplar(id: string, ownerId: string): boolean {
+    this.ensureLoaded();
+    const existing = this.exemplars.find((item) => item.id === id);
+    if (!existing) return false;
+    if (existing.ownerId !== ownerId) return false;
+    this.exemplars = this.exemplars.filter((item) => item.id !== id);
+    this.persist();
+    return true;
   }
 
   /**

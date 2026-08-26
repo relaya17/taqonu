@@ -6,6 +6,7 @@ import {
   listWorkspaceTree,
   readWorkspaceFile,
   resolveUnderWorkspace,
+  writeWorkspaceFile,
 } from "./workspace-browser.js";
 
 describe("workspace-browser", () => {
@@ -28,7 +29,7 @@ describe("workspace-browser", () => {
     const root = mkdtempSync(join(tmpdir(), "atlas-studio-"));
     writeFileSync(join(root, "readme.md"), "# hi\n");
     const view = readWorkspaceFile(root, "readme.md");
-    expect(view.readOnly).toBe(true);
+    expect(view.readOnly).toBe(false);
     expect(view.content).toContain("# hi");
     expect(() => resolveUnderWorkspace(root, "../outside")).toThrow(
       /escapes/,
@@ -49,5 +50,17 @@ describe("workspace-browser", () => {
       false,
     );
     expect(listed.tree.children?.some((c) => c.name === "real.txt")).toBe(true);
+  });
+
+  it("writes text files and blocks path escape", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-studio-write-"));
+    const written = writeWorkspaceFile(root, "src/hello.ts", "export const n = 1;\n");
+    expect(written.readOnly).toBe(false);
+    expect(written.path).toBe("src/hello.ts");
+    const view = readWorkspaceFile(root, "src/hello.ts");
+    expect(view.content).toContain("export const n = 1");
+    expect(() => writeWorkspaceFile(root, "../outside.ts", "nope")).toThrow(
+      /escapes/,
+    );
   });
 });
