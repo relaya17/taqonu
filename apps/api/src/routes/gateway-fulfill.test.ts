@@ -110,5 +110,28 @@ describe("POST /api/v1/gateway/fulfill", () => {
     expect(body.executed).toBe(true);
     expect(body.verified).toBe(false);
     expect(body.outcome.status).toBe("EXECUTED");
+    expect(body.principalId).toBe(ownerUser().id);
+  });
+
+  it("ignores a forged sessionOwnerId in the body", async () => {
+    getRequestUser.mockReturnValue(ownerUser());
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "ok",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+        sessionOwnerId: "99999999-9999-4999-8999-999999999999",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { principalId: string };
+    expect(body.principalId).toBe(ownerUser().id);
+    expect(body.principalId).not.toBe("99999999-9999-4999-8999-999999999999");
   });
 });

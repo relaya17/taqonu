@@ -2,7 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 
 export type ExecutionKind = "OBSERVATION" | "HANDED_OFF_GOVERNED" | "NONE";
 
-export type ReceiptVerificationVerdict = "VERIFIED" | "FAILED" | "INCONCLUSIVE";
+export type ReceiptVerificationVerdict =
+  | "VERIFIED"
+  | "FAILED"
+  | "PARTIAL"
+  | "INCONCLUSIVE"
+  | "BLOCKED";
 
 export interface ExecutionReceipt {
   readonly receiptId: string;

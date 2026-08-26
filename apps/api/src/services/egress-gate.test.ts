@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AtlasError } from "@atlas/shared";
-import { assertLlmEgressAllowed } from "./egress-gate.js";
+import { assertLlmEgressAllowed, assertEgressAllowed } from "./egress-gate.js";
 
 describe("assertLlmEgressAllowed", () => {
   it("allows echo/local processing of project code", () => {
@@ -30,5 +30,29 @@ describe("assertLlmEgressAllowed", () => {
         fullRepository: true,
       }),
     ).toThrow(/Full-repository/);
+  });
+});
+
+describe("assertEgressAllowed", () => {
+  it("allows internal telemetry of agent traces", () => {
+    expect(() =>
+      assertEgressAllowed({
+        dataClass: "PROJECT_PRIVATE",
+        destination: "atlas_internal",
+        operation: "TELEMETRY",
+        purpose: "control-plane.bridge",
+      }),
+    ).not.toThrow();
+  });
+
+  it("denies webhook of secrets", () => {
+    expect(() =>
+      assertEgressAllowed({
+        dataClass: "SECRET",
+        destination: "webhook",
+        operation: "WEBHOOK",
+        purpose: "integrations.webhook",
+      }),
+    ).toThrow(AtlasError);
   });
 });

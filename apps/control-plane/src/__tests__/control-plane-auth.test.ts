@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   authorizeControlPlaneRequest,
+  CONTROL_PLANE_SERVICE_ID,
   isControlPlanePublicPath,
   issueReauthTicket,
+  resetConsumedReauthTicketsForTests,
+  resolveControlPlanePrincipal,
   verifyReauthTicket,
 } from "../control-plane-auth.js";
 
@@ -38,6 +41,7 @@ describe("Control Plane auth (ADR-021)", () => {
   afterEach(() => {
     delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
     delete process.env.NODE_ENV;
+    resetConsumedReauthTicketsForTests();
   });
 
   it("status is always public", () => {
@@ -90,5 +94,19 @@ describe("Control Plane auth (ADR-021)", () => {
     expect(verifyReauthTicket("not-a-ticket")).toBe(false);
     const expired = issueReauthTicket(Date.now() - 10 * 60 * 1000);
     expect(verifyReauthTicket(expired.ticket)).toBe(false);
+  });
+
+  it("consumes a reauth ticket so it cannot be replayed", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    const { ticket } = issueReauthTicket();
+    expect(verifyReauthTicket(ticket)).toBe(true);
+    expect(verifyReauthTicket(ticket)).toBe(false);
+  });
+
+  it("attributes Control Plane callers as SERVICE, never atlas-owner", () => {
+    const principal = resolveControlPlanePrincipal();
+    expect(principal.kind).toBe("SERVICE");
+    expect(principal.id).toBe(CONTROL_PLANE_SERVICE_ID);
+    expect(principal.id).not.toBe("atlas-owner");
   });
 });

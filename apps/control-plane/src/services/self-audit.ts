@@ -51,25 +51,36 @@ export function runSelfAudit(): SelfAuditReport {
   }
 
   const chain = verifyAuditChain();
+  findings.push({
+    id: "audit-canonical-is-api",
+    severity: "INFO",
+    title: "Control Plane audit is non-canonical",
+    evidence: chain.note,
+    recommendation:
+      "Treat apps/api NDJSON as the system of record. Do not merge CP hashes into a second SoR.",
+    autoApply: false,
+  });
   if (!chain.ok) {
     findings.push({
       id: "audit-chain-break",
       severity: "HIGH",
-      title: "Audit chain verification failed",
+      title: "Control Plane observational audit is internally inconsistent",
       evidence: chain.error ?? "unknown break",
       recommendation: "Export and investigate. Do not rewrite history.",
       autoApply: false,
     });
-  } else {
-    findings.push({
-      id: "audit-append-only",
-      severity: "INFO",
-      title: "Audit trail verifies",
-      evidence: `${chain.checked} entries chained; DELETE/PUT/PATCH remain 405`,
-      recommendation: "Keep append/read/export/verify only.",
-      autoApply: false,
-    });
   }
+
+  findings.push({
+    id: "cp-mfa-not-bound",
+    severity: production ? "MEDIUM" : "INFO",
+    title: "Control Plane MFA is not implemented",
+    evidence:
+      "HMAC reauth tickets are one-shot until TTL; they are not TOTP/WebAuthn. Owner vs Operator credentials are not distinct on :3100.",
+    recommendation:
+      "Do not expose the Control Plane to the internet until distinct credentials and MFA exist.",
+    autoApply: false,
+  });
 
   const apps = listRegisteredApplications();
   const hasSelf = apps.some((app) => app.applicationId === "def-000");
@@ -105,6 +116,16 @@ export function runSelfAudit(): SelfAuditReport {
       autoApply: false,
     });
   }
+
+  findings.push({
+    id: "egress-policy-present",
+    severity: "INFO",
+    title: "Egress policy is the existing decideEgress table",
+    evidence:
+      "SECRET/SYSTEM_CRITICAL never leave Atlas; LLM/EXPORT/WEBHOOK/EMAIL/TELEMETRY share that table. No second policy engine.",
+    recommendation: "Keep wrapping new outbound paths with assertEgressAllowed, not a new gate.",
+    autoApply: false,
+  });
 
   return {
     systemId: "DEF-000",

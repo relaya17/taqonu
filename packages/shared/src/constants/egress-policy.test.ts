@@ -56,4 +56,37 @@ describe("decideEgress (ADR-021)", () => {
       }).decision,
     ).toBe("REQUIRE_APPROVAL");
   });
+
+  it("requires approval for tenant-private webhook egress", () => {
+    expect(
+      decideEgress({
+        dataClass: "TENANT_PRIVATE",
+        destination: "webhook",
+        operation: "WEBHOOK",
+        purpose: "integrations.webhook",
+      }).decision,
+    ).toBe("REQUIRE_APPROVAL");
+  });
+
+  it("denies secret email to an external mailbox", () => {
+    expect(
+      decideEgress({
+        dataClass: "SECRET",
+        destination: "email",
+        operation: "EMAIL",
+        purpose: "notify.owner",
+      }).decision,
+    ).toBe("DENY");
+  });
+
+  it("denies non-public telemetry leaving Atlas", () => {
+    expect(
+      decideEgress({
+        dataClass: "PROJECT_PRIVATE",
+        destination: "telemetry",
+        operation: "TELEMETRY",
+        purpose: "metrics.export",
+      }).decision,
+    ).toBe("DENY");
+  });
 });

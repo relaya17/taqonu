@@ -72,5 +72,8 @@ describe("evaluateOperatingCycle", () => {
     expect(agentMayExecute("DEGRADED")).toBe(true);
     expect(agentMayExecute("PAUSED")).toBe(false);
     expect(agentMayExecute("REVOKED")).toBe(false);
+    expect(agentMayExecute("DISABLED")).toBe(false);
+    expect(agentMayExecute("SUSPENDED")).toBe(false);
+    expect(agentMayExecute("QUARANTINED")).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ const {
   requireUser,
   requireAdmin,
   requireOperator,
+  requireOwner,
   requireSignedInForWrite,
 } = await import("./auth-guards.js");
 
@@ -87,5 +88,13 @@ describe("auth-guards", () => {
     const owner = user({ role: "owner" });
     getRequestUser.mockReturnValue(owner);
     expect(await requireOperator(app, request)).toEqual(owner);
+  });
+
+  it("requireOwner rejects operator and allows owner", async () => {
+    getRequestUser.mockReturnValue(user({ role: "operator" }));
+    await expect(requireOwner(app, request)).rejects.toThrow(/owner role required/);
+    const owner = user({ role: "owner" });
+    getRequestUser.mockReturnValue(owner);
+    expect(await requireOwner(app, request)).toEqual(owner);
   });
 });

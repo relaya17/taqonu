@@ -308,14 +308,37 @@ describe("Control Plane — API Routes", () => {
       const res = createMockRes();
       await router.handle(
         createMockReq("POST", "/api/v1/gateway/ops", {
-          body: { operation: "inspect", applicationId: "def-000", actorId: "owner" },
+          body: { operation: "inspect", applicationId: "def-000" },
           headers: { "x-atlas-reason": "owner inspect def-000" },
         }),
         res,
       );
       expect(res._mock.statusCode).toBe(200);
-      const body = JSON.parse(res._mock.body) as { decision: string };
+      const body = JSON.parse(res._mock.body) as {
+        decision: string;
+        principalId: string;
+      };
       expect(body.decision).toBe("ALLOW");
+      expect(body.principalId).toBe("cp:service");
+    });
+
+    it("ignores body.actorId so a caller cannot impersonate atlas-owner", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/ops", {
+          body: {
+            operation: "inspect",
+            applicationId: "def-000",
+            actorId: "atlas-owner",
+          },
+          headers: { "x-atlas-reason": "forged owner inspect" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(200);
+      const body = JSON.parse(res._mock.body) as { principalId: string };
+      expect(body.principalId).toBe("cp:service");
+      expect(body.principalId).not.toBe("atlas-owner");
     });
 
     it("refuses a write op without re-authentication", async () => {

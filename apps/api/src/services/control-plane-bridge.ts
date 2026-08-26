@@ -1,5 +1,6 @@
 import { domainEventBus } from "@atlas/agent-core";
-import type { DomainEvent } from "@atlas/shared";
+import { classifyKind, type DomainEvent } from "@atlas/shared";
+import { assertEgressAllowed } from "./egress-gate.js";
 
 const GATEWAY_MAP: Partial<Record<DomainEvent["type"], string>> = {
   "agent.run.started": "agent.started",
@@ -35,6 +36,16 @@ export function registerControlPlaneBridge(): () => void {
     };
     const token = controlPlaneToken();
     if (token) headers.Authorization = `Bearer ${token}`;
+    try {
+      assertEgressAllowed({
+        dataClass: classifyKind("agent_trace"),
+        destination: "atlas_internal",
+        operation: "TELEMETRY",
+        purpose: "control-plane.bridge",
+      });
+    } catch {
+      return;
+    }
     void fetch(`${base}/api/v1/gateway/events`, {
       method: "POST",
       headers,

@@ -49,6 +49,7 @@ export type GatewayDecision = "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
 
 export interface GatewayRequest {
   readonly actorId: string;
+  readonly actorKind?: "USER" | "AGENT" | "SYSTEM";
   readonly applicationId: string;
   readonly operation: string;
   readonly agentId?: string;
@@ -65,6 +66,7 @@ export interface GatewayEvaluation {
   readonly reason: string;
   readonly operation: string;
   readonly applicationId: string;
+  readonly principalId: string;
   readonly executed: boolean;
   readonly blockedAt?: string | null;
   readonly stagesPassed?: readonly string[];
@@ -182,7 +184,10 @@ function emptyReceipt(
     executionKind: "NONE",
     observation: null,
     verification: {
-      verdict: "INCONCLUSIVE",
+      verdict:
+        evaluation.decision === "ALLOW"
+          ? "INCONCLUSIVE"
+          : "BLOCKED",
       detail: evaluation.reason,
     },
     artifactHash: hashReceiptArtifact({
@@ -205,6 +210,7 @@ function denyEval(
     reason,
     operation: input.operation,
     applicationId: input.applicationId,
+    principalId: input.actorId,
     executed: false,
     blockedAt,
     stagesPassed,
@@ -324,7 +330,7 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
 
   const cycle = evaluateOperatingCycle({
     actorId: input.actorId,
-    actorKind: "USER",
+    actorKind: input.actorKind ?? "SYSTEM",
     applicationId: input.applicationId,
     operation: input.operation,
     forbiddenSelfMutation: (FORBIDDEN_SELF_MUTATIONS as readonly string[]).includes(
@@ -359,6 +365,7 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
     reason: cycle.reason,
     operation: input.operation,
     applicationId: input.applicationId,
+    principalId: input.actorId,
     executed: false,
     blockedAt: cycle.blockedAt,
     stagesPassed: cycle.stagesPassed,
@@ -375,7 +382,7 @@ export function dispatchGatewayOperation(input: GatewayRequest): GatewayEvaluati
     timestamp: new Date().toISOString(),
     type: `gateway.${input.operation}`,
     actorId: input.actorId,
-    actorKind: "USER",
+    actorKind: input.actorKind ?? "SYSTEM",
     reason: input.reason,
     policy: `gateway.${input.operation}`,
     risk: evaluation.decision === "DENY" ? "HIGH" : evaluation.decision === "REQUIRE_APPROVAL" ? "APPROVAL" : "LOW",

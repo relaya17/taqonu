@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { CONTROL_PLANE_SECURE_HEADERS } from "../services/control-plane-hardening.js";
 
 /**
  * Minimal typed HTTP router for the control plane.
@@ -84,16 +85,16 @@ export class Router {
 
 export function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, {
+    ...CONTROL_PLANE_SECURE_HEADERS,
     "Content-Type": "application/json",
-    "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(data, null, 2));
 }
 
 export function html(res: ServerResponse, body: string, status = 200): void {
   res.writeHead(status, {
+    ...CONTROL_PLANE_SECURE_HEADERS,
     "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store",
   });
   res.end(body);
 }

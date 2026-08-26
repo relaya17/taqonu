@@ -93,10 +93,27 @@ export interface GovernedExecutionRequest {
    * and Invariant 10 exists so an auditor can walk back to the request.
    */
   readonly requestId: string;
+  /**
+   * Optional retry key. The same key + same artifact is a no-op replay of
+   * the first outcome. The same key with a different artifact is refused.
+   * This is process-local — not a durable job queue.
+   */
+  readonly idempotencyKey?: string;
 }
 
 export function computeArtifactHash(artifact: string): string {
   return createHash("sha256").update(artifact, "utf8").digest("hex");
+}
+
+interface IdempotentExecution {
+  readonly artifactHash: string;
+  readonly outcome: GovernedExecutionOutcome;
+}
+
+const governedIdempotency = new Map<string, IdempotentExecution>();
+
+export function resetGovernedIdempotencyForTests(): void {
+  governedIdempotency.clear();
 }
 
 /** Single audit helper so no refusal path can silently skip the trail. */
@@ -142,6 +159,22 @@ export async function executeGovernedAction(
   request: GovernedExecutionRequest,
 ): Promise<GovernedExecutionOutcome> {
   const artifactHash = computeArtifactHash(request.artifact);
+
+  if (request.idempotencyKey) {
+    const prior = governedIdempotency.get(request.idempotencyKey);
+    if (prior) {
+      if (prior.artifactHash !== artifactHash) {
+        const outcome: GovernedExecutionOutcome = {
+          stage: "EXECUTION",
+          status: "FAILED",
+          reason: "idempotency key reused with a different artifact",
+        };
+        auditOutcome(request, artifactHash, outcome);
+        return outcome;
+      }
+      return prior.outcome;
+    }
+  }
 
   // ── 1. Tool authorization (P0.2) ────────────────────────────────────
   try {
@@ -272,5 +305,8 @@ export async function executeGovernedAction(
     output: toolResult.output,
   };
   auditOutcome(request, artifactHash, outcome);
+  if (request.idempotencyKey) {
+    governedIdempotency.set(request.idempotencyKey, { artifactHash, outcome });
+  }
   return outcome;
 }

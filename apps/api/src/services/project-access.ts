@@ -245,7 +245,7 @@ export function canReadProjectScoped(
   projectId: string | null,
 ): boolean {
   if (!projectId) return true;
-  if (user.role === "admin") return true;
+  if (user.role === "admin" || isControlPlaneRole(user.role)) return true;
   const ownerId = getProjectOwnerId(projectId);
   return !ownerId || ownerId === user.id;
 }

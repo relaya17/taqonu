@@ -27,8 +27,14 @@ import {
 import { ownerBrief, runSelfAudit } from "../services/self-audit.js";
 import {
   issueReauthTicket,
+  resolveControlPlanePrincipal,
   verifyReauthTicket,
 } from "../control-plane-auth.js";
+import {
+  hashIdempotencyBody,
+  lookupIdempotency,
+  storeIdempotentResponse,
+} from "../services/control-plane-hardening.js";
 
 /**
  * Control Plane API routes.
@@ -264,6 +270,17 @@ export function createApiRouter(): Router {
       return;
     }
     const record = body as Record<string, unknown>;
+    const idempotencyKey = headerValue(req, "x-idempotency-key");
+    const bodyHash = hashIdempotencyBody(record);
+    const idempotent = lookupIdempotency(idempotencyKey, bodyHash);
+    if (idempotent.kind === "replay") {
+      json(res, idempotent.body, idempotent.status);
+      return;
+    }
+    if (idempotent.kind === "conflict") {
+      json(res, { error: "Idempotency-Key reused with a different body" }, 409);
+      return;
+    }
     const operation =
       typeof record["operation"] === "string" ? record["operation"] : "";
     const applicationId =
@@ -281,9 +298,10 @@ export function createApiRouter(): Router {
     const reauthHeader = headerValue(req, "x-atlas-reauth");
     const needsReauth = writeOps.has(operation);
     const reauthenticated = needsReauth ? verifyReauthTicket(reauthHeader) : true;
+    const principal = resolveControlPlanePrincipal();
     const evaluation = dispatchGatewayOperation({
-      actorId:
-        typeof record["actorId"] === "string" ? record["actorId"] : "atlas-owner",
+      actorId: principal.id,
+      actorKind: principal.actorKind,
       applicationId,
       operation,
       reason,
@@ -304,6 +322,7 @@ export function createApiRouter(): Router {
         : evaluation.decision === "REQUIRE_APPROVAL"
           ? 202
           : 200;
+    storeIdempotentResponse(idempotencyKey, bodyHash, status, evaluation);
     json(res, evaluation, status);
   });
 

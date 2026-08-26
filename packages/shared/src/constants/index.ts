@@ -23,6 +23,7 @@ export * from "./legal-media-sources.js";
 export * from "./verified-tech-sources.js";
 export * from "./official-knowledge.js";
 export * from "./trust-boundary.js";
+export * from "./principals.js";
 export * from "./data-classification.js";
 export * from "./egress-policy.js";
 export * from "./atlas-gateway.js";

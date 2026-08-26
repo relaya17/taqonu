@@ -18,6 +18,9 @@ export const AUDIT_GENESIS_HASH = "GENESIS";
 
 export const AUDIT_MEMORY_RING = 1000;
 
+/** Canonical integrity of the API NDJSON trail — never inferred from an empty file. */
+export type AuditIntegrity = "VALID" | "BROKEN" | "INCOMPLETE" | "UNKNOWN";
+
 export interface AuditLogRecord {
   readonly id: string;
   readonly at: string;
@@ -199,16 +202,30 @@ export function countAuditLogLines(): number {
 
 export function verifyAuditLogChain(): {
   readonly ok: boolean;
+  readonly status: AuditIntegrity;
   readonly checked: number;
   readonly error: string | null;
 } {
   const path = resolveAuditLogPath();
   if (!existsSync(path)) {
-    return { ok: true, checked: 0, error: null };
+    return {
+      ok: false,
+      status: "INCOMPLETE",
+      checked: 0,
+      error: "canonical audit log is missing",
+    };
   }
   try {
     const raw = readFileSync(path, "utf8");
     const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+    if (lines.length === 0) {
+      return {
+        ok: false,
+        status: "INCOMPLETE",
+        checked: 0,
+        error: "canonical audit log is empty",
+      };
+    }
     let prev = AUDIT_GENESIS_HASH;
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i];
@@ -217,6 +234,7 @@ export function verifyAuditLogChain(): {
       if (parsed.prevHash !== prev) {
         return {
           ok: false,
+          status: "BROKEN",
           checked: i,
           error: `audit chain break at index ${i}`,
         };
@@ -225,16 +243,18 @@ export function verifyAuditLogChain(): {
       if (expected !== parsed.hash) {
         return {
           ok: false,
+          status: "BROKEN",
           checked: i,
           error: `audit hash mismatch at index ${i}`,
         };
       }
       prev = parsed.hash;
     }
-    return { ok: true, checked: lines.length, error: null };
+    return { ok: true, status: "VALID", checked: lines.length, error: null };
   } catch (error) {
     return {
       ok: false,
+      status: "UNKNOWN",
       checked: 0,
       error: error instanceof Error ? error.message : "audit verify failed",
     };
@@ -244,6 +264,7 @@ export function verifyAuditLogChain(): {
 export function verifyAuditChain(): {
   readonly intact: boolean;
   readonly ok: boolean;
+  readonly status: AuditIntegrity;
   readonly checked: number;
   readonly entriesChecked: number;
   readonly error: string | null;
@@ -252,7 +273,7 @@ export function verifyAuditChain(): {
   const result = verifyAuditLogChain();
   return {
     ...result,
-    intact: result.ok,
+    intact: result.status === "VALID",
     entriesChecked: result.checked,
     firstInvalidEventId: result.ok ? null : result.error,
   };

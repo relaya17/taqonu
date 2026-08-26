@@ -1,6 +1,17 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { json } from "./routes/router.js";
+
+/** Authenticated Control Plane caller — a SERVICE, never a default owner. */
+export const CONTROL_PLANE_SERVICE_ID = "cp:service";
+
+export function resolveControlPlanePrincipal(): {
+  readonly kind: "SERVICE";
+  readonly id: typeof CONTROL_PLANE_SERVICE_ID;
+  readonly actorKind: "SYSTEM";
+} {
+  return { kind: "SERVICE", id: CONTROL_PLANE_SERVICE_ID, actorKind: "SYSTEM" };
+}
 
 /**
  * ADR-021 — Control Plane is not "whoever knows the URL".
@@ -42,6 +53,7 @@ export function isControlPlanePublicPath(pathname: string): boolean {
 }
 
 const REAUTH_TTL_MS = 5 * 60 * 1000;
+const consumedReauthTickets = new Set<string>();
 
 function reauthSecret(): string {
   return controlPlaneToken() ?? "atlas-dev-loopback-reauth";
@@ -52,27 +64,39 @@ export function issueReauthTicket(now = Date.now()): {
   readonly expiresAt: string;
 } {
   const expires = now + REAUTH_TTL_MS;
-  const body = String(expires);
+  const nonce = randomBytes(16).toString("hex");
+  const body = `${expires}.${nonce}`;
   const mac = createHmac("sha256", reauthSecret()).update(body).digest("hex");
   return { ticket: `${body}.${mac}`, expiresAt: new Date(expires).toISOString() };
 }
 
+/**
+ * HMAC reauth is not MFA. Tickets are one-shot until TTL so a captured
+ * header cannot be replayed for a second privileged mutation.
+ */
 export function verifyReauthTicket(
   ticket: string | null | undefined,
   now = Date.now(),
 ): boolean {
   if (!ticket) return false;
-  const dot = ticket.indexOf(".");
-  if (dot <= 0) return false;
-  const body = ticket.slice(0, dot);
-  const mac = ticket.slice(dot + 1);
-  const expires = Number(body);
+  const lastDot = ticket.lastIndexOf(".");
+  if (lastDot <= 0) return false;
+  const body = ticket.slice(0, lastDot);
+  const mac = ticket.slice(lastDot + 1);
+  const expires = Number(body.split(".")[0]);
   if (!Number.isFinite(expires) || expires < now) return false;
   const expected = createHmac("sha256", reauthSecret()).update(body).digest("hex");
   const left = Buffer.from(mac);
   const right = Buffer.from(expected);
   if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
+  if (!timingSafeEqual(left, right)) return false;
+  if (consumedReauthTickets.has(ticket)) return false;
+  consumedReauthTickets.add(ticket);
+  return true;
+}
+
+export function resetConsumedReauthTicketsForTests(): void {
+  consumedReauthTickets.clear();
 }
 
 export function isSensitiveControlMutation(pathname: string, method: string): boolean {

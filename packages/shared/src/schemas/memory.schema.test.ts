@@ -134,6 +134,7 @@ describe("createMemorySchema", () => {
         "CONFIRMED",
       );
       expect(capEpistemicStateForSource("USER", "FACT")).toBe("PROPOSED");
+      expect(capEpistemicStateForSource("AGENT", "FACT")).toBe("PROPOSED");
       expect(capEpistemicStateForSource("GITHUB", "FACT")).toBe("CONFIRMED");
     });
   });

@@ -161,4 +161,15 @@ describe("Atlas Gateway", () => {
     expect(result.decision).toBe("DENY");
     expect(result.blockedAt).toBe("IDENTITY");
   });
+
+  it("denies a missing principal — no implicit atlas-owner", () => {
+    const result = evaluateGatewayRequest({
+      actorId: "",
+      applicationId: "def-000",
+      operation: "inspect",
+      reason: "anonymous inspect",
+    });
+    expect(result.decision).toBe("DENY");
+    expect(result.blockedAt).toBe("IDENTITY");
+  });
 });

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  registerFilesystemTools,
+  registerTool,
   resetToolRegistryForTests,
 } from "@atlas/agent-core";
 import {
@@ -17,7 +17,11 @@ import {
   resetApprovalsForTests,
 } from "./approvals.js";
 import { resolveAgentIdentity } from "./agent-runtime-authz.js";
-import { computeArtifactHash, executeGovernedAction } from "./governed-execution.js";
+import {
+  computeArtifactHash,
+  executeGovernedAction,
+  resetGovernedIdempotencyForTests,
+} from "./governed-execution.js";
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
@@ -41,13 +45,18 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     writeFileSync(join(projectRoot, "src", "index.ts"), ARTIFACT, "utf8");
 
     resetToolRegistryForTests();
-    registerFilesystemTools();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => "observation: answer = 42",
+    });
+    resetGovernedIdempotencyForTests();
   });
 
   afterEach(() => {
     setAuditLogPathForTests(null);
     resetApprovalsForTests();
     resetToolRegistryForTests();
+    resetGovernedIdempotencyForTests();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -62,11 +71,10 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
   function baseRequest(overrides: Record<string, unknown> = {}) {
     return {
       identity: identity(),
-      // RESEARCHER.allowedTools does not contain fs.read_file, so the happy
-      // path below deliberately uses a tool the catalog DOES grant; see the
-      // "valid flow" test for the executing case.
-      toolName: "fs.read_file",
-      toolArgs: { path: "src/index.ts" },
+      // RESEARCHER is granted knowledge_search in the fabric catalog.
+      // fs.read_file is a Control Plane oversight alias, not an execution tool.
+      toolName: "knowledge_search",
+      toolArgs: { query: "src/index.ts" },
       artifact: ARTIFACT,
       entityType: "DOCUMENT" as const,
       action: "READ" as const,
@@ -197,19 +205,23 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.status).toBe("DENIED");
   });
 
-  // ── ATTACK 8: path traversal through a legitimately-granted tool ──────
-  it("BLOCKS a path escaping the project root even via an authorized tool", async () => {
+  // ── ATTACK 8: catalog does not grant Control Plane filesystem aliases ──
+  it("BLOCKS fs.read_file even for a read-only agent — catalog is the grant", async () => {
     const result = await executeGovernedAction(
-      baseRequest({ toolArgs: { path: "../../../etc/passwd" } }),
+      baseRequest({ toolName: "fs.read_file", toolArgs: { path: "../../../etc/passwd" } }),
     );
-    expect(result.stage).toBe("EXECUTION");
-    expect(result.status).toBe("FAILED");
+    expect(result.stage).toBe("AUTHORIZATION");
+    expect(result.status).toBe("DENIED");
   });
 
-  // ── ATTACK 9: secret exfiltration through a READ tool ─────────────────
+  // ── ATTACK 9: secret exfiltration through a catalog-granted tool ───────
   it("BLOCKS output containing a secret, even from an authorized read", async () => {
-    writeFileSync(join(projectRoot, ".env"), "AWS=AKIAIOSFODNN7EXAMPLE\n", "utf8");
-    const result = await executeGovernedAction(baseRequest({ toolArgs: { path: ".env" } }));
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => "AWS=AKIAIOSFODNN7EXAMPLE",
+    });
+    const result = await executeGovernedAction(baseRequest());
     expect(result.stage).toBe("EXECUTION");
     expect(result.status).toBe("FAILED");
     if (result.status !== "FAILED") throw new Error("expected FAILED");
@@ -224,6 +236,23 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
     expect(result.output).toContain("answer = 42");
     expect(result.artifactHash).toBe(computeArtifactHash(ARTIFACT));
+  });
+
+  it("replays the same idempotency key instead of executing twice", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        return "observation: answer = 42";
+      },
+    });
+    const first = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-1" }));
+    const second = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-1" }));
+    expect(first.status).toBe("EXECUTED");
+    expect(second.status).toBe("EXECUTED");
+    expect(runs).toBe(1);
   });
 
   // ── EVERY refusal must be audited, and the chain must stay intact ─────
@@ -243,7 +272,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
   it("leaves the audit hash chain intact across a mixed run of blocks and executions", async () => {
     await executeGovernedAction(baseRequest());
     await executeGovernedAction(baseRequest({ payload: { targetProjectId: PROJECT_B } }));
-    await executeGovernedAction(baseRequest({ toolArgs: { path: "../../escape" } }));
+    await executeGovernedAction(baseRequest({ toolName: "fs.read_file", toolArgs: { path: "../../escape" } }));
 
     const verification = verifyAuditChain();
     expect(verification.intact).toBe(true);

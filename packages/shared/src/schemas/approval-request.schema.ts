@@ -9,15 +9,15 @@ import { isoDateTimeSchema, uuidSchema } from "./common.schema.js";
  * shape of the distinct, auditable decision that turns `approved: false`
  * into `approved: true` for a specific, single downstream execution.
  *
- * Lifecycle: PENDING -> APPROVED | REJECTED -> (APPROVED only) CONSUMED.
- * CONSUMED means the approval has already authorized one real action
- * execution and cannot be reused ("one approval, one execution").
+ * Lifecycle: PENDING -> APPROVED | REJECTED | REVOKED;
+ * APPROVED -> CONSUMED (one execution) or REVOKED.
  */
 export const approvalRequestStatusSchema = z.enum([
   "PENDING",
   "APPROVED",
   "REJECTED",
   "CONSUMED",
+  "REVOKED",
 ]);
 
 export const approvalRequestSchema = z.object({
@@ -34,6 +34,13 @@ export const approvalRequestSchema = z.object({
   reason: z.string().min(1).max(2000),
   /** Free-form details about what's being approved (e.g. which endpoint/request). */
   context: z.record(z.string(), z.unknown()).default({}),
+  /** When set, consume only authorizes this exact artifact hash. */
+  artifactHash: z.string().min(1).max(128).nullable().default(null),
+  /** After this instant the approval cannot be consumed. */
+  expiresAt: isoDateTimeSchema.nullable().default(null),
+  revokedBy: z.string().min(1).max(200).nullable().default(null),
+  revokedAt: isoDateTimeSchema.nullable().default(null),
+  revocationReason: z.string().min(1).max(2000).nullable().default(null),
   decidedBy: z.string().min(1).max(200).nullable(),
   decidedAt: isoDateTimeSchema.nullable(),
   decisionReason: z.string().min(1).max(2000).nullable(),

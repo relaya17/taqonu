@@ -85,6 +85,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     expect(result.outcome.status).toBe("EXECUTED");
     expect(result.executed).toBe(true);
     expect(result.verified).toBe(false);
+    expect(result.verificationVerdict).toBe("INCONCLUSIVE");
     expect(result.observation).toMatchObject({
       output: "observation: 3 TypeScript files",
     });

@@ -49,6 +49,8 @@ jobs:
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 

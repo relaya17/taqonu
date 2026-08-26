@@ -10,6 +10,7 @@ import { executeGovernedAction, type GovernedExecutionOutcome } from "./governed
 import { resolveAgentIdentity } from "./agent-runtime-authz.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import type { DispatchSourceContext } from "./agent-dispatch-guard.js";
+import { verificationVerdictFromOutcome, type VerificationVerdict } from "./verification.js";
 
 export interface GatewayHandoff {
   readonly sessionOwnerId: string;
@@ -29,9 +30,11 @@ export interface GatewayFulfillmentResult {
   readonly applicationId: string;
   readonly operation: string;
   readonly toolName: string | null;
+  readonly principalId: string;
   readonly outcome: GovernedExecutionOutcome;
   readonly executed: boolean;
   readonly verified: false;
+  readonly verificationVerdict: VerificationVerdict;
   readonly observation: Record<string, unknown> | null;
   readonly verificationDetail: string;
 }
@@ -54,9 +57,11 @@ export async function fulfillGatewayHandoff(
       applicationId: handoff.applicationId,
       operation: handoff.operation,
       toolName: null,
+      principalId: handoff.sessionOwnerId,
       outcome,
       executed: false,
       verified: false,
+      verificationVerdict: verificationVerdictFromOutcome(outcome),
       observation: null,
       verificationDetail: outcome.reason,
     };
@@ -117,9 +122,11 @@ export async function fulfillGatewayHandoff(
     applicationId: handoff.applicationId,
     operation: handoff.operation,
     toolName: mapping.toolName,
+    principalId: identity.ownerId,
     outcome,
     executed,
     verified: false,
+    verificationVerdict: verificationVerdictFromOutcome(outcome),
     observation:
       outcome.status === "EXECUTED"
         ? {

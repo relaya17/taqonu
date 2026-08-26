@@ -99,12 +99,14 @@ export function recordApplicationEvent(
 }
 
 export function applicationIntegrationContract(app: RegisteredApplication): {
-  readonly identity: {
-    readonly applicationId: string;
-    readonly name: string;
-    readonly environment: string;
-    readonly version: string;
-  };
+    readonly identity: {
+      readonly applicationId: string;
+      readonly name: string;
+      readonly environment: string;
+      readonly version: string;
+      readonly kind: "APPLICATION";
+      readonly tenantId: string | null;
+    };
   readonly health: ApplicationHealth;
   readonly capabilities: readonly string[];
   readonly agents: readonly string[];
@@ -120,6 +122,8 @@ export function applicationIntegrationContract(app: RegisteredApplication): {
       name: app.name,
       environment: app.environment,
       version: app.version,
+      kind: "APPLICATION" as const,
+      tenantId: app.applicationId === "def-000" ? "atlas" : null,
     },
     health: app.health,
     capabilities: app.capabilities,

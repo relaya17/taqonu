@@ -54,6 +54,20 @@ export async function requireOperator(
   return user;
 }
 
+/** Atlas Owner only. Operator is not enough. */
+export async function requireOwner(
+  app: FastifyInstance,
+  request: FastifyRequest,
+): Promise<AuthUser> {
+  const user = await requireUser(app, request);
+  if (user.role !== "owner") {
+    throw new AtlasError("FORBIDDEN", "Atlas owner role required", {
+      statusCode: 403,
+    });
+  }
+  return user;
+}
+
 /**
  * WRITE / mutation gates: signed-in user required.
  * Identity + roles: live Supabase Auth JWT preferred (`resolveRequestIdentity`);

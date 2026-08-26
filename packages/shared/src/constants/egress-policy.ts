@@ -103,6 +103,44 @@ export function decideEgress(input: EgressPolicyInput): EgressPolicyResult {
   }
 
   if (
+    (input.operation === "EMAIL" || input.operation === "MESSAGING") &&
+    input.dataClass !== "PUBLIC"
+  ) {
+    return {
+      ...base,
+      decision: "REQUIRE_APPROVAL",
+      reason: "Non-public email/messaging egress requires operator/owner approval",
+      requiresMinimize: true,
+    };
+  }
+
+  if (
+    (input.operation === "WEBHOOK" || input.operation === "PLUGIN") &&
+    input.dataClass !== "PUBLIC" &&
+    !INTERNAL_DEST.has(input.destination)
+  ) {
+    return {
+      ...base,
+      decision: "REQUIRE_APPROVAL",
+      reason: "Non-public webhook/plugin egress requires operator/owner approval",
+      requiresMinimize: true,
+    };
+  }
+
+  if (
+    input.operation === "TELEMETRY" &&
+    input.dataClass !== "PUBLIC" &&
+    !INTERNAL_DEST.has(input.destination)
+  ) {
+    return {
+      ...base,
+      decision: "DENY",
+      reason: "Non-public telemetry must not leave Atlas",
+      requiresMinimize: false,
+    };
+  }
+
+  if (
     input.operation === "LLM_EGRESS" &&
     APPROVED_CLOUD.has(input.destination) &&
     (input.dataClass === "PROJECT_PRIVATE" ||

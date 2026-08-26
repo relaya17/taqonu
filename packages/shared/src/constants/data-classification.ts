@@ -1,5 +1,6 @@
 /**
- * ADR-021 — classify before READ / STORE / RETRIEVE / LLM_EGRESS / EXPORT / LOG / AUDIT.
+ * ADR-021 — classify before READ / STORE / RETRIEVE / LLM_EGRESS / EXPORT / LOG / AUDIT
+ * and outbound WEBHOOK / EMAIL / TELEMETRY / PLUGIN / MESSAGING.
  * This is the vocabulary. Policy evaluation lives in egress-policy.ts.
  */
 export const DATA_CLASSES = [
@@ -21,6 +22,11 @@ export const DATA_OPERATIONS = [
   "EXPORT",
   "LOG",
   "AUDIT",
+  "WEBHOOK",
+  "EMAIL",
+  "TELEMETRY",
+  "PLUGIN",
+  "MESSAGING",
 ] as const;
 
 export type DataOperation = (typeof DATA_OPERATIONS)[number];
@@ -35,6 +41,10 @@ export const EGRESS_DESTINATIONS = [
   "deepseek",
   "webhook",
   "export",
+  "email",
+  "telemetry",
+  "plugin",
+  "messaging",
   "unapproved_external",
 ] as const;
 

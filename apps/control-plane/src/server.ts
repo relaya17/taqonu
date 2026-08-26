@@ -2,9 +2,17 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { createApiRouter } from "./routes/api.js";
 import { getDashboardHtml } from "./routes/dashboard.js";
 import { getLandingHtml } from "./routes/landing.js";
-import { html, methodNotAllowed, notFound } from "./routes/router.js";
-import { authorizeControlPlaneRequest } from "./control-plane-auth.js";
+import { html, json, methodNotAllowed, notFound } from "./routes/router.js";
+import {
+  authorizeControlPlaneRequest,
+  isControlPlanePublicPath,
+} from "./control-plane-auth.js";
 import { refuseAuditMutation } from "./services/governance-state.js";
+import {
+  applyControlPlaneSecurityHeaders,
+  checkRateLimit,
+  resolveRequestId,
+} from "./services/control-plane-hardening.js";
 
 /**
  * Atlas Control Plane — governance, oversight, and AI agent management.
@@ -56,7 +64,7 @@ async function requestHandler(
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Atlas-Reason, X-Atlas-Reauth",
+    "Content-Type, Authorization, X-Atlas-Reason, X-Atlas-Reauth, X-Request-Id, X-Idempotency-Key",
   );
 
   if (req.method === "OPTIONS") {
@@ -65,11 +73,23 @@ async function requestHandler(
     return;
   }
 
+  const requestId = resolveRequestId(req);
+  applyControlPlaneSecurityHeaders(res, requestId);
+
   const pathname = new URL(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   ).pathname;
   const method = (req.method ?? "GET").toUpperCase();
+
+  if (!isControlPlanePublicPath(pathname)) {
+    const limited = checkRateLimit(req);
+    if (!limited.allowed) {
+      res.setHeader("Retry-After", String(limited.retryAfterSec));
+      json(res, { error: "Too many requests", requestId }, 429);
+      return;
+    }
+  }
 
   if (!authorizeControlPlaneRequest(req, res, pathname)) return;
 
@@ -107,11 +127,24 @@ const server = createServer((req, res) => {
     // eslint-disable-next-line no-console
     console.error(`[control-plane] unhandled error: ${message}`);
     if (!res.headersSent) {
-      res.writeHead(500, { "Content-Type": "application/json" });
+      res.writeHead(500, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
       res.end(JSON.stringify({ error: "Internal server error" }));
     }
   });
 });
+
+function shutdown(signal: string): void {
+  // eslint-disable-next-line no-console
+  console.log(`[control-plane] ${signal} — closing`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 server.listen(PORT, HOST, () => {
   // eslint-disable-next-line no-console

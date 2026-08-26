@@ -132,6 +132,9 @@ export function verifyAuditChain(): {
   readonly ok: boolean;
   readonly checked: number;
   readonly error: string | null;
+  readonly status: "UNKNOWN";
+  readonly canonical: false;
+  readonly note: string;
 } {
   const ordered = [...auditEntries].sort((a, b) => a.seq - b.seq);
   for (let i = 1; i < ordered.length; i += 1) {
@@ -143,10 +146,20 @@ export function verifyAuditChain(): {
         ok: false,
         checked: i,
         error: `audit chain break at seq ${cur.seq}`,
+        status: "UNKNOWN",
+        canonical: false,
+        note: "Control Plane in-memory hashes are observational. Canonical NDJSON is apps/api audit-log.",
       };
     }
   }
-  return { ok: true, checked: ordered.length, error: null };
+  return {
+    ok: true,
+    checked: ordered.length,
+    error: null,
+    status: "UNKNOWN",
+    canonical: false,
+    note: "Control Plane in-memory hashes are observational. Canonical NDJSON is apps/api audit-log.",
+  };
 }
 
 /** Historical audit cannot be deleted or rewritten from the Control Plane. */

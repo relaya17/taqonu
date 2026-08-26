@@ -47,6 +47,17 @@ describe("checkResourceAccess", () => {
     expect(unowned.reason).toMatch(/lacks required capability/);
   });
 
+  it("DENIED: customer admin lacks the operator capability (no privilege escalation)", () => {
+    const result = checkResourceAccess({
+      actorId: ACTOR,
+      role: "admin",
+      requiredCapability: "operator",
+      resourceOwnerId: OTHER,
+    });
+    expect(result.decision).toBe("DENIED");
+    expect(result.reason).toMatch(/lacks required capability/);
+  });
+
   it("ALLOWED: admin role bypasses the ownership check", () => {
     const result = checkResourceAccess({
       actorId: ACTOR,
