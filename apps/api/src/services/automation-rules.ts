@@ -98,9 +98,7 @@ function onGateBlocked(event: DomainEvent): void {
     approval: "PENDING",
     result: "FAILURE",
     projectId: event.projectId ?? undefined,
-    correlationId: event.correlationId,
-    causationId: event.causationId,
-  });
+    correlationId: event.correlationId,  });
 }
 
 export const gateBlockedAutomationRule: AutomationRule = {
@@ -184,9 +182,7 @@ function onReadinessCertificateBlocked(event: DomainEvent): void {
     approval: "PENDING",
     result: "FAILURE",
     projectId: event.projectId ?? undefined,
-    correlationId: event.correlationId,
-    causationId: event.causationId,
-  });
+    correlationId: event.correlationId,  });
 }
 
 export const readinessCertificateBlockedAutomationRule: AutomationRule = {
@@ -357,9 +353,7 @@ function onGatePersistentlyBlocked(event: DomainEvent): void {
         approval: "NOT_REQUIRED",
         result: "FAILURE",
         projectId: event.projectId ?? undefined,
-        correlationId: event.correlationId,
-        causationId: event.causationId,
-      });
+        correlationId: event.correlationId,      });
       break;
   }
 }

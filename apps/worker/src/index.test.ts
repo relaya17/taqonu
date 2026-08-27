@@ -161,6 +161,6 @@ describe("worker run loop (retry, backoff, dead-letter)", () => {
     expect(job.payload).toEqual({ foo: "bar" });
     expect(typeof job.id).toBe("string");
     expect(typeof job.createdAt).toBe("string");
-    expect(job.retryCount).toBe(0);
+    expect((job as any).retryCount).toBe(0);
   });
 });

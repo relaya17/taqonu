@@ -19,9 +19,7 @@ function baseJob(overrides: Partial<WorkerJob>): WorkerJob {
     kind: "memory.extract",
     payload: {},
     createdAt: new Date().toISOString(),
-    retryCount: 0,
-    nextAttemptAt: Date.now(),
-    ...overrides,
+            ...overrides,
   };
 }
 

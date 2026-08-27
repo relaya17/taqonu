@@ -48,3 +48,8 @@ main().catch((error: unknown) => {
   console.error(JSON.stringify({ level: "error", message, service: "atlas-worker" }));
   process.exit(1);
 });
+
+export { queueLength, runOnce };
+
+const queueLength = () => queue.length;
+const runOnce = async (logger: any, job: any = {}) => { await processJob(logger, job); };

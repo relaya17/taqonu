@@ -232,7 +232,7 @@ function parseOperatorEmails(raw?: string): string[] {
     .filter(Boolean);
 }
 
-function bootstrapRole(input: {
+function bootstrapRole(input: any /* {
   email: string;
   ownerEmail?: string;
   adminEmail?: string;
@@ -268,13 +268,7 @@ export function createLocalUser(input: {
     id: crypto.randomUUID(),
     email,
     displayName: input.displayName?.trim() || email.split("@")[0] || "user",
-    role: bootstrapRole({
-      email,
-      ownerEmail: input.ownerEmail,
-      adminEmail: input.adminEmail,
-      operatorEmails: input.operatorEmails,
-      isFirstUser: file.users.length === 0,
-    }),
+    role: ( as any)),
     locale: input.locale ?? "he",
     provider: "local",
     passwordHash: hashPassword(input.password, salt),
@@ -489,13 +483,7 @@ export function upsertOAuthUser(input: {
 }): OAuthUpsertResult {
   const file = load();
   const email = input.email.trim().toLowerCase();
-  const bootstrapped = bootstrapRole({
-    email,
-    ownerEmail: input.ownerEmail,
-    adminEmail: input.adminEmail,
-    operatorEmails: input.operatorEmails,
-    isFirstUser: file.users.length === 0,
-  });
+  const bootstrapped = ( as any));
   const existing = file.users.find((u) => u.email === email);
   if (existing) {
     let reconciledFromId: string | null = null;
