@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Atlas Core \u2014 engineering memory platform (ArletOS personal instance)",
   "packageManager": "pnpm@10.28.2",
+  "devEngines": {
+    "packageManager": "pnpm@10.28.2"
+  },
   "engines": {
     "node": ">=22"
   },
