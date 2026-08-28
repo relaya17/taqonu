@@ -44,7 +44,7 @@ export function runSelfAudit(): SelfAuditReport {
       id: "cp-auth-bound",
       severity: "INFO",
       title: "Control Plane authentication bound",
-      evidence: token ? "Bearer token configured" : "Dev loopback-only without token",
+      evidence: token ? "Control-plane token configured" : "Dev loopback-only without token",
       recommendation: "Keep production token-only; never grant operator via /admin/users.",
       autoApply: false,
     });

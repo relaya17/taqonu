@@ -31,19 +31,19 @@ export function createAtlasTheme(
         primary: dark ? "#F0F1F3" : c.textOnLight,
         secondary: dark ? c.chrome : c.textSecondaryOnLight,
       },
-      divider: dark ? c.border : "rgba(26, 28, 34, 0.14)",
+      divider: dark ? "rgba(232, 234, 238, 0.32)" : "rgba(26, 28, 34, 0.14)",
       // Soft semantic status colors — calm, professional, accessible
       success: {
-        main: dark ? status.successMain : status.successDark,
+        main: status.successDark,
         light: status.successLight,
         dark: status.successDark,
-        contrastText: dark ? "#FFFFFF" : status.successText,
+        contrastText: "#FFFFFF",
       },
       warning: {
         main: dark ? status.warningMain : status.warningDark,
         light: status.warningLight,
         dark: status.warningDark,
-        contrastText: status.warningText,
+        contrastText: dark ? status.warningText : "#FFFFFF",
       },
       error: {
         main: dark ? status.errorMain : status.errorDark,
@@ -134,13 +134,20 @@ export function createAtlasTheme(
           body: {
             backgroundColor: dark ? c.ink : c.silverBg,
             backgroundImage: dark
-              ? "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.08), transparent 42%), radial-gradient(circle at 92% 0%, rgba(42,46,54,0.55), transparent 40%), linear-gradient(180deg, #12141A 0%, #16191F 55%, #12141A 100%)"
+              ? "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.12), transparent 42%), linear-gradient(180deg, #1A1E26 0%, #12141A 100%)"
               : "radial-gradient(circle at 12% 8%, rgba(154,158,168,0.1), transparent 42%), radial-gradient(circle at 92% 0%, rgba(180,183,190,0.12), transparent 40%), linear-gradient(180deg, #F6F6F7 0%, #F1F2F4 50%, #E8E9EC 100%)",
             minHeight: "100vh",
             maxWidth: "100%",
             overflowX: "clip",
             color: dark ? c.text : c.textOnLight,
             textAlign: "start",
+          },
+          "p, li, label, td, th, input, textarea, .MuiFormHelperText-root, .MuiInputBase-input, .MuiFormLabel-root":
+            {
+              textAlign: "start",
+            },
+          "h1, h2, .MuiTypography-h1, .MuiTypography-h2": {
+            textAlign: "center",
           },
           "img, svg, video, canvas": {
             maxWidth: "100%",
@@ -211,6 +218,17 @@ export function createAtlasTheme(
             minHeight: 44,
             px: 1.5,
           },
+          contained: dark
+            ? {
+                bgcolor: c.chromeBright,
+                color: c.ink,
+                "&:hover": { bgcolor: "#E8EAEE" },
+                "&.Mui-disabled": {
+                  bgcolor: "rgba(210, 212, 216, 0.28)",
+                  color: "rgba(18, 20, 26, 0.55)",
+                },
+              }
+            : {},
           outlined: dark
             ? {
                 color: "#F0F1F3",
@@ -247,6 +265,44 @@ export function createAtlasTheme(
           },
         },
       },
+      MuiTextField: {
+        defaultProps: {
+          variant: "outlined",
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            backgroundColor: dark ? "#343B48" : "#FFFFFF",
+            "& .MuiOutlinedInput-notchedOutline": {
+              borderColor: dark ? "rgba(232, 234, 238, 0.42)" : "rgba(26, 28, 34, 0.28)",
+            },
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+              borderColor: dark ? c.chromeBright : c.steelMid,
+            },
+          },
+          input: {
+            textAlign: "start",
+            color: dark ? "#F4F5F7" : c.textOnLight,
+          },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: {
+            textAlign: "start",
+            color: dark ? c.chrome : c.textSecondaryOnLight,
+          },
+        },
+      },
+      MuiFormHelperText: {
+        styleOverrides: {
+          root: {
+            textAlign: "start",
+            color: dark ? c.chromeBright : c.textSecondaryOnLight,
+          },
+        },
+      },
       MuiChip: {
         styleOverrides: {
           root: {
@@ -263,10 +319,10 @@ export function createAtlasTheme(
         },
         styleOverrides: {
           root: {
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "flex-start",
+            textAlign: "start",
             gap: 8,
             width: "100%",
             borderRadius: 10,
@@ -307,7 +363,7 @@ export function createAtlasTheme(
           message: {
             width: "100%",
             padding: 0,
-            textAlign: "center",
+            textAlign: "start",
           },
           action: {
             margin: 0,

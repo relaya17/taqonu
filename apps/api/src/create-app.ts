@@ -64,6 +64,7 @@ import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { registerEventRules } from "./services/event-rules.js";
 import { registerControlPlaneBridge } from "./services/control-plane-bridge.js";
 import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
+import { ensureDevLocalUser } from "./services/auth-store.js";
 import {
   KNOWLEDGE_REFRESH_INTERVAL_MS,
   maybeRefreshVerifiedKnowledge,
@@ -129,6 +130,15 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
     goldenLinked: localBootstrap.goldenLinked,
     note: localBootstrap.note,
   });
+
+  const devUser = ensureDevLocalUser();
+  if (devUser) {
+    logger.info("dev_local_user_ready", {
+      email: devUser.email,
+      created: devUser.created,
+      note: "Development login: dev@atlas.local / AtlasDev1!",
+    });
+  }
 
   await registerHealthRoutes(app);
   await registerProjectRoutes(app);

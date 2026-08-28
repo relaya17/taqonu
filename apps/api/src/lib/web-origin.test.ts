@@ -26,6 +26,15 @@ describe("isAllowedWebOrigin", () => {
     ).toBe(false);
   });
 
+  it("allows Sentinel and Owner Admin loopback surfaces", () => {
+    expect(
+      isAllowedWebOrigin("http://127.0.0.1:3100", "http://localhost:3000"),
+    ).toBe(true);
+    expect(
+      isAllowedWebOrigin("http://localhost:3200", "http://localhost:3000"),
+    ).toBe(true);
+  });
+
   it("allows missing origin (non-browser)", () => {
     expect(isAllowedWebOrigin(undefined, "http://localhost:3000")).toBe(true);
   });

@@ -1,8 +1,8 @@
 /**
  * Control Plane request hygiene — headers, correlation, rate limit, idempotency.
  *
- * Not a second auth engine. Bearer auth stays in control-plane-auth.ts.
- * CSRF is N/A: this API is Bearer, not cookie-session.
+ * Not a second auth engine. Token auth stays in control-plane-auth.ts.
+ * CSRF is N/A: this API is header-token, not cookie-session.
  */
 import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";

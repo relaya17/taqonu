@@ -9,7 +9,7 @@
 import { listAuditEntries, type AuditEntry } from "./governance-state.js";
 
 let lastSyncedSeq = 0;
-let apiBaseUrl = process.env.ATLAS_API_URL ?? "http://localhost:3001";
+let apiBaseUrl = process.env.ATLAS_API_URL ?? "http://localhost:4000";
 let syncEnabled = process.env.ATLAS_CP_AUDIT_SYNC !== "0";
 let adminToken: string | null = null;
 

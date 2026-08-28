@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
     "@emotion/cache",
   ],
   reactStrictMode: true,
+  // Playwright and some clients hit 127.0.0.1 while next binds 0.0.0.0.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   /** Faster cold navigations in local lab. */
   experimental: {
     optimizePackageImports: ["@mui/material", "@mui/icons-material"],

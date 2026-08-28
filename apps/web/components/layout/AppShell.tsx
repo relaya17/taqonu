@@ -23,8 +23,8 @@ import { Link, usePathname } from "@/i18n/routing";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
-import { ClientOnly } from "@/components/layout/ClientOnly";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
+import { PageContainer } from "@/components/layout/PageContainer";
 import { useColorMode } from "@/components/providers/ColorModeProvider";
 import { atlasChrome as c } from "@/styles/palette";
 
@@ -256,11 +256,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           fontFamily: '"Unbounded", "Syne", sans-serif',
           fontWeight: 700,
           letterSpacing: "-0.04em",
-          lineHeight: 0.95,
+          lineHeight: 0.92,
           color: tone.brand,
           textDecoration: "none",
           display: "inline-flex",
           alignItems: "baseline",
+          gap: "1px",
           borderRadius: 1,
           "&:focus-visible": {
             outline: `3px solid ${c.accent}`,
@@ -270,16 +271,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <Box
           component="span"
-          sx={{ fontSize: large ? "1.55rem" : "1.15rem", fontWeight: 800 }}
+          sx={{ fontSize: large ? "1.4rem" : "0.98rem", fontWeight: 800 }}
         >
           A
         </Box>
         <Box
           component="span"
           sx={{
-            fontSize: large ? "1.05rem" : "0.88rem",
+            fontSize: large ? "0.95rem" : "0.78rem",
             fontWeight: 600,
-            opacity: 0.92,
+            opacity: 0.88,
           }}
         >
           rlet
@@ -287,9 +288,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Box
           component="span"
           sx={{
-            fontSize: large ? "1.45rem" : "1.1rem",
+            fontSize: large ? "1.28rem" : "0.95rem",
             fontWeight: 800,
-            color: tone.accent,
+            color: tone.chrome,
           }}
         >
           OS
@@ -307,7 +308,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         onClick={toggleMode}
         aria-label={goDark ? t("a11y.themeDark") : t("a11y.themeLight")}
         title={t("nav.theme")}
-        sx={{ color: tone.accent }}
+        sx={{ color: tone.textMuted }}
       >
         {goDark ? (
           <DarkModeOutlinedIcon fontSize="small" />
@@ -610,8 +611,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 2,
-            px: { xs: 2, md: 3 },
-            py: 1.5,
+            px: { xs: 1.5, sm: 2, md: 3 },
+            py: { xs: 1, sm: 1.5 },
+            flexWrap: "wrap",
             bgcolor: marketingTone.bgcolor,
             borderBottom: marketingTone.border,
             backdropFilter: "blur(16px) saturate(1.1)",
@@ -619,12 +621,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           }}
         >
           {brandMark("/welcome", { size: "sm", tone: "dark" })}
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Stack
               direction="row"
               spacing={1}
               alignItems="center"
-              sx={{ display: { xs: "none", md: "flex" } }}
+              sx={{ display: { xs: "none", sm: "flex" } }}
             >
               <Button
                 component={Link}
@@ -684,8 +686,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 aria-expanded={navOpen}
                 aria-controls={navId}
                 sx={{
-                  color: marketingTone.accent,
-                  display: { xs: "inline-flex", md: "none" },
+                  color: marketingTone.textMuted,
+                  display: { xs: "inline-flex", sm: "none" },
                 }}
               >
                 <MenuIcon />
@@ -700,7 +702,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClose={() => setNavOpen(false)}
           ModalProps={{ keepMounted: true }}
           sx={{
-            display: { xs: "block", md: "none" },
+            display: { xs: "block", sm: "none" },
             [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
           }}
           PaperProps={{
@@ -847,10 +849,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           },
           maxWidth: "100%",
           overflowX: "clip",
-          p: { xs: 2, sm: 3, md: 4 },
+          p: { xs: 1.5, sm: 2.5, md: 3 },
           pb: { xs: 3, md: 5 },
           outline: "none",
-          textAlign: "center",
+          textAlign: "start",
         }}
       >
         <Box
@@ -860,14 +862,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             minWidth: 0,
             display: "flex",
             alignItems: "center",
-            justifyContent: { xs: "space-between", md: "center" },
-            mx: { xs: -2, sm: -3, md: 0 },
-            px: { xs: 2, sm: 3, md: 0 },
-            py: 1.25,
-            bgcolor: appMobileTone.bgcolor,
-            borderBottom: appMobileTone.border,
-            backdropFilter: "blur(16px) saturate(1.1)",
-            WebkitBackdropFilter: "blur(16px) saturate(1.1)",
+            justifyContent: "space-between",
+            gap: 1,
+            flexWrap: "wrap",
+            mx: { xs: -1.5, sm: -2.5, md: 0 },
+            px: { xs: 1.5, sm: 2, md: 0 },
+            py: 1,
+            bgcolor: { xs: appMobileTone.bgcolor, md: "transparent" },
+            borderBottom: { xs: appMobileTone.border, md: "none" },
+            backdropFilter: { xs: "blur(16px) saturate(1.1)", md: "none" },
+            WebkitBackdropFilter: { xs: "blur(16px) saturate(1.1)", md: "none" },
           }}
         >
           <Box sx={{ display: { xs: "block", md: "none" } }}>
@@ -877,23 +881,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Stack
             direction="row"
             alignItems="center"
-            spacing={0}
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
             sx={{
               "& .MuiIconButton-root": {
-                minWidth: 36,
+                minWidth: 32,
                 minHeight: 36,
                 p: 0.5,
-                color: appMobileTone.accent,
+                color: appMobileTone.textMuted,
               },
             }}
           >
             {themeToggle({ tone: appMobileToneKey })}
-            <Box sx={{ display: { xs: "block", md: "none" } }}>
-              {langMenu("atlas-lang-menu-mobile", {
-                mobile: true,
-                tone: appMobileToneKey,
-              })}
-            </Box>
+            {langMenu("atlas-lang-menu-header", {
+              tone: appMobileToneKey,
+            })}
             <IconButton
               ref={menuButtonRef}
               edge="end"
@@ -907,41 +910,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             </IconButton>
           </Stack>
         </Box>
-        <Box
-          sx={{
-            width: "100%",
-            maxWidth: 920,
-            mx: "auto",
-          }}
-        >
+        <PageContainer maxWidth={920} noPadding>
           <AiCompanionBar />
-        </Box>
-        <Box
+        </PageContainer>
+        <PageContainer
+          maxWidth={920}
           sx={{
-            width: "100%",
-            maxWidth: 920,
-            mx: "auto",
             mb: { xs: 2, md: 3 },
-            minWidth: 0,
-            px: { xs: 2.5, sm: 3, md: 4 },
-            py: { xs: 2.5, sm: 3.5 },
             bgcolor: "background.paper",
             border: "1px solid",
             borderColor: "divider",
             borderRadius: 2,
-            boxSizing: "border-box",
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            "& > *": {
-              mx: "auto",
-              width: "100%",
-            },
+            textAlign: "start",
           }}
         >
-          <ClientOnly>{children}</ClientOnly>
-        </Box>
+          {children}
+        </PageContainer>
       </Box>
     </Box>
   );

@@ -25,6 +25,7 @@ atlas-evals/results
 !.vscode/extensions.json
 _tmp_*
 *.tsbuildinfo
+workspace-packages.json
 
 # Internal IP / algorithm records — never publish the recipe
 docs/confidential/

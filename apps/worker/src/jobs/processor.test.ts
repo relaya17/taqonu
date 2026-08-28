@@ -31,11 +31,10 @@ describe("processJob", () => {
     expect(result.detail).toBe("acknowledged:github.webhook_ingest");
   });
 
-  it("throws synchronously on malformed state.reconcile payload", () => {
-    // This is the realistic P0 failure mode: a bad/incomplete reconcile
-    // payload makes reconcileProjectState throw. processJob does NOT catch
-    // this itself -- that is the run loop's job (see ../index.ts).
+  it("rejects malformed state.reconcile payload without throwing", () => {
     const job = baseJob({ kind: "state.reconcile", payload: {} });
-    expect(() => processJob(job, createSilentLogger())).toThrow();
+    const result = processJob(job, createSilentLogger());
+    expect(result.ok).toBe(false);
+    expect(result.detail).toMatch(/invalid payload/i);
   });
 });

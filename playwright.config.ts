@@ -13,12 +13,30 @@ import { defineConfig, devices } from "@playwright/test";
  * the suite runnable at all, mirroring what e2e-critical-path.yml assumes
  * already exists.
  */
+const localWebServers = [
+  {
+    command: "pnpm --filter @atlas/api dev",
+    url: "http://127.0.0.1:4000/api/v1/health",
+    reuseExistingServer: true,
+    timeout: 180_000,
+  },
+  {
+    command: "pnpm --filter @atlas/web dev",
+    url: "http://127.0.0.1:3000/he",
+    reuseExistingServer: true,
+    timeout: 180_000,
+  },
+];
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
+  // CI starts API + web in the workflow before Playwright. Locally, start
+  // them here unless something is already listening (reuseExistingServer).
+  webServer: process.env.CI ? undefined : localWebServers,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
     trace: "on-first-retry",
@@ -28,19 +46,16 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // The container ships a pre-baked Chromium (browsers.json revision
-        // 1194, under PLAYWRIGHT_BROWSERS_PATH) that predates the
-        // @playwright/test version resolved into this repo's lockfile
-        // (1.62.1, which expects a newer "chromium_headless_shell"
-        // revision that isn't present). Point directly at the pre-baked
-        // full Chromium binary to sidestep the revision mismatch instead
-        // of downloading a new browser (which this container's task
-        // instructions say not to do).
-        launchOptions: {
-          executablePath:
-            process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ??
-            "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-        },
+        // CI (Linux image) may set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a
+        // pre-baked binary. Local Windows/macOS must use Playwright's own
+        // browser install — do not default to a Linux path.
+        ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+          ? {
+              launchOptions: {
+                executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
+              },
+            }
+          : {}),
       },
     },
   ],

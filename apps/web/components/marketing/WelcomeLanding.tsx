@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
+import { atlasChrome as c } from "@/styles/palette";
 
 export function WelcomeLanding({ children }: { children?: ReactNode }) {
   const t = useTranslations("landing");
@@ -20,10 +21,9 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
     <Box
       sx={{
         minHeight: "100vh",
-        bgcolor: "#12141A",
-        color: "#DCDDE1",
+        bgcolor: c.ink,
+        color: c.text,
         overflow: "clip",
-        textAlign: "center",
       }}
     >
       <Box
@@ -39,18 +39,21 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
         />
 
         <Stack
-          spacing={2.5}
+          spacing={2}
           alignItems="center"
           sx={{
             position: "relative",
             zIndex: 2,
             justifyContent: "center",
             minHeight: { xs: "100svh", md: "100vh" },
-            px: { xs: 2.5, sm: 4, md: 7 },
-            pt: { xs: 10, md: 12 },
-            pb: { xs: 6, md: 10 },
-            maxWidth: 560,
-            mx: "auto",
+            px: { xs: 2, sm: 3, md: 4 },
+            pt: { xs: 11, sm: 12 },
+            pb: { xs: 4, md: 8 },
+            width: "100%",
+            maxWidth: 640,
+            marginInline: "auto",
+            boxSizing: "border-box",
+            textAlign: "center",
             opacity: promoEnded ? 0 : 1,
             visibility: promoEnded ? "hidden" : "visible",
             pointerEvents: promoEnded ? "none" : "auto",
@@ -58,28 +61,28 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
           }}
         >
           <Stack
-            spacing={2.5}
+            spacing={2}
             alignItems="center"
             sx={{
               width: "100%",
-              px: { xs: 2.5, sm: 4 },
-              py: { xs: 3, sm: 4 },
+              px: { xs: 2, sm: 3 },
+              py: { xs: 2.5, sm: 3.5 },
               bgcolor: "rgba(18, 20, 26, 0.48)",
               backdropFilter: "blur(18px)",
               WebkitBackdropFilter: "blur(18px)",
-              border: "1px solid rgba(220, 221, 225, 0.16)",
+              border: `1px solid ${c.border}`,
               borderRadius: 2,
             }}
           >
           <Typography
             component="p"
             sx={{
-              fontFamily: '"Syne", "Rubik", sans-serif',
+              fontFamily: '"Unbounded", "Syne", "Rubik", sans-serif',
               fontWeight: 700,
-              fontSize: { xs: "2.75rem", md: "3.6rem" },
+              fontSize: "clamp(1.6rem, 7vw, 3rem)",
               letterSpacing: "-0.04em",
-              lineHeight: 0.95,
-              color: "#EEEEF0",
+              lineHeight: 1.05,
+              color: c.chromeBright,
               textShadow: "0 2px 24px rgba(0,0,0,0.55)",
             }}
           >
@@ -88,11 +91,12 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
           <Typography
             component="h1"
             sx={{
-              fontFamily: '"Syne", "Source Sans 3", sans-serif',
+              fontFamily: '"Rubik", "Source Sans 3", sans-serif',
               fontWeight: 600,
-              fontSize: { xs: "1.25rem", md: "1.45rem" },
+              fontSize: "clamp(1.05rem, 3.2vw, 1.45rem)",
               letterSpacing: "-0.02em",
-              color: "#DCDDE1",
+              lineHeight: 1.35,
+              color: c.text,
               maxWidth: 440,
               textShadow: "0 1px 16px rgba(0,0,0,0.5)",
             }}
@@ -101,9 +105,9 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
           </Typography>
           <Typography
             sx={{
-              color: "rgba(212, 216, 224, 0.95)",
-              fontSize: "1.05rem",
-              lineHeight: 1.5,
+              color: c.chrome,
+              fontSize: "clamp(0.9rem, 2.4vw, 1.05rem)",
+              lineHeight: 1.55,
               maxWidth: 400,
               textShadow: "0 1px 12px rgba(0,0,0,0.45)",
             }}
@@ -112,9 +116,9 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
           </Typography>
           <Stack
             direction={{ xs: "column", sm: "row" }}
-            spacing={1.5}
+            spacing={1.25}
             justifyContent="center"
-            sx={{ pt: 0.5 }}
+            sx={{ pt: 0.5, width: "100%" }}
           >
             <Button
               component="a"
@@ -122,11 +126,12 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: "#9A9EA8",
-                color: "#12141A",
+                width: { xs: "100%", sm: "auto" },
+                bgcolor: c.accent,
+                color: c.onAccent,
                 fontWeight: 700,
                 px: 3,
-                "&:hover": { bgcolor: "#ADB1BA" },
+                "&:hover": { bgcolor: c.accentHover },
               }}
             >
               {t("ctaRegister")}
@@ -137,13 +142,14 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
               variant="outlined"
               size="large"
               sx={{
-                borderColor: "rgba(232, 234, 238, 0.55)",
-                color: "#EEEEF0",
+                width: { xs: "100%", sm: "auto" },
+                borderColor: c.borderStrong,
+                color: c.chromeBright,
                 fontWeight: 600,
                 bgcolor: "rgba(14,17,22,0.35)",
                 "&:hover": {
-                  borderColor: "#9A9EA8",
-                  bgcolor: "rgba(154, 158, 168, 0.12)",
+                  borderColor: c.accent,
+                  bgcolor: c.hover,
                 },
               }}
             >
@@ -153,7 +159,11 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
               component="a"
               href={`/${locale}/partners`}
               size="large"
-              sx={{ color: "#B4B7BE", fontWeight: 650 }}
+              sx={{
+                width: { xs: "100%", sm: "auto" },
+                color: c.chrome,
+                fontWeight: 650,
+              }}
             >
               {t("ctaAudit")}
             </Button>
@@ -167,71 +177,76 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
       <Box
         component="section"
         sx={{
-          px: { xs: 2.5, sm: 4, md: 6 },
-          py: { xs: 6, md: 9 },
-          borderTop: "1px solid rgba(154, 158, 168, 0.14)",
+          px: { xs: 2, sm: 3, md: 4 },
+          py: { xs: 5, md: 8 },
+          borderTop: `1px solid ${c.border}`,
+          textAlign: "center",
         }}
       >
         <Typography
           component="h2"
           sx={{
-            fontFamily: '"Syne", sans-serif',
+            fontFamily: '"Syne", "Rubik", sans-serif',
             fontWeight: 700,
-            fontSize: { xs: "1.6rem", md: "2rem" },
+            fontSize: "clamp(1.35rem, 4vw, 2rem)",
             letterSpacing: "-0.03em",
+            lineHeight: 1.25,
             mb: 1,
             maxWidth: 560,
-            mx: "auto",
+            marginInline: "auto",
           }}
         >
           {t("pricingTitle")}
         </Typography>
         <Typography
           sx={{
-            color: "rgba(154, 163, 178, 0.88)",
+            color: c.textMuted,
             mb: 4,
             maxWidth: 480,
-            mx: "auto",
+            marginInline: "auto",
+            fontSize: "clamp(0.9rem, 2vw, 1rem)",
+            lineHeight: 1.55,
           }}
         >
           {t("pricingBody")}
         </Typography>
         <Stack
-          direction={{ xs: "column", md: "row" }}
+          direction={{ xs: "column", sm: "row" }}
           spacing={0}
           sx={{
-            border: "1px solid rgba(154, 158, 168, 0.22)",
+            border: `1px solid ${c.borderStrong}`,
             maxWidth: 640,
-            mx: "auto",
+            marginInline: "auto",
             overflow: "hidden",
             textAlign: "start",
+            borderRadius: 2,
           }}
         >
           <Box
             sx={{
               flex: 1,
-              p: 3,
+              p: { xs: 2.5, sm: 3 },
               borderBottom: {
-                xs: "1px solid rgba(154, 158, 168, 0.18)",
-                md: "none",
+                xs: `1px solid ${c.border}`,
+                sm: "none",
               },
               borderInlineEnd: {
                 xs: "none",
-                md: "1px solid rgba(154, 158, 168, 0.18)",
+                sm: `1px solid ${c.border}`,
               },
             }}
           >
-            <Typography sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "clamp(1.05rem, 2vw, 1.2rem)", mb: 1 }}>
               {t("freeName")}
             </Typography>
-            <Typography sx={{ color: "rgba(154, 163, 178, 0.9)", mb: 2 }}>
+            <Typography sx={{ color: c.textMuted, mb: 2, fontSize: "clamp(0.85rem, 1.6vw, 0.95rem)" }}>
               {t("freeDetail")}
             </Typography>
             <Button
               component="a"
               href={`/${locale}/auth/register`}
               variant="outlined"
-              sx={{ color: "#DCDDE1", borderColor: "rgba(154,158,168,0.45)" }}
+              sx={{ color: c.text, borderColor: c.borderStrong, width: { xs: "100%", sm: "auto" } }}
             >
               {t("ctaRegister")}
             </Button>
@@ -239,20 +254,26 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
           <Box
             sx={{
               flex: 1,
-              p: 3,
-              bgcolor: "rgba(154, 158, 168, 0.08)",
+              p: { xs: 2.5, sm: 3 },
+              bgcolor: c.hover,
             }}
           >
-            <Typography sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1, color: "#9A9EA8" }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "clamp(1.05rem, 2vw, 1.2rem)", mb: 1, color: c.accent }}>
               {t("proName")}
             </Typography>
-            <Typography sx={{ color: "rgba(154, 163, 178, 0.9)", mb: 2 }}>
+            <Typography sx={{ color: c.textMuted, mb: 2, fontSize: "clamp(0.85rem, 1.6vw, 0.95rem)" }}>
               {t("proDetail")}
             </Typography>
             <Button
               onClick={goPlan}
               variant="contained"
-              sx={{ bgcolor: "#9A9EA8", color: "#12141A", fontWeight: 700, "&:hover": { bgcolor: "#ADB1BA" } }}
+              sx={{
+                bgcolor: c.accent,
+                color: c.onAccent,
+                fontWeight: 700,
+                width: { xs: "100%", sm: "auto" },
+                "&:hover": { bgcolor: c.accentHover },
+              }}
             >
               {t("ctaUpgrade")}
             </Button>

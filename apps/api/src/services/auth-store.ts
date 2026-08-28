@@ -648,6 +648,40 @@ export function setLocalPasswordByEmail(
   return toPublicUser(existing);
 }
 
+export const DEV_LOCAL_EMAIL = "dev@atlas.local";
+export const DEV_LOCAL_PASSWORD = "AtlasDev1!";
+
+/**
+ * Development-only: keep a known admin on atlas.local so every surface can
+ * log in with the same email/password. Never runs in production.
+ */
+export function ensureDevLocalUser(): {
+  readonly email: string;
+  readonly created: boolean;
+} | null {
+  if (process.env.NODE_ENV === "production") return null;
+  const email = (process.env.ATLAS_DEV_EMAIL ?? DEV_LOCAL_EMAIL).trim().toLowerCase();
+  const password = process.env.ATLAS_DEV_PASSWORD ?? DEV_LOCAL_PASSWORD;
+  const existing = findUserByEmail(email);
+  if (existing) {
+    setLocalPasswordByEmail(email, password);
+    if (existing.role !== "admin" && existing.role !== "owner") {
+      setLocalUserRole(existing.id, "admin");
+    }
+    return { email, created: false };
+  }
+  const user = createLocalUser({
+    email,
+    password,
+    displayName: "Atlas Dev",
+    locale: "he",
+  });
+  if (user.role !== "admin" && user.role !== "owner") {
+    setLocalUserRole(user.id, "admin");
+  }
+  return { email, created: true };
+}
+
 export function setUserDisabled(
   userId: string,
   disabled: boolean,

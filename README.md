@@ -224,22 +224,86 @@ pnpm --filter @atlas/shared --filter @atlas/config --filter @atlas/agent-core --
 pnpm dev
 ```
 
-| Surface | URL |
-| --- | --- |
-| **Atlas** (product UI) | http://localhost:3000 |
-| **Atlas Sentinel** (oversight / control plane) | http://127.0.0.1:3100 |
-| **Owner Admin** | http://127.0.0.1:3200 |
-| Tenant API | http://localhost:4000 |
-| Landing (HE) | http://localhost:3000/he/welcome |
-| Systems | http://localhost:3000/he/systems |
-| App home | http://localhost:3000/he |
-| Audit intake | http://localhost:3000/he/partners |
-| Counsel briefing | http://localhost:3000/he/legal-media |
-| Plan | http://localhost:3000/he/plan |
+`pnpm dev` starts **five** processes. Do not merge them onto one port.
+
+### Local surfaces (ADR-021)
+
+| Plane | Surface | URL |
+| --- | --- | --- |
+| USER | **Atlas** product UI | http://localhost:3000 |
+| USER | Landing (HE / EN / AR) | http://localhost:3000/he/welcome · `/en/welcome` · `/ar/welcome` |
+| USER | Login / Register | http://localhost:3000/he/auth/login · `/he/auth/register` |
+| USER | Systems | http://localhost:3000/he/systems |
+| USER | App home | http://localhost:3000/he |
+| USER | Plan / Audit intake | http://localhost:3000/he/plan · `/he/partners` |
+| USER | Tenant API | http://localhost:4000 · health `GET /api/v1/health` |
+| CONTROL | **Atlas Sentinel** landing | http://127.0.0.1:3100 |
+| CONTROL | Sentinel dashboard | http://127.0.0.1:3100/dashboard |
+| CONTROL | Sentinel liveness | http://127.0.0.1:3100/api/v1/status |
+| CONTROL | **Owner Admin** | http://127.0.0.1:3200 |
+| WEB admin (user plane) | Command login | http://localhost:3000/admin/login |
+
+Dev credentials (local only): `dev@atlas.local` / `AtlasDev1!` — see `apps/web/lib/dev-credentials.ts`.
+
+### Vercel (USER plane only)
+
+Two Vercel projects. Do **not** put Sentinel (`:3100`) or Owner Admin (`:3200`) on Vercel.
+
+| Project root | Config | Role |
+| --- | --- | --- |
+| `apps/web` | [`apps/web/vercel.json`](apps/web/vercel.json) | Next.js USER UI |
+| `apps/api` | [`apps/api/vercel.json`](apps/api/vercel.json) | Tenant API + daily knowledge cron |
+
+Set `WEB_ORIGIN` and `NEXT_PUBLIC_API_URL` to the deployed origins. Control plane stays a separate Node process (ADR-021).
 
 ```bash
 pnpm proof:run
 ```
+
+### Full local verification (copy-paste)
+
+Run from the repo root after `pnpm install`. On Windows use `curl.exe` instead of `curl` if needed.
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec turbo run build --filter=@atlas/api...
+pnpm exec turbo run build --filter=@atlas/web --filter=@atlas/admin --filter=@atlas/control-plane --filter=@atlas/worker
+pnpm typecheck
+pnpm exec eslint packages apps --max-warnings 0
+pnpm test
+pnpm test:unit
+pnpm --filter @atlas/api exec tsx src/scripts/ci-eval-gate.ts
+pnpm --filter @atlas/api exec tsx src/scripts/ci-secrets-scan.ts
+pnpm sbom:generate
+pnpm format:check
+pnpm proof:run
+```
+
+With `pnpm dev` running in another terminal:
+
+```bash
+curl.exe -sf http://localhost:4000/api/v1/health
+curl.exe -sf http://localhost:3000/he
+curl.exe -sf http://127.0.0.1:3100/api/v1/status
+curl.exe -sf http://127.0.0.1:3200/
+```
+
+E2E talks to a live stack at `http://127.0.0.1:3000` (web) and `:4000` (API). Chromium must already be installed (`pnpm exec playwright install chromium` — no `--with-deps` on Windows).
+
+Either keep `pnpm dev` running in another terminal, **or** let Playwright start API + web for you (first compile can take 1–3 minutes):
+
+```bash
+pnpm test:e2e:critical
+pnpm test:e2e:product
+pnpm test:e2e:security
+pnpm test:e2e:a11y
+pnpm test:e2e:new
+pnpm exec playwright test e2e/failure-paths.spec.ts
+```
+
+`security` / `failure-paths` skip if `http://127.0.0.1:4000/api/v1/health` is down. `ERR_CONNECTION_REFUSED` on `:3000` means the web app is not running.
+
+CI mirrors this: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and [`.github/workflows/e2e-critical-path.yml`](.github/workflows/e2e-critical-path.yml).
 
 ---
 

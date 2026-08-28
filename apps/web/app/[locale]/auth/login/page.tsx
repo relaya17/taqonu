@@ -15,6 +15,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
 import { apiGet, apiPost, downloadVerifiedSourcesPack, ADMIN_LOGIN_PATH } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
+import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
 
 interface AuthProviders {
   emailPassword: boolean;
@@ -32,8 +33,8 @@ export default function LoginPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
+  const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
   const [oauthError, setOauthError] = useState<string | null>(null);
 
   const providers = useQuery({
@@ -75,16 +76,23 @@ export default function LoginPage() {
         width: "100%",
         minWidth: 0,
         py: { xs: 2, md: 6 },
+        textAlign: "center",
+        alignItems: "center",
       }}
     >
       <Box>
         <Typography variant="h1" sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" } }}>
           {t("loginTitle")}
         </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
+        <Typography color="text.secondary" sx={{ mt: 1, textAlign: "center" }}>
           {t("loginSubtitle")}
         </Typography>
-        <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+        {isDevLoginPrefill ? (
+          <Alert severity="info" sx={{ mt: 2, textAlign: "start" }}>
+            מצב פיתוח — {DEV_CREDENTIALS.domain} · {DEV_CREDENTIALS.email} · {DEV_CREDENTIALS.password}
+          </Alert>
+        ) : null}
+        <Stack direction="row" spacing={2} sx={{ mt: 1.5, justifyContent: "center" }}>
           <Button component={Link} href="/welcome" size="small">
             {t("openLanding")}
           </Button>
@@ -111,6 +119,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
             required
+            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
           />
           <TextField
             label={t("password")}
@@ -120,6 +129,7 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
             required
+            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
           />
 
           <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>

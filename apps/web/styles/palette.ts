@@ -1,20 +1,21 @@
 /** Shared silver / steel hi-tech palette — muted gray family site-wide. */
 export const atlasChrome = {
   ink: "#12141A",
-  steelDeep: "#16191F",
-  steel: "#1C1F26",
-  steelMid: "#2A2E36",
+  steelDeep: "#1E232C",
+  steel: "#2A303A",
+  steelMid: "#3A4250",
   silverBg: "#F4F5F6",
   silverPaper: "#FAFAFA",
   silverSoft: "#E8E9EB",
   text: "#E0E1E4",
-  textMuted: "#8B9099",
+  textMuted: "#A8AEB8",
   textOnLight: "#1A1C22",
   textSecondaryOnLight: "#5C6068",
   chrome: "#B4B7BE",
   chromeBright: "#D2D4D8",
-  accent: "#7B8490",
-  accentHover: "#8E96A2",
+  // Dark enough for white label/button text at WCAG 2.2 AA (4.5:1).
+  accent: "#5C6570",
+  accentHover: "#6A7380",
   onAccent: "#FFFFFF",
   border: "rgba(160, 164, 172, 0.22)",
   borderStrong: "rgba(160, 164, 172, 0.38)",
@@ -25,8 +26,8 @@ export const atlasChrome = {
 } as const;
 
 /**
- * Soft semantic status colors — calm, professional, accessible.
- * All colors pass WCAG 2.2 AA contrast requirements.
+ * Soft semantic status colors — calm, professional.
+ * Filled Chip/Button mains are paired with contrastText that meets WCAG 2.2 AA.
  */
 export const atlasStatus = {
   // Success — soft sage green

@@ -24,18 +24,18 @@ export function getDashboardHtml(): string {
   <title>Atlas Control Plane</title>
   <style>
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface-hover: #232736;
-      --border: #2a2e3d;
-      --text: #e4e6f0;
-      --text-muted: #8b8fa3;
-      --accent: #6366f1;
-      --accent-dim: #4f46e5;
-      --success: #22c55e;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --info: #3b82f6;
+      --bg: #181c26;
+      --surface: #222838;
+      --surface-hover: #2c3344;
+      --border: rgba(160,168,180,0.22);
+      --text: #f0f2f5;
+      --text-muted: #a8adb8;
+      --accent: #7a9cc6;
+      --accent-dim: #5a7a9c;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --info: #60a5fa;
       --radius: 8px;
       --font: system-ui, -apple-system, "Segoe UI", sans-serif;
       --mono: "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
@@ -55,17 +55,34 @@ export function getDashboardHtml(): string {
     .header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
-      display: flex;
+      padding: 12px 20px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
     }
-    .header h1 {
-      font-size: 20px;
-      font-weight: 600;
+    .header-left {
       display: flex;
       align-items: center;
       gap: 10px;
+    }
+    .header-center {
+      display: flex;
+      justify-content: center;
+    }
+    .header-right {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      letter-spacing: -0.02em;
     }
     .header .badge {
       font-size: 11px;
@@ -83,12 +100,58 @@ export function getDashboardHtml(): string {
       display: inline-block;
     }
 
-    .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    .container { max-width: 1120px; margin-inline: auto; padding: 16px clamp(12px, 3vw, 24px); }
+
+    .lang-pills {
+      display: inline-flex;
+      align-items: center;
+      gap: 1px;
+      padding: 2px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(24,28,38,0.55);
+    }
+    .lang-pills button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      font: 500 10px/1.2 var(--font);
+      padding: 3px 7px;
+      min-height: 22px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .lang-pills button:hover {
+      background: rgba(160,168,180,0.1);
+      color: var(--text);
+    }
+    .lang-pills button[aria-current="true"] {
+      background: rgba(160,168,180,0.16);
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    @media (max-width: 720px) {
+      .header { grid-template-columns: 1fr; justify-items: center; gap: 8px; padding: 10px 12px; }
+      .header-left, .header-right { justify-content: center; }
+      .header h1 { font-size: 13px; }
+      .header .badge { font-size: 10px; }
+      .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+      .tab { padding: 10px 12px; white-space: nowrap; font-size: 13px; }
+      .stat-card { padding: 12px; }
+      .stat-card .value { font-size: 22px; }
+      .container { padding: 12px 12px; }
+    }
 
     /* ── Tabs ───────────────────────────────────────────── */
     .tabs {
       display: flex;
       gap: 4px;
+      justify-content: center;
       border-bottom: 1px solid var(--border);
       margin-bottom: 24px;
     }
@@ -124,6 +187,7 @@ export function getDashboardHtml(): string {
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      text-align: center;
     }
     .stat-card .label {
       font-size: 12px;
@@ -154,7 +218,7 @@ export function getDashboardHtml(): string {
       font-size: 13px;
     }
     th {
-      text-align: left;
+      text-align: start;
       padding: 12px 16px;
       background: var(--surface-hover);
       color: var(--text-muted);
@@ -203,8 +267,10 @@ export function getDashboardHtml(): string {
     .section-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      gap: 10px;
       margin-bottom: 16px;
+      text-align: center;
     }
     .section-header h2 {
       font-size: 16px;
@@ -226,6 +292,7 @@ export function getDashboardHtml(): string {
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px;
+      text-align: center;
     }
     .policy-card .policy-name {
       font-family: var(--mono);
@@ -253,54 +320,73 @@ export function getDashboardHtml(): string {
     }
     .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
     .empty-state p { font-size: 13px; }
+
+    /* English / codes stay LTR-left even on RTL pages */
+    .ltr, .capability-tag, .policy-name, .mono, .pill {
+      direction: ltr;
+      text-align: left;
+      unicode-bidi: isolate;
+    }
+    #clock { direction: ltr; unicode-bidi: isolate; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>
-      <span class="status-dot"></span>
-      Atlas Control Plane
-      <span class="badge">v0.1.0</span>
-    </h1>
-    <span style="color: var(--text-muted); font-size: 13px;" id="clock"></span>
+    <div class="header-left">
+      <h1>
+        <span class="status-dot"></span>
+        Atlas Control Plane
+        <span class="badge">v0.1.0</span>
+      </h1>
+    </div>
+    <div class="header-center">
+      <nav class="lang-pills" role="navigation" aria-label="Language">
+        <button type="button" data-lang="he" lang="he" dir="rtl">he</button>
+        <button type="button" data-lang="en" lang="en" dir="ltr">en</button>
+        <button type="button" data-lang="ar" lang="ar" dir="rtl">ar</button>
+      </nav>
+    </div>
+    <div class="header-right">
+      <span style="color: var(--text-muted); font-size: 13px;" id="clock"></span>
+    </div>
   </div>
 
   <div class="container">
     <div class="tabs">
-      <button class="tab active" data-panel="overview">Overview</button>
-      <button class="tab" data-panel="agents">Agent Registry</button>
-      <button class="tab" data-panel="audit">Audit Trail</button>
-      <button class="tab" data-panel="policies">Policies</button>
-      <button class="tab" data-panel="approvals">Approvals</button>
+      <button class="tab active" data-panel="overview" data-i18n="tabOverview">Overview</button>
+      <button class="tab" data-panel="agents" data-i18n="tabAgents">Agent Registry</button>
+      <button class="tab" data-panel="audit" data-i18n="tabAudit">Audit Trail</button>
+      <button class="tab" data-panel="policies" data-i18n="tabPolicies">Policies</button>
+      <button class="tab" data-panel="approvals" data-i18n="tabApprovals">Approvals</button>
     </div>
 
     <!-- ── Overview Panel ──────────────────────────────── -->
     <div class="panel active" id="panel-overview">
       <div class="stats-grid" id="stats-grid">
-        <div class="loading">Loading metrics...</div>
+        <div class="loading" data-i18n="loadingMetrics">Loading metrics...</div>
       </div>
     </div>
 
     <!-- ── Agents Panel ────────────────────────────────── -->
     <div class="panel" id="panel-agents">
       <div class="section-header">
-        <h2>Registered Agents</h2>
+        <h2 data-i18n="registeredAgents">Registered Agents</h2>
         <span class="count" id="agent-count"></span>
       </div>
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th>Agent ID</th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Capabilities</th>
-              <th>Code</th>
-              <th>Tools</th>
+              <th data-i18n="thAgentId">Agent ID</th>
+              <th data-i18n="thName">Name</th>
+              <th data-i18n="thStatus">Status</th>
+              <th data-i18n="thCapabilities">Capabilities</th>
+              <th data-i18n="thCode">Code</th>
+              <th data-i18n="thTools">Tools</th>
             </tr>
           </thead>
           <tbody id="agents-tbody">
-            <tr><td colspan="6" class="loading">Loading...</td></tr>
+            <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -309,24 +395,24 @@ export function getDashboardHtml(): string {
     <!-- ── Audit Panel ─────────────────────────────────── -->
     <div class="panel" id="panel-audit">
       <div class="section-header">
-        <h2>Audit Trail</h2>
+        <h2 data-i18n="auditTrail">Audit Trail</h2>
         <span class="count" id="audit-count"></span>
       </div>
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th>Seq</th>
-              <th>Timestamp</th>
-              <th>Type</th>
-              <th>Actor</th>
-              <th>Risk</th>
-              <th>Result</th>
-              <th>Reason</th>
+              <th data-i18n="thSeq">Seq</th>
+              <th data-i18n="thTimestamp">Timestamp</th>
+              <th data-i18n="thType">Type</th>
+              <th data-i18n="thActor">Actor</th>
+              <th data-i18n="thRisk">Risk</th>
+              <th data-i18n="thResult">Result</th>
+              <th data-i18n="thReason">Reason</th>
             </tr>
           </thead>
           <tbody id="audit-tbody">
-            <tr><td colspan="7" class="loading">Loading...</td></tr>
+            <tr><td colspan="7" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -335,35 +421,35 @@ export function getDashboardHtml(): string {
     <!-- ── Policies Panel ──────────────────────────────── -->
     <div class="panel" id="panel-policies">
       <div class="section-header">
-        <h2>Policy Definitions</h2>
+        <h2 data-i18n="policyDefinitions">Policy Definitions</h2>
         <span class="count" id="policy-count"></span>
       </div>
       <div class="policy-grid" id="policy-grid">
-        <div class="loading">Loading...</div>
+        <div class="loading" data-i18n="loading">Loading...</div>
       </div>
     </div>
 
     <!-- ── Approvals Panel ─────────────────────────────── -->
     <div class="panel" id="panel-approvals">
       <div class="section-header">
-        <h2>Approval Records</h2>
+        <h2 data-i18n="approvalRecords">Approval Records</h2>
         <span class="count" id="approval-count"></span>
       </div>
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Agent</th>
-              <th>Action</th>
-              <th>Status</th>
-              <th>Decided By</th>
-              <th>Created</th>
-              <th>Expires</th>
+              <th data-i18n="thId">ID</th>
+              <th data-i18n="thAgent">Agent</th>
+              <th data-i18n="thAction">Action</th>
+              <th data-i18n="thStatus">Status</th>
+              <th data-i18n="thDecidedBy">Decided By</th>
+              <th data-i18n="thCreated">Created</th>
+              <th data-i18n="thExpires">Expires</th>
             </tr>
           </thead>
           <tbody id="approvals-tbody">
-            <tr><td colspan="7" class="loading">Loading...</td></tr>
+            <tr><td colspan="7" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -371,6 +457,109 @@ export function getDashboardHtml(): string {
   </div>
 
   <script>
+    var TRANSLATIONS = {
+      he: {
+        tabOverview: "סקירה", tabAgents: "רישום סוכנים", tabAudit: "מסלול ביקורת", tabPolicies: "מדיניות", tabApprovals: "אישורים",
+        loading: "טוען...", loadingMetrics: "טוען מדדים...", registeredAgents: "סוכנים רשומים", auditTrail: "מסלול ביקורת",
+        policyDefinitions: "הגדרות מדיניות", approvalRecords: "רשומות אישור",
+        thAgentId: "מזהה סוכן", thName: "שם", thStatus: "סטטוס", thCapabilities: "יכולות", thCode: "קוד", thTools: "כלים",
+        thSeq: "רצף", thTimestamp: "חותמת זמן", thType: "סוג", thActor: "גורם", thRisk: "סיכון", thResult: "תוצאה", thReason: "סיבה",
+        thId: "מזהה", thAgent: "סוכן", thAction: "פעולה", thDecidedBy: "הוחלט על ידי", thCreated: "נוצר", thExpires: "פג תוקף",
+        statTotalAgents: "סך הסוכנים", statActiveAgents: "סוכנים פעילים", statCodeWriters: "כותבי קוד", statReadOnly: "קריאה בלבד",
+        statAuditEntries: "רשומות ביקורת", statSuccesses: "הצלחות", statFailures: "כשלונות", statHighRisk: "סיכון גבוה",
+        statAvgRisk: "ציון סיכון ממוצע", statApprovalsPending: "אישורים ממתינים", statUptime: "זמן פעילות", statDenied: "נדחו",
+        agentsCount: "סוכנים", entriesCount: "רשומות", policiesCount: "מדיניות", recordsCount: "רשומות",
+        noAgents: "אין סוכנים רשומים", noAuditTitle: "אין רשומות ביקורת", noAuditBody: "פעולות ממשל יופיעו כאן",
+        noApprovalsTitle: "אין רשומות אישור", noApprovalsBody: "בקשות אישור יופיעו כאן כשסוכנים מבקשים הרשאות מורחבות",
+        serviceStarting: "השירות עולה", waitingData: "ממתין לנתונים...", failedLoad: "הטעינה נכשלה",
+        approvalRequired: "נדרש אישור", yes: "כן", no: "לא", none: "אין"
+      },
+      en: {
+        tabOverview: "Overview", tabAgents: "Agent Registry", tabAudit: "Audit Trail", tabPolicies: "Policies", tabApprovals: "Approvals",
+        loading: "Loading...", loadingMetrics: "Loading metrics...", registeredAgents: "Registered Agents", auditTrail: "Audit Trail",
+        policyDefinitions: "Policy Definitions", approvalRecords: "Approval Records",
+        thAgentId: "Agent ID", thName: "Name", thStatus: "Status", thCapabilities: "Capabilities", thCode: "Code", thTools: "Tools",
+        thSeq: "Seq", thTimestamp: "Timestamp", thType: "Type", thActor: "Actor", thRisk: "Risk", thResult: "Result", thReason: "Reason",
+        thId: "ID", thAgent: "Agent", thAction: "Action", thDecidedBy: "Decided By", thCreated: "Created", thExpires: "Expires",
+        statTotalAgents: "Total Agents", statActiveAgents: "Active Agents", statCodeWriters: "Code Writers", statReadOnly: "Read-Only",
+        statAuditEntries: "Audit Entries", statSuccesses: "Successes", statFailures: "Failures", statHighRisk: "High Risk",
+        statAvgRisk: "Avg Risk Score", statApprovalsPending: "Approvals Pending", statUptime: "Uptime", statDenied: "Denied",
+        agentsCount: "agents", entriesCount: "entries", policiesCount: "policies", recordsCount: "records",
+        noAgents: "No agents registered", noAuditTitle: "No Audit Entries", noAuditBody: "Governance actions will appear here",
+        noApprovalsTitle: "No Approval Records", noApprovalsBody: "Approval requests will appear here when agents request elevated permissions",
+        serviceStarting: "Service Starting", waitingData: "Waiting for data...", failedLoad: "Failed to load",
+        approvalRequired: "APPROVAL REQUIRED", yes: "YES", no: "NO", none: "NONE"
+      },
+      ar: {
+        tabOverview: "نظرة عامة", tabAgents: "سجل الوكلاء", tabAudit: "مسار التدقيق", tabPolicies: "السياسات", tabApprovals: "الموافقات",
+        loading: "جاري التحميل...", loadingMetrics: "جاري تحميل المقاييس...", registeredAgents: "الوكلاء المسجلون", auditTrail: "مسار التدقيق",
+        policyDefinitions: "تعريفات السياسات", approvalRecords: "سجلات الموافقة",
+        thAgentId: "معرف الوكيل", thName: "الاسم", thStatus: "الحالة", thCapabilities: "القدرات", thCode: "الكود", thTools: "الأدوات",
+        thSeq: "تسلسل", thTimestamp: "الوقت", thType: "النوع", thActor: "الفاعل", thRisk: "المخاطر", thResult: "النتيجة", thReason: "السبب",
+        thId: "المعرف", thAgent: "الوكيل", thAction: "الإجراء", thDecidedBy: "قرر بواسطة", thCreated: "أُنشئ", thExpires: "ينتهي",
+        statTotalAgents: "إجمالي الوكلاء", statActiveAgents: "الوكلاء النشطون", statCodeWriters: "كتّاب الكود", statReadOnly: "للقراءة فقط",
+        statAuditEntries: "سجلات التدقيق", statSuccesses: "نجاحات", statFailures: "إخفاقات", statHighRisk: "مخاطر عالية",
+        statAvgRisk: "متوسط درجة المخاطر", statApprovalsPending: "موافقات معلّقة", statUptime: "وقت التشغيل", statDenied: "مرفوض",
+        agentsCount: "وكلاء", entriesCount: "سجلات", policiesCount: "سياسات", recordsCount: "سجلات",
+        noAgents: "لا يوجد وكلاء مسجلون", noAuditTitle: "لا توجد سجلات تدقيق", noAuditBody: "ستظهر إجراءات الحوكمة هنا",
+        noApprovalsTitle: "لا توجد سجلات موافقة", noApprovalsBody: "ستظهر طلبات الموافقة هنا عندما يطلب الوكلاء صلاحيات أعلى",
+        serviceStarting: "الخدمة قيد التشغيل", waitingData: "في انتظار البيانات...", failedLoad: "فشل التحميل",
+        approvalRequired: "مطلوب موافقة", yes: "نعم", no: "لا", none: "لا يوجد"
+      }
+    };
+
+    var currentLang = "he";
+    var AGENT_NAMES = {
+      he: { CODE_ENGINEER: "מהנדס קוד", RESEARCH_ANALYST: "אנליסט מחקר", ARCHITECT: "ארכיטקט" },
+      ar: { CODE_ENGINEER: "مهندس كود", RESEARCH_ANALYST: "محلل أبحاث", ARCHITECT: "مهندس معماري" }
+    };
+
+    function t(key) {
+      return (TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][key]) || TRANSLATIONS.en[key] || key;
+    }
+
+    function applyTranslations() {
+      document.querySelectorAll("[data-i18n]").forEach(function(el) {
+        var key = el.getAttribute("data-i18n");
+        if (TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][key]) {
+          el.textContent = TRANSLATIONS[currentLang][key];
+        }
+      });
+    }
+
+    function agentDisplayName(agent) {
+      var map = AGENT_NAMES[currentLang];
+      if (map && map[agent.agentId]) return map[agent.agentId];
+      return agent.displayName || agent.agentId;
+    }
+
+    (function initLang() {
+      var KEY = "atlas-lang";
+      function apply(lang, reload) {
+        currentLang = lang || "he";
+        document.documentElement.lang = currentLang;
+        document.documentElement.dir = currentLang === "en" ? "ltr" : "rtl";
+        try { localStorage.setItem(KEY, currentLang); } catch (e) {}
+        document.querySelectorAll(".lang-pills [data-lang]").forEach(function (b) {
+          b.setAttribute("aria-current", b.getAttribute("data-lang") === currentLang ? "true" : "false");
+        });
+        applyTranslations();
+        if (reload) {
+          loadOverview();
+          loadAgents();
+          loadAudit();
+          loadPolicies();
+          loadApprovals();
+        }
+      }
+      document.querySelectorAll(".lang-pills [data-lang]").forEach(function (b) {
+        b.addEventListener("click", function () { apply(b.getAttribute("data-lang"), true); });
+      });
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      apply(saved || "he", false);
+    })();
+
     // ── Tab switching ──────────────────────────────────────────────────
     document.querySelectorAll('.tab').forEach(function(tab) {
       tab.addEventListener('click', function() {
@@ -428,21 +617,21 @@ export function getDashboardHtml(): string {
         var grid = document.getElementById('stats-grid');
         if (!grid) return;
         grid.innerHTML = '' +
-          '<div class="stat-card"><div class="label">Total Agents</div><div class="value info">' + stats.totalAgents + '</div></div>' +
-          '<div class="stat-card"><div class="label">Active Agents</div><div class="value success">' + stats.activeAgents + '</div></div>' +
-          '<div class="stat-card"><div class="label">Code Writers</div><div class="value warning">' + stats.codeWritingAgents + '</div></div>' +
-          '<div class="stat-card"><div class="label">Read-Only</div><div class="value">' + stats.readOnlyAgents + '</div></div>' +
-          '<div class="stat-card"><div class="label">Audit Entries</div><div class="value info">' + health.totalExecutions + '</div></div>' +
-          '<div class="stat-card"><div class="label">Successes</div><div class="value success">' + health.successfulExecutions + '</div></div>' +
-          '<div class="stat-card"><div class="label">Failures</div><div class="value danger">' + health.failedExecutions + '</div></div>' +
-          '<div class="stat-card"><div class="label">High Risk</div><div class="value' + (health.highRiskCount > 0 ? ' danger' : '') + '">' + health.highRiskCount + '</div></div>' +
-          '<div class="stat-card"><div class="label">Avg Risk Score</div><div class="value">' + health.avgRiskScore + '</div></div>' +
-          '<div class="stat-card"><div class="label">Approvals Pending</div><div class="value' + (health.approvalsPending > 0 ? ' warning' : '') + '">' + health.approvalsPending + '</div></div>' +
-          '<div class="stat-card"><div class="label">Uptime</div><div class="value">' + Math.floor(health.uptimeMs / 1000) + 's</div></div>' +
-          '<div class="stat-card"><div class="label">Denied</div><div class="value' + (health.deniedExecutions > 0 ? ' warning' : '') + '">' + health.deniedExecutions + '</div></div>';
+          '<div class="stat-card"><div class="label">' + t("statTotalAgents") + '</div><div class="value info">' + stats.totalAgents + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statActiveAgents") + '</div><div class="value success">' + stats.activeAgents + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statCodeWriters") + '</div><div class="value warning">' + stats.codeWritingAgents + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statReadOnly") + '</div><div class="value">' + stats.readOnlyAgents + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statAuditEntries") + '</div><div class="value info">' + health.totalExecutions + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statSuccesses") + '</div><div class="value success">' + health.successfulExecutions + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statFailures") + '</div><div class="value danger">' + health.failedExecutions + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statHighRisk") + '</div><div class="value' + (health.highRiskCount > 0 ? ' danger' : '') + '">' + health.highRiskCount + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statAvgRisk") + '</div><div class="value">' + health.avgRiskScore + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statApprovalsPending") + '</div><div class="value' + (health.approvalsPending > 0 ? ' warning' : '') + '">' + health.approvalsPending + '</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statUptime") + '</div><div class="value ltr">' + Math.floor(health.uptimeMs / 1000) + 's</div></div>' +
+          '<div class="stat-card"><div class="label">' + t("statDenied") + '</div><div class="value' + (health.deniedExecutions > 0 ? ' warning' : '') + '">' + health.deniedExecutions + '</div></div>';
       } catch (e) {
         var grid2 = document.getElementById('stats-grid');
-        if (grid2) grid2.innerHTML = '<div class="empty-state"><h3>Service Starting</h3><p>Waiting for data...</p></div>';
+        if (grid2) grid2.innerHTML = '<div class="empty-state"><h3>' + t("serviceStarting") + '</h3><p>' + t("waitingData") + '</p></div>';
       }
     }
 
@@ -451,32 +640,32 @@ export function getDashboardHtml(): string {
         var res = await fetch('/api/v1/agents');
         var agents = await res.json();
         var countEl = document.getElementById('agent-count');
-        if (countEl) countEl.textContent = agents.length + ' agents';
+        if (countEl) countEl.textContent = agents.length + ' ' + t("agentsCount");
         var tbody = document.getElementById('agents-tbody');
         if (!tbody) return;
         if (agents.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No agents registered</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">' + t("noAgents") + '</td></tr>';
           return;
         }
         tbody.innerHTML = agents.map(function(a) {
           var caps = a.capabilities.map(function(c) {
             return '<span class="capability-tag">' + c.entityType + '.' + c.action + '</span>';
           }).join('');
-          var tools = a.allowedTools.slice(0, 3).map(function(t) {
-            return '<span class="capability-tag">' + t + '</span>';
+          var tools = a.allowedTools.slice(0, 3).map(function(tool) {
+            return '<span class="capability-tag">' + tool + '</span>';
           }).join('');
           return '<tr>' +
-            '<td style="font-family:var(--mono);font-size:12px">' + a.agentId + '</td>' +
-            '<td>' + a.displayName + '</td>' +
+            '<td class="mono" style="font-family:var(--mono);font-size:12px">' + a.agentId + '</td>' +
+            '<td>' + agentDisplayName(a) + '</td>' +
             '<td>' + statusPill(a.status) + '</td>' +
-            '<td>' + (caps || '<span class="pill pill-muted">NONE</span>') + '</td>' +
-            '<td>' + (a.canWriteCode ? '<span class="pill pill-warning">YES</span>' : '<span class="pill pill-muted">NO</span>') + '</td>' +
+            '<td>' + (caps || '<span class="pill pill-muted">' + t("none") + '</span>') + '</td>' +
+            '<td>' + (a.canWriteCode ? '<span class="pill pill-warning">' + t("yes") + '</span>' : '<span class="pill pill-muted">' + t("no") + '</span>') + '</td>' +
             '<td>' + tools + '</td>' +
             '</tr>';
         }).join('');
       } catch (e) {
         var tbody2 = document.getElementById('agents-tbody');
-        if (tbody2) tbody2.innerHTML = '<tr><td colspan="6" class="loading">Failed to load</td></tr>';
+        if (tbody2) tbody2.innerHTML = '<tr><td colspan="6" class="loading">' + t("failedLoad") + '</td></tr>';
       }
     }
 
@@ -487,19 +676,19 @@ export function getDashboardHtml(): string {
         var countRes = await fetch('/api/v1/audit/count');
         var countData = await countRes.json();
         var countEl = document.getElementById('audit-count');
-        if (countEl) countEl.textContent = countData.count + ' entries';
+        if (countEl) countEl.textContent = countData.count + ' ' + t("entriesCount");
         var tbody = document.getElementById('audit-tbody');
         if (!tbody) return;
         if (entries.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><h3>No Audit Entries</h3><p>Governance actions will appear here</p></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><h3>' + t("noAuditTitle") + '</h3><p>' + t("noAuditBody") + '</p></td></tr>';
           return;
         }
         tbody.innerHTML = entries.map(function(e) {
           return '<tr>' +
-            '<td style="font-family:var(--mono);font-size:12px">' + e.seq + '</td>' +
-            '<td style="font-size:12px;white-space:nowrap">' + new Date(e.timestamp).toLocaleString() + '</td>' +
-            '<td style="font-family:var(--mono);font-size:11px">' + truncate(e.type, 40) + '</td>' +
-            '<td style="font-family:var(--mono);font-size:12px">' + e.actorId + '</td>' +
+            '<td class="mono" style="font-family:var(--mono);font-size:12px">' + e.seq + '</td>' +
+            '<td class="ltr" style="font-size:12px;white-space:nowrap">' + new Date(e.timestamp).toLocaleString() + '</td>' +
+            '<td class="mono" style="font-family:var(--mono);font-size:11px">' + truncate(e.type, 40) + '</td>' +
+            '<td class="mono" style="font-family:var(--mono);font-size:12px">' + e.actorId + '</td>' +
             '<td>' + riskPill(e.risk) + '</td>' +
             '<td>' + resultPill(e.result) + '</td>' +
             '<td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis">' + truncate(e.reason, 80) + '</td>' +
@@ -507,7 +696,7 @@ export function getDashboardHtml(): string {
         }).join('');
       } catch (e) {
         var tbody2 = document.getElementById('audit-tbody');
-        if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" class="loading">Failed to load</td></tr>';
+        if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" class="loading">' + t("failedLoad") + '</td></tr>';
       }
     }
 
@@ -516,21 +705,21 @@ export function getDashboardHtml(): string {
         var res = await fetch('/api/v1/policies');
         var policies = await res.json();
         var countEl = document.getElementById('policy-count');
-        if (countEl) countEl.textContent = policies.length + ' policies';
+        if (countEl) countEl.textContent = policies.length + ' ' + t("policiesCount");
         var grid = document.getElementById('policy-grid');
         if (!grid) return;
         grid.innerHTML = policies.map(function(p) {
           return '<div class="policy-card">' +
             '<div class="policy-name">' + p.entityType + '.' + p.action + '</div>' +
             '<div style="margin:6px 0">' + riskPill(p.riskTier) +
-            (p.requiresApproval ? ' <span class="pill pill-warning">APPROVAL REQUIRED</span>' : '') +
+            (p.requiresApproval ? ' <span class="pill pill-warning">' + t("approvalRequired") + '</span>' : '') +
             '</div>' +
             '<div class="policy-desc">' + p.description + '</div>' +
             '</div>';
         }).join('');
       } catch (e) {
         var grid2 = document.getElementById('policy-grid');
-        if (grid2) grid2.innerHTML = '<div class="loading">Failed to load</div>';
+        if (grid2) grid2.innerHTML = '<div class="loading">' + t("failedLoad") + '</div>';
       }
     }
 
@@ -539,11 +728,11 @@ export function getDashboardHtml(): string {
         var res = await fetch('/api/v1/approvals');
         var approvals = await res.json();
         var countEl = document.getElementById('approval-count');
-        if (countEl) countEl.textContent = approvals.length + ' records';
+        if (countEl) countEl.textContent = approvals.length + ' ' + t("recordsCount");
         var tbody = document.getElementById('approvals-tbody');
         if (!tbody) return;
         if (approvals.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><h3>No Approval Records</h3><p>Approval requests will appear here when agents request elevated permissions</p></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><h3>' + t("noApprovalsTitle") + '</h3><p>' + t("noApprovalsBody") + '</p></td></tr>';
           return;
         }
         tbody.innerHTML = approvals.map(function(a) {
@@ -552,18 +741,18 @@ export function getDashboardHtml(): string {
             a.status === 'PENDING' ? 'pill-warning' :
             a.status === 'EXPIRED' ? 'pill-muted' : 'pill-info';
           return '<tr>' +
-            '<td style="font-family:var(--mono);font-size:11px">' + truncate(a.id, 20) + '</td>' +
-            '<td>' + a.agentId + '</td>' +
+            '<td class="mono" style="font-family:var(--mono);font-size:11px">' + truncate(a.id, 20) + '</td>' +
+            '<td class="mono">' + a.agentId + '</td>' +
             '<td><span class="capability-tag">' + a.entityType + '.' + a.action + '</span></td>' +
             '<td><span class="pill ' + statusClass + '">' + a.status + '</span></td>' +
-            '<td>' + (a.decidedBy || '-') + '</td>' +
-            '<td style="font-size:12px">' + new Date(a.createdAt).toLocaleString() + '</td>' +
-            '<td style="font-size:12px">' + new Date(a.expiresAt).toLocaleString() + '</td>' +
+            '<td class="mono">' + (a.decidedBy || '-') + '</td>' +
+            '<td class="ltr" style="font-size:12px">' + new Date(a.createdAt).toLocaleString() + '</td>' +
+            '<td class="ltr" style="font-size:12px">' + new Date(a.expiresAt).toLocaleString() + '</td>' +
             '</tr>';
         }).join('');
       } catch (e) {
         var tbody2 = document.getElementById('approvals-tbody');
-        if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" class="loading">Failed to load</td></tr>';
+        if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" class="loading">' + t("failedLoad") + '</td></tr>';
       }
     }
 

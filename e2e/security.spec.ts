@@ -110,12 +110,21 @@ test.describe("Security (API)", () => {
   });
 
   test("secret redaction smoke via eval golden suite", async ({ request }) => {
+    // POST /eval/runs is not on the ADR-021 public allow-list (it writes
+    // store + audit). Anonymous callers must get 401 before any suite runs.
+    // Redaction itself is gated in CI by ci-eval-gate.ts; this test only
+    // inspects SECURITY notes when a run actually executes (201).
     const res = await request.post(`${API_BASE}/api/v1/eval/runs`, {
       data: {
         suiteId: "11111111-1111-4111-8111-111111111111",
       },
       headers: { "content-type": "application/json" },
     });
+    if (res.status() === 401) {
+      const denied = await res.json();
+      expect(denied.error?.code).toBe("UNAUTHORIZED");
+      return;
+    }
     if (res.status() === 402) {
       test.skip(true, "eval quota exceeded — skip redaction smoke");
       return;

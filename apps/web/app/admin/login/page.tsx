@@ -13,11 +13,12 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { apiPost, downloadVerifiedSourcesPack } from "@/lib/api";
+import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
+  const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
 
   const login = useMutation({
     mutationFn: () =>
@@ -26,7 +27,7 @@ export default function AdminLoginPage() {
         password,
       }),
     onSuccess: (data) => {
-      if (data.user.role !== "admin") {
+      if (data.user.role !== "admin" && data.user.role !== "owner") {
         throw new Error("החשבון אינו אדמין — השתמשו בהתחברות הרגילה");
       }
       router.push("/admin");
@@ -51,6 +52,8 @@ export default function AdminLoginPage() {
           maxWidth: 460,
           width: "100%",
           p: { xs: 2.5, md: 3.5 },
+          textAlign: "center",
+          alignItems: "center",
           background:
             "radial-gradient(ellipse at 20% 0%, rgba(154,158,168,0.14), transparent 55%), linear-gradient(165deg, #12141A 0%, #1C1F26 100%)",
           border: "1px solid rgba(154,158,168,0.22)",
@@ -68,9 +71,14 @@ export default function AdminLoginPage() {
           >
             כניסת פיקוד
           </Typography>
-          <Typography sx={{ mt: 1, color: "rgba(154,163,178,0.88)" }}>
+        <Typography sx={{ mt: 1, color: "rgba(210, 216, 224, 0.92)", textAlign: "center" }}>
             /admin · role=admin בלבד · ניטור · ידע · אוטומציה
           </Typography>
+          {isDevLoginPrefill ? (
+            <Alert severity="info" sx={{ mt: 2, textAlign: "start" }}>
+              מצב פיתוח — {DEV_CREDENTIALS.email} · {DEV_CREDENTIALS.password}
+            </Alert>
+          ) : null}
         </Box>
 
         <Alert
@@ -80,7 +88,7 @@ export default function AdminLoginPage() {
           ידע לסוכנים חייב ממקורות מאומתים. הורידו את הרשימה לפני/אחרי הכניסה.
         </Alert>
 
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="center" sx={{ width: "100%" }}>
           <Button
             variant="outlined"
             onClick={() => downloadVerifiedSourcesPack("json")}
@@ -106,11 +114,13 @@ export default function AdminLoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="username"
           fullWidth
-          InputLabelProps={{ sx: { color: "rgba(154,163,178,0.8)" } }}
+          inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+          InputLabelProps={{ sx: { color: "rgba(210, 216, 224, 0.9)" } }}
           sx={{
             "& .MuiOutlinedInput-root": {
-              color: "#DCDDE1",
-              "& fieldset": { borderColor: "rgba(154,158,168,0.35)" },
+              color: "#F4F5F7",
+              bgcolor: "#343B48",
+              "& fieldset": { borderColor: "rgba(232,234,238,0.42)" },
             },
           }}
         />
@@ -121,11 +131,13 @@ export default function AdminLoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           fullWidth
-          InputLabelProps={{ sx: { color: "rgba(154,163,178,0.8)" } }}
+          inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+          InputLabelProps={{ sx: { color: "rgba(210, 216, 224, 0.9)" } }}
           sx={{
             "& .MuiOutlinedInput-root": {
-              color: "#DCDDE1",
-              "& fieldset": { borderColor: "rgba(154,158,168,0.35)" },
+              color: "#F4F5F7",
+              bgcolor: "#343B48",
+              "& fieldset": { borderColor: "rgba(232,234,238,0.42)" },
             },
           }}
         />
@@ -134,16 +146,33 @@ export default function AdminLoginPage() {
           disabled={!canSubmit}
           onClick={() => login.mutate()}
           sx={{
-            bgcolor: "#9A9EA8",
+            bgcolor: "#D2D4D8",
             color: "#12141A",
             fontWeight: 700,
-            "&:hover": { bgcolor: "#ADB1BA" },
+            "&:hover": { bgcolor: "#E8EAEE" },
           }}
         >
           כניסה למרכז הפיקוד
         </Button>
+        <Button
+          variant="outlined"
+          disabled={!canSubmit}
+          onClick={() => {
+            void apiPost("/api/v1/auth/register", {
+              email,
+              password,
+              displayName: DEV_CREDENTIALS.displayName,
+              locale: "he",
+            })
+              .catch(() => undefined)
+              .then(() => login.mutate());
+          }}
+          sx={{ borderColor: "rgba(232,234,238,0.45)", color: "#F4F5F7" }}
+        >
+          הרשמה ואז כניסה
+        </Button>
         {login.isError ? (
-          <Alert severity="error">{(login.error as Error).message}</Alert>
+          <Alert severity="error" sx={{ textAlign: "start" }}>{(login.error as Error).message}</Alert>
         ) : null}
 
         <Typography variant="body2" sx={{ color: "rgba(170,200,198,0.85)" }}>
