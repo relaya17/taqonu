@@ -94,6 +94,25 @@ export interface GovernedExecutionRequest {
    */
   readonly requestId: string;
   /**
+   * Control Plane runtime status of the agent. PAUSED/QUARANTINED/REVOKED
+   * agents cannot execute. Defaults to "ACTIVE" if not provided.
+   */
+  readonly agentRuntimeStatus?:
+    | "ACTIVE"
+    | "PAUSED"
+    | "DISABLED"
+    | "REVOKED"
+    | "QUARANTINED"
+    | "SUSPENDED"
+    | "DEGRADED"
+    | "UNKNOWN";
+  /**
+   * Delegation hop count for authority attenuation.
+   * User → Orchestrator → Specialist → Tool is 2 hops.
+   * Each hop floors the risk bucket to at least APPROVAL.
+   */
+  readonly delegationHopCount?: number;
+  /**
    * Optional retry key. The same key + same artifact is a no-op replay of
    * the first outcome. The same key with a different artifact is refused.
    * This is process-local — not a durable job queue.
@@ -103,6 +122,19 @@ export interface GovernedExecutionRequest {
 
 export function computeArtifactHash(artifact: string): string {
   return createHash("sha256").update(artifact, "utf8").digest("hex");
+}
+
+/**
+ * Sanitize error messages to avoid leaking absolute server paths.
+ * Absolute paths (starting with / or C:\ etc.) are removed from error messages.
+ */
+function sanitizeErrorMessage(message: string): string {
+  // Remove Windows absolute paths (e.g., C:\Users\..., D:\path\...)
+  // Remove Unix absolute paths (e.g., /home/user/..., /var/...)
+  // Preserve only the filename or a generic message
+  return message
+    .replace(/[A-Za-z]:\\[^'":\s]+/g, "<path-redacted>")
+    .replace(/\/(?:home|var|tmp|Users|root|etc|opt)[^'":\s]*/g, "<path-redacted>");
 }
 
 interface IdempotentExecution {
@@ -226,6 +258,14 @@ export async function executeGovernedAction(
     sourceContext: request.sourceContext,
     projectId: request.identity.projectId,
     input: { toolName: request.toolName, artifactHash },
+    // Authority attenuation: runtime status and delegation hop count
+    // Spread conditionally due to exactOptionalPropertyTypes
+    ...(request.agentRuntimeStatus !== undefined
+      ? { agentRuntimeStatus: request.agentRuntimeStatus }
+      : {}),
+    ...(request.delegationHopCount !== undefined
+      ? { delegationHopCount: request.delegationHopCount }
+      : {}),
   });
 
   if (gate.decision !== "ALLOWED") {
@@ -272,7 +312,7 @@ export async function executeGovernedAction(
     const outcome: GovernedExecutionOutcome = {
       stage: "EXECUTION",
       status: "FAILED",
-      reason: err instanceof Error ? err.message : String(err),
+      reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
     };
     auditOutcome(request, artifactHash, outcome);
     return outcome;
@@ -282,17 +322,18 @@ export async function executeGovernedAction(
     // The Tool Runtime's own refusals (unpoliced tool, timeout, secret in
     // output) are surfaced as execution failures rather than being flattened
     // into a generic error — an auditor needs to see WHICH control stopped it.
+    const rawReason =
+      toolResult.status === "DENIED"
+        ? toolResult.reason
+        : toolResult.status === "APPROVAL_REQUIRED"
+          ? `tool "${request.toolName}" requires approval`
+          : toolResult.status === "TIMEOUT"
+            ? `tool timed out after ${toolResult.timeoutMs}ms`
+            : toolResult.reason;
     const outcome: GovernedExecutionOutcome = {
       stage: "EXECUTION",
       status: "FAILED",
-      reason:
-        toolResult.status === "DENIED"
-          ? toolResult.reason
-          : toolResult.status === "APPROVAL_REQUIRED"
-            ? `tool "${request.toolName}" requires approval`
-            : toolResult.status === "TIMEOUT"
-              ? `tool timed out after ${toolResult.timeoutMs}ms`
-              : toolResult.reason,
+      reason: sanitizeErrorMessage(rawReason),
     };
     auditOutcome(request, artifactHash, outcome);
     return outcome;

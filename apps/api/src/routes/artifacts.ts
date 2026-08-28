@@ -11,7 +11,7 @@ import {
 } from "../services/artifacts-assists.js";
 import { osStore } from "../store/os-store.js";
 import { resolveTier } from "../services/plan-quota.js";
-import { requireUser } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import { canReadProjectScoped } from "../services/project-access.js";
 
 export async function registerArtifactRoutes(app: FastifyInstance): Promise<void> {
@@ -26,6 +26,7 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/artifacts", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
     const body = createArtifactSchema.parse(request.body);
     try {
       const result = createArtifactFromUpload(body);
@@ -50,6 +51,7 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/assists/runs", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
     const body = createAssistRunSchema.parse(request.body);
     const { tier } = resolveTier(app.atlasEnv);
     ensureCreditsInitialized(tier);

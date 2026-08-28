@@ -15,6 +15,11 @@ const {
 } = await import("./audit-log.js");
 const { osStore } = await import("../store/os-store.js");
 const { fulfillGatewayHandoff } = await import("./gateway-fulfillment.js");
+const {
+  createApprovalRequest,
+  decideApprovalRequest,
+  resetApprovalsForTests,
+} = await import("./approvals.js");
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const PROJECT_A = "33333333-3333-4333-8333-333333333333";
@@ -27,11 +32,13 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     setAuditLogPathForTests(join(dir, "audit.ndjson"));
     delete process.env.ATLAS_SKIP_AUDIT_LOG;
     resetToolRegistryForTests();
+    resetApprovalsForTests();
   });
 
   afterEach(() => {
     setAuditLogPathForTests(null);
     resetToolRegistryForTests();
+    resetApprovalsForTests();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -193,5 +200,52 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       .listDomainEvents()
       .filter((e) => e.payload["requestId"] === "req_gw_nomem");
     expect(memory).toHaveLength(0);
+  });
+
+  it("uses approval's verification plan — caller cannot override at fulfill time", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "observation: 3 TypeScript files",
+    });
+
+    // mapGatewayHandoff("request_agent_run", "CODE_ENGINEER") returns:
+    // { toolName: "analyze_repo", entityType: "DOCUMENT", action: "READ" }
+    // requestedBy must be the agent ID that will consume it (consumeApprovalRequest checks this)
+    const approval = createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "READ",
+      requestedBy: "CODE_ENGINEER",
+      reason: "run analysis with locked verification plan",
+      expectedObservations: ["3 TypeScript files"],
+      baselineObservations: [],
+    });
+    decideApprovalRequest(approval.id, {
+      decidedBy: OWNER_A,
+      approve: true,
+      decisionReason: "approved with locked plan",
+    });
+
+    // Caller attempts to override observations with ["attacker override"] — 
+    // these should be ignored because the approval locks the verification plan.
+    // If caller override was used: verdict would be FAILED (not in output).
+    // If approval is used: verdict is VERIFIED (matches output).
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_locked",
+      approvalRequestId: approval.id,
+      expectedObservations: ["attacker override"],
+      baselineObservations: [],
+    });
+
+    // Approval's expectedObservations ["3 TypeScript files"] used → VERIFIED
+    expect(result.executed).toBe(true);
+    expect(result.verified).toBe(true);
+    expect(result.verificationVerdict).toBe("VERIFIED");
+    expect(result.regressionVerdict).toBe("INCONCLUSIVE");
   });
 });

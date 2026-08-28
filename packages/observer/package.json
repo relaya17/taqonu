@@ -19,8 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@atlas/code-intelligence": "*",
-    "@atlas/shared": "*",
+    "@atlas/code-intelligence": "workspace:*",
+    "@atlas/shared": "workspace:*",
     "zod": "^3.24.2"
   },
   "devDependencies": {

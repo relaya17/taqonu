@@ -9,11 +9,21 @@ Git snapshot + quality-gate evidence of what is actually implemented.
 See commit `e7773e0`.
 
 Honest remaining gaps (not a missing executor):
-- `apps/api` `tsc` still has pre-existing errors vs env/auth fields (not this stage).
-  Approval schema now includes `artifactHash` / `expiresAt` / `REVOKED` so
+- Approval schema now includes `artifactHash` / `expiresAt` / `REVOKED` so
   consume can actually bind and expire.
 - E2E / a11y / full turbo were not run for the freeze.
 - CP in-memory audit is observational (stage 05 labels it UNKNOWN, not a second SoR).
+
+**Local DX (not a fourth product):**
+- `@atlas/*` dependencies use `workspace:*` (pnpm 9+).
+- `apps/api` build/typecheck: `tsconfig.build.json` (excludes tests).
+  IDE check: `tsconfig.json` includes tests with `noEmit`. Vitest uses
+  `tsconfig.test.json`.
+- Three HTTP origins (ADR-021) — do not merge into one port or one Vercel
+  project: Atlas product `http://localhost:3000`, Sentinel / Control Plane
+  `http://127.0.0.1:3100`, Owner Admin `http://127.0.0.1:3200`. Tenant API
+  `http://localhost:4000`. `pnpm dev` prints these and starts all five
+  processes (web, api, admin, control-plane, worker).
 
 ## 02 GATEWAY COMPLETION
 Wired. Control Plane does not run tools. See commit `e7773e0`.
@@ -40,8 +50,9 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - `requireOperator` rejects customer admin. `requireOwner` is owner-only.
 - Gateway fulfill uses the session user id.
 - `/admin/users` cannot grant operator/owner.
-
-**Not claimed:** distinct Owner vs Operator Control Plane credentials.
+- **Distinct CP Owner vs Operator tokens:** `ATLAS_CONTROL_PLANE_OWNER_TOKEN`
+  authenticates as OWNER; `ATLAS_CONTROL_PLANE_TOKEN` as OPERATOR. Dev loopback
+  defaults to OPERATOR. `requireOwnerRole` guard for owner-only ops.
 
 ## 04 CONTROL PLANE SECURITY
 **Implemented (code + tests):**
@@ -51,8 +62,11 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - Idempotency keys on `POST /api/v1/gateway/ops` (`X-Idempotency-Key`).
 - Reauth tickets are one-shot until TTL (replay protection). HMAC reauth is **not MFA**.
 - CSRF skipped: Control Plane API is Bearer, not cookie-session.
+- **Full TOTP MFA (user auth):** `auth-store.ts` implements TOTP with otplib
+  (`/auth/mfa/setup`, `/auth/mfa/confirm`, `/auth/mfa/verify`, `/auth/mfa/disable`).
+  Scrypt-hashed backup codes, one-shot consumption, rate limiting. 16+ tests in `auth.test.ts`.
 
-**Not claimed:** real MFA, distinct Owner/Operator CP credentials, token rotation/revoke across processes.
+**Not claimed:** token rotation/revoke across processes, MFA on Control Plane bearer auth.
 
 ## 05 CANONICAL AUDIT
 **Implemented (code + tests):**
@@ -62,6 +76,15 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - Tamper → BROKEN.
 - CP `verifyAuditChain` is `canonical: false`, `status: UNKNOWN`.
 - Self-audit no longer claims the CP trail is the canonical verify.
+- **CP audit merge:** `audit-bridge.ts` + `POST /api/v1/audit/cp-import` merges
+  Control Plane audit entries into the canonical API hash-chain. Entries prefixed
+  with `cp:` to preserve origin. `audit-sync.ts` in CP provides periodic sync
+  (`syncAuditToApi`, `startPeriodicSync`).
+- **Enhanced unified audit entry schema:** model, toolName, entityType, action,
+  verificationVerdict, regressionVerdict, decision, approvalId, authority,
+  intent, artifactHash, delegationHopCount, blockedAt fields.
+- **ESCALATE as decision:** `OPERATING_DECISIONS` now includes `ALLOW`, `DENY`,
+  `REQUIRE_APPROVAL`, and `ESCALATE`.
 
 **Not claimed:** merging CP hashes into the API file; a second SoR.
 
@@ -84,6 +107,10 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - `assessRegression` on the same fulfill hop. No baseline → INCONCLUSIVE
   (cannot claim absence of regression). Missing baseline observation → FAILED,
   composed over verification so VERIFIED cannot survive a regression fail.
+- **Verification plan locked on approval:** `expectedObservations` and
+  `baselineObservations` stored on approval record; `fulfillGatewayHandoff`
+  uses approval values when `approvalRequestId` is provided — caller cannot
+  invent observations at fulfill time.
 
 **Not claimed:** a general world-state expected-vs-actual checker; a regression
 product / suite engine; diagnosis.
@@ -107,19 +134,68 @@ Conflicting evidence or bound `conflictingClaimIds` on a mutation DENY at EVIDEN
 `boundEvidenceIds` count as present evidence; emptiness is not VERIFIED.
 Inspect may CONTINUE in order to observe. This is not a Truth Engine.
 
+**Memory approve gate:** USER- or CONVERSATION-only evidence cannot
+promote a memory. That path returns `unverified_evidence` /
+`UNVERIFIED_EVIDENCE`. Non-user evidence still required.
+
+**Untrusted prompt data:** `buildLayeredSystemPrompt` wraps retrieved
+context in `<<<UNTRUSTED_DATA:...>>>` on `agent.ts` and `conversation.ts`.
+Flagged injection logs `agent_prompt_injection_flagged` /
+`conversation_prompt_injection_flagged`.
+
 ## 10 AGENT GOVERNANCE
-**Implemented:** `agentMayExecute` (ACTIVE/DEGRADED only). Delegation hops floor to approval. Do not add agents. CP `fs.*` names remain oversight labels — execution uses the fabric catalog.
+**Implemented:**
+- `agentMayExecute` (ACTIVE/DEGRADED only).
+- Delegation hops floor to approval.
+- Do not add agents. CP `fs.*` names remain oversight labels — execution uses
+  the fabric catalog.
+- **Authority scope in identity:** `AuthenticatedAgentIdentity` now includes
+  `authorityScope` (e.g. `project:abc123`), `trustLevel` (FULL/DELEGATED/LAB),
+  and `runtimeStatus` fields.
+- **Delegation wiring:** `agentRuntimeStatus` and `delegationHopCount` now wired
+  through `submitAgentProposal`, `executeGovernedAction`, and
+  `dispatchAgentAction` — enforcement is on every live dispatch path.
+- **Session trust:** `resolveAgentIdentity` defaults `trustLevel` to `FULL`
+  (signed-in human). `LAB` is opt-in, not the live default.
+- **Live tool hop:** `POST /api/v1/agents/tool-execute` derives identity from
+  the session and calls `executeGovernedAction`. The body cannot name owner
+  or sandbox root.
+- **Proposal-first specialists:** CODE_ENGINEER and RESEARCHER dispatch
+  await an LLM proposal (`run*SpecialistViaLlm` → `submitAgentProposal`).
+  That path proposes; it does not execute tools. Other specialists still
+  use the stub unless they have an override (SECURITY / LEGAL_MEDIA_COMMS).
+- **SECURITY / LEGAL gate:** `CASE.EXECUTE` (requires approval) runs
+  *before* Sentinel / legal-media. DENY or APPROVAL_REQUIRED → SKIPPED.
 
 ## 11 TOOL GOVERNANCE
-**Implemented:** dangerous tools stay `requiresApproval` in the existing policy table. `governed-execution.test.ts` uses catalog-granted `knowledge_search` + `registerTool`. `fs.read_file` is AUTHORIZATION DENIED for RESEARCHER.
+**Implemented:** dangerous tools stay `requiresApproval` in the existing policy
+table. `governed-execution.test.ts` uses catalog-granted `knowledge_search` +
+`registerTool`. RESEARCHER catalog includes `fs.read_file`,
+`fs.read_directory`, `fs.search_repo` (enforced by
+`enforceAgentToolAuthorization`). Live execution of those tools is the
+`tool-execute` hop, not specialist dispatch (dispatch remains propose-only).
+
+**Proof reports:** stored as `lastProofReport:${projectId}` (or
+`lastProofReport:global` when no project) — not a single shared slot.
 
 ## 12 RELIABILITY
 **Implemented:** Control Plane SIGTERM/SIGINT graceful close.
+**Durable job queue with crash recovery:** `queue-persistence.ts` persists
+jobs to `.atlas/worker-queue.json`. On startup, `recoverPendingJobs()` loads
+interrupted jobs (RUNNING → PENDING). Jobs survive process crashes. Includes
+`getQueueStats()`, `cleanupOldJobs()`.
+Worker jobs retry up to 3 times with backoff then log `job_permanently_failed`.
+LLM providers retry transient HTTP failures up to
+`MAX_PROVIDER_CALL_ATTEMPTS` (3). Event-bus dedup is by `event.id`.
 
-**Not claimed:** durable job queue, retries-as-a-platform, crash recovery of in-flight tool runs.
+**Not claimed:** distributed job queue (separate service), retries-as-a-platform,
+crash recovery of in-flight tool runs, distributed idempotency.
 
 ## 13 OBSERVABILITY
-**Implemented:** one request id — CP `X-Request-Id`; `executeGovernedAction.requestId` already correlated. No second telemetry stack.
+**Implemented:** one request id — CP `X-Request-Id`;
+`executeGovernedAction.requestId` already correlated. API global rate limit
+300/min (`@fastify/rate-limit`) and `http_request_duration_ms` via
+`registerRequestTiming`. No second telemetry stack.
 
 ## 14 SELF-AUDIT
 **Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA-not-bound.
@@ -131,8 +207,12 @@ Inspect may CONTINUE in order to observe. This is not a Truth Engine.
 
 ## 16 SUPPLY-CHAIN / PRODUCTION SECURITY
 **Implemented:** CI `permissions: contents: read`. Secret scan and eval gate already existed.
+**SBOM generation:** `pnpm sbom:generate` produces CycloneDX 1.5 SBOM in
+`.atlas/sbom/sbom.json` and `.atlas/sbom/sbom.xml`. Scans all package.json files,
+generates component list with hashes, purls, licenses, and dependency graph.
 
-**Not claimed:** full SBOM/signing overhaul.
+**Not claimed:** cryptographic signing of artifacts, Sigstore integration,
+provenance attestations (SLSA), registry artifact signing.
 
 ## 17 GOVERNANCE TEST SUITE
 **Implemented:** `apps/api/src/__tests__/governance-invariants.test.ts` and
@@ -140,7 +220,36 @@ Inspect may CONTINUE in order to observe. This is not a Truth Engine.
 (unauthenticated DENY, customer admin ≠ operator, missing capability, wrong tenant, audit tamper, executed ≠ verified, CP audit non-canonical, self-audit never auto-applies).
 
 ## 18 PERFORMANCE / SCALE
-Skipped until the security path has been run in a real environment. Not part of this completion.
+**Implemented:**
+- **Response cache:** `ResponseCache` LRU with TTL (`response-cache.ts`). Global
+  `readCache` for expensive read operations. `cached()` helper for get-or-compute.
+- **Performance limits:** `PERFORMANCE_LIMITS` config (`performance-limits.ts`):
+  pool size, query timeout, HTTP timeout, LLM timeout, max body, max concurrent
+  dispatches, memory warning threshold, batch size. All env-overridable.
+- **Memory monitoring:** `getMemoryStats()`, `isMemoryPressureHigh()`.
+- **Timeout utilities:** `timeoutSignal()`, `withTimeout()` for wrapping promises.
+- **Performance routes:** `/api/v1/performance` dashboard, `/memory`, `/cache`,
+  `/cache/clear`, `/health`, `/limits`, `/latency` (p50/p90/p95/p99).
+- **Latency tracking:** `http_request_duration_ms` already wired in Stage 13;
+  percentile computation added.
+
+**Not claimed:** distributed cache (Redis), auto-scaling, load balancer config,
+database connection pooling (external to Node), full APM integration.
 
 ## 19 INTELLIGENCE ROADMAP
-Hypothesis engine, golden projects, marketplace, reputation — **not now**.
+**Implemented:**
+- **Hypothesis engine:** `hypothesis-engine.ts` — create, list, update status,
+  add supporting/contradicting evidence, confidence scoring. Stored in osStore.
+  Routes at `/api/v1/intelligence/hypotheses`.
+- **Golden projects registry:** `golden-projects.ts` — register, list, update
+  status/scores, find exemplars by domain. Default: BrokerOS fixture. Routes at
+  `/api/v1/intelligence/golden-projects`.
+- **Agent marketplace:** `agent-marketplace.ts` — rankings, recommendations by
+  task type, agent comparison. Routes at `/api/v1/intelligence/marketplace`.
+- **Agent reputation:** Already existed in `agent-reputation.ts` with
+  `computeAgentReputation`, `ExpertBattleMetrics`, `AgentRanking`. Routes at
+  `/api/v1/intelligence/reputation`.
+
+**Not claimed:** ML-based hypothesis suggestion, automated golden project
+verification, real reputation training data (requires production traffic),
+external marketplace integration, agent-to-agent negotiation.

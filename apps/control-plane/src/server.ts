@@ -39,16 +39,17 @@ import {
  * But they are independently deployable: upgrading one does not require
  * upgrading the other.
  *
- * ── Port assignment ────────────────────────────────────────────────────
+ * ── Port assignment (one product, three origins — never share PORT) ────
  *
- * Engineering surface: port 3000 (apps/api)
- * Control plane:       port 3100 (apps/control-plane)
+ * Atlas product UI:    3000  (apps/web)
+ * Tenant API:          4000  (apps/api)
+ * Sentinel / CP:       3100  (apps/control-plane)  CONTROL_PLANE_PORT
+ * Owner Admin UI:      3200  (apps/admin)          ADMIN_PORT
  *
- * Both are started in parallel by `pnpm dev` via turborepo's `--parallel`
- * flag. Each has its own `dev` script in `package.json`.
+ * Do not read generic PORT here — Vercel and shells set PORT for the API.
  */
 
-const PORT = parseInt(process.env["PORT"] ?? "3100", 10);
+const PORT = parseInt(process.env["CONTROL_PLANE_PORT"] ?? "3100", 10);
 const HOST =
   process.env["HOST"] ??
   (process.env["NODE_ENV"] === "production" ? "127.0.0.1" : "127.0.0.1");

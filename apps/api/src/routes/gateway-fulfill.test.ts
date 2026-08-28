@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +9,6 @@ import { registerTool, resetToolRegistryForTests } from "@atlas/agent-core";
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-gw-fulfill-route-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
-process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 process.env.ATLAS_REPO_ROOT = tmpDir;
 
 const getRequestUser = vi.fn();
@@ -25,8 +24,20 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 
 const { registerGatewayFulfillRoutes } = await import("./gateway-fulfill.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
+const { osStore } = await import("../store/os-store.js");
+const {
+  setAuditLogPathForTests,
+  listUnifiedAuditEntries,
+  verifyAuditChain,
+} = await import("../services/audit-log.js");
+const {
+  createApprovalRequest,
+  decideApprovalRequest,
+  resetApprovalsForTests,
+} = await import("../services/approvals.js");
 
 let app: FastifyInstance;
+let auditDir: string;
 
 function ownerUser(partial: Partial<AuthUser> = {}): AuthUser {
   return {
@@ -53,6 +64,15 @@ afterAll(async () => {
 beforeEach(() => {
   getRequestUser.mockReset();
   resetToolRegistryForTests();
+  resetApprovalsForTests();
+  auditDir = mkdtempSync(join(tmpdir(), `atlas-gw-fulfill-audit-${Math.random().toString(16).slice(2)}`));
+  setAuditLogPathForTests(join(auditDir, "audit.ndjson"));
+  delete process.env.ATLAS_SKIP_AUDIT_LOG;
+});
+
+afterEach(() => {
+  setAuditLogPathForTests(null);
+  rmSync(auditDir, { recursive: true, force: true });
 });
 
 describe("POST /api/v1/gateway/fulfill", () => {
@@ -133,5 +153,142 @@ describe("POST /api/v1/gateway/fulfill", () => {
     const body = res.json() as { principalId: string };
     expect(body.principalId).toBe(ownerUser().id);
     expect(body.principalId).not.toBe("99999999-9999-4999-8999-999999999999");
+  });
+});
+
+describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED live path", () => {
+  it("produces audit entry, memory event, and receipt when execution succeeds", async () => {
+    getRequestUser.mockReturnValue(ownerUser());
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "observation: 3 TypeScript files",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+        expectedObservations: ["3 TypeScript files"],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      executed: boolean;
+      verified: boolean;
+      verificationVerdict: string;
+      regressionVerdict: string;
+    };
+    expect(body.executed).toBe(true);
+    expect(body.verified).toBe(true);
+    expect(body.verificationVerdict).toBe("VERIFIED");
+    expect(body.regressionVerdict).toBe("INCONCLUSIVE");
+
+    // Verify audit entry was created
+    const audit = listUnifiedAuditEntries().filter(
+      (e) => e.type === "gateway.fulfill.request_agent_run",
+    );
+    expect(audit.length).toBeGreaterThanOrEqual(1);
+    expect(audit.some((e) => e.result === "SUCCESS")).toBe(true);
+    expect(verifyAuditChain().intact).toBe(true);
+
+    // Verify memory event was created with OBSERVED (not FACT)
+    const memory = osStore.listDomainEvents().filter(
+      (e) => e.type === "agent.run.completed",
+    );
+    expect(memory.length).toBeGreaterThanOrEqual(1);
+    expect(memory[0]?.epistemicState).toBe("OBSERVED");
+    expect(memory[0]?.epistemicState).not.toBe("FACT");
+  });
+
+  it("uses verification plan from approval when approvalRequestId is provided", async () => {
+    getRequestUser.mockReturnValue(ownerUser());
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "observation: 3 TypeScript files",
+    });
+
+    // Create approval with locked verification plan
+    const approval = createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "READ",
+      requestedBy: "CODE_ENGINEER",
+      reason: "approved analysis with locked verification plan",
+      expectedObservations: ["3 TypeScript files"],
+      baselineObservations: [],
+    });
+    decideApprovalRequest(approval.id, {
+      decidedBy: ownerUser().id,
+      approve: true,
+      decisionReason: "approved",
+    });
+
+    // Request attempts to override observations — should be ignored
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+        approvalRequestId: approval.id,
+        expectedObservations: ["attacker override"],
+        baselineObservations: ["also ignored"],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      executed: boolean;
+      verified: boolean;
+      verificationVerdict: string;
+    };
+    // Approval's expectedObservations ["3 TypeScript files"] is used → VERIFIED
+    // If attacker override was used, would be FAILED
+    expect(body.executed).toBe(true);
+    expect(body.verified).toBe(true);
+    expect(body.verificationVerdict).toBe("VERIFIED");
+  });
+
+  it("FAILS regression when baseline observation is missing after mutation", async () => {
+    getRequestUser.mockReturnValue(ownerUser());
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "observation: 3 TypeScript files",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+        expectedObservations: ["3 TypeScript files"],
+        baselineObservations: ["authz still enforced"],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      executed: boolean;
+      verified: boolean;
+      verificationVerdict: string;
+      regressionVerdict: string;
+    };
+    expect(body.executed).toBe(true);
+    expect(body.verified).toBe(false);
+    expect(body.verificationVerdict).toBe("FAILED");
+    expect(body.regressionVerdict).toBe("FAILED");
+
+    // Memory still records OBSERVED — regression doesn't change epistemic state
+    const memory = osStore.listDomainEvents().filter(
+      (e) => e.type === "agent.run.completed",
+    );
+    expect(memory[0]?.epistemicState).toBe("OBSERVED");
+    expect(memory[0]?.payload["regressionVerdict"]).toBe("FAILED");
   });
 });

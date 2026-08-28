@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { PageContainer } from "@/components/layout/PageContainer";
 
 interface ManagedSystemRow {
   id: string;
@@ -63,7 +64,8 @@ export default function SystemsPage() {
   const blocked = items.filter((row) => row.posture === "BLOCKED");
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 920 }}>
+    <PageContainer>
+    <Stack spacing={3}>
       <Box>
         <Typography variant="h1">{t("title")}</Typography>
         <Typography color="text.secondary" sx={{ mt: 1 }}>
@@ -172,5 +174,6 @@ export default function SystemsPage() {
         </Box>
       ))}
     </Stack>
+    </PageContainer>
   );
 }

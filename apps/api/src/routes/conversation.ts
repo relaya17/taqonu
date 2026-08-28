@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   authorizeToolCall,
   buildAgentContext,
+  buildLayeredSystemPrompt,
   buildPortfolioContextBlocks,
   classifyIntent,
   completeWithFreeFallback,
@@ -225,8 +226,8 @@ export async function registerConversationRoutes(
         ),
       ].join("\n");
 
-      const system = redactSecrets(
-        [
+      const layered = buildLayeredSystemPrompt({
+        instructions: [
           "You are Atlas — ArletOS Engineering + QA Intelligence OS.",
           "Evidence discipline: cite packages; FACT vs INFERRED vs PROPOSED.",
           "Language / UI / game / cyber answers must cite verified official sources when present (MDN, ECMA, TypeScript, Python.org, Oracle Java, cppreference, .NET, Go, Rust, Unity, Unreal, Godot, OWASP, NIST).",
@@ -235,12 +236,19 @@ export async function registerConversationRoutes(
           "Reply in the user's language (Hebrew, Arabic, or English).",
           "",
           expertBlock,
-          "",
-          evidenceBlock,
-          "",
-          context,
         ].join("\n"),
-      );
+        untrustedBlocks: [
+          { label: "evidence", content: evidenceBlock },
+          { label: "context", content: context },
+        ],
+      });
+      if (layered.flagged) {
+        app.atlasLogger.warn("conversation_prompt_injection_flagged", {
+          labels: layered.findings.map((f) => f.label),
+          patternNames: layered.findings.flatMap((f) => [...f.patternNames]),
+        });
+      }
+      const system = redactSecrets(layered.systemContent);
       const userMessage = redactSecrets(body.message);
       assertNoSecrets(system, "llm.system");
       assertNoSecrets(userMessage, "llm.user");

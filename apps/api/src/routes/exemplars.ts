@@ -71,10 +71,10 @@ export async function registerExemplarRoutes(
     }
     const result = buildClonePatch({
       exemplar,
-      unitId: body.unitId,
+      ...(body.unitId !== undefined ? { unitId: body.unitId } : {}),
       workspaceRoot,
       projectId: body.projectId,
-      targetPrefix: body.targetPrefix,
+      ...(body.targetPrefix !== undefined ? { targetPrefix: body.targetPrefix } : {}),
       createdBy: user.email,
       ownerId: user.id,
     });

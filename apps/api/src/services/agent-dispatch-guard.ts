@@ -209,6 +209,7 @@ export function dispatchAgentAction(
       type: routeLabel,
       actorId: actor.agentId,
       actorKind: "AGENT",
+      agentId: actor.agentId,
       reason: `Agent runtime control ${options.agentRuntimeStatus} blocks execution`,
       input: options.input ?? {},
       output: {},
@@ -216,8 +217,11 @@ export function dispatchAgentAction(
       risk: "CRITICAL",
       approval: "REJECTED",
       result: "FAILURE",
+      decision: "DENY",
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
+      delegationHopCount: options.delegationHopCount ?? null,
+      blockedAt: "AUTHORIZATION",
     });
     return {
       decision: "DENIED",
@@ -240,6 +244,7 @@ export function dispatchAgentAction(
       type: routeLabel,
       actorId: actor.agentId,
       actorKind: "AGENT",
+      agentId: actor.agentId,
       reason: entityAuthz.reason,
       input: options.input ?? {},
       output: {},
@@ -247,8 +252,13 @@ export function dispatchAgentAction(
       risk: "CRITICAL",
       approval: "REJECTED",
       result: "FAILURE",
+      decision: "DENY",
+      entityType,
+      action,
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
+      delegationHopCount: options.delegationHopCount ?? null,
+      blockedAt: "POLICY",
     });
     return { decision: "DENIED", reason: entityAuthz.reason };
   }
@@ -323,6 +333,7 @@ export function dispatchAgentAction(
       type: routeLabel,
       actorId: actor.agentId,
       actorKind: "AGENT",
+      agentId: actor.agentId,
       reason: explanation.factors.join("; "),
       input: options.input ?? {},
       output: { approvalRequestId: approvalRequest.id },
@@ -335,8 +346,14 @@ export function dispatchAgentAction(
       // routing to approval as an error. PARTIAL is the most honest value
       // `auditResultStatusSchema` offers for "gate resolved, execution held".
       result: "PARTIAL",
+      decision: "REQUIRE_APPROVAL",
+      entityType,
+      action,
+      approvalId: approvalRequest.id,
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
+      delegationHopCount: options.delegationHopCount ?? null,
+      blockedAt: "APPROVAL",
     });
 
     return {
@@ -355,6 +372,7 @@ export function dispatchAgentAction(
     type: routeLabel,
     actorId: actor.agentId,
     actorKind: "AGENT",
+    agentId: actor.agentId,
     reason: explanation.factors.join("; "),
     input: options.input ?? {},
     output: {},
@@ -362,8 +380,12 @@ export function dispatchAgentAction(
     risk: riskLevel,
     approval: "NOT_REQUIRED",
     result: "SUCCESS",
+    decision: "ALLOW",
+    entityType,
+    action,
     projectId: options.projectId ?? null,
     ownerId: actor.onBehalfOfUserId,
+    delegationHopCount: options.delegationHopCount ?? null,
   });
 
   return { decision: "ALLOWED", score, bucket, auditId: record.id };

@@ -7,6 +7,11 @@ import {
   listUnifiedAuditEntries,
   resolveAuditLogPath,
 } from "../services/audit-log.js";
+import {
+  cpAuditEntrySchema,
+  importCpAuditBatch,
+  type CpAuditEntry,
+} from "../services/audit-bridge.js";
 
 const querySchema = z.object({
   actorId: z.string().min(1).max(200).optional(),
@@ -56,5 +61,30 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
       note:
         "Recent ring in memory/store.json; full append-only hash-chained log at .atlas/audit/audit.ndjson (never truncated). `unified` is the standardized WHO/WHAT/WHEN/WHY/INPUT/OUTPUT/POLICY/RISK/APPROVAL/RESULT subset (only entries written via appendUnifiedAuditEntry parse into it), optionally filtered by actorId.",
     };
+  });
+
+  /**
+   * POST /api/v1/audit/cp-import
+   *
+   * Import Control Plane audit entries into the canonical API audit file.
+   * This merges CP hashes into the API's authoritative hash-chain.
+   * Admin-only (internal bridge endpoint).
+   */
+  app.post("/api/v1/audit/cp-import", async (request, reply) => {
+    await requireAdmin(app, request);
+    const body = z.object({
+      entries: z.array(cpAuditEntrySchema),
+    }).parse(request.body);
+    
+    if (body.entries.length === 0) {
+      return { imported: 0, records: [] };
+    }
+    
+    const result = importCpAuditBatch(body.entries);
+    return reply.status(201).send({
+      imported: result.imported,
+      records: result.records.map(r => ({ id: r.id, type: r.type, hash: r.hash })),
+      note: "Control Plane entries merged into canonical API audit file.",
+    });
   });
 }

@@ -8,8 +8,7 @@ import type { FastifyInstance } from "fastify";
 import { authorizeEntityAction } from "@atlas/agent-core";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
-
-const OWNER_ID = "00000000-0000-4000-8000-000000000001";
+import { resolveCloudIdentity } from "../services/cloud-identity.js"; // POST still needs this
 
 /**
  * SECURITY FIX (found while widening Policy Engine coverage): both routes
@@ -35,11 +34,25 @@ const OWNER_ID = "00000000-0000-4000-8000-000000000001";
  * pass.
  */
 export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/evidence", async (request) => {
-    await requireUser(app, request);
-    const items = [...osStore.evidence.values()]
+  /**
+   * Tenant-scoped evidence list (P0 fix): only returns evidence owned by the
+   * caller. Without this, any signed-in user could read any tenant's excerpts.
+   * Admins bypass the filter to see all evidence (including legacy stub-owned
+   * records for system/migration visibility).
+   */
+  app.get("/api/v1/evidence", async (request, reply) => {
+    const user = await requireUser(app, request);
+
+    const allItems = [...osStore.evidence.values()]
       .flat()
       .map((item) => parseEvidenceRecord(item));
+    // Admin bypass: admins see all evidence; normal users see only their own.
+    // Use user.id (from session/requireUser) not resolveCloudIdentity — the
+    // latter is for cloud-sync scenarios, this is pure auth filtering.
+    const isAdmin = user.role === "admin";
+    const items = isAdmin
+      ? allItems
+      : allItems.filter((item) => item.ownerId === user.id);
     const byCategory = groupEvidenceByCategory(items);
     return {
       items,
@@ -50,8 +63,15 @@ export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void
     };
   });
 
+  /**
+   * Tenant-scoped evidence creation (P0 fix): stamps the record with the
+   * session owner's ID, not a shared stub. This closes the write-side of
+   * the cross-tenant leak.
+   */
   app.post("/api/v1/evidence", async (request, reply) => {
     await requireSignedInForWrite(app, request);
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
 
     // Entity-policy gate: recording a new evidence excerpt is
     // DOCUMENT.CREATE (unstructured/semi-structured content, per
@@ -76,7 +96,7 @@ export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void
     const now = new Date().toISOString();
     const record = parseEvidenceRecord({
       id: crypto.randomUUID(),
-      ownerId: OWNER_ID,
+      ownerId: identity.ownerId,
       projectId: body.projectId ?? null,
       source: body.source,
       sourceType: body.sourceType,

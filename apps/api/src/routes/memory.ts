@@ -1,7 +1,13 @@
 import type { FastifyInstance } from "fastify";
-import { createMemorySchema, memorySchema, type AuthUser, type Memory } from "@atlas/shared";
+import {
+  AtlasError,
+  createMemorySchema,
+  memorySchema,
+  type AuthUser,
+  type Memory,
+} from "@atlas/shared";
 import { tryApproveMemoryInSupabase, tryPersistMemoryToSupabase } from "@atlas/database";
-import { redactSecrets } from "@atlas/agent-core";
+import { authorizeEntityAction, redactSecrets } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
@@ -90,6 +96,22 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post("/api/v1/memory", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: memory creation is RECORD.CREATE.
+    const entityDecision = authorizeEntityAction("RECORD", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "RECORD.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const body = createMemorySchema.parse(request.body);
     const now = new Date().toISOString();
     const classified = classifyMemoryType(body.statement);
@@ -163,6 +185,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
       },
     });
     const superseded = supersedeMatchingMemories({
+      ownerId: identity.ownerId,
       projectId: memory.projectId,
       statementContains: memory.statement.slice(0, 48),
       newerMemoryId: memory.id,
@@ -214,6 +237,18 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
             message:
               "Memory cannot be approved: it has no evidence entries",
             code: "NO_EVIDENCE",
+          },
+        });
+      }
+      if (result.reason === "unverified_evidence") {
+        // The memory has evidence, but none of it carries a genuine
+        // verification signal — USER-sourced evidence alone is not
+        // sufficient to promote to CONFIRMED.
+        return reply.status(400).send({
+          error: {
+            message:
+              "Memory cannot be approved: its evidence carries no verification signal",
+            code: "UNVERIFIED_EVIDENCE",
           },
         });
       }

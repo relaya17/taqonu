@@ -7,6 +7,7 @@ import {
   uuidSchema,
 } from "@atlas/shared";
 import { tryPersistProjectToSupabase } from "@atlas/database";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import {
@@ -156,6 +157,22 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.post("/api/v1/projects/:id/cloud", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectWriteAccess(app, request, params.id);
+
+    // Entity-policy gate: cloud sync is RECORD.UPDATE.
+    const entityDecision = authorizeEntityAction("RECORD", "UPDATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "RECORD.UPDATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const project = osStore.getProject(params.id);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -341,6 +358,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   /** Can Studio/files reach local disk and/or repo/cloud link? */
   app.get("/api/v1/projects/:id/reachability", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
@@ -353,6 +371,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
    */
   app.get("/api/v1/projects/:id/central-opinion", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
@@ -361,6 +380,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id/central-opinion.html", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
@@ -370,6 +390,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id/central-opinion.pdf", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
@@ -388,6 +409,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   /** Manager-partner reminders (process/studio memories the agent tracks). */
   app.get("/api/v1/projects/:id/manager-reminders", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }

@@ -13,6 +13,7 @@ import {
   localConnectionPublicSchema,
   scanLocalRequestSchema,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import {
   discoverGitHubPortfolio,
   discoverLocalPortfolio,
@@ -90,6 +91,21 @@ export async function registerConnectionRoutes(
 
   app.post("/api/v1/connections/github", async (request, reply) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: connecting GitHub is CONFIGURATION.CREATE.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const body = connectGithubRequestSchema.parse(request.body);
     const now = new Date().toISOString();
     try {
@@ -123,6 +139,21 @@ export async function registerConnectionRoutes(
 
   app.delete("/api/v1/connections/github", async (request) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: disconnecting GitHub is CONFIGURATION.DELETE.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "DELETE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.DELETE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     osStore.setGithubConnection(null);
     osStore.recordEvent({
       type: "connection.github.disconnected",
@@ -174,6 +205,21 @@ export async function registerConnectionRoutes(
 
   app.post("/api/v1/connections/github/import", async (request, reply) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: importing repos is CONFIGURATION.EXECUTE.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.EXECUTE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const body = importGithubReposRequestSchema.parse(request.body ?? {});
     const connection = osStore.getGithubConnection();
     if (!connection?.token || connection.status !== "CONNECTED") {
@@ -212,6 +258,21 @@ export async function registerConnectionRoutes(
 
   app.post("/api/v1/connections/local", async (request, reply) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: connecting local is CONFIGURATION.CREATE.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const body = connectLocalRequestSchema.parse(request.body);
     const now = new Date().toISOString();
     try {
@@ -246,6 +307,21 @@ export async function registerConnectionRoutes(
 
   app.delete("/api/v1/connections/local", async (request) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: disconnecting local is CONFIGURATION.DELETE.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "DELETE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.DELETE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     osStore.setLocalConnection(null);
     osStore.recordEvent({
       type: "connection.local.disconnected",
@@ -256,6 +332,21 @@ export async function registerConnectionRoutes(
 
   app.post("/api/v1/connections/local/scan", async (request, reply) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: scanning local repos is CONFIGURATION.EXECUTE.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.EXECUTE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const body = scanLocalRequestSchema.parse(request.body ?? {});
     const connection = osStore.getLocalConnection();
     if (!connection?.reposRoot || connection.status === "DISCONNECTED") {

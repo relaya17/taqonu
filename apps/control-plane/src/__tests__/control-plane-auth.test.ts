@@ -4,8 +4,11 @@ import {
   authorizeControlPlaneRequest,
   CONTROL_PLANE_SERVICE_ID,
   isControlPlanePublicPath,
+  isOwnerPrincipal,
   issueReauthTicket,
+  requireOwnerRole,
   resetConsumedReauthTicketsForTests,
+  resetPrincipalRoleForTests,
   resolveControlPlanePrincipal,
   verifyReauthTicket,
 } from "../control-plane-auth.js";
@@ -40,8 +43,10 @@ function fakeRes(): ServerResponse & { status: number; body: string } {
 describe("Control Plane auth (ADR-021)", () => {
   afterEach(() => {
     delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    delete process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN;
     delete process.env.NODE_ENV;
     resetConsumedReauthTicketsForTests();
+    resetPrincipalRoleForTests();
   });
 
   it("status is always public", () => {
@@ -108,5 +113,68 @@ describe("Control Plane auth (ADR-021)", () => {
     expect(principal.kind).toBe("SERVICE");
     expect(principal.id).toBe(CONTROL_PLANE_SERVICE_ID);
     expect(principal.id).not.toBe("atlas-owner");
+  });
+
+  it("distinguishes owner token from operator token", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
+    process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "owner-secret";
+
+    // Operator token → OPERATOR role
+    const operatorRes = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(
+        fakeReq("Bearer operator-secret"),
+        operatorRes,
+        "/dashboard",
+      ),
+    ).toBe(true);
+    expect(resolveControlPlanePrincipal().role).toBe("OPERATOR");
+    expect(isOwnerPrincipal()).toBe(false);
+
+    // Owner token → OWNER role
+    const ownerRes = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(
+        fakeReq("Bearer owner-secret"),
+        ownerRes,
+        "/dashboard",
+      ),
+    ).toBe(true);
+    expect(resolveControlPlanePrincipal().role).toBe("OWNER");
+    expect(isOwnerPrincipal()).toBe(true);
+  });
+
+  it("requireOwnerRole allows owner and denies operator", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
+    process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "owner-secret";
+
+    // Operator tries owner-only op
+    authorizeControlPlaneRequest(
+      fakeReq("Bearer operator-secret"),
+      fakeRes(),
+      "/dashboard",
+    );
+    const operatorDenied = fakeRes();
+    expect(requireOwnerRole(operatorDenied)).toBe(false);
+    expect(operatorDenied.status).toBe(403);
+
+    // Owner can proceed
+    authorizeControlPlaneRequest(
+      fakeReq("Bearer owner-secret"),
+      fakeRes(),
+      "/dashboard",
+    );
+    const ownerAllowed = fakeRes();
+    expect(requireOwnerRole(ownerAllowed)).toBe(true);
+  });
+
+  it("dev loopback defaults to OPERATOR, not OWNER", () => {
+    process.env.NODE_ENV = "development";
+    const res = fakeRes();
+    expect(
+      authorizeControlPlaneRequest(fakeReq(undefined, "127.0.0.1"), res, "/dashboard"),
+    ).toBe(true);
+    expect(resolveControlPlanePrincipal().role).toBe("OPERATOR");
+    expect(isOwnerPrincipal()).toBe(false);
   });
 });

@@ -1,4 +1,10 @@
-/** Atlas 1.2 Fabric Agents — roles, not models (ADR-017). */
+/**
+ * Atlas 1.3 Fabric Agents — roles with cognitive functions (ADR-017 v2).
+ *
+ * Each agent has both:
+ * - Domain specialty (what they know)
+ * - Cognitive role (how they think in the Expert Battle)
+ */
 
 export const FABRIC_AGENT_IDS = [
   "ORCHESTRATOR",
@@ -15,6 +21,8 @@ export const FABRIC_AGENT_IDS = [
   "OMISSION_DETECTOR",
   "LEGAL_MEDIA_COMMS",
   "JUDGE",
+  "ADVERSARY",
+  "DATABASE",
 ] as const;
 
 export type FabricAgentId = (typeof FABRIC_AGENT_IDS)[number];
@@ -29,9 +37,96 @@ export const FABRIC_AGENT_CATEGORIES = [
   "research",
   "governance",
   "legal",
+  "adversarial",
 ] as const;
 
 export type FabricAgentCategory = (typeof FABRIC_AGENT_CATEGORIES)[number];
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Cognitive Roles — how agents think in Expert Battle
+   ───────────────────────────────────────────────────────────────────────────── */
+
+export const COGNITIVE_ROLES = [
+  "INVESTIGATOR",
+  "DIAGNOSTICIAN",
+  "BUILDER",
+  "ADVERSARY",
+  "AUDITOR",
+  "CHALLENGER",
+  "ARCHITECT",
+  "EVIDENCE_JUDGE",
+  "FINAL_VERIFIER",
+  "PLANNER",
+  "RESEARCHER",
+] as const;
+
+export type CognitiveRole = (typeof COGNITIVE_ROLES)[number];
+
+export interface CognitiveRoleDefinition {
+  readonly role: CognitiveRole;
+  readonly function: string;
+  readonly constraints: readonly string[];
+}
+
+export const COGNITIVE_ROLE_CATALOG: Readonly<
+  Record<CognitiveRole, CognitiveRoleDefinition>
+> = {
+  INVESTIGATOR: {
+    role: "INVESTIGATOR",
+    function: "Finds facts and gathers evidence",
+    constraints: ["Cannot conclude without evidence", "Must cite sources"],
+  },
+  DIAGNOSTICIAN: {
+    role: "DIAGNOSTICIAN",
+    function: "Identifies root cause from symptoms",
+    constraints: ["Must differentiate correlation from causation", "Needs reproduction evidence"],
+  },
+  BUILDER: {
+    role: "BUILDER",
+    function: "Develops solutions based on specifications",
+    constraints: ["Proposals stay gated until approval", "Must address requirements evidence"],
+  },
+  ADVERSARY: {
+    role: "ADVERSARY",
+    function: "Proves solutions are wrong or incomplete",
+    constraints: ["Cannot validate own conclusions", "Must provide counter-evidence"],
+  },
+  AUDITOR: {
+    role: "AUDITOR",
+    function: "Checks compliance and security posture",
+    constraints: ["Never asserts 'secure' without evidence", "Escalates uncertainty"],
+  },
+  CHALLENGER: {
+    role: "CHALLENGER",
+    function: "Breaks solutions and finds edge cases",
+    constraints: ["Must provide reproduction steps", "Cannot just assert failure"],
+  },
+  ARCHITECT: {
+    role: "ARCHITECT",
+    function: "Checks systemic impact and boundaries",
+    constraints: ["Read-only analysis", "Cannot invent undocumented behavior"],
+  },
+  EVIDENCE_JUDGE: {
+    role: "EVIDENCE_JUDGE",
+    function: "Evaluates evidence quality and contradictions",
+    constraints: ["Cannot fix what it rejects", "Conservative on thin evidence"],
+  },
+  FINAL_VERIFIER: {
+    role: "FINAL_VERIFIER",
+    function: "Decides if the problem is resolved",
+    constraints: ["Requires specialist outputs", "Cannot verify own work"],
+  },
+  PLANNER: {
+    role: "PLANNER",
+    function: "Decomposes tasks and assigns specialists",
+    constraints: ["Cannot write code", "Must have user request evidence"],
+  },
+  RESEARCHER: {
+    role: "RESEARCHER",
+    function: "Retrieves knowledge from authorized sources",
+    constraints: ["Cannot invent citations", "Must filter by authority"],
+  },
+};
 
 export interface FabricAgentDefinition {
   readonly id: FabricAgentId;
@@ -40,6 +135,10 @@ export interface FabricAgentDefinition {
   readonly titleAr: string;
   readonly specialty: string;
   readonly category: FabricAgentCategory;
+  /** Primary cognitive role in Expert Battle */
+  readonly cognitiveRole: CognitiveRole;
+  /** Secondary cognitive roles this agent can assume */
+  readonly secondaryCognitiveRoles?: readonly CognitiveRole[];
   readonly allowedTools: readonly string[];
   readonly forbiddenTools: readonly string[];
   readonly evidenceRequirements: readonly string[];
@@ -58,6 +157,8 @@ export interface FabricAgentDefinition {
   readonly weaknessesEn: readonly string[];
   readonly weaknessesHe: readonly string[];
   readonly weaknessesAr: readonly string[];
+  /** Golden rule: no agent may validate its own unverified conclusion */
+  readonly cannotSelfValidate: boolean;
 }
 
 export const FABRIC_AGENT_CATALOG: Readonly<
@@ -70,6 +171,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "المنسّق الرئيسي",
     specialty: "Decompose · select specialists · budgets · handoffs",
     category: "orchestration",
+    cognitiveRole: "PLANNER",
     allowedTools: ["plan", "dispatch", "budget", "trace"],
     forbiddenTools: ["apply_patch", "exfiltrate"],
     evidenceRequirements: ["user request", "project context"],
@@ -111,6 +213,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "الجودة تعتمد على تغطية المتخصصين",
       "طلبات ضعيفة → خطط ضعيفة",
     ],
+    cannotSelfValidate: true,
   },
   ARCHITECT: {
     id: "ARCHITECT",
@@ -119,6 +222,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "مهندس معمارية",
     specialty: "Modules · dependencies · boundaries · debt · scalability",
     category: "engineering",
+    cognitiveRole: "ARCHITECT",
     allowedTools: ["analyze_repo", "impact", "read_adr"],
     forbiddenTools: ["apply_patch"],
     evidenceRequirements: ["repo graph", "ADRs"],
@@ -160,6 +264,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج أدلة رسم المستودع",
       "لا يخترع سلوك إنتاج غير موثّق",
     ],
+    cannotSelfValidate: true,
   },
   CODE_ENGINEER: {
     id: "CODE_ENGINEER",
@@ -168,6 +273,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "مهندس شيفرة",
     specialty: "Generate · fix · refactor · migrate — Patch Artifact only",
     category: "engineering",
+    cognitiveRole: "BUILDER",
     allowedTools: ["propose_patch", "analyze_repo", "impact"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["failing test or explicit requirement"],
@@ -209,6 +315,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يرفض بلا أدلة",
       "ليس مبرمج دردشة حرّة",
     ],
+    cannotSelfValidate: true,
   },
   DEBUGGER: {
     id: "DEBUGGER",
@@ -217,6 +324,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "مصحّح أخطاء",
     specialty: "Reproduce → isolate → identify → propose → verify",
     category: "engineering",
+    cognitiveRole: "DIAGNOSTICIAN",
     allowedTools: ["logs", "tests", "propose_patch", "analyze_repo"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["repro steps or stack/logs"],
@@ -258,6 +366,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "قد يصعّد عند ضعف الأدلة",
       "ليس لتصميم ميزة من الصفر",
     ],
+    cannotSelfValidate: true,
   },
   QA: {
     id: "QA",
@@ -266,6 +375,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "استراتيجي ضمان جودة",
     specialty: "Decide what must be tested by risk",
     category: "quality",
+    cognitiveRole: "CHALLENGER",
     allowedTools: ["risk_map", "coverage_gaps", "gates"],
     forbiddenTools: ["apply_patch"],
     evidenceRequirements: ["risk ranking", "critical paths"],
@@ -307,6 +417,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج أدلة مخاطر/مسارات",
       "لن يدّعي جاهزية مسارات غير مختبرة",
     ],
+    cannotSelfValidate: true,
   },
   TEST_ENGINEER: {
     id: "TEST_ENGINEER",
@@ -315,6 +426,8 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "مهندس اختبارات",
     specialty: "Unit · integration · E2E · regression · edge cases",
     category: "quality",
+    cognitiveRole: "BUILDER",
+    secondaryCognitiveRoles: ["CHALLENGER"],
     allowedTools: ["propose_patch", "run_tests"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["QA plan or failing suite"],
@@ -356,6 +469,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "التطبيق يبقى تحت بوابة",
       "ليس بديلاً عن ترتيب مخاطر المنتج",
     ],
+    cannotSelfValidate: true,
   },
   SECURITY: {
     id: "SECURITY",
@@ -364,6 +478,8 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "أمن",
     specialty: "AuthN/Z · secrets · injection · tenants · supply chain",
     category: "security",
+    cognitiveRole: "AUDITOR",
+    secondaryCognitiveRoles: ["ADVERSARY"],
     allowedTools: ["security_scan", "deps_audit", "analyze_repo"],
     forbiddenTools: ["exfiltrate", "apply_patch_without_approval"],
     evidenceRequirements: ["threat surface", "deps lockfile"],
@@ -405,6 +521,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج أدلة سطح التهديد",
       "يصعّد الادعاءات الضعيفة إلى القاضي",
     ],
+    cannotSelfValidate: true,
   },
   ACCESSIBILITY: {
     id: "ACCESSIBILITY",
@@ -413,6 +530,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "إتاحة",
     specialty: "WCAG · keyboard · focus · SR · RTL · contrast",
     category: "design",
+    cognitiveRole: "AUDITOR",
     allowedTools: ["a11y_scan", "analyze_ui"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["UI surfaces", "WCAG target"],
@@ -454,6 +572,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "لا يطبّق إصلاحات تلقائيًا",
       "لوحة مفاتيح سطح المكتب وحدها غير كافية",
     ],
+    cannotSelfValidate: true,
   },
   UI_UX: {
     id: "UI_UX",
@@ -462,6 +581,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "واجهة وتجربة",
     specialty: "Flows · usability · responsive · IA · consistency",
     category: "design",
+    cognitiveRole: "INVESTIGATOR",
     allowedTools: ["analyze_ui", "flow_map"],
     forbiddenTools: ["apply_patch_without_approval"],
     evidenceRequirements: ["screens / routes"],
@@ -503,6 +623,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج شاشات أو وصف تدفق",
       "لا يخلط اللمعان بالاستخدامية",
     ],
+    cannotSelfValidate: true,
   },
   DEVOPS: {
     id: "DEVOPS",
@@ -511,6 +632,8 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "ديف أوبس",
     specialty: "CI/CD · cloud · DB · migrations · observability",
     category: "ops",
+    cognitiveRole: "BUILDER",
+    secondaryCognitiveRoles: ["INVESTIGATOR"],
     allowedTools: ["ci_status", "deploy_meta", "analyze_infra"],
     forbiddenTools: ["prod_mutate_without_approval"],
     evidenceRequirements: ["CI config", "deploy target"],
@@ -552,6 +675,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج أدلة CI/نشر",
       "CI أخضر ≠ جاهزية إنتاج",
     ],
+    cannotSelfValidate: true,
   },
   RESEARCHER: {
     id: "RESEARCHER",
@@ -560,7 +684,15 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "باحث",
     specialty: "Authorized external sources → Evidence packages",
     category: "research",
-    allowedTools: ["knowledge_search", "ingest_source", "verify_url"],
+    cognitiveRole: "RESEARCHER",
+    allowedTools: [
+      "knowledge_search",
+      "ingest_source",
+      "verify_url",
+      "fs.read_file",
+      "fs.read_directory",
+      "fs.search_repo",
+    ],
     forbiddenTools: ["apply_patch", "unofficial_scrape_as_official"],
     evidenceRequirements: ["query", "allowed source classes"],
     maxCostUsd: 0.4,
@@ -601,6 +733,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج فئات مصادر مسموحة",
       "مدونة فارغة → INSUFFICIENT_EVIDENCE",
     ],
+    cannotSelfValidate: true,
   },
   OMISSION_DETECTOR: {
     id: "OMISSION_DETECTOR",
@@ -610,6 +743,8 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     specialty:
       "omission gaps · constitution checklist · unrequested risks · evidence gaps",
     category: "governance",
+    cognitiveRole: "INVESTIGATOR",
+    secondaryCognitiveRoles: ["ADVERSARY"],
     allowedTools: ["constitution_run", "analyze_repo", "risk_map"],
     forbiddenTools: ["apply_patch", "exfiltrate"],
     evidenceRequirements: ["user intent or product profile", "repo evidence"],
@@ -651,6 +786,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "يحتاج نية + أدلة المستودع",
       "لا يعالج تلقائيًا",
     ],
+    cannotSelfValidate: true,
   },
   LEGAL_MEDIA_COMMS: {
     id: "LEGAL_MEDIA_COMMS",
@@ -660,6 +796,8 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     specialty:
       "Counsel-prep readiness for IL + US + EU official portals — not a licensed attorney",
     category: "legal",
+    cognitiveRole: "AUDITOR",
+    secondaryCognitiveRoles: ["RESEARCHER"],
     allowedTools: [
       "legal_media_review",
       "cite_verified_sources",
@@ -709,6 +847,7 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "الاستدلالات تفوّت السوابق الدقيقة",
       "يتطلب محامياً بشرياً للرأي",
     ],
+    cannotSelfValidate: true,
   },
   JUDGE: {
     id: "JUDGE",
@@ -717,6 +856,8 @@ export const FABRIC_AGENT_CATALOG: Readonly<
     titleAr: "قاضي الأدلة",
     specialty: "Believe the result? Contradictions · unsupported · unsafe",
     category: "governance",
+    cognitiveRole: "EVIDENCE_JUDGE",
+    secondaryCognitiveRoles: ["FINAL_VERIFIER"],
     allowedTools: ["evaluate", "conflict_scan", "escalate"],
     forbiddenTools: ["apply_patch", "write_code"],
     evidenceRequirements: ["specialist outputs", "evidence refs"],
@@ -758,5 +899,109 @@ export const FABRIC_AGENT_CATALOG: Readonly<
       "لا يصلح ما يرفضه",
       "محافظ عند ضعف الأدلة",
     ],
+    cannotSelfValidate: true,
+  },
+  ADVERSARY: {
+    id: "ADVERSARY",
+    title: "Adversary",
+    titleHe: "יריב",
+    titleAr: "خصم",
+    specialty: "Challenge conclusions · find counter-evidence · break assumptions",
+    category: "adversarial",
+    cognitiveRole: "ADVERSARY",
+    allowedTools: ["analyze_repo", "risk_map", "conflict_scan"],
+    forbiddenTools: ["apply_patch", "write_code"],
+    evidenceRequirements: ["specialist conclusions", "proposed solutions"],
+    maxCostUsd: 0.4,
+    timeoutMs: 90_000,
+    riskLevel: "HIGH",
+    canWriteCode: false,
+    evaluationSuite: "adversary-v1",
+    costHintEn: "Mid — adversarial review",
+    costHintHe: "בינוני — סקירה יריבית",
+    costHintAr: "متوسط — مراجعة خصومية",
+    strengthsEn: [
+      "Challenges all conclusions",
+      "Finds counter-evidence",
+      "Exposes hidden assumptions",
+    ],
+    strengthsHe: [
+      "מאתגר כל מסקנות",
+      "מוצא ראיות נגד",
+      "חושף הנחות סמויות",
+    ],
+    strengthsAr: [
+      "يتحدى جميع الاستنتاجات",
+      "يجد أدلة معارضة",
+      "يكشف الافتراضات الخفية",
+    ],
+    weaknessesEn: [
+      "Cannot validate own conclusions",
+      "Needs specialist output to challenge",
+      "May over-challenge valid work",
+    ],
+    weaknessesHe: [
+      "לא יכול לאמת מסקנות עצמו",
+      "צריך פלט מומחה לאתגר",
+      "עלול לאתגר יתר על המידה",
+    ],
+    weaknessesAr: [
+      "لا يمكنه التحقق من استنتاجاته",
+      "يحتاج مخرجات متخصص للتحدي",
+      "قد يبالغ في التحدي",
+    ],
+    cannotSelfValidate: true,
+  },
+  DATABASE: {
+    id: "DATABASE",
+    title: "Database Specialist",
+    titleHe: "מומחה מסדי נתונים",
+    titleAr: "متخصص قواعد البيانات",
+    specialty: "Schema · queries · indexes · transactions · replication",
+    category: "engineering",
+    cognitiveRole: "INVESTIGATOR",
+    secondaryCognitiveRoles: ["BUILDER", "DIAGNOSTICIAN"],
+    allowedTools: ["analyze_repo", "query_explain", "schema_analyze"],
+    forbiddenTools: ["apply_patch_without_approval", "prod_mutate"],
+    evidenceRequirements: ["schema", "query plans", "data distribution"],
+    maxCostUsd: 0.5,
+    timeoutMs: 90_000,
+    riskLevel: "HIGH",
+    canWriteCode: true,
+    evaluationSuite: "database-v1",
+    costHintEn: "Mid — schema + query analysis",
+    costHintHe: "בינוני — ניתוח סכמה ושאילתות",
+    costHintAr: "متوسط — تحليل المخطط والاستعلامات",
+    strengthsEn: [
+      "Query plan analysis",
+      "Index optimization",
+      "Data integrity focus",
+    ],
+    strengthsHe: [
+      "ניתוח תוכניות שאילתה",
+      "אופטימיזציית אינדקסים",
+      "מיקוד בשלמות נתונים",
+    ],
+    strengthsAr: [
+      "تحليل خطط الاستعلام",
+      "تحسين الفهارس",
+      "التركيز على سلامة البيانات",
+    ],
+    weaknessesEn: [
+      "Needs schema and query evidence",
+      "Production mutations require approval",
+      "Test data may not reflect production",
+    ],
+    weaknessesHe: [
+      "דורש ראיות סכמה ושאילתות",
+      "מוטציות בפרוד דורשות אישור",
+      "נתוני בדיקה לא משקפים פרוד",
+    ],
+    weaknessesAr: [
+      "يحتاج أدلة مخطط واستعلامات",
+      "طفرات الإنتاج تتطلب موافقة",
+      "بيانات الاختبار قد لا تعكس الإنتاج",
+    ],
+    cannotSelfValidate: true,
   },
 };

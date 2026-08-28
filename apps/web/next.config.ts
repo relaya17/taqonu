@@ -1,10 +1,17 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
+const monorepoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Windows cannot create standalone symlinks without Developer Mode (EPERM).
+  ...(process.platform === "win32" ? {} : { output: "standalone" as const }),
+  // Stop Next from treating C:\Users\User as the workspace (home-dir pnpm-lock.yaml).
+  outputFileTracingRoot: monorepoRoot,
   // Keep Emotion/MUI on one module instance under Turbopack (avoids css-* vs mui-* hydration mismatches).
   transpilePackages: [
     "@atlas/shared",

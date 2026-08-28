@@ -243,6 +243,48 @@ export function resetLlmDedupCache(): void {
  * rolling cost tracker above, with the fresh result cached for the next
  * identical call within `DEDUP_TTL_MS`.
  */
+export const MAX_PROVIDER_CALL_ATTEMPTS = 3;
+const RETRY_DELAY_CAP_MS = 1_000;
+const RETRY_DELAY_BASE_MS = 50;
+
+export class LlmHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "LlmHttpError";
+    this.status = status;
+  }
+}
+
+export function shouldRetry(err: unknown, attempt: number): boolean {
+  if (attempt >= MAX_PROVIDER_CALL_ATTEMPTS) return false;
+  if (err instanceof LlmHttpError) {
+    return err.status >= 500 || err.status === 429;
+  }
+  return true;
+}
+
+export function computeRetryDelayMs(attempt: number): number {
+  const exp = Math.min(RETRY_DELAY_CAP_MS, RETRY_DELAY_BASE_MS * 2 ** (attempt - 1));
+  return Math.min(RETRY_DELAY_CAP_MS, exp + Math.random() * exp);
+}
+
+let retrySleep: (ms: number) => Promise<void> = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+export function setRetrySleepForTests(
+  fn: ((ms: number) => Promise<void>) | undefined,
+): void {
+  retrySleep =
+    fn ??
+    ((ms) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      }));
+}
+
 async function runProviderCall(
   provider: LlmProvider,
   messages: readonly LlmMessage[],
@@ -255,10 +297,23 @@ async function runProviderCall(
 
   const modelKey = provider.model ?? provider.name;
   const startedAt = Date.now();
-  let completion: LlmCompletion;
-  try {
-    completion = await provider.complete(messages);
-  } catch (err) {
+  let completion: LlmCompletion | undefined;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_PROVIDER_CALL_ATTEMPTS; attempt += 1) {
+    try {
+      completion = await provider.complete(messages);
+      lastError = undefined;
+      break;
+    } catch (err) {
+      lastError = err;
+      if (!shouldRetry(err, attempt)) {
+        break;
+      }
+      await retrySleep(computeRetryDelayMs(attempt));
+    }
+  }
+
+  if (!completion) {
     recordModelCall({
       model: modelKey,
       costUsd: 0,
@@ -266,7 +321,7 @@ async function runProviderCall(
       ok: false,
       at: Date.now(),
     });
-    throw err;
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   recordModelCall({
@@ -425,7 +480,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       clearTimeout(timeout);
     }
     if (!response.ok) {
-      throw new Error(`LLM provider failed: ${response.status}`);
+      throw new LlmHttpError(response.status, `LLM provider failed: ${response.status}`);
     }
     const json = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -520,7 +575,7 @@ export class AnthropicProvider implements LlmProvider {
       clearTimeout(timeout);
     }
     if (!response.ok) {
-      throw new Error(`Anthropic failed: ${response.status}`);
+      throw new LlmHttpError(response.status, `Anthropic failed: ${response.status}`);
     }
     const json = (await response.json()) as {
       content?: Array<{ type?: string; text?: string }>;
@@ -593,7 +648,7 @@ export class GeminiProvider implements LlmProvider {
       clearTimeout(timeout);
     }
     if (!response.ok) {
-      throw new Error(`Gemini failed: ${response.status}`);
+      throw new LlmHttpError(response.status, `Gemini failed: ${response.status}`);
     }
     const json = (await response.json()) as {
       candidates?: Array<{

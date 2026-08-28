@@ -5,12 +5,26 @@ import { json } from "./routes/router.js";
 /** Authenticated Control Plane caller — a SERVICE, never a default owner. */
 export const CONTROL_PLANE_SERVICE_ID = "cp:service";
 
-export function resolveControlPlanePrincipal(): {
+export type ControlPlanePrincipalRole = "OWNER" | "OPERATOR";
+
+export interface ControlPlanePrincipal {
   readonly kind: "SERVICE";
   readonly id: typeof CONTROL_PLANE_SERVICE_ID;
   readonly actorKind: "SYSTEM";
-} {
-  return { kind: "SERVICE", id: CONTROL_PLANE_SERVICE_ID, actorKind: "SYSTEM" };
+  /** Distinct role so owner-only ops can be guarded separately. */
+  readonly role: ControlPlanePrincipalRole;
+}
+
+let resolvedPrincipalRole: ControlPlanePrincipalRole | null = null;
+
+export function resolveControlPlanePrincipal(): ControlPlanePrincipal {
+  const role = resolvedPrincipalRole ?? "OPERATOR";
+  return { kind: "SERVICE", id: CONTROL_PLANE_SERVICE_ID, actorKind: "SYSTEM", role };
+}
+
+/** Returns true if the current request was authenticated with the owner token. */
+export function isOwnerPrincipal(): boolean {
+  return resolvedPrincipalRole === "OWNER";
 }
 
 /**
@@ -20,6 +34,15 @@ export function resolveControlPlanePrincipal(): {
  */
 export function controlPlaneToken(): string | null {
   const raw = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
+  return raw && raw.length > 0 ? raw : null;
+}
+
+/**
+ * Separate owner token grants elevated privileges over the operator token.
+ * This is not MFA — it's a distinct credential for owner-only operations.
+ */
+export function controlPlaneOwnerToken(): string | null {
+  const raw = process.env["ATLAS_CONTROL_PLANE_OWNER_TOKEN"]?.trim();
   return raw && raw.length > 0 ? raw : null;
 }
 
@@ -108,6 +131,13 @@ export function isSensitiveControlMutation(pathname: string, method: string): bo
 }
 
 /**
+ * Reset the resolved principal role (for testing).
+ */
+export function resetPrincipalRoleForTests(): void {
+  resolvedPrincipalRole = null;
+}
+
+/**
  * @returns true when the request may proceed.
  */
 export function authorizeControlPlaneRequest(
@@ -115,12 +145,28 @@ export function authorizeControlPlaneRequest(
   res: ServerResponse,
   pathname: string,
 ): boolean {
+  resolvedPrincipalRole = null;
+
   if (isControlPlanePublicPath(pathname)) return true;
 
-  const token = controlPlaneToken();
+  const ownerToken = controlPlaneOwnerToken();
+  const operatorToken = controlPlaneToken();
   const presented = bearerFrom(req);
-  if (token) {
-    if (presented && tokensEqual(presented, token)) return true;
+
+  // Check owner token first (higher privilege)
+  if (ownerToken && presented && tokensEqual(presented, ownerToken)) {
+    resolvedPrincipalRole = "OWNER";
+    return true;
+  }
+
+  // Check operator token
+  if (operatorToken && presented && tokensEqual(presented, operatorToken)) {
+    resolvedPrincipalRole = "OPERATOR";
+    return true;
+  }
+
+  // If any token is configured but none matched, deny
+  if (ownerToken || operatorToken) {
     json(res, { error: "Control Plane authentication required" }, 401);
     return false;
   }
@@ -138,8 +184,24 @@ export function authorizeControlPlaneRequest(
     return false;
   }
 
+  // Loopback dev defaults to OPERATOR
   const remote = req.socket.remoteAddress;
-  if (isLoopbackAddress(remote)) return true;
+  if (isLoopbackAddress(remote)) {
+    resolvedPrincipalRole = "OPERATOR";
+    return true;
+  }
   json(res, { error: "Control Plane is loopback-only without a token" }, 403);
+  return false;
+}
+
+/**
+ * Guard for owner-only Control Plane operations.
+ * Call after authorizeControlPlaneRequest returns true.
+ */
+export function requireOwnerRole(
+  res: ServerResponse,
+): boolean {
+  if (resolvedPrincipalRole === "OWNER") return true;
+  json(res, { error: "Control Plane owner role required" }, 403);
   return false;
 }

@@ -1,16 +1,35 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
+import type { AuthUser } from "@atlas/shared";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-kernel-route-test-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 
+const getRequestUser = vi.fn();
+vi.mock("../services/resolve-identity.js", () => ({
+  getRequestUser: (...args: unknown[]) => getRequestUser(...args),
+}));
+
 const { registerKernelRoutes } = await import("./kernel.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
+
+function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
+  return {
+    id: "22222222-2222-4222-8222-222222222222",
+    email: "user@example.com",
+    displayName: "Test User",
+    role: "user",
+    locale: "en",
+    provider: "local",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...partial,
+  };
+}
 
 let app: FastifyInstance;
 
@@ -21,6 +40,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close();
   rmSync(tmpDir, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  getRequestUser.mockReturnValue(signedInUser());
 });
 
 describe("GET /api/v1/kernel/status", () => {

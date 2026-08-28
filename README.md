@@ -226,13 +226,16 @@ pnpm dev
 
 | Surface | URL |
 | --- | --- |
+| **Atlas** (product UI) | http://localhost:3000 |
+| **Atlas Sentinel** (oversight / control plane) | http://127.0.0.1:3100 |
+| **Owner Admin** | http://127.0.0.1:3200 |
+| Tenant API | http://localhost:4000 |
 | Landing (HE) | http://localhost:3000/he/welcome |
 | Systems | http://localhost:3000/he/systems |
 | App home | http://localhost:3000/he |
 | Audit intake | http://localhost:3000/he/partners |
 | Counsel briefing | http://localhost:3000/he/legal-media |
 | Plan | http://localhost:3000/he/plan |
-| API | http://localhost:4000 |
 
 ```bash
 pnpm proof:run

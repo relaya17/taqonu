@@ -21,7 +21,16 @@ import {
   evaluateJudge,
   listFabricAgents,
   planAgentWork,
+  type BusinessEntityType,
+  type EntityAction,
 } from "@atlas/agent-core";
+import { executeGovernedAction } from "../services/governed-execution.js";
+import {
+  resolveAgentIdentity,
+  type ToolExecutionPayload,
+} from "../services/agent-runtime-authz.js";
+import { findRepoRoot } from "../services/repo-root.js";
+import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
 import {
   getKnowledgeCorpusPersistPath,
   getKnowledgeCorpusSource,
@@ -44,6 +53,8 @@ import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
+import { runCodeEngineerSpecialistViaLlm } from "../services/code-engineer-dispatch.js";
+import { runResearcherSpecialistViaLlm } from "../services/research-analyst-dispatch.js";
 import {
   knowledgeRefreshIsDue,
   readKnowledgeRefreshLedger,
@@ -240,24 +251,86 @@ export async function registerAgentFabricRoutes(
       memoryContext.items.length > 0 ? 1 : 0,
       { surface: "memory", kind: "agents.dispatch" },
     );
-    const result = dispatchAgentPlan({
+    const result = await dispatchAgentPlan({
       request: body.request,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
       ...(body.agentIds !== undefined ? { agentIds: body.agentIds } : {}),
       maxAgents: body.maxAgents,
       budgetUsd: body.budgetUsd,
       runJudge: body.runJudge,
-      specialistOverride: (agentId, request) => {
+      specialistOverride: async (agentId, requestStr) => {
+        // Gate check before calling the specialist — CASE.EXECUTE for security
+        // scans and legal-media reviews. If the gate denies or requires
+        // approval, return a SKIPPED run carrying the reason.
+        if (agentId === "SECURITY" || agentId === "LEGAL_MEDIA_COMMS") {
+          const gate = dispatchAgentAction({
+            actor: {
+              kind: "AGENT",
+              agentId,
+              onBehalfOfUserId: user.id,
+            },
+            entityType: "CASE",
+            action: "EXECUTE",
+            routeLabel: `agents.dispatch.${agentId.toLowerCase()}`,
+            sourceContext: {
+              origin: "user_message",
+              trustLevel: "trusted",
+            },
+            projectId: body.projectId ?? null,
+            input: { request: requestStr },
+          });
+
+          if (gate.decision !== "ALLOWED") {
+            const reason =
+              gate.decision === "DENIED"
+                ? gate.reason
+                : `CASE.EXECUTE requires approval (${gate.approvalRequestId})`;
+            const claims = [`${agentId}: ${reason}`];
+            if (gate.decision === "APPROVAL_REQUIRED") {
+              claims.push(`approvalRequestId:${gate.approvalRequestId}`);
+            }
+            return {
+              agentId,
+              status: "SKIPPED" as const,
+              summary: reason,
+              claims,
+              evidenceRefs: [],
+              epistemicState: "UNKNOWN" as const,
+              costUsd: 0,
+              durationMs: 0,
+              ...(gate.decision === "APPROVAL_REQUIRED"
+                ? { approvalRequestId: gate.approvalRequestId }
+                : {}),
+            };
+          }
+        }
+
         if (agentId === "SECURITY") {
           return runSecuritySpecialistViaSentinel({
-            request,
+            request: requestStr,
             projectId: body.projectId ?? null,
           });
         }
         if (agentId === "LEGAL_MEDIA_COMMS") {
           return runLegalMediaSpecialistViaReview({
-            request,
+            request: requestStr,
             projectId: body.projectId ?? null,
+          });
+        }
+        if (agentId === "CODE_ENGINEER") {
+          return runCodeEngineerSpecialistViaLlm({
+            request: requestStr,
+            projectId: body.projectId ?? null,
+            ownerId: user.id,
+            env: app.atlasEnv,
+          });
+        }
+        if (agentId === "RESEARCHER") {
+          return runResearcherSpecialistViaLlm({
+            request: requestStr,
+            projectId: body.projectId ?? null,
+            ownerId: user.id,
+            env: app.atlasEnv,
           });
         }
         return null;
@@ -336,6 +409,114 @@ export async function registerAgentFabricRoutes(
     return reply.status(201).send({
       ...result,
       memoryContext,
+    });
+  });
+
+  /**
+   * POST /api/v1/agents/tool-execute
+   *
+   * P0.7 — the governed execution gate wearing a route. Every agent tool
+   * execution MUST pass through this route (or its programmatic equivalent,
+   * `executeGovernedAction`). The body cannot name its own owner, cannot name
+   * its own sandbox root, and the identity is derived from the session.
+   */
+  const toolExecutePayloadSchema = z
+    .object({
+      targetOwnerId: z.string().optional(),
+      targetProjectId: z.string().optional(),
+      targetAgentId: z.string().optional(),
+    })
+    .passthrough()
+    .optional();
+
+  const toolExecuteBodySchema = z
+    .object({
+      fabricAgentId: z.string(),
+      toolName: z.string(),
+      toolArgs: z.record(z.unknown()),
+      artifact: z.string(),
+      entityType: z.string(),
+      action: z.string(),
+      payload: toolExecutePayloadSchema,
+      approvalRequestId: z.string().uuid().optional(),
+      projectId: z.string().uuid().nullable().optional(),
+    })
+    .strict();
+
+  app.post("/api/v1/agents/tool-execute", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    const body = toolExecuteBodySchema.parse(request.body);
+
+    // Resolve identity from the session, not the body. The body names the
+    // fabricAgentId but must not be able to override the ownerId.
+    const identity = resolveAgentIdentity({
+      fabricAgentId: body.fabricAgentId,
+      sessionOwnerId: user.id,
+      projectId: body.projectId ?? null,
+      trustLevel: "FULL",
+    });
+
+    // Project root comes from the server, never from the request.
+    const projectRoot = findRepoRoot();
+
+    // Transform body.payload to ToolExecutionPayload if present
+    const payload: ToolExecutionPayload | undefined = body.payload
+      ? {
+          ...(body.payload.targetOwnerId !== undefined
+            ? { targetOwnerId: body.payload.targetOwnerId }
+            : {}),
+          ...(body.payload.targetProjectId !== undefined
+            ? { targetProjectId: body.payload.targetProjectId }
+            : {}),
+          ...(body.payload.targetAgentId !== undefined
+            ? { targetAgentId: body.payload.targetAgentId }
+            : {}),
+        }
+      : undefined;
+
+    const outcome = await executeGovernedAction({
+      identity,
+      toolName: body.toolName,
+      toolArgs: body.toolArgs,
+      artifact: body.artifact,
+      entityType: body.entityType as BusinessEntityType,
+      action: body.action as EntityAction,
+      ...(payload !== undefined ? { payload } : {}),
+      ...(body.approvalRequestId !== undefined
+        ? { approvalRequestId: body.approvalRequestId }
+        : {}),
+      projectRoot,
+      routeLabel: "agents.tool-execute",
+      requestId: request.id,
+      sourceContext: {
+        origin: "user_message",
+        trustLevel: "trusted",
+      },
+    });
+
+    // Map outcome to HTTP status and response shape.
+    if (outcome.status === "EXECUTED") {
+      return reply.status(200).send({
+        stage: outcome.stage,
+        status: outcome.status,
+        agentId: identity.agentId,
+        artifactHash: outcome.artifactHash,
+        output: outcome.output,
+      });
+    }
+
+    // All non-EXECUTED outcomes are refusals.
+    const httpStatus =
+      outcome.stage === "EXECUTION"
+        ? 422 // Execution-level failure (path escaping, file not found, etc.)
+        : 403; // Authorization, Approval, or Policy refusal
+
+    return reply.status(httpStatus).send({
+      stage: outcome.stage,
+      status: outcome.status,
+      error: {
+        message: outcome.reason,
+      },
     });
   });
 

@@ -38,6 +38,10 @@ export const approvalRequestSchema = z.object({
   artifactHash: z.string().min(1).max(128).nullable().default(null),
   /** After this instant the approval cannot be consumed. */
   expiresAt: isoDateTimeSchema.nullable().default(null),
+  /** Observations that must appear in tool output for VERIFIED. Locked at approval time. */
+  expectedObservations: z.array(z.string().min(1).max(500)).max(32).default([]),
+  /** Prior observations that must still hold after mutation. Locked at approval time. */
+  baselineObservations: z.array(z.string().min(1).max(500)).max(32).default([]),
   revokedBy: z.string().min(1).max(200).nullable().default(null),
   revokedAt: isoDateTimeSchema.nullable().default(null),
   revocationReason: z.string().min(1).max(2000).nullable().default(null),

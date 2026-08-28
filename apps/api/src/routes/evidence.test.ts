@@ -12,7 +12,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import type { AuthUser } from "@atlas/shared";
+import { authUserSchema, parseEvidenceRecord } from "@atlas/shared";
+
+/** Tied to the value import so this is not a second, unrelated `AuthUser`. */
+type AuthUser = ReturnType<typeof authUserSchema.parse>;
 
 // Isolate the singleton osStore before it's ever imported/loaded (same
 // pattern as memory.test.ts / events.test.ts).
@@ -58,10 +61,11 @@ vi.mock("@atlas/agent-core", async (importOriginal) => {
 const { registerEvidenceRoutes } = await import("./evidence.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
-const { parseEvidenceRecord } = await import("@atlas/shared");
 
-function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
-  return {
+function signedInUser(
+  partial: Pick<Partial<AuthUser>, "id" | "email" | "role"> = {},
+): AuthUser {
+  return authUserSchema.parse({
     id: "22222222-2222-4222-8222-222222222222",
     email: "caller@example.com",
     displayName: "Caller",
@@ -70,7 +74,7 @@ function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
     provider: "local",
     createdAt: "2026-01-01T00:00:00.000Z",
     ...partial,
-  };
+  });
 }
 
 const ownerA = signedInUser();

@@ -57,6 +57,24 @@ export interface SubmitAgentProposalOptions {
   readonly sourceContext: DispatchSourceContext;
   /** Short dotted label for the audit type, e.g. "agent-proposal.dispatch.security". */
   readonly routeLabel: string;
+  /**
+   * Control Plane runtime status. PAUSED/QUARANTINED/REVOKED agents cannot execute.
+   * Defaults to "ACTIVE" if not provided.
+   */
+  readonly agentRuntimeStatus?:
+    | "ACTIVE"
+    | "PAUSED"
+    | "DISABLED"
+    | "REVOKED"
+    | "QUARANTINED"
+    | "SUSPENDED"
+    | "DEGRADED"
+    | "UNKNOWN";
+  /**
+   * Delegation hop count for authority attenuation.
+   * Each agent-to-agent hop floors the risk bucket to at least APPROVAL.
+   */
+  readonly delegationHopCount?: number;
 }
 
 /** Proposal metadata carried alongside the raw dispatch decision, for audit-trail-provable rationale/claims. */
@@ -165,6 +183,14 @@ export function submitAgentProposal(
     },
     confidence: parsed.confidence,
     evidenceCount: parsed.evidence.length,
+    // Authority attenuation: runtime status and delegation hop count
+    // Spread conditionally due to exactOptionalPropertyTypes
+    ...(options.agentRuntimeStatus !== undefined
+      ? { agentRuntimeStatus: options.agentRuntimeStatus }
+      : {}),
+    ...(options.delegationHopCount !== undefined
+      ? { delegationHopCount: options.delegationHopCount }
+      : {}),
   });
 
   return {

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "@atlas/observability";
 import type { WorkerJob } from "./jobs/processor.js";
+import { existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 /**
  * `processJob` is mocked here so these tests exercise only the run loop's
@@ -43,8 +45,17 @@ function createRecordingLogger(): {
   return { logger, calls };
 }
 
+const testQueuePath = resolve(process.cwd(), ".atlas-test", "worker-queue-test.json");
+
 describe("worker run loop (retry, backoff, dead-letter)", () => {
+  const originalQueuePath = process.env.ATLAS_QUEUE_PATH;
+
   beforeEach(() => {
+    mkdirSync(dirname(testQueuePath), { recursive: true });
+    if (existsSync(testQueuePath)) {
+      unlinkSync(testQueuePath);
+    }
+    process.env.ATLAS_QUEUE_PATH = testQueuePath;
     vi.resetModules();
     vi.useFakeTimers();
     processJobMock.mockReset();
@@ -52,6 +63,14 @@ describe("worker run loop (retry, backoff, dead-letter)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalQueuePath === undefined) {
+      delete process.env.ATLAS_QUEUE_PATH;
+    } else {
+      process.env.ATLAS_QUEUE_PATH = originalQueuePath;
+    }
+    if (existsSync(testQueuePath)) {
+      unlinkSync(testQueuePath);
+    }
   });
 
   it("does not crash the process when a job throws, and retries it", async () => {
@@ -161,6 +180,6 @@ describe("worker run loop (retry, backoff, dead-letter)", () => {
     expect(job.payload).toEqual({ foo: "bar" });
     expect(typeof job.id).toBe("string");
     expect(typeof job.createdAt).toBe("string");
-    expect((job as any).retryCount).toBe(0);
+    expect(job.retryCount).toBe(0);
   });
 });

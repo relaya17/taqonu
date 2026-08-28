@@ -19,8 +19,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/shared": "*",
-    "@atlas/knowledge": "*"
+    "@atlas/shared": "workspace:*",
+    "@atlas/knowledge": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

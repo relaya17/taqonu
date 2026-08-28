@@ -98,7 +98,9 @@ function onGateBlocked(event: DomainEvent): void {
     approval: "PENDING",
     result: "FAILURE",
     projectId: event.projectId ?? undefined,
-    correlationId: event.correlationId,  });
+    correlationId: event.correlationId,
+    causationId: event.causationId,
+  });
 }
 
 export const gateBlockedAutomationRule: AutomationRule = {
@@ -182,7 +184,9 @@ function onReadinessCertificateBlocked(event: DomainEvent): void {
     approval: "PENDING",
     result: "FAILURE",
     projectId: event.projectId ?? undefined,
-    correlationId: event.correlationId,  });
+    correlationId: event.correlationId,
+    causationId: event.causationId,
+  });
 }
 
 export const readinessCertificateBlockedAutomationRule: AutomationRule = {

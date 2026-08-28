@@ -28,7 +28,12 @@ export const OPERATING_CYCLE_STAGES = [
 
 export type OperatingCycleStage = (typeof OPERATING_CYCLE_STAGES)[number];
 
-export const OPERATING_DECISIONS = ["ALLOW", "DENY", "REQUIRE_APPROVAL"] as const;
+export const OPERATING_DECISIONS = [
+  "ALLOW",
+  "DENY",
+  "REQUIRE_APPROVAL",
+  "ESCALATE",
+] as const;
 export type OperatingDecision = (typeof OPERATING_DECISIONS)[number];
 
 export const AGENT_RUNTIME_CONTROLS = [

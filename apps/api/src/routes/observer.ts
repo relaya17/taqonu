@@ -1,8 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { uuidSchema } from "@atlas/shared";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import { AtlasError, uuidSchema } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
 import {
   executeBugIngest,
   executeObserveCycle,
@@ -15,6 +19,21 @@ export async function registerObserverRoutes(
 ): Promise<void> {
   app.post("/api/v1/observe/cycle", async (request, reply) => {
     await requireSignedInForWrite(app, request);
+
+    // Entity-policy gate: observe cycle is RECORD.EXECUTE.
+    const entityDecision = authorizeEntityAction("RECORD", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "RECORD.EXECUTE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const result = executeObserveCycle({
       body: request.body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
@@ -38,6 +57,7 @@ export async function registerObserverRoutes(
 
   app.get("/api/v1/projects/:id/observer", async (request) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    await assertProjectReadAccess(app, request, projectId);
     return readObserverState({
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
@@ -88,6 +108,12 @@ export async function registerObserverRoutes(
         workspaceRoot: z.string().max(1000).optional(),
       })
       .parse(request.query);
+
+    // When projectId is provided, require auth and project access.
+    if (q.projectId) {
+      await assertProjectReadAccess(app, request, q.projectId);
+    }
+
     return readObserverState({
       projectId: q.projectId ?? null,
       workspaceRoot: q.workspaceRoot ?? null,

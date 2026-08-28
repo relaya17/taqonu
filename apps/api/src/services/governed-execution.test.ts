@@ -205,10 +205,10 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.status).toBe("DENIED");
   });
 
-  // ── ATTACK 8: catalog does not grant Control Plane filesystem aliases ──
-  it("BLOCKS fs.read_file even for a read-only agent — catalog is the grant", async () => {
+  // ── ATTACK 8: catalog does not grant tools outside the agent's allowedTools ──
+  it("BLOCKS apply_patch for a read-only agent — catalog is the grant", async () => {
     const result = await executeGovernedAction(
-      baseRequest({ toolName: "fs.read_file", toolArgs: { path: "../../../etc/passwd" } }),
+      baseRequest({ toolName: "apply_patch", toolArgs: { patch: "..." } }),
     );
     expect(result.stage).toBe("AUTHORIZATION");
     expect(result.status).toBe("DENIED");

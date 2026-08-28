@@ -61,8 +61,157 @@
  * wall-clock elapsed time — an upstream instrumentation gap this
  * aggregator surfaces rather than hides.
  */
-import { AGENT_MODES, type AgentMode, type AgentReputationSummary } from "@atlas/shared";
+import { AGENT_MODES, type AgentMode, type FabricAgentId, FABRIC_AGENT_IDS } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Expert Battle Metrics (ADR-017 v2)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Expert Battle metrics for a single agent.
+ *
+ * These track how well an agent performs in adversarial review scenarios
+ * where agents challenge each other's conclusions.
+ */
+export interface ExpertBattleMetrics {
+  readonly agentId: FabricAgentId;
+
+  /** Domain knowledge depth (0-1) */
+  readonly expertiseScore: number;
+
+  /** Quality of evidence provided (0-1) */
+  readonly evidenceScore: number;
+
+  /** Were predictions correct? (0-1, or null if no predictions) */
+  readonly predictionAccuracy: number | null;
+
+  /** Rate of incorrect positive findings (0-1) */
+  readonly falsePositiveRate: number;
+
+  /** Rate of missed issues (0-1) */
+  readonly falseNegativeRate: number;
+
+  /** Problems successfully resolved (0-1) */
+  readonly resolutionRate: number;
+
+  /** Rate of introduced regressions (0-1) */
+  readonly regressionRate: number;
+
+  /** Rate of passing final verification (0-1) */
+  readonly verificationSuccessRate: number;
+
+  /** Number of challenges issued to other agents */
+  readonly challengesIssued: number;
+
+  /** Number of challenges received from other agents */
+  readonly challengesReceived: number;
+
+  /** Rate of winning challenges (0-1) */
+  readonly challengeWinRate: number | null;
+
+  /** How often this agent's conclusions are overturned (0-1) */
+  readonly overturnRate: number;
+
+  /** Sample size for these metrics */
+  readonly sampleSize: number;
+
+  /** Epistemic state of these metrics */
+  readonly epistemicState: "OBSERVED" | "INSUFFICIENT_EVIDENCE";
+
+  /** When these metrics were computed */
+  readonly generatedAt: string;
+}
+
+/**
+ * Local AgentReputationSummary for computeAgentReputation output.
+ * (Not the tiny exported summary from @atlas/shared; this is the rich shape
+ * used within the API package and its tests.)
+ */
+export interface AgentReputationSummary {
+  readonly mode: AgentMode;
+  readonly totalRuns: number;
+  readonly sampleSize: number;
+  readonly succeededCount: number;
+  readonly failedCount: number;
+  readonly pendingCount: number;
+  readonly successRate: number | null;
+  readonly avgCostUsd: number | null;
+  readonly avgDurationMs: number | null;
+  readonly epistemicState: "OBSERVED" | "INSUFFICIENT_EVIDENCE";
+  readonly generatedAt: string;
+}
+
+/**
+ * Placeholder for Expert Battle metrics.
+ *
+ * This is a scaffolding implementation that returns empty/initial metrics
+ * for all fabric agents. Real metrics would come from:
+ * - Audit trail entries for agent challenges
+ * - Verification verdicts from the GEAL pipeline
+ * - Knowledge conflict resolutions
+ * - Regression assessments
+ *
+ * Full implementation requires:
+ * 1. Per-agent challenge tracking in audit entries
+ * 2. Verdict attribution to specific agents
+ * 3. Knowledge provenance conflict resolution records
+ */
+export function computeExpertBattleMetrics(options?: {
+  agentIds?: readonly FabricAgentId[];
+}): ExpertBattleMetrics[] {
+  const agentIds = options?.agentIds ?? FABRIC_AGENT_IDS;
+  const generatedAt = new Date().toISOString();
+
+  return agentIds.map((agentId) => {
+    return {
+      agentId,
+      expertiseScore: 0.5,
+      evidenceScore: 0.5,
+      predictionAccuracy: null,
+      falsePositiveRate: 0,
+      falseNegativeRate: 0,
+      resolutionRate: 0,
+      regressionRate: 0,
+      verificationSuccessRate: 0,
+      challengesIssued: 0,
+      challengesReceived: 0,
+      challengeWinRate: null,
+      overturnRate: 0,
+      sampleSize: 0,
+      epistemicState: "INSUFFICIENT_EVIDENCE",
+      generatedAt,
+    } satisfies ExpertBattleMetrics;
+  });
+}
+
+/**
+ * Adaptive Specialist Network — learns which agents excel at which tasks.
+ *
+ * Returns agent rankings for a given domain/task type.
+ */
+export interface AgentRanking {
+  readonly agentId: FabricAgentId;
+  readonly domain: string;
+  readonly score: number;
+  readonly confidence: number;
+  readonly strengths: readonly string[];
+  readonly weaknesses: readonly string[];
+}
+
+export function computeAgentRankings(domain: string): AgentRanking[] {
+  const generatedAt = new Date().toISOString();
+  const metrics = computeExpertBattleMetrics();
+
+  return metrics.map((m) => ({
+    agentId: m.agentId,
+    domain,
+    score: m.expertiseScore * 0.4 + m.evidenceScore * 0.3 + m.verificationSuccessRate * 0.3,
+    confidence: m.sampleSize > 10 ? 0.8 : m.sampleSize > 3 ? 0.5 : 0.2,
+    strengths: [],
+    weaknesses: [],
+  }));
+}
 
 /** Statuses `agentRunStatusSchema` (agent-run.schema.ts) defines as terminal. */
 const TERMINAL_SUCCESS = "SUCCEEDED";

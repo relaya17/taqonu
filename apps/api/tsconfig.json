@@ -8,10 +8,11 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "sourceMap": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"],
+  "include": ["src/**/*.ts", "src/**/*.test.ts", "src/**/*.spec.ts"],
+  "exclude": ["dist"],
   "references": [
     { "path": "../../packages/shared" },
     { "path": "../../packages/config" },

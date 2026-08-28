@@ -81,7 +81,7 @@ function runSpecialistStub(
   });
 }
 
-export function dispatchAgentPlan(input: {
+export async function dispatchAgentPlan(input: {
   request: string;
   projectId?: string | null;
   plan?: AgentPlan;
@@ -89,12 +89,12 @@ export function dispatchAgentPlan(input: {
   maxAgents?: number;
   budgetUsd?: number;
   runJudge?: boolean;
-  /** When set, replaces the stub for that agent (e.g. SECURITY → Sentinel). */
+  /** When set, replaces the stub for that agent (e.g. SECURITY → Sentinel). May be async. */
   specialistOverride?: (
     agentId: FabricAgentId,
     request: string,
-  ) => AgentRunResult | null | undefined;
-}): AgentDispatchResult {
+  ) => AgentRunResult | null | undefined | Promise<AgentRunResult | null | undefined>;
+}): Promise<AgentDispatchResult> {
   const plan =
     input.plan ??
     planAgentWork({
@@ -118,16 +118,14 @@ export function dispatchAgentPlan(input: {
     byGroup.set(step.parallelGroup, g);
   }
 
-  const runs = [...byGroup.keys()]
-    .sort((a, b) => a - b)
-    .flatMap((g) =>
-      (byGroup.get(g) ?? [])
-        .filter((s) => s.agentId !== "JUDGE")
-        .map((s) => {
-          const override = input.specialistOverride?.(s.agentId, input.request);
-          return override ?? runSpecialistStub(s.agentId, input.request, knowledge);
-        }),
-    );
+  const runs: AgentRunResult[] = [];
+  for (const g of [...byGroup.keys()].sort((a, b) => a - b)) {
+    for (const s of byGroup.get(g) ?? []) {
+      if (s.agentId === "JUDGE") continue;
+      const override = await input.specialistOverride?.(s.agentId, input.request);
+      runs.push(override ?? runSpecialistStub(s.agentId, input.request, knowledge));
+    }
+  }
 
   const runJudge = input.runJudge !== false;
   const judge = runJudge

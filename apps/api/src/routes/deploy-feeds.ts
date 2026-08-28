@@ -1,9 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import {
+  AtlasError,
   normalizedEvidenceDraftSchema,
   parseEvidenceRecord,
   uuidSchema,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import {
   summarizeVercelFeed,
   vercelObservationToEvidenceDrafts,
@@ -16,7 +18,10 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
 
 const vercelFeedBodySchema = z.object({
   projectId: uuidSchema,
@@ -46,6 +51,21 @@ export async function registerDeployFeedRoutes(
   app.post("/api/v1/feeds/vercel", async (request, reply) => {
     const body = vercelFeedBodySchema.parse(request.body);
     await assertProjectWriteAccess(app, request, body.projectId);
+
+    // Entity-policy gate: deployment feed creates CONFIGURATION evidence.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeVercelFeed({
       projectId: body.projectId,
@@ -151,6 +171,21 @@ export async function registerDeployFeedRoutes(
   app.post("/api/v1/feeds/render", async (request, reply) => {
     const body = renderFeedBodySchema.parse(request.body);
     await assertProjectWriteAccess(app, request, body.projectId);
+
+    // Entity-policy gate: deployment feed creates CONFIGURATION evidence.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeRenderFeed({
       projectId: body.projectId,
@@ -255,6 +290,7 @@ export async function registerDeployFeedRoutes(
 
   app.get("/api/v1/feeds/:projectId/deployment", async (request) => {
     const params = z.object({ projectId: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.projectId);
     return {
       items: osStore.getDeployFeeds(params.projectId),
       note: "Observation feeds for Current State DEPLOYMENT — distinct from DATABASE feeds.",

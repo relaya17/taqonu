@@ -11,7 +11,9 @@ export type NodeHttpHandler = (
 ) => void;
 
 function listenPort(fallback: number): number {
-  const fromEnv = process.env.PORT?.trim() || process.env.API_PORT?.trim();
+  // Prefer API_PORT locally so a generic PORT (Vercel / parent shell) cannot
+  // steal 3100/3200 from the Control Plane and Owner Admin surfaces.
+  const fromEnv = process.env.API_PORT?.trim() || process.env.PORT?.trim();
   if (fromEnv) {
     const n = Number(fromEnv);
     if (Number.isFinite(n) && n > 0) return n;

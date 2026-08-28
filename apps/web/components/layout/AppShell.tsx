@@ -10,15 +10,12 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
-  Menu,
-  MenuItem,
   Stack,
   Typography,
   Button,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
-import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
@@ -27,6 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
 import { ClientOnly } from "@/components/layout/ClientOnly";
+import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { useColorMode } from "@/components/providers/ColorModeProvider";
 import { atlasChrome as c } from "@/styles/palette";
 
@@ -187,14 +185,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         ]),
       ),
   );
-  const [langAnchor, setLangAnchor] = useState<null | HTMLElement>(null);
   const navId = useId();
   const anchor = isRtl ? "right" : "left";
-  const langMenuOpen = Boolean(langAnchor);
 
   useEffect(() => {
     setNavOpen(false);
-    setLangAnchor(null);
   }, [pathname]);
 
   const meQuery = useQuery({
@@ -223,6 +218,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       apiGet<{ tier: "free" | "pro"; remainingCloudSlots: number }>(
         "/api/v1/billing/plan",
       ),
+    enabled: meQuery.isSuccess,
     staleTime: 60_000,
     retry: false,
   });
@@ -323,61 +319,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const langMenu = (menuId: string, opts?: { mobile?: boolean; tone?: NavTone }) => {
-    const tone = navChrome[opts?.tone ?? "dark"];
+    const toneKey = opts?.tone ?? "dark";
     return (
-      <>
-        <IconButton
-          size="small"
-          onClick={(e) => setLangAnchor(e.currentTarget)}
-          aria-label={t("nav.languages")}
-          aria-haspopup="menu"
-          aria-expanded={langMenuOpen}
-          aria-controls={langMenuOpen ? menuId : undefined}
-          sx={{ color: tone.accent }}
-        >
-          <LanguageOutlinedIcon fontSize="small" />
-        </IconButton>
-        <Menu
-          id={menuId}
-          anchorEl={langAnchor}
-          open={langMenuOpen}
-          onClose={() => setLangAnchor(null)}
-          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-          transformOrigin={{ vertical: "top", horizontal: "left" }}
-          PaperProps={{
-            sx: {
-              bgcolor: tone.bgcolor,
-              color: tone.color,
-              backdropFilter: "blur(12px)",
-              border: tone.border,
-            },
-          }}
-        >
-          {(["he", "en", "ar"] as const).map((code) => (
-            <MenuItem
-              key={code}
-              component={Link}
-              href={pathname}
-              locale={code}
-              selected={locale === code}
-              lang={code}
-              onClick={() => {
-                setLangAnchor(null);
-                if (opts?.mobile) setNavOpen(false);
-              }}
-              sx={{
-                color: tone.color,
-                "&.Mui-selected": {
-                  bgcolor: tone.selectedBg,
-                  color: tone.accent,
-                },
-              }}
-            >
-              {t(`a11y.lang.${code}`)}
-            </MenuItem>
-          ))}
-        </Menu>
-      </>
+      <LanguageSwitcher
+        tone={toneKey}
+        compact={opts?.mobile}
+        menuId={menuId}
+        onSelect={opts?.mobile ? () => setNavOpen(false) : undefined}
+      />
     );
   };
 

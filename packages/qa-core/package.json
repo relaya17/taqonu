@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@atlas/shared": "*"
+    "@atlas/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

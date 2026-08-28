@@ -1,15 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { MetricName } from "@atlas/observability";
 import { atlasMetrics } from "../routes/metrics.js";
 
-/**
- * "http_request_duration_ms" isn't part of the `MetricName` union that
- * packages/observability/src/metrics.ts currently exports (that package is
- * being extended separately this round to add it). We intentionally don't
- * touch that package here, so this cast documents the gap: once the metric
- * name lands upstream this can drop to a plain string literal.
- */
-const HTTP_REQUEST_DURATION_MS = "http_request_duration_ms" as MetricName;
+const HTTP_REQUEST_DURATION_MS = "http_request_duration_ms";
 
 declare module "fastify" {
   interface FastifyRequest {

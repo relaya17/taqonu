@@ -1,7 +1,7 @@
 "use client";
 
 import { createTheme, type Theme } from "@mui/material/styles";
-import { atlasChrome as c } from "@/styles/palette";
+import { atlasChrome as c, atlasStatus as status } from "@/styles/palette";
 
 export type AtlasColorMode = "light" | "dark";
 
@@ -32,20 +32,31 @@ export function createAtlasTheme(
         secondary: dark ? c.chrome : c.textSecondaryOnLight,
       },
       divider: dark ? c.border : "rgba(26, 28, 34, 0.14)",
-      success: { main: dark ? "#6BA88A" : "#3D7A5F" },
-      // contrastText forced to near-black: MUI's default contrastThreshold
-      // (3) picks white for both of these warning tones, but measured
-      // WCAG contrast is white-on-light(#9A7B3C)=3.98:1 and
-      // white-on-dark(#C4A35A)=2.40:1 — both fail the 4.5:1 AA minimum for
-      // normal text (confirmed by axe-core wcag22aa scan + manual luminance
-      // calculation). Black text passes strongly in both modes
-      // (5.27:1 light, 8.73:1 dark), so it's set explicitly here rather
-      // than relying on MUI's auto-selection.
-      warning: {
-        main: dark ? "#C4A35A" : "#9A7B3C",
-        contrastText: "#1A1C22",
+      // Soft semantic status colors — calm, professional, accessible
+      success: {
+        main: dark ? status.successMain : status.successDark,
+        light: status.successLight,
+        dark: status.successDark,
+        contrastText: dark ? "#FFFFFF" : status.successText,
       },
-      error: { main: dark ? "#E06B66" : "#B42318" },
+      warning: {
+        main: dark ? status.warningMain : status.warningDark,
+        light: status.warningLight,
+        dark: status.warningDark,
+        contrastText: status.warningText,
+      },
+      error: {
+        main: dark ? status.errorMain : status.errorDark,
+        light: status.errorLight,
+        dark: status.errorDark,
+        contrastText: status.errorText,
+      },
+      info: {
+        main: dark ? status.infoMain : status.infoDark,
+        light: status.infoLight,
+        dark: status.infoDark,
+        contrastText: status.infoText,
+      },
     },
     typography: {
       fontFamily:
@@ -213,6 +224,9 @@ export function createAtlasTheme(
         },
       },
       MuiAlert: {
+        defaultProps: {
+          variant: "standard",
+        },
         styleOverrides: {
           root: {
             flexDirection: "column",
@@ -221,6 +235,33 @@ export function createAtlasTheme(
             textAlign: "center",
             gap: 8,
             width: "100%",
+            borderRadius: 10,
+            border: "1px solid",
+            borderColor: "transparent",
+          },
+          standardSuccess: {
+            backgroundColor: status.successLight,
+            borderColor: `${status.successMain}33`,
+            color: status.successText,
+            "& .MuiAlert-icon": { color: status.successMain },
+          },
+          standardWarning: {
+            backgroundColor: status.warningLight,
+            borderColor: `${status.warningMain}33`,
+            color: status.warningText,
+            "& .MuiAlert-icon": { color: status.warningMain },
+          },
+          standardError: {
+            backgroundColor: status.errorLight,
+            borderColor: `${status.errorMain}33`,
+            color: status.errorDark,
+            "& .MuiAlert-icon": { color: status.errorMain },
+          },
+          standardInfo: {
+            backgroundColor: status.infoLight,
+            borderColor: `${status.infoMain}33`,
+            color: status.infoDark,
+            "& .MuiAlert-icon": { color: status.infoMain },
           },
           icon: {
             margin: 0,

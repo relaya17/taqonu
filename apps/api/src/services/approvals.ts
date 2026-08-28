@@ -37,6 +37,10 @@ export type CreateApprovalRequestInput = {
   artifactHash?: string | null;
   /** ISO datetime after which this approval can no longer be consumed. */
   expiresAt?: string | null;
+  /** Observations that must appear in tool output for VERIFIED. Locked at approval time. */
+  expectedObservations?: readonly string[];
+  /** Prior observations that must still hold after mutation. Locked at approval time. */
+  baselineObservations?: readonly string[];
 };
 
 export type DecideApprovalRequestInput = {
@@ -74,6 +78,8 @@ export function createApprovalRequest(
     context: input.context ?? {},
     artifactHash: input.artifactHash ?? null,
     expiresAt: input.expiresAt ?? null,
+    expectedObservations: input.expectedObservations ?? [],
+    baselineObservations: input.baselineObservations ?? [],
     revokedBy: null,
     revokedAt: null,
     revocationReason: null,
@@ -98,6 +104,9 @@ export function createApprovalRequest(
       // put in front of the approver, not merely that something was.
       artifactHash: request.artifactHash,
       expiresAt: request.expiresAt,
+      // Verification plan locked at approval time — cannot be changed at fulfill.
+      expectedObservations: request.expectedObservations,
+      baselineObservations: request.baselineObservations,
     },
     output: { status: request.status },
     policy: `${input.entityType}.${input.action}`,

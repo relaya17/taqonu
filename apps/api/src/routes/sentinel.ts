@@ -4,11 +4,15 @@
  */
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { uuidSchema } from "@atlas/shared";
+import { AtlasError, uuidSchema } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { runSentinelScan, verifySentinelFinding } from "@atlas/observer";
 import { resolveObserverWorkspace } from "../services/observe-cycle.js";
 import { proposeTruthFindingRemediation } from "../services/remediation-pipeline.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
 
 export async function registerSentinelRoutes(
   app: FastifyInstance,
@@ -16,6 +20,21 @@ export async function registerSentinelRoutes(
   app.post("/api/v1/projects/:id/sentinel/scan", async (request, reply) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
     await assertProjectWriteAccess(app, request, projectId);
+
+    // Entity-policy gate: security scan is CASE.EXECUTE (triggering analysis).
+    const entityDecision = authorizeEntityAction("CASE", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CASE.EXECUTE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000).optional() })
       .parse(request.body ?? {});
@@ -36,6 +55,7 @@ export async function registerSentinelRoutes(
 
   app.get("/api/v1/projects/:id/sentinel", async (request) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    await assertProjectReadAccess(app, request, projectId);
     const resolved = resolveObserverWorkspace({
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,

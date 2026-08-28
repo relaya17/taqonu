@@ -1,4 +1,5 @@
 import type { FabricAgentId } from "./agents.js";
+import type { KnowledgeSourceType } from "./authority.js";
 
 export const EXPERT_IDS = [
   "ENGINEERING",
@@ -12,6 +13,7 @@ export const EXPERT_IDS = [
   "CONTENT",
   "MOTION",
   "LEGAL_MEDIA",
+  "DATABASE",
 ] as const;
 
 export type ExpertId = (typeof EXPERT_IDS)[number];
@@ -22,6 +24,34 @@ export interface ExpertStyleLane {
   readonly titleHe: string;
   readonly titleAr: string;
   readonly focus: string;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Knowledge Pack — curated knowledge sources per expert (Expert Battle v1)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+export interface ExpertKnowledgeRef {
+  readonly title: string;
+  readonly url?: string;
+  readonly type: KnowledgeSourceType;
+  readonly topics: readonly string[];
+}
+
+export interface KnowledgePack {
+  /** Canonical technical books for this domain */
+  readonly books: readonly ExpertKnowledgeRef[];
+  /** Industry standards and specifications */
+  readonly standards: readonly ExpertKnowledgeRef[];
+  /** Official documentation sources */
+  readonly officialDocs: readonly ExpertKnowledgeRef[];
+  /** Academic research references */
+  readonly academicPapers?: readonly ExpertKnowledgeRef[];
+  /** Vulnerability/advisory sources (security-relevant) */
+  readonly advisories?: readonly ExpertKnowledgeRef[];
+  /** Official repositories/SDKs */
+  readonly sourceRepos?: readonly ExpertKnowledgeRef[];
+  /** Key learning questions this expert must answer */
+  readonly keyQuestions: readonly string[];
 }
 
 export interface ExpertDefinition {
@@ -44,6 +74,8 @@ export interface ExpertDefinition {
   readonly budgetHintEn: string;
   readonly budgetHintHe: string;
   readonly budgetHintAr: string;
+  /** Curated knowledge sources for this expert (Expert Battle v1) */
+  readonly knowledgePack: KnowledgePack;
 }
 
 export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
@@ -71,6 +103,35 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
     budgetHintEn: "Mid — architecture + code evidence",
     budgetHintHe: "בינוני — ארכיטקטורה + ראיות קוד",
     budgetHintAr: "متوسط — معمارية + أدلة شيفرة",
+    knowledgePack: {
+      books: [
+        { title: "Clean Architecture", url: "https://www.oreilly.com/library/view/clean-architecture/9780134494272/", type: "PROFESSIONAL_BOOKS", topics: ["architecture", "SOLID", "boundaries"] },
+        { title: "Designing Data-Intensive Applications", url: "https://dataintensive.net/", type: "PROFESSIONAL_BOOKS", topics: ["distributed systems", "data", "consistency"] },
+        { title: "Domain-Driven Design", url: "https://www.domainlanguage.com/ddd/", type: "PROFESSIONAL_BOOKS", topics: ["DDD", "bounded contexts", "aggregates"] },
+        { title: "Patterns of Enterprise Application Architecture", url: "https://martinfowler.com/books/eaa.html", type: "PROFESSIONAL_BOOKS", topics: ["patterns", "enterprise", "architecture"] },
+        { title: "Software Architecture: The Hard Parts", type: "PROFESSIONAL_BOOKS", topics: ["trade-offs", "microservices", "modularity"] },
+        { title: "Release It!", type: "PROFESSIONAL_BOOKS", topics: ["stability", "capacity", "resilience"] },
+      ],
+      standards: [
+        { title: "RFC Editor", url: "https://www.rfc-editor.org/", type: "STANDARDS", topics: ["protocols", "specifications"] },
+        { title: "CNCF", url: "https://www.cncf.io/", type: "STANDARDS", topics: ["cloud native", "kubernetes", "containers"] },
+      ],
+      officialDocs: [
+        { title: "Martin Fowler", url: "https://martinfowler.com/", type: "OFFICIAL_DOCUMENTATION", topics: ["architecture", "patterns", "refactoring"] },
+        { title: "AWS Architecture Center", url: "https://aws.amazon.com/architecture/", type: "OFFICIAL_DOCUMENTATION", topics: ["cloud", "AWS", "reference architectures"] },
+        { title: "Microsoft Architecture Center", url: "https://learn.microsoft.com/en-us/azure/architecture/", type: "OFFICIAL_DOCUMENTATION", topics: ["Azure", "patterns", "cloud"] },
+        { title: "Google Cloud Architecture Center", url: "https://cloud.google.com/architecture", type: "OFFICIAL_DOCUMENTATION", topics: ["GCP", "patterns", "best practices"] },
+      ],
+      academicPapers: [
+        { title: "ACM Digital Library", url: "https://dl.acm.org/", type: "ACADEMIC_PAPERS", topics: ["research", "algorithms", "systems"] },
+      ],
+      keyQuestions: [
+        "When are microservices a mistake?",
+        "What is the cost of this abstraction?",
+        "Where are the module boundaries?",
+        "What happens when this fails?",
+      ],
+    },
   },
   QA: {
     id: "QA",
@@ -95,6 +156,31 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
     budgetHintEn: "Low-mid — risk plan + suites",
     budgetHintHe: "נמוך-בינוני — תוכנית סיכון + suites",
     budgetHintAr: "منخفض-متوسط — خطة مخاطر + suites",
+    knowledgePack: {
+      books: [
+        { title: "Lessons Learned in Software Testing", type: "PROFESSIONAL_BOOKS", topics: ["testing", "QA", "lessons"] },
+        { title: "Agile Testing", type: "PROFESSIONAL_BOOKS", topics: ["agile", "testing", "automation"] },
+        { title: "Explore It!", type: "PROFESSIONAL_BOOKS", topics: ["exploratory testing", "heuristics"] },
+        { title: "How Google Tests Software", type: "PROFESSIONAL_BOOKS", topics: ["testing at scale", "automation", "quality"] },
+        { title: "The Art of Software Testing", type: "PROFESSIONAL_BOOKS", topics: ["fundamentals", "testing techniques"] },
+      ],
+      standards: [
+        { title: "ISTQB Foundation", url: "https://www.istqb.org/", type: "STANDARDS", topics: ["testing certification", "terminology", "processes"] },
+        { title: "ISO/IEC 29119", type: "STANDARDS", topics: ["testing standards", "test documentation"] },
+        { title: "IEEE 829", type: "STANDARDS", topics: ["test documentation", "plans", "reports"] },
+      ],
+      officialDocs: [
+        { title: "Testing Library", url: "https://testing-library.com/", type: "OFFICIAL_DOCUMENTATION", topics: ["component testing", "React", "DOM"] },
+        { title: "Playwright Docs", url: "https://playwright.dev/docs/intro", type: "OFFICIAL_DOCUMENTATION", topics: ["E2E", "browser testing", "automation"] },
+        { title: "Vitest Docs", url: "https://vitest.dev/", type: "OFFICIAL_DOCUMENTATION", topics: ["unit testing", "Vite", "TypeScript"] },
+      ],
+      keyQuestions: [
+        "What hasn't been tested?",
+        "What's the risk if this fails in production?",
+        "Can this test detect the bug it claims to prevent?",
+        "Is this a flaky test?",
+      ],
+    },
   },
   UI_UX: {
     id: "UI_UX",
@@ -145,6 +231,28 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
         focus: "Findability ≤2 taps, breadcrumbs, mobile drawer",
       },
     ],
+    knowledgePack: {
+      books: [
+        { title: "Don't Make Me Think", type: "PROFESSIONAL_BOOKS", topics: ["usability", "web design", "simplicity"] },
+        { title: "The Design of Everyday Things", type: "PROFESSIONAL_BOOKS", topics: ["design principles", "affordances", "mental models"] },
+        { title: "About Face", type: "PROFESSIONAL_BOOKS", topics: ["interaction design", "patterns", "goals"] },
+        { title: "Refactoring UI", type: "PROFESSIONAL_BOOKS", topics: ["visual design", "tactics", "practical"] },
+      ],
+      standards: [
+        { title: "Material Design", url: "https://m3.material.io/", type: "STANDARDS", topics: ["design system", "components", "patterns"] },
+        { title: "Apple HIG", url: "https://developer.apple.com/design/human-interface-guidelines/", type: "STANDARDS", topics: ["iOS", "macOS", "guidelines"] },
+        { title: "Nielsen Norman Group", url: "https://www.nngroup.com/articles/", type: "STANDARDS", topics: ["usability", "research", "heuristics"] },
+      ],
+      officialDocs: [
+        { title: "Figma Best Practices", url: "https://www.figma.com/best-practices/", type: "OFFICIAL_DOCUMENTATION", topics: ["Figma", "design", "collaboration"] },
+      ],
+      keyQuestions: [
+        "What is the user trying to accomplish?",
+        "Where will users get stuck?",
+        "What happens in the empty state?",
+        "Can this be done in fewer steps?",
+      ],
+    },
   },
   VISUAL_DESIGN: {
     id: "VISUAL_DESIGN",
@@ -218,6 +326,26 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
         focus: "CSS variables, state contrast, purposeful font pairing",
       },
     ],
+    knowledgePack: {
+      books: [
+        { title: "Thinking with Type", type: "PROFESSIONAL_BOOKS", topics: ["typography", "type design", "layout"] },
+        { title: "Grid Systems in Graphic Design", type: "PROFESSIONAL_BOOKS", topics: ["grids", "layout", "composition"] },
+        { title: "Logo Design Love", type: "PROFESSIONAL_BOOKS", topics: ["logos", "brand identity", "marks"] },
+      ],
+      standards: [
+        { title: "Brand Style Guides (various)", type: "STANDARDS", topics: ["brand", "guidelines", "consistency"] },
+      ],
+      officialDocs: [
+        { title: "Google Fonts", url: "https://fonts.google.com/", type: "OFFICIAL_DOCUMENTATION", topics: ["fonts", "typography", "web"] },
+        { title: "Adobe Color", url: "https://color.adobe.com/", type: "OFFICIAL_DOCUMENTATION", topics: ["color", "palettes", "harmony"] },
+      ],
+      keyQuestions: [
+        "Does the typography express brand personality?",
+        "Is there visual hierarchy?",
+        "Are the design tokens consistent?",
+        "What's the style direction?",
+      ],
+    },
   },
   ACCESSIBILITY: {
     id: "ACCESSIBILITY",
@@ -243,6 +371,29 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
     budgetHintEn: "Low — a11y scan",
     budgetHintHe: "נמוך — סריקת נגישות",
     budgetHintAr: "منخفض — فحص إتاحة",
+    knowledgePack: {
+      books: [
+        { title: "A Web for Everyone", type: "PROFESSIONAL_BOOKS", topics: ["inclusive design", "accessibility", "users"] },
+        { title: "Inclusive Design Patterns", type: "PROFESSIONAL_BOOKS", topics: ["patterns", "components", "accessibility"] },
+      ],
+      standards: [
+        { title: "WCAG 2.2", url: "https://www.w3.org/WAI/WCAG22/quickref/", type: "STANDARDS", topics: ["web accessibility", "guidelines", "criteria"] },
+        { title: "WAI-ARIA", url: "https://www.w3.org/WAI/standards-guidelines/aria/", type: "STANDARDS", topics: ["ARIA", "roles", "states"] },
+        { title: "Section 508", url: "https://www.section508.gov/", type: "STANDARDS", topics: ["US law", "compliance", "government"] },
+        { title: "EN 301 549", type: "STANDARDS", topics: ["EU", "ICT accessibility", "standard"] },
+      ],
+      officialDocs: [
+        { title: "MDN Accessibility", url: "https://developer.mozilla.org/en-US/docs/Web/Accessibility", type: "OFFICIAL_DOCUMENTATION", topics: ["web", "ARIA", "semantics"] },
+        { title: "WebAIM", url: "https://webaim.org/", type: "OFFICIAL_DOCUMENTATION", topics: ["testing", "resources", "training"] },
+        { title: "Deque University", url: "https://dequeuniversity.com/", type: "OFFICIAL_DOCUMENTATION", topics: ["training", "testing", "axe"] },
+      ],
+      keyQuestions: [
+        "Can this be used with keyboard only?",
+        "What does a screen reader announce?",
+        "Is the contrast sufficient?",
+        "Does this work RTL?",
+      ],
+    },
   },
   SECURITY: {
     id: "SECURITY",
@@ -281,10 +432,42 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
       "secret hygiene",
       "verified controls",
       "authz regression coverage",
-    ],    fabricAgentIds: ["SECURITY", "OMISSION_DETECTOR"],
+    ],
+    fabricAgentIds: ["SECURITY", "OMISSION_DETECTOR"],
     budgetHintEn: "Mid — threat + posture",
     budgetHintHe: "בינוני — איום + מצב",
     budgetHintAr: "متوسط — تهديد + وضع",
+    knowledgePack: {
+      books: [
+        { title: "The Web Application Hacker's Handbook", type: "PROFESSIONAL_BOOKS", topics: ["web security", "pentesting", "vulnerabilities"] },
+        { title: "Threat Modeling", type: "PROFESSIONAL_BOOKS", topics: ["threat modeling", "STRIDE", "risk"] },
+        { title: "Secure by Design", type: "PROFESSIONAL_BOOKS", topics: ["secure design", "patterns", "defense"] },
+        { title: "Cryptography Engineering", type: "PROFESSIONAL_BOOKS", topics: ["cryptography", "protocols", "implementation"] },
+      ],
+      standards: [
+        { title: "OWASP Top 10", url: "https://owasp.org/Top10/", type: "STANDARDS", topics: ["web vulnerabilities", "top risks"] },
+        { title: "OWASP ASVS", url: "https://owasp.org/www-project-application-security-verification-standard/", type: "STANDARDS", topics: ["verification", "security levels"] },
+        { title: "OWASP API Security", url: "https://owasp.org/www-project-api-security/", type: "STANDARDS", topics: ["API security", "REST", "GraphQL"] },
+        { title: "NIST Cybersecurity Framework", url: "https://www.nist.gov/cyberframework", type: "STANDARDS", topics: ["framework", "risk management"] },
+        { title: "MITRE ATT&CK", url: "https://attack.mitre.org/", type: "STANDARDS", topics: ["TTPs", "threats", "adversary"] },
+        { title: "CWE", url: "https://cwe.mitre.org/", type: "STANDARDS", topics: ["weaknesses", "vulnerabilities", "classification"] },
+      ],
+      officialDocs: [
+        { title: "CISA", url: "https://www.cisa.gov/", type: "OFFICIAL_DOCUMENTATION", topics: ["advisories", "US government"] },
+        { title: "GitHub Security Advisories", url: "https://github.com/advisories", type: "OFFICIAL_DOCUMENTATION", topics: ["npm", "dependencies", "CVEs"] },
+      ],
+      advisories: [
+        { title: "NVD", url: "https://nvd.nist.gov/", type: "CVE_ADVISORY", topics: ["CVEs", "CVSS", "vulnerabilities"] },
+        { title: "CVE.org", url: "https://cve.org/", type: "CVE_ADVISORY", topics: ["CVE IDs", "vulnerabilities"] },
+      ],
+      keyQuestions: [
+        "What is the threat model?",
+        "Who can access this and should they?",
+        "What happens if this secret leaks?",
+        "Is this input trusted or untrusted?",
+        "What does the attacker gain from this?",
+      ],
+    },
   },
   PRODUCT: {
     id: "PRODUCT",
@@ -309,6 +492,24 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
     budgetHintEn: "Low — scope guard",
     budgetHintHe: "נמוך — שמירת היקף",
     budgetHintAr: "منخفض — حراسة النطاق",
+    knowledgePack: {
+      books: [
+        { title: "Inspired", type: "PROFESSIONAL_BOOKS", topics: ["product management", "discovery", "teams"] },
+        { title: "The Lean Product Playbook", type: "PROFESSIONAL_BOOKS", topics: ["lean", "MVP", "validation"] },
+        { title: "Continuous Discovery Habits", type: "PROFESSIONAL_BOOKS", topics: ["discovery", "user research", "habits"] },
+        { title: "Shape Up", url: "https://basecamp.com/shapeup", type: "PROFESSIONAL_BOOKS", topics: ["shaping", "cycles", "basecamp"] },
+      ],
+      standards: [],
+      officialDocs: [
+        { title: "Product School Resources", url: "https://productschool.com/resources/", type: "OFFICIAL_DOCUMENTATION", topics: ["PM", "skills", "career"] },
+      ],
+      keyQuestions: [
+        "What user outcome does this enable?",
+        "What is explicitly out of scope?",
+        "Is this the smallest thing that tests the hypothesis?",
+        "What's the opportunity cost?",
+      ],
+    },
   },
   DEVOPS: {
     id: "DEVOPS",
@@ -333,6 +534,33 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
     budgetHintEn: "Mid — CI/deploy evidence",
     budgetHintHe: "בינוני — ראיות CI/פריסה",
     budgetHintAr: "متوسط — أدلة CI/نشر",
+    knowledgePack: {
+      books: [
+        { title: "The Phoenix Project", type: "PROFESSIONAL_BOOKS", topics: ["DevOps", "IT", "transformation"] },
+        { title: "Site Reliability Engineering", url: "https://sre.google/sre-book/table-of-contents/", type: "PROFESSIONAL_BOOKS", topics: ["SRE", "Google", "reliability"] },
+        { title: "The Site Reliability Workbook", url: "https://sre.google/workbook/table-of-contents/", type: "PROFESSIONAL_BOOKS", topics: ["SRE", "practical", "implementation"] },
+        { title: "Accelerate", type: "PROFESSIONAL_BOOKS", topics: ["DORA metrics", "performance", "research"] },
+        { title: "Infrastructure as Code", type: "PROFESSIONAL_BOOKS", topics: ["IaC", "automation", "Terraform"] },
+      ],
+      standards: [
+        { title: "DORA Metrics", url: "https://dora.dev/", type: "STANDARDS", topics: ["metrics", "performance", "DevOps"] },
+      ],
+      officialDocs: [
+        { title: "Docker Documentation", url: "https://docs.docker.com/", type: "OFFICIAL_DOCUMENTATION", topics: ["containers", "Docker", "images"] },
+        { title: "Kubernetes Documentation", url: "https://kubernetes.io/docs/", type: "OFFICIAL_DOCUMENTATION", topics: ["K8s", "orchestration", "containers"] },
+        { title: "Terraform Documentation", url: "https://developer.hashicorp.com/terraform/docs", type: "OFFICIAL_DOCUMENTATION", topics: ["IaC", "providers", "modules"] },
+        { title: "GitHub Actions Docs", url: "https://docs.github.com/en/actions", type: "OFFICIAL_DOCUMENTATION", topics: ["CI/CD", "workflows", "automation"] },
+      ],
+      sourceRepos: [
+        { title: "CNCF Projects", url: "https://www.cncf.io/projects/", type: "SOURCE_CODE", topics: ["cloud native", "open source"] },
+      ],
+      keyQuestions: [
+        "What happens if this deployment fails?",
+        "How do we rollback?",
+        "What are the SLIs/SLOs?",
+        "Is this change observable?",
+      ],
+    },
   },
   CONTENT: {
     id: "CONTENT",
@@ -373,6 +601,24 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
         focus: "What happened + what to do next",
       },
     ],
+    knowledgePack: {
+      books: [
+        { title: "Microcopy: The Complete Guide", type: "PROFESSIONAL_BOOKS", topics: ["microcopy", "UX writing", "UI text"] },
+        { title: "Nicely Said", type: "PROFESSIONAL_BOOKS", topics: ["content strategy", "writing", "voice"] },
+        { title: "Content Design", type: "PROFESSIONAL_BOOKS", topics: ["content design", "user-centered", "writing"] },
+      ],
+      standards: [],
+      officialDocs: [
+        { title: "Microsoft Style Guide", url: "https://learn.microsoft.com/en-us/style-guide/", type: "OFFICIAL_DOCUMENTATION", topics: ["style", "writing", "Microsoft"] },
+        { title: "Google Developer Style Guide", url: "https://developers.google.com/style", type: "OFFICIAL_DOCUMENTATION", topics: ["technical writing", "style", "Google"] },
+      ],
+      keyQuestions: [
+        "Does this copy help the user take action?",
+        "Is the tone consistent with the brand?",
+        "Does the translation preserve meaning (not just words)?",
+        "What happens in the error state?",
+      ],
+    },
   },
   MOTION: {
     id: "MOTION",
@@ -413,6 +659,25 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
         focus: "Approve/save/error transitions that communicate outcome",
       },
     ],
+    knowledgePack: {
+      books: [
+        { title: "Animation at Work", type: "PROFESSIONAL_BOOKS", topics: ["web animation", "UX", "motion"] },
+        { title: "Designing Interface Animation", type: "PROFESSIONAL_BOOKS", topics: ["UI animation", "meaningful motion"] },
+      ],
+      standards: [
+        { title: "WCAG 2.3 Seizures and Physical Reactions", url: "https://www.w3.org/WAI/WCAG21/Understanding/seizures-and-physical-reactions", type: "STANDARDS", topics: ["accessibility", "motion", "seizures"] },
+      ],
+      officialDocs: [
+        { title: "Material Design Motion", url: "https://m3.material.io/styles/motion/overview", type: "OFFICIAL_DOCUMENTATION", topics: ["motion principles", "Material", "easing"] },
+        { title: "Apple Motion Guidelines", url: "https://developer.apple.com/design/human-interface-guidelines/motion", type: "OFFICIAL_DOCUMENTATION", topics: ["iOS", "motion", "Apple"] },
+      ],
+      keyQuestions: [
+        "Does this motion clarify the state change?",
+        "What happens with prefers-reduced-motion?",
+        "Is this motion purposeful or decorative?",
+        "Does it compete with the primary action?",
+      ],
+    },
   },
   LEGAL_MEDIA: {
     id: "LEGAL_MEDIA",
@@ -492,5 +757,74 @@ export const EXPERT_CATALOG: Readonly<Record<ExpertId, ExpertDefinition>> = {
         focus: "Official US portals for counsel topics — not enforcement advice",
       },
     ],
+    knowledgePack: {
+      books: [],
+      standards: [
+        { title: "GDPR", url: "https://gdpr-info.eu/", type: "STANDARDS", topics: ["EU privacy", "data protection", "rights"] },
+        { title: "CCPA/CPRA", url: "https://oag.ca.gov/privacy/ccpa", type: "STANDARDS", topics: ["California", "privacy", "consumer rights"] },
+      ],
+      officialDocs: [
+        { title: "EUR-Lex", url: "https://eur-lex.europa.eu/", type: "OFFICIAL_DOCUMENTATION", topics: ["EU law", "regulations", "directives"] },
+        { title: "FTC", url: "https://www.ftc.gov/", type: "OFFICIAL_DOCUMENTATION", topics: ["US consumer protection", "advertising", "privacy"] },
+        { title: "ICO (UK)", url: "https://ico.org.uk/", type: "OFFICIAL_DOCUMENTATION", topics: ["UK privacy", "GDPR", "guidance"] },
+        { title: "Israeli Privacy Protection Authority", url: "https://www.gov.il/he/departments/privacy", type: "OFFICIAL_DOCUMENTATION", topics: ["Israel", "privacy", "databases"] },
+      ],
+      keyQuestions: [
+        "Is this a legal question or an engineering question?",
+        "Where does this need lawyer review?",
+        "What jurisdiction applies?",
+        "What's the user-facing disclosure requirement?",
+      ],
+    },
+  },
+  DATABASE: {
+    id: "DATABASE",
+    titleEn: "Database Engineering",
+    titleHe: "הנדסת מסדי נתונים",
+    titleAr: "هندسة قواعد البيانات",
+    focus: "Schema design, queries, indexes, transactions, replication, consistency",
+    checklist: [
+      "Schema normalized appropriately",
+      "Indexes support query patterns",
+      "Transactions handle failures",
+      "Connection pooling configured",
+      "Migrations reversible",
+      "Backup/recovery tested",
+      "RLS policies verified",
+    ],
+    systemDiscipline:
+      "You are the Database expert. Optimize for correctness first, then performance. Never sacrifice data integrity for speed. Query plans are evidence.",
+    domain: "database",
+    requiredEvidence: ["schema", "query plans", "indexes"],
+    forbiddenAssumptions: ["production data matches test data distribution"],
+    evaluationCriteria: ["query performance", "data integrity", "backup coverage"],
+    fabricAgentIds: ["ARCHITECT", "CODE_ENGINEER", "SECURITY"],
+    budgetHintEn: "Mid — schema + query analysis",
+    budgetHintHe: "בינוני — ניתוח סכמה ושאילתות",
+    budgetHintAr: "متوسط — تحليل المخطط والاستعلامات",
+    knowledgePack: {
+      books: [
+        { title: "Designing Data-Intensive Applications", url: "https://dataintensive.net/", type: "PROFESSIONAL_BOOKS", topics: ["distributed data", "consistency", "replication"] },
+        { title: "Database Internals", type: "PROFESSIONAL_BOOKS", topics: ["storage engines", "B-trees", "LSM"] },
+        { title: "SQL Antipatterns", type: "PROFESSIONAL_BOOKS", topics: ["SQL", "mistakes", "patterns"] },
+        { title: "SQL Performance Explained", url: "https://sql-performance-explained.com/", type: "PROFESSIONAL_BOOKS", topics: ["indexes", "query plans", "optimization"] },
+        { title: "High Performance MySQL", type: "PROFESSIONAL_BOOKS", topics: ["MySQL", "optimization", "scaling"] },
+      ],
+      standards: [
+        { title: "SQL Standard (ISO/IEC 9075)", type: "STANDARDS", topics: ["SQL", "standard", "syntax"] },
+      ],
+      officialDocs: [
+        { title: "PostgreSQL Documentation", url: "https://www.postgresql.org/docs/current/", type: "OFFICIAL_DOCUMENTATION", topics: ["PostgreSQL", "SQL", "features"] },
+        { title: "MySQL Documentation", url: "https://dev.mysql.com/doc/", type: "OFFICIAL_DOCUMENTATION", topics: ["MySQL", "InnoDB", "replication"] },
+        { title: "Redis Documentation", url: "https://redis.io/docs/", type: "OFFICIAL_DOCUMENTATION", topics: ["Redis", "caching", "data structures"] },
+        { title: "MongoDB Documentation", url: "https://www.mongodb.com/docs/", type: "OFFICIAL_DOCUMENTATION", topics: ["MongoDB", "NoSQL", "aggregation"] },
+      ],
+      keyQuestions: [
+        "What's the query plan?",
+        "What happens when this transaction fails?",
+        "How does this scale with data growth?",
+        "Is this index actually used?",
+      ],
+    },
   },
 };

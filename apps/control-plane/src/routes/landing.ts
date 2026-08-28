@@ -518,7 +518,8 @@ export function getLandingHtml(): string {
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
       <li><a href="/dashboard">Dashboard</a></li>
-      <li><a href="http://localhost:3000" target="_blank">Engineering</a></li>
+      <li><a href="http://localhost:3000" target="_blank" rel="noopener">Atlas</a></li>
+      <li><a href="http://127.0.0.1:3200" target="_blank" rel="noopener">Owner Admin</a></li>
       <li><a href="#register" class="nav-cta">Register</a></li>
     </ul>
   </nav>
@@ -646,7 +647,8 @@ export function getLandingHtml(): string {
     <ul class="footer-links">
       <li><a href="/dashboard">Dashboard</a></li>
       <li><a href="/api/v1/status">API Status</a></li>
-      <li><a href="http://localhost:3000" target="_blank">Engineering Surface</a></li>
+      <li><a href="http://localhost:3000" target="_blank" rel="noopener">Atlas</a></li>
+      <li><a href="http://127.0.0.1:3200" target="_blank" rel="noopener">Owner Admin</a></li>
     </ul>
     <p>&copy; 2026 Atlas Sentinel. AI Governance &amp; Oversight Platform.</p>
   </footer>

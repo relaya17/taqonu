@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   authorizeToolCall,
   buildAgentContext,
+  buildLayeredSystemPrompt,
   buildPortfolioContextBlocks,
   classifyIntent,
   completeWithFreeFallback,
@@ -247,8 +248,8 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         ),
       ].join("\n");
 
-      const system = redactSecrets(
-        [
+      const layered = buildLayeredSystemPrompt({
+        instructions: [
           "You are the ArletOS Engineering + QA Intelligence OS agent.",
           "Use only retrieved context and cited verified sources. Label FACT vs INFERRED vs PROPOSED.",
           "For languages (JS/TS/Python/Java/C++/C#/Go/Rust), UI, game engines, and cybersecurity: cite official docs from the evidence block (MDN, ECMA, python.org, Oracle, cppreference, Unity/Unreal/Godot, OWASP, NIST, CISA).",
@@ -262,12 +263,19 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
           SENTINEL_AGENT_KNOWLEDGE,
           "",
           expertBlock,
-          "",
-          evidenceBlock,
-          "",
-          context,
         ].join("\n"),
-      );
+        untrustedBlocks: [
+          { label: "evidence", content: evidenceBlock },
+          { label: "context", content: context },
+        ],
+      });
+      if (layered.flagged) {
+        app.atlasLogger.warn("agent_prompt_injection_flagged", {
+          labels: layered.findings.map((f) => f.label),
+          patternNames: layered.findings.flatMap((f) => [...f.patternNames]),
+        });
+      }
+      const system = redactSecrets(layered.systemContent);
       const userRequest = redactedUserRequest;
       assertNoSecrets(system, "llm.system");
       assertNoSecrets(userRequest, "llm.user");

@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { ServerEnv } from "@atlas/config";
 import { createLogger } from "@atlas/observability";
@@ -52,9 +53,12 @@ import { registerSecuritySarifRoutes } from "./routes/security-sarif.js";
 import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { registerObserverRoutes } from "./routes/observer.js";
 import { registerSentinelRoutes } from "./routes/sentinel.js";
+import { registerPerformanceRoutes } from "./routes/performance.js";
+import { registerIntelligenceRoutes } from "./routes/intelligence.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { isPublicAtlasRoute } from "./middleware/public-routes.js";
 import { requireUser } from "./middleware/auth-guards.js";
+import { registerRequestTiming } from "./middleware/request-timing.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { registerEventRules } from "./services/event-rules.js";
@@ -81,6 +85,13 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
     },
     credentials: true,
   });
+
+  await app.register(rateLimit, {
+    max: 300,
+    timeWindow: "1 minute",
+  });
+
+  registerRequestTiming(app);
 
   app.setErrorHandler(errorHandler);
   app.decorate("atlasEnv", env);
@@ -169,6 +180,8 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerGatewayFulfillRoutes(app);
   await registerObserverRoutes(app);
   await registerSentinelRoutes(app);
+  await registerPerformanceRoutes(app);
+  await registerIntelligenceRoutes(app);
 
   void maybeRefreshVerifiedKnowledge({ env }).catch((err) => {
     logger.warn("knowledge_refresh_boot_failed", {

@@ -1,0 +1,172 @@
+---
+description: Atlas verification methodology - how to evaluate claims and make changes
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.md"
+  - "**/remaining-work.md"
+  - "**/docs/**"
+alwaysApply: true
+---
+
+# ATLAS VERIFICATION METHODOLOGY
+
+## CORE PRINCIPLE
+
+**Atlas is designed around truth. The verification process must follow the same principle.**
+
+```
+INTENT ≠ IMPLEMENTATION
+IMPLEMENTATION ≠ REACHABILITY
+REACHABILITY ≠ ENFORCEMENT
+ENFORCEMENT ≠ TEST COVERAGE
+TEST COVERAGE ≠ PRODUCTION PROOF
+```
+
+Only claim what the evidence supports.
+
+---
+
+## BEFORE MAKING CHANGES
+
+### 1. Understand the Claim
+
+Ask: What does the README / ADR / strategy say should happen?
+
+### 2. Verify Implementation
+
+Ask: What does the source code actually implement?
+
+### 3. Trace Reachability
+
+Ask: Can the actual application reach that implementation?
+
+For important functionality, trace:
+```
+UI → API → service → governed execution → persistence → evidence/audit
+```
+
+### 4. Check Enforcement
+
+Ask: Are bypasses prevented? Is there another endpoint that skips the control?
+
+### 5. Review Tests
+
+Ask: Do automated tests exercise this path?
+
+### 6. Assess Evidence
+
+Ask: Is the evidence strong enough to claim the behavior?
+
+---
+
+## SEPARATION RULES
+
+### A. PRODUCT TRUTH vs ENGINEERING
+
+- README defines what Atlas **should** do
+- Source code determines what is **actually** implemented
+- A README statement does NOT prove the implementation works
+- Verify actual paths, not just function names
+
+### B. CURRENT CLOSURE vs DEFERRED WORK
+
+- `remaining-work.md` defines current 01–19 work
+- Do NOT mix with gap-analysis roadmap
+- Do NOT automatically implement roadmap items
+
+### C. IMPLEMENTED vs NOT CLAIMED
+
+- "Implemented" = code exists and is reachable
+- "Not claimed" = intentional limitation, not a bug
+- Never convert a product score into a technical verification claim
+
+---
+
+## WHEN EVALUATING A CLAIM
+
+For every important claim, determine:
+
+| Level | Question |
+|-------|----------|
+| INTENDED | What should happen? |
+| IMPLEMENTED | What does the code do? |
+| REACHABLE | Can the app reach it? |
+| ENFORCED | Are bypasses blocked? |
+| TESTED | Do tests cover it? |
+| VERIFIED | Is evidence sufficient? |
+
+Use `NOT VERIFIED` when evidence is insufficient.
+
+---
+
+## WHEN MAKING CHANGES
+
+### Do:
+- Verify against actual code paths, not just documentation
+- Check if the change introduces bypasses
+- Ensure tests cover the new behavior
+- Update `remaining-work.md` to reflect reality
+- Keep closure work separate from roadmap items
+
+### Don't:
+- Make Atlas "look complete" by claiming unverified features
+- Implement gap-analysis items as part of closure
+- Change architecture without understanding impact
+- Assume a route existing proves the feature works
+- Convert operator ratings (9/10) to verification claims
+
+---
+
+## OUTPUT FORMAT
+
+When reporting on Atlas work, separate findings into:
+
+1. **VERIFIED** — Actually verified (code + tests + reachable)
+2. **IMPLEMENTED / NOT FULLY VERIFIED** — Code exists, evidence incomplete
+3. **STILL OPEN** — Real remaining work
+4. **NOT CLAIMED** — Intentional limitations
+5. **DEFERRED** — Not part of current scope
+6. **GAP ANALYSIS** — Separate roadmap items
+
+---
+
+## ARCHITECTURAL BOUNDARIES
+
+### Connector Boundary
+- Atlas observes from outside through connectors
+- Atlas is NOT embedded in every connected application
+- Workers (Cursor, Claude Code) remain workers
+- Atlas remains: Truth + QA + Governance + Control
+
+### Storage Boundary
+- Customer source code stays in customer's workspace/Git
+- Atlas does not train across tenants
+- Do not assume Atlas hosts all customer code
+
+### Trust Planes (ADR-021)
+- PUBLIC
+- USER PLANE (`apps/web` + tenant API)
+- CONTROL PLANE (`apps/admin` :3200 + `apps/control-plane` :3100)
+
+Do not merge these into a single port or Vercel project.
+
+---
+
+## ATLAS SELF-GOVERNANCE
+
+Atlas itself is a Managed System: `DEF-000`
+
+This means:
+- Atlas must be capable of auditing itself
+- Self-audit findings are `autoApply: false`
+- Canonical audit is API NDJSON, not CP in-memory
+
+---
+
+## REFERENCE DOCUMENTS
+
+- `docs/architecture/remaining-work.md` — Current closure scope
+- `atlas-gap-analysis-staged-roadmap.md` — Separate roadmap (do not merge)
+- ADR-014, ADR-015, ADR-016, ADR-019, ADR-020, ADR-021 — Normative architecture
+- `docs/architecture/managed-system.md` — What a Managed System is

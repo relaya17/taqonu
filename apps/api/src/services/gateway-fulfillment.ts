@@ -22,6 +22,7 @@ import {
   verificationVerdictFromOutcome,
   type VerificationVerdict,
 } from "./verification.js";
+import { getApprovalRequest } from "./approvals.js";
 
 export interface GatewayHandoff {
   readonly sessionOwnerId: string;
@@ -87,6 +88,7 @@ export async function fulfillGatewayHandoff(
     fabricAgentId: handoff.agentId,
     sessionOwnerId: handoff.sessionOwnerId,
     projectId: handoff.projectId,
+    trustLevel: "FULL",
   });
 
   const artifact =
@@ -97,10 +99,20 @@ export async function fulfillGatewayHandoff(
       agentId: handoff.agentId,
       toolName: mapping.toolName,
     });
+
+  // When an approval exists, use its locked verification plan — caller cannot override.
+  const approval = handoff.approvalRequestId
+    ? getApprovalRequest(handoff.approvalRequestId)
+    : undefined;
+  const expectedObservations =
+    approval?.expectedObservations ?? handoff.expectedObservations ?? [];
+  const baselineObservations =
+    approval?.baselineObservations ?? handoff.baselineObservations ?? [];
+
   const expected = captureExpectedState({
     artifactHash: computeArtifactHash(artifact),
     toolName: mapping.toolName,
-    expectedObservations: handoff.expectedObservations,
+    expectedObservations,
   });
 
   const outcome = await executeGovernedAction({
@@ -135,7 +147,7 @@ export async function fulfillGatewayHandoff(
         detail: `Not executed: ${outcome.stage}/${outcome.status}`,
       };
   const regression = assessRegression({
-    baselineObservations: handoff.baselineObservations ?? [],
+    baselineObservations,
     actualOutput: outcome.status === "EXECUTED" ? outcome.output : "",
     executed,
   });

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { parseEvidenceRecord, uuidSchema } from "@atlas/shared";
+import { AtlasError, parseEvidenceRecord, uuidSchema } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import {
   summarizeSupabaseFeed,
   supabaseFeedInputSchema,
@@ -12,7 +13,10 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { runStateReconciliation } from "../services/state-reconciliation.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
 
 /**
  * Customer Mongo/Supabase as **observation feeds** → DATABASE evidence.
@@ -22,6 +26,21 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
   app.post("/api/v1/feeds/supabase", async (request, reply) => {
     const body = supabaseFeedInputSchema.parse(request.body);
     await assertProjectWriteAccess(app, request, body.projectId);
+
+    // Entity-policy gate: DB feed creates CONFIGURATION evidence.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeSupabaseFeed(body);
     const now = new Date().toISOString();
@@ -73,6 +92,21 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
   app.post("/api/v1/feeds/mongodb", async (request, reply) => {
     const body = mongoFeedInputSchema.parse(request.body);
     await assertProjectWriteAccess(app, request, body.projectId);
+
+    // Entity-policy gate: DB feed creates CONFIGURATION evidence.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const { ownerId } = await resolveCloudIdentity(app, request);
     const summarized = summarizeMongoFeed(body);
     const now = new Date().toISOString();
@@ -122,6 +156,7 @@ export async function registerDbFeedRoutes(app: FastifyInstance): Promise<void> 
 
   app.get("/api/v1/feeds/:projectId", async (request) => {
     const params = z.object({ projectId: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.projectId);
     return {
       items: osStore.getDbFeeds(params.projectId),
       deployment: osStore.getDeployFeeds(params.projectId),

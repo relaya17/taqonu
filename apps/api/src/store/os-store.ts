@@ -141,6 +141,50 @@ interface PersistedShape {
   conversationThreads?: Record<string, ConversationThreadTurn[]>;
   /** Customer BYO cloud bindings (Cloudflare-first). Keyed by ownerId. */
   byoCloudBindings?: Record<string, StoredByoCloudBinding>;
+  /** Stage 19: Hypothesis engine storage. Keyed by hypothesis id. */
+  hypotheses?: Record<string, StoredHypothesis>;
+  /** Stage 19: Golden projects registry. Keyed by project id. */
+  goldenProjects?: Record<string, StoredGoldenProject>;
+}
+
+/** Stage 19: Stored hypothesis record. */
+export interface StoredHypothesis {
+  id: string;
+  projectId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  status: string;
+  statement: string;
+  domain: string;
+  verificationCriteria: string[];
+  supportingEvidenceIds: string[];
+  contradictingEvidenceIds: string[];
+  confidence: number;
+  tags: string[];
+  parentId: string | null;
+}
+
+/** Stage 19: Stored golden project record. */
+export interface StoredGoldenProject {
+  id: string;
+  name: string;
+  description: string;
+  rootPath: string;
+  status: string;
+  goldenReason: string;
+  domains: string[];
+  qualityScores: {
+    codeQuality: number;
+    testCoverage: number;
+    documentation: number;
+    security: number;
+    maintainability: number;
+  };
+  lastAnalyzedAt: string | null;
+  evidenceIds: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ConversationThreadTurn {
@@ -256,6 +300,8 @@ function emptyShape(): PersistedShape {
     conversationThreads: {},
     byoCloudBindings: {},
     exemplars: [],
+    hypotheses: {},
+    goldenProjects: {},
   };
 }
 
@@ -299,6 +345,8 @@ class OsStore {
   private conversationThreads = new Map<string, ConversationThreadTurn[]>();
   private byoCloudBindings = new Map<string, StoredByoCloudBinding>();
   private exemplars: ExemplarRecord[] = [];
+  private hypotheses = new Map<string, StoredHypothesis>();
+  private goldenProjects = new Map<string, StoredGoldenProject>();
   private loaded = false;
 
   ensureLoaded(): void {
@@ -401,6 +449,8 @@ class OsStore {
       Object.entries(raw.conversationThreads ?? {}),
     );
     this.byoCloudBindings = new Map(Object.entries(raw.byoCloudBindings ?? {}));
+    this.hypotheses = new Map(Object.entries(raw.hypotheses ?? {}));
+    this.goldenProjects = new Map(Object.entries(raw.goldenProjects ?? {}));
   }
 
   persist(): void {
@@ -447,6 +497,8 @@ class OsStore {
       workspaceRoots: this.workspaceRoots,
       conversationThreads: Object.fromEntries(this.conversationThreads),
       byoCloudBindings: Object.fromEntries(this.byoCloudBindings),
+      hypotheses: Object.fromEntries(this.hypotheses),
+      goldenProjects: Object.fromEntries(this.goldenProjects),
     };
     atomicWriteStoreFile(path, JSON.stringify(shape, null, 2));
   }
@@ -1342,6 +1394,60 @@ class OsStore {
     this.exemplars = this.exemplars.filter((item) => item.id !== id);
     this.persist();
     return true;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Stage 19: Hypothesis Engine
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  getHypothesis(id: string): StoredHypothesis | undefined {
+    this.ensureLoaded();
+    return this.hypotheses.get(id);
+  }
+
+  setHypothesis(hypothesis: StoredHypothesis): void {
+    this.ensureLoaded();
+    this.hypotheses.set(hypothesis.id, hypothesis);
+    this.persist();
+  }
+
+  listHypotheses(): StoredHypothesis[] {
+    this.ensureLoaded();
+    return [...this.hypotheses.values()];
+  }
+
+  deleteHypothesis(id: string): boolean {
+    this.ensureLoaded();
+    const existed = this.hypotheses.delete(id);
+    if (existed) this.persist();
+    return existed;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Stage 19: Golden Projects Registry
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  getGoldenProject(id: string): StoredGoldenProject | undefined {
+    this.ensureLoaded();
+    return this.goldenProjects.get(id);
+  }
+
+  setGoldenProject(project: StoredGoldenProject): void {
+    this.ensureLoaded();
+    this.goldenProjects.set(project.id, project);
+    this.persist();
+  }
+
+  listGoldenProjects(): StoredGoldenProject[] {
+    this.ensureLoaded();
+    return [...this.goldenProjects.values()];
+  }
+
+  deleteGoldenProject(id: string): boolean {
+    this.ensureLoaded();
+    const existed = this.goldenProjects.delete(id);
+    if (existed) this.persist();
+    return existed;
   }
 
   /**

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { authorizeAdminRequest } from "./admin-auth.js";
 import { renderOwnerHtml } from "./owner-html.js";
 
-const PORT = parseInt(process.env["PORT"] ?? "3200", 10);
+const PORT = parseInt(process.env["ADMIN_PORT"] ?? "3200", 10);
 const HOST = process.env["HOST"] ?? "127.0.0.1";
 const CONTROL_API =
   (process.env["ATLAS_CONTROL_PLANE_URL"] ?? "http://127.0.0.1:3100").replace(

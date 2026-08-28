@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
+    "dev": "node scripts/dev-surfaces.mjs",
+    "dev:all": "turbo run dev --parallel --ui=stream",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
@@ -26,7 +27,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rimraf node_modules",
-    "turbo": "turbo"
+    "turbo": "turbo",
+    "sbom:generate": "tsx scripts/generate-sbom.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

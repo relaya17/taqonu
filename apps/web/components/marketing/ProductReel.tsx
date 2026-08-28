@@ -3,6 +3,7 @@
 import { Box, Button, Stack, Typography } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { ClientOnly } from "@/components/layout/ClientOnly";
 
 /** Default cinematic promo — override with NEXT_PUBLIC_MARKETING_VIDEO_URL. */
 const DEFAULT_PROMO_VIDEO =
@@ -97,64 +98,67 @@ export function ProductReel({
         }}
       />
 
-      {phase === "playing" ? (
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            position: "absolute",
-            bottom: { xs: 16, md: 24 },
-            insetInlineEnd: { xs: 16, md: 24 },
-            zIndex: 3,
-          }}
-        >
-          <Button
-            size="small"
-            onClick={() => setMuted((m) => !m)}
+      <ClientOnly noPlaceholder>
+        {phase === "playing" ? (
+          <Stack
+            direction="row"
+            spacing={1}
             sx={{
-              color: "#DCDDE1",
-              bgcolor: "rgba(14,17,22,0.65)",
-              border: "1px solid rgba(154,158,168,0.35)",
-              fontWeight: 600,
-              "&:hover": { bgcolor: "rgba(14,17,22,0.85)" },
+              position: "absolute",
+              bottom: { xs: 16, md: 24 },
+              insetInlineEnd: { xs: 16, md: 24 },
+              zIndex: 3,
             }}
           >
-            {muted ? t("promoUnmute") : t("promoMute")}
-          </Button>
-          <Button
-            size="small"
-            onClick={() => setPromoPhase("ended")}
-            sx={{
-              color: "#DCDDE1",
-              bgcolor: "rgba(14,17,22,0.65)",
-              border: "1px solid rgba(154,158,168,0.35)",
-              fontWeight: 600,
-              "&:hover": { bgcolor: "rgba(14,17,22,0.85)" },
-            }}
-          >
-            {t("promoSkip")}
-          </Button>
-        </Stack>
-      ) : null}
+            <Button
+              size="small"
+              onClick={() => setMuted((m) => !m)}
+              sx={{
+                color: "#DCDDE1",
+                bgcolor: "rgba(14,17,22,0.65)",
+                border: "1px solid rgba(154,158,168,0.35)",
+                fontWeight: 600,
+                "&:hover": { bgcolor: "rgba(14,17,22,0.85)" },
+              }}
+            >
+              {muted ? t("promoUnmute") : t("promoMute")}
+            </Button>
+            <Button
+              size="small"
+              onClick={() => setPromoPhase("ended")}
+              sx={{
+                color: "#DCDDE1",
+                bgcolor: "rgba(14,17,22,0.65)",
+                border: "1px solid rgba(154,158,168,0.35)",
+                fontWeight: 600,
+                "&:hover": { bgcolor: "rgba(14,17,22,0.85)" },
+              }}
+            >
+              {t("promoSkip")}
+            </Button>
+          </Stack>
+        ) : null}
+      </ClientOnly>
 
-      {showEnd ? (
-        <Stack
-          spacing={2.5}
-          alignItems="center"
-          justifyContent="center"
-          sx={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 4,
-            px: 3,
-            textAlign: "center",
-            animation: "promoEndIn 0.55s ease-out",
-            "@keyframes promoEndIn": {
-              from: { opacity: 0, transform: "translateY(18px)" },
-              to: { opacity: 1, transform: "translateY(0)" },
-            },
-          }}
-        >
+      <ClientOnly noPlaceholder>
+        {showEnd ? (
+          <Stack
+            spacing={2.5}
+            alignItems="center"
+            justifyContent="center"
+            sx={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 4,
+              px: 3,
+              textAlign: "center",
+              animation: "promoEndIn 0.55s ease-out",
+              "@keyframes promoEndIn": {
+                from: { opacity: 0, transform: "translateY(18px)" },
+                to: { opacity: 1, transform: "translateY(0)" },
+              },
+            }}
+          >
           <Stack
             spacing={2.5}
             alignItems="center"
@@ -260,6 +264,7 @@ export function ProductReel({
           </Stack>
         </Stack>
       ) : null}
+      </ClientOnly>
     </Box>
   );
 }

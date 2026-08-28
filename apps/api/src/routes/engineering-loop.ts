@@ -15,6 +15,7 @@ import {
   runProofRequestSchema,
   uuidSchema,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import {
   classifyAction,
   compareSuiteRuns,
@@ -32,7 +33,12 @@ import { tryPersistDecisionToSupabase } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+} from "../services/project-access.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import {
   buildAtlasVerdict,
@@ -51,21 +57,50 @@ export async function registerEngineeringLoopRoutes(
     return classifyActionResultSchema.parse(classifyAction(body.userRequest));
   });
 
-  app.get("/api/v1/engineering/loop", async () => {
-    const items = osStore.listLoopRuns();
+  app.get("/api/v1/engineering/loop", async (request) => {
+    const user = await requireUser(app, request);
+    const items = osStore
+      .listLoopRuns()
+      .filter((run) => canReadProjectScoped(user, run.projectId));
     return { items, total: items.length };
   });
 
   app.get("/api/v1/engineering/loop/:id", async (request, reply) => {
+    const user = await requireUser(app, request);
     const id = (request.params as { id: string }).id;
     const run = osStore.getLoopRun(id);
     if (!run) return reply.status(404).send({ error: { message: "Not found" } });
+    if (!canReadProjectScoped(user, run.projectId)) {
+      return reply.status(404).send({ error: { message: "Not found" } });
+    }
     return run;
   });
 
   app.post("/api/v1/engineering/loop", async (request, reply) => {
     osStore.ensureLoaded();
     const body = startEngineeringLoopSchema.parse(request.body);
+
+    // Auth: if projectId given, check project write access; otherwise require signed in.
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    } else {
+      await requireSignedInForWrite(app, request);
+    }
+
+    // Entity-policy gate: engineering loop is RECORD.EXECUTE.
+    const entityDecision = authorizeEntityAction("RECORD", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "RECORD.EXECUTE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const loop = runEngineeringLoop({
       workspaceRoot:
         body.workspaceRoot ||
@@ -161,6 +196,27 @@ export async function registerEngineeringLoopRoutes(
     if (!existing) {
       throw new AtlasError("NOT_FOUND", "Loop run not found");
     }
+    // Tenant check: caller must own the project this loop belongs to.
+    if (existing.projectId) {
+      await assertProjectWriteAccess(app, request, existing.projectId);
+    } else if (!canReadProjectScoped(user, existing.projectId)) {
+      throw new AtlasError("FORBIDDEN", "Access denied", { statusCode: 403 });
+    }
+
+    // Entity-policy gate: approve is RECORD.EXECUTE.
+    const entityDecision = authorizeEntityAction("RECORD", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "RECORD.EXECUTE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     if (existing.status !== "AWAITING_APPROVAL") {
       throw new AtlasError(
         "VALIDATION_ERROR",
@@ -361,8 +417,11 @@ export async function registerEngineeringLoopRoutes(
     return { items, total: items.length, evalsRoot: evalsRoot() };
   });
 
-  app.get("/api/v1/benchmarks/suites", async () => {
-    const items = osStore.listEvalSuites();
+  app.get("/api/v1/benchmarks/suites", async (request) => {
+    const user = await requireUser(app, request);
+    const items = osStore
+      .listEvalSuites()
+      .filter((suite) => canReadProjectScoped(user, suite.projectId));
     return { items, total: items.length };
   });
 
@@ -403,11 +462,17 @@ export async function registerEngineeringLoopRoutes(
   });
 
   app.post("/api/v1/benchmarks/regression", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
     const body = regressionCompareSchema.parse(request.body);
     const previous = osStore.getEvalSuite(body.previousSuiteId);
     const current = osStore.getEvalSuite(body.currentSuiteId);
     if (!previous || !current) {
       throw new AtlasError("NOT_FOUND", "Suite not found");
+    }
+    // Tenant check: both suites must be accessible to the caller.
+    if (!canReadProjectScoped(user, previous.projectId) ||
+        !canReadProjectScoped(user, current.projectId)) {
+      throw new AtlasError("FORBIDDEN", "Access denied", { statusCode: 403 });
     }
     const report = compareSuiteRuns(previous, current);
     osStore.addRegressionReport(report);
@@ -505,7 +570,11 @@ export async function registerEngineeringLoopRoutes(
         : report.evidenceReportMarkdown,
     });
 
-    osStore.setMeta("lastProofReport", JSON.stringify(final));
+    // Namespace proof reports per-project instead of sharing a global slot.
+    const metaKey = projectId
+      ? `lastProofReport:${projectId}`
+      : "lastProofReport:global";
+    osStore.setMeta(metaKey, JSON.stringify(final));
     osStore.appendAudit({
       type: "proof.golden.completed",
       proofId: final.id,
@@ -530,9 +599,23 @@ export async function registerEngineeringLoopRoutes(
     return reply.status(201).send(final);
   });
 
-  app.get("/api/v1/proof/status", async () => {
+  app.get("/api/v1/proof/status", async (request) => {
+    const user = await requireUser(app, request);
+    const q = z
+      .object({ projectId: uuidSchema.optional() })
+      .parse(request.query ?? {});
+
+    // If projectId is given, check access; otherwise show global status.
+    if (q.projectId) {
+      await assertProjectReadAccess(app, request, q.projectId);
+    }
+
     osStore.ensureLoaded();
-    const raw = osStore.getMeta("lastProofReport");
+    // Namespace proof reports per-project instead of sharing a global slot.
+    const metaKey = q.projectId
+      ? `lastProofReport:${q.projectId}`
+      : "lastProofReport:global";
+    const raw = osStore.getMeta(metaKey);
     const golden = resolveGoldenWorkspace({
       envRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       slug: app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros",

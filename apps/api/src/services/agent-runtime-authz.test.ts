@@ -17,6 +17,9 @@ function identity(
     agentId: "CODE_ENGINEER",
     ownerId: OWNER_A,
     projectId: PROJECT_A,
+    authorityScope: `project:${PROJECT_A}`,
+    trustLevel: "LAB",
+    runtimeStatus: "ACTIVE",
     ...overrides,
   };
 }
@@ -32,7 +35,26 @@ describe("P0.2 — identity is resolved server-side, never declared", () => {
       agentId: "SECURITY",
       ownerId: OWNER_A,
       projectId: PROJECT_A,
+      authorityScope: `project:${PROJECT_A}`,
+      trustLevel: "FULL",
+      runtimeStatus: "ACTIVE",
     });
+  });
+
+  it("defaults session-backed identity to FULL; LAB is opt-in", () => {
+    const full = resolveAgentIdentity({
+      fabricAgentId: "RESEARCHER",
+      sessionOwnerId: OWNER_A,
+      projectId: null,
+    });
+    expect(full.trustLevel).toBe("FULL");
+    const lab = resolveAgentIdentity({
+      fabricAgentId: "RESEARCHER",
+      sessionOwnerId: OWNER_A,
+      projectId: null,
+      trustLevel: "LAB",
+    });
+    expect(lab.trustLevel).toBe("LAB");
   });
 
   it("REJECTS an agent id that is not in the catalog", () => {
@@ -166,6 +188,15 @@ describe("P0.2 — tool authorization enforces the EXISTING catalog", () => {
     expect(() =>
       enforceAgentToolAuthorization({ identity: identity(), requestedTool: "propose_patch" }),
     ).not.toThrow();
+  });
+
+  it("ALLOWS RESEARCHER the catalogued read tools (not a CP-only alias)", () => {
+    const researcher = identity({ agentId: "RESEARCHER" });
+    for (const tool of ["knowledge_search", "fs.read_file", "fs.read_directory", "fs.search_repo"] as const) {
+      expect(() =>
+        enforceAgentToolAuthorization({ identity: researcher, requestedTool: tool }),
+      ).not.toThrow();
+    }
   });
 
   it("honours no wildcard — '*' is not a grant", () => {

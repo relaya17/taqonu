@@ -47,6 +47,7 @@ function matches(pattern: DomainEventPattern, type: string): boolean {
  */
 export class DomainEventBus {
   private readonly subscriptions: Subscription[] = [];
+  private readonly seenEventIds = new Set<string>();
 
   /** Register a handler for a pattern. Returns an unsubscribe function. */
   subscribe(pattern: DomainEventPattern, handler: DomainEventHandler): () => void {
@@ -60,6 +61,12 @@ export class DomainEventBus {
 
   /** Dispatch an event to every matching subscriber, in subscription order. */
   async publish(event: DomainEvent): Promise<DomainEventDispatchResult> {
+    // Event-ID deduplication: same event.id never dispatches twice.
+    if (this.seenEventIds.has(event.id)) {
+      return { handled: 0, errors: [] };
+    }
+    this.seenEventIds.add(event.id);
+
     const matching = this.subscriptions.filter((sub) => matches(sub.pattern, event.type));
     const errors: unknown[] = [];
     for (const sub of matching) {
@@ -80,6 +87,11 @@ export class DomainEventBus {
   /** Test helper: drop every subscription. */
   clear(): void {
     this.subscriptions.length = 0;
+  }
+
+  /** Test helper: clear seen event IDs to allow replaying events. */
+  clearSeenEventIds(): void {
+    this.seenEventIds.clear();
   }
 }
 

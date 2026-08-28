@@ -43,6 +43,31 @@ export interface AuthenticatedAgentIdentity {
   readonly ownerId: string;
   /** Server-resolved project scope; null for cross-project/system work. */
   readonly projectId: string | null;
+  /**
+   * Authority scope — the bounded context within which this agent may act.
+   * Derived from the agent catalog and session context.
+   * Examples: "project:abc123", "tenant:xyz", "global:read-only"
+   */
+  readonly authorityScope?: string;
+  /**
+   * Trust level of this agent session.
+   * FULL: direct human-initiated, verified session
+   * DELEGATED: called by another agent (authority attenuation applies)
+   * LAB: development/testing context
+   */
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+  /**
+   * Runtime status from Control Plane. Used for circuit-breaking.
+   */
+  readonly runtimeStatus?:
+    | "ACTIVE"
+    | "PAUSED"
+    | "DISABLED"
+    | "REVOKED"
+    | "QUARANTINED"
+    | "SUSPENDED"
+    | "DEGRADED"
+    | "UNKNOWN";
 }
 
 /**
@@ -87,6 +112,18 @@ export function resolveAgentIdentity(input: {
   readonly fabricAgentId: string;
   readonly sessionOwnerId: string;
   readonly projectId: string | null;
+  /** Optional trust level override (defaults to FULL — session-backed human). */
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+  /** Optional runtime status from Control Plane. */
+  readonly runtimeStatus?:
+    | "ACTIVE"
+    | "PAUSED"
+    | "DISABLED"
+    | "REVOKED"
+    | "QUARANTINED"
+    | "SUSPENDED"
+    | "DEGRADED"
+    | "UNKNOWN";
 }): AuthenticatedAgentIdentity {
   if (!(FABRIC_AGENT_IDS as readonly string[]).includes(input.fabricAgentId)) {
     throw new AtlasError(
@@ -102,10 +139,19 @@ export function resolveAgentIdentity(input: {
       { statusCode: 403 },
     );
   }
+  
+  // Compute authority scope based on project context
+  const authorityScope = input.projectId
+    ? `project:${input.projectId}`
+    : `tenant:${input.sessionOwnerId}`;
+
   return {
     agentId: input.fabricAgentId as FabricAgentId,
     ownerId: input.sessionOwnerId,
     projectId: input.projectId,
+    authorityScope,
+    trustLevel: input.trustLevel ?? "FULL",
+    runtimeStatus: input.runtimeStatus ?? "ACTIVE",
   };
 }
 

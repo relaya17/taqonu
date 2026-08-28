@@ -4,7 +4,7 @@ import { DomainEventBus } from "./event-bus.js";
 
 function makeEvent(type: DomainEvent["type"], overrides: Partial<DomainEvent> = {}): DomainEvent {
   return {
-    id: "00000000-0000-4000-8000-000000000000",
+    id: crypto.randomUUID(),
     type,
     occurredAt: "2026-01-01T00:00:00.000Z",
     ownerId: "00000000-0000-4000-8000-000000000001",

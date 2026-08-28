@@ -19,7 +19,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/agent-core": "*"
+    "@atlas/agent-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

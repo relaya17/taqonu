@@ -12,11 +12,11 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/config": "*",
-    "@atlas/integrations-github": "*",
-    "@atlas/observability": "*",
-    "@atlas/shared": "*",
-    "@atlas/state": "*",
+    "@atlas/config": "workspace:*",
+    "@atlas/integrations-github": "workspace:*",
+    "@atlas/observability": "workspace:*",
+    "@atlas/shared": "workspace:*",
+    "@atlas/state": "workspace:*",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {

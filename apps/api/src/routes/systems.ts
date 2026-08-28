@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { AtlasError, systemContractWriteSchema, uuidSchema } from "@atlas/shared";
 import { z } from "zod";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectReadAccess,
+  assertProjectWriteAccess,
+} from "../services/project-access.js";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { resolveWorkspaceRoot } from "../services/golden-root.js";
@@ -31,11 +34,35 @@ async function assertSystemWrite(
   await requireSignedInForWrite(app, request);
 }
 
+async function assertSystemRead(
+  app: FastifyInstance,
+  request: Parameters<typeof requireUser>[1],
+  systemId: string,
+): Promise<void> {
+  const system = getManagedSystem(systemId);
+  if (!system) {
+    throw new AtlasError("NOT_FOUND", "Managed system not found");
+  }
+  if (system.projectId) {
+    await assertProjectReadAccess(app, request, system.projectId);
+    return;
+  }
+  await requireUser(app, request);
+}
+
 export async function registerSystemRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/systems", async () => listManagedSystems());
+  /**
+   * Tenant-scoped system list (P0 fix): requires authentication.
+   * Without this, any anonymous user could list all managed systems.
+   */
+  app.get("/api/v1/systems", async (request) => {
+    await requireUser(app, request);
+    return listManagedSystems();
+  });
 
   app.get("/api/v1/systems/:id", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertSystemRead(app, request, params.id);
     try {
       return getManagedSystemDetail(params.id);
     } catch {
@@ -45,6 +72,7 @@ export async function registerSystemRoutes(app: FastifyInstance): Promise<void> 
 
   app.get("/api/v1/systems/:id/contract", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertSystemRead(app, request, params.id);
     try {
       return getSystemContract(params.id);
     } catch {
@@ -54,6 +82,7 @@ export async function registerSystemRoutes(app: FastifyInstance): Promise<void> 
 
   app.get("/api/v1/systems/:id/executive-report", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertSystemRead(app, request, params.id);
     const q = z
       .object({
         workspaceRoot: z.string().max(1000).optional(),

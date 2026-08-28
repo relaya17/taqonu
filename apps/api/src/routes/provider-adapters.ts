@@ -7,6 +7,7 @@ import {
   providerAdapterIdSchema,
   uuidSchema,
 } from "@atlas/shared";
+import { authorizeEntityAction } from "@atlas/agent-core";
 import { vercelObservationToEvidenceDrafts } from "@atlas/integrations-vercel";
 import { renderObservationToEvidenceDrafts } from "@atlas/integrations-render";
 import { z } from "zod";
@@ -115,6 +116,21 @@ export async function registerProviderAdapterRoutes(
   app.post("/api/v1/providers/vercel/observe", async (request, reply) => {
     const body = vercelObserveSchema.parse(request.body);
     await assertProjectWriteAccess(app, request, body.projectId);
+
+    // Entity-policy gate: provider observation creates CONFIGURATION evidence.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
@@ -193,6 +209,21 @@ export async function registerProviderAdapterRoutes(
   app.post("/api/v1/providers/render/observe", async (request, reply) => {
     const body = renderObserveSchema.parse(request.body);
     await assertProjectWriteAccess(app, request, body.projectId);
+
+    // Entity-policy gate: provider observation creates CONFIGURATION evidence.
+    const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "CONFIGURATION.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
     const project = osStore.getProject(body.projectId);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");

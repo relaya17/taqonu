@@ -154,7 +154,7 @@ const proposeBody = z.object({
 export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   async function resolveStudioWorkspaceRoot(
     request: FastifyRequest,
-    q: { projectId?: string; workspaceRoot?: string },
+    q: { projectId?: string | undefined; workspaceRoot?: string | undefined },
   ): Promise<string> {
     const user = await requireUser(app, request);
     const control = isControlPlaneRole(user.role);

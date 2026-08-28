@@ -296,8 +296,14 @@ export function classifyMemoryType(statement: string): {
   };
 }
 
-/** Mark older ACTIVE memories STALE when a newer verified-ish statement arrives. */
+/**
+ * Mark older ACTIVE memories STALE when a newer verified-ish statement arrives.
+ *
+ * SECURITY (P0): Only supersedes memories owned by `ownerId`. A tenant cannot
+ * supersede another tenant's memories by posting a matching statement.
+ */
 export function supersedeMatchingMemories(input: {
+  ownerId: string;
   projectId: string | null;
   statementContains: string;
   newerMemoryId: string;
@@ -311,6 +317,7 @@ export function supersedeMatchingMemories(input: {
     if (
       m.id === input.newerMemoryId ||
       m.status !== "ACTIVE" ||
+      m.ownerId !== input.ownerId ||
       !m.statement.toLowerCase().includes(needle)
     ) {
       return m;
@@ -355,7 +362,7 @@ export function supersedeMatchingMemories(input: {
  *    zero `evidence` entries, so promoting it to CONFIRMED would assert
  *    verification that never happened (evidence-required gate, see below).
  */
-export type ApproveMemoryFailureReason = "not_found" | "no_evidence";
+export type ApproveMemoryFailureReason = "not_found" | "no_evidence" | "unverified_evidence";
 
 export type ApproveMemoryResult =
   | { memory: Memory; reason?: undefined }
@@ -420,6 +427,17 @@ export function approveMemory(input: {
     // can't be promoted).
     if (current.evidence.length === 0) {
       return { memory: null, reason: "no_evidence" };
+    }
+    // Verification-required gate: the memory has evidence, but none of it
+    // carries a genuine verification signal — USER-sourced evidence alone
+    // is not sufficient to promote to CONFIRMED. At least one piece of
+    // evidence must be from a verified source (SYSTEM, AGENT, EXTERNAL,
+    // CODE, TEST, etc.) to warrant approval.
+    const hasVerifiedEvidence = current.evidence.some(
+      (e) => e.kind !== "USER" && e.kind !== "CONVERSATION",
+    );
+    if (!hasVerifiedEvidence) {
+      return { memory: null, reason: "unverified_evidence" };
     }
     const nextEpistemic: EpistemicState =
       current.epistemicState === "PROPOSED" ||
