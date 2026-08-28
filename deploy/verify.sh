@@ -17,26 +17,28 @@ SKIP=0
 ok()   { printf '\033[1;32m  PASS\033[0m  %s\n' "$*"; PASS=$((PASS+1)); }
 bad()  { printf '\033[1;31m  FAIL\033[0m  %s\n' "$*"; FAIL=$((FAIL+1)); }
 skip() { printf '\033[1;33m  SKIP\033[0m  %s\n' "$*"; SKIP=$((SKIP+1)); }
-head() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
+# Not named `head`: that would shadow /usr/bin/head, which this script pipes
+# into when reading the Tailscale IP.
+section() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
 
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" 2>/dev/null || echo 000; }
 
 CP_TOKEN="$(grep -sE '^ATLAS_CONTROL_PLANE_TOKEN=' "$ATLAS_ETC/control-plane.env" | cut -d= -f2- || true)"
 
-head "1. Runtime"
+section "1. Runtime"
 NODE_MAJOR="$(node -v 2>/dev/null | cut -c2- | cut -d. -f1 || echo 0)"
 [[ "$NODE_MAJOR" -ge 22 ]] \
   && ok "Node $(node -v) meets engines >=22" \
   || bad "Node >=22 required, found $(node -v 2>/dev/null || echo none)"
 
-head "2. Services"
+section "2. Services"
 for unit in atlas-control-plane atlas-admin atlas-worker; do
   systemctl is-active --quiet "$unit" \
     && ok "$unit active" \
     || bad "$unit not active — journalctl -u $unit -n 50"
 done
 
-head "3. Control Plane :3100"
+section "3. Control Plane :3100"
 [[ "$(code http://127.0.0.1:3100/api/v1/status)" == "200" ]] \
   && ok "liveness /api/v1/status returns 200 (public by design)" \
   || bad "liveness did not return 200"
@@ -54,7 +56,7 @@ else
   skip "no ATLAS_CONTROL_PLANE_TOKEN in $ATLAS_ETC/control-plane.env"
 fi
 
-head "4. Owner Admin :3200"
+section "4. Owner Admin :3200"
 ADMIN_UNAUTH="$(code http://127.0.0.1:3200/)"
 [[ "$ADMIN_UNAUTH" == "401" || "$ADMIN_UNAUTH" == "503" ]] \
   && ok "Admin rejects a token-less request ($ADMIN_UNAUTH)" \
@@ -68,7 +70,7 @@ else
   skip "cannot test the authenticated path without a token"
 fi
 
-head "5. Private-by-default (ADR-021)"
+section "5. Private-by-default (ADR-021)"
 for port in 3100 3200; do
   if ss -ltnH "sport = :$port" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
     bad "port $port is bound to a public interface"
@@ -103,7 +105,7 @@ for f in control-plane admin worker; do
     || bad "$f.env permissions are $perms — expected 640 or 600"
 done
 
-head "6. Completed system left undisturbed"
+section "6. Completed system left undisturbed"
 if [[ -n "$CP_TOKEN" ]]; then
   PROJ="$(curl -s --max-time 10 -H "Authorization: Bearer $CP_TOKEN" \
     http://127.0.0.1:3100/api/v1/agents/fabric-projection 2>/dev/null || true)"
@@ -121,7 +123,7 @@ else
   skip "invariant checks need the operator token"
 fi
 
-head "Result"
+section "Result"
 printf '  %d passed, %d failed, %d skipped\n\n' "$PASS" "$FAIL" "$SKIP"
 [[ "$FAIL" -eq 0 ]] || exit 1
 echo "  Private plane verified. The old Vercel Admin URLs may now be paused."

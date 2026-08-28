@@ -36,7 +36,9 @@ UPDATE_ONLY=false
 if ! $UPDATE_ONLY; then
   log "Installing base packages"
   apt-get update -qq
-  apt-get install -y -qq curl git ufw nginx ca-certificates gnupg
+  # iproute2 provides `ss`, which verify.sh uses to prove the listeners are
+  # loopback-only. Present on standard images, absent on some minimal ones.
+  apt-get install -y -qq curl git ufw nginx ca-certificates gnupg iproute2
 
   if ! command -v node >/dev/null || [[ "$(node -v | cut -c2- | cut -d. -f1)" -lt "$NODE_MAJOR" ]]; then
     log "Installing Node.js ${NODE_MAJOR}.x"
