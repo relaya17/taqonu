@@ -110,7 +110,7 @@ describe("GET /api/v1/portfolio-governance", () => {
     expect(body.summary.executionRegistry).toBe("FABRIC_AGENT_CATALOG");
     expect(body.summary.ingestEnabled).toBe(false);
     expect(body.summary.fabricCatalogMutated).toBe(false);
-    expect(body.summary.knowledgeIngested).toBe(false);
+    expect(body.summary.knowledgeIngested).toBe(true); // Phase 11.15: 4 Owner-approved records ingested
     expect(body.summary.allSourceRuntimesUnknown).toBe(true);
     expect(body.summary.sourceWriteNeverInherited).toBe(true);
     expect(body.governance.sourceExecutionEnabled).toBe(false);

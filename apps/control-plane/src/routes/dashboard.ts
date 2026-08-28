@@ -375,11 +375,11 @@ export function getDashboardHtml(): string {
 <body>
   <div class="header">
     <div class="header-left">
-      <h1>
-        <span class="status-dot"></span>
-        Atlas Control Plane
-        <span class="badge">v0.1.0</span>
-      </h1>
+    <h1>
+      <span class="status-dot"></span>
+      Atlas Control Plane
+      <span class="badge">v0.1.0</span>
+    </h1>
     </div>
     <div class="header-center">
       <nav class="lang-pills" role="navigation" aria-label="Language">
@@ -389,7 +389,7 @@ export function getDashboardHtml(): string {
       </nav>
     </div>
     <div class="header-right">
-      <span style="color: var(--text-muted); font-size: 13px;" id="clock"></span>
+    <span style="color: var(--text-muted); font-size: 13px;" id="clock"></span>
     </div>
   </div>
 

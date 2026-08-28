@@ -137,11 +137,11 @@ describe("Control Plane alignment (Phase 11.10)", () => {
       }
     });
 
-    it("12. Knowledge ingestion remains disabled", () => {
+    it("12. Knowledge ingestion is Owner-controlled", () => {
       const view = getControlPlanePortfolioView();
-      expect(view.summary.ingestEnabled).toBe(false);
-      expect(view.summary.knowledgeIngested).toBe(false);
-      expect(view.summary.knowledgeNeverIngestedInRecords).toBe(true);
+      expect(view.summary.ingestEnabled).toBe(false); // Global ingest remains disabled
+      expect(view.summary.knowledgeIngested).toBe(true); // Phase 11.15: 4 Owner-approved records
+      expect(view.summary.ingestedKnowledgeCount).toBe(4);
     });
   });
 

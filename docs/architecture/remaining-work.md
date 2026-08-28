@@ -254,9 +254,9 @@ database connection pooling (external to Node), full APM integration.
 verification, real reputation training data (requires production traffic),
 external marketplace integration, agent-to-agent negotiation.
 
-## PHASE 11 PORTFOLIO GOVERNANCE (observability) — COMPLETE
+## PHASE 11 PORTFOLIO GOVERNANCE (observability)
 
-Owner-approved sequential implementation of Portfolio Governance (ADR-022).
+New increment (owner-approved sequence). **Stop after each phase. Wait for Owner approval.**
 
 **11.1 Foundation / persistence — complete.**
 - Separated-plane data model and overlay persistence.
@@ -270,85 +270,22 @@ Owner-approved sequential implementation of Portfolio Governance (ADR-022).
 - Source runtime remains UNKNOWN / NOT_PROBED. No FabricAgentId assignment.
 
 **11.3 Capability Extraction — complete.**
-- 44 capabilities extracted with semantic fields: purpose, domain, inputs, outputs,
-  tools, sideEffects, readAccess, writeAccess, externalCommunication,
-  externalAuthority, dependencies, applicationContext.
+- Every capability has semantic fields: purpose, domain, inputs, outputs, tools,
+  sideEffects, readAccess, writeAccess, externalCommunication, externalAuthority,
+  dependencies, applicationContext.
 - Distinguishes physical security (VMS) from software security (SECURITY).
 - Classification based on semantic meaning, not just names.
 
-**11.4 Provenance and Evidence — complete.**
+**11.4 Provenance and Evidence — complete (this increment).**
 - Provenance enhanced with: sourceApplicationId, extractor, originalStatus, atlasClassification.
 - Full 40-char Git SHA for every source agent.
 - Evidence ≠ RuntimeStatus explicitly enforced: isRuntimeProbe=false, extractedAt timestamp.
-- 12 evidence records linked to capabilities.
+- Evidence kinds extended: SOURCE_CODE, TEST, DOCUMENT, REGISTRY, API_SCHEMA, CONFIGURATION,
+  TOOL_REGISTRATION, FACTORY_DEFINITION.
+- Authority ranks extended: REPOSITORY_CODE, AUTOMATED_VERIFIED_TEST, ARCHITECTURE_DOCUMENT,
+  DEVELOPER_STATEMENT, SOURCE_CODE, TEST_FILE, API_SCHEMA, CONFIGURATION.
+- Default source runtime: UNKNOWN / NOT_PROBED. Documentation ≠ OBSERVED_UP.
+- 19 Phase 4 provenance/evidence tests.
 
-**11.5 Portfolio Persistence — complete.**
-- Local file persistence (.atlas/portfolio-governance.json) with osStore.meta backup.
-- Restart/recovery tested. Idempotency verified.
-- Relationships survive process restart.
-
-**11.6 Global Deduplication — complete.**
-- 43 DedupRelation records covering all 44 capabilities.
-- Classification: UNIQUE, SEMANTIC_OVERLAP, CONTEXT_SPECIFIC, COMPLEMENTARY, CONFLICTING.
-- No automatic merging. Fabric unchanged.
-
-**11.7 Canonical Capability Mapping — complete.**
-- 20 CanonicalCapabilities defined.
-- 15 capabilities mapped to canonicals; 29 intentionally unmapped (UNIQUE/CONTEXT_SPECIFIC).
-- No fabricated mappings.
-
-**11.8 Governance Decisions — complete.**
-- 21 GovernanceDecision records, all PROPOSED.
-- Actions: KEEP_SOURCE_SPECIFIC, ADD_PROVENANCE, IMPORT_KNOWLEDGE_ONLY, DO_NOT_IMPORT, ESCALATE.
-- Owner-controlled; no automatic approval.
-
-**11.9 Portfolio UI Interface — complete.**
-- Control Plane dashboard enhanced with capabilities, dedup, evidence, decisions, conflicts.
-- Admin UI Owner page updated with full portfolio data.
-- i18n: Hebrew, English, Arabic translations.
-
-**11.10 Control Plane Alignment — complete.**
-- 17 alignment tests verifying observational nature.
-- Portfolio data available through correct contracts.
-- Fabric isolation verified.
-
-**11.11 Security — complete.**
-- 33 security tests covering authentication, authorization, permission isolation.
-- Source WRITE never becomes Atlas WRITE. Fabric immutable.
-- Cross-application isolation enforced.
-
-**11.12 Audit — complete.**
-- 25 audit tests verifying actor attribution, timestamps, event traceability.
-- Hash-chained NDJSON audit trail.
-- Governance actions fully auditable.
-
-**11.13 Full Testing — complete.**
-- 1389 tests passed across all packages.
-- All typechecks and builds pass.
-- No regressions.
-
-**11.14 Final Approval — complete.**
-- All phases verified. GO recommendation.
-- FABRIC_AGENT_IDS = 16 (unchanged).
-- Atlas agents created = 0.
-
-**11.15 Knowledge Ingestion — complete.**
-- 4 knowledge records ingested (Owner-approved):
-  1. Do-Not-Invent Amounts (BrokerOS)
-  2. Confirm-Before-Send / Preview (BrokerOS)
-  3. Confirm-Before-Send / Drafts (BrokerOS)
-  4. No-Self-Validate (LexStudy)
-- Full provenance preserved. Governance decision links maintained.
-- ingestEnabled safety lock remains false.
-
-**Final counts:**
-- 52 SourceAgents
-- 44 Capabilities
-- 20 CanonicalCapabilities
-- 43 DedupRelations
-- 4 Conflicts
-- 21 GovernanceDecisions
-- 12 Evidence records
-- 4 Knowledge records (ingested)
-- 16 FABRIC_AGENT_IDS (unchanged)
+**Later (do not start without Owner approval):** 11.5 persistence … 11.10 tests.
 

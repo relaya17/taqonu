@@ -212,7 +212,7 @@ describe("Control Plane — API Routes", () => {
       expect(port.snapshot.applications.length).toBe(6);
       expect(port.snapshot.sourceAgents.length).toBeGreaterThan(0);
       expect(port.summary.ingestEnabled).toBe(false);
-      expect(port.summary.knowledgeIngested).toBe(false);
+      expect(port.summary.knowledgeIngested).toBe(true); // Phase 11.15: 4 Owner-approved records ingested
 
       const appsRes = createMockRes();
       await router.handle(createMockReq("GET", "/api/v1/applications"), appsRes);
