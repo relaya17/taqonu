@@ -208,10 +208,12 @@ later — sell **time + risk + money**, not seats.
 | Freemium | Audit offer · usage ceilings · BYO Cloudflare · optional Pro evidence mirror |
 | Verified knowledge | Daily allow-listed refresh → corpus + DB · pack download |
 | Partners | Audit intake · external repo connect — no invented customers |
+| Portfolio Governance | Observe source agents across connected systems · capability extraction · deduplication · Owner-controlled knowledge ingestion ([ADR-022](docs/adr/ADR-022-portfolio-governance.md)) |
 
 Normative: [ADR-014](docs/adr/ADR-014-evidence-governance-north-star.md) ·
 [ADR-015](docs/adr/ADR-015-governed-native-code-engineering.md) ·
-[ADR-016](docs/adr/ADR-016-atlas-1.1-proof-autonomy.md).
+[ADR-016](docs/adr/ADR-016-atlas-1.1-proof-autonomy.md) ·
+[ADR-022](docs/adr/ADR-022-portfolio-governance.md).
 
 ---
 
