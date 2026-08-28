@@ -85,6 +85,20 @@ sudo -e /etc/nginx/snippets/atlas-admin-auth.conf   # replace __TOKEN__
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+Do not use the literal placeholder `12345678901234567890123456789012` for
+`ENCRYPTION_KEY` or `COOKIE_SECRET`; `assertNotExampleSecrets()` rejects it.
+
+### A dotenv file outranks systemd
+
+`loadServerDotEnv()` in `packages/config/src/load-dotenv.ts` reads
+`/opt/atlas/.env` with `override: false` and then `/opt/atlas/apps/api/.env`
+with **`override: true`**. The second one beats every variable systemd passes
+through `EnvironmentFile`, so a stray file there could silently drop a service
+to `NODE_ENV=development` and someone else's credentials.
+
+Both paths are gitignored, so a clean `git clone` has neither. `verify.sh`
+fails the run if either appears.
+
 ### Start
 
 ```bash
@@ -196,11 +210,39 @@ canonical hash-chain. Outbound HTTPS needs no inbound rule. Set
 - [ ] `ufw` default is deny-incoming
 - [ ] The URL is unreachable from a device outside the tailnet
 - [ ] `/etc/atlas/*.env` are mode `640` or `600`
+- [ ] No `/opt/atlas/.env` or `/opt/atlas/apps/api/.env` outranking systemd
 
 ### Completed system undisturbed
 - [ ] Fabric projection still exposes **16** agents
 - [ ] Portfolio view still reports `ingestEnabled: false`
 - [ ] `pnpm test:unit` still passes 1,953/1,953 from a clean checkout
+
+---
+
+## What was rehearsed before any VM existed
+
+Both servers were started from their built `dist/` on loopback ports 3101/3201
+with `NODE_ENV=production` and a throwaway token, then probed with the same
+requests `verify.sh` issues.
+
+**Proven.** Both boot from `dist/` with no stderr. Control Plane answers
+`/api/v1/status` 200 unauthenticated, `/api/v1/agents` 401 unauthenticated and
+200 with a bearer token. `fabric-projection` returns exactly 16 `agentId`
+entries and the Portfolio view reports `ingestEnabled: false`. Admin returns 401
+without a token and 200 with one, rendering 81 KB of HTML with no "Control Plane
+unreachable" banner — meaning the Admin → Control Plane hop authenticated and
+returned live data. That hop is precisely what fails on Vercel.
+
+**Not proven, because it needs the VM.** systemd hardening under
+`ProtectSystem=strict`, the nginx header injection, the Tailscale bind, ufw, and
+the worker running against real secrets. Static analysis says the hardening is
+sound — Control Plane performs no filesystem writes at all, and the worker
+writes only to `ATLAS_QUEUE_PATH`, which `ReadWritePaths=/var/lib/atlas` covers
+— but that remains inference until `verify.sh` runs on the host.
+
+The local worker start is **not** evidence: this workstation has an untracked
+`apps/api/.env` supplying the six production secrets, so the run never exercised
+`assertProductionSecrets()`.
 
 ---
 

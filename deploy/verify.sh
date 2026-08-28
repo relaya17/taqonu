@@ -105,6 +105,18 @@ for f in control-plane admin worker; do
     || bad "$f.env permissions are $perms — expected 640 or 600"
 done
 
+# packages/config loads /opt/atlas/.env (override:false) and then
+# /opt/atlas/apps/api/.env with override:TRUE. A stray file at either path
+# silently outranks systemd's EnvironmentFile, so a service could end up
+# running with NODE_ENV=development and someone else's secrets.
+STRAY=""
+for f in /opt/atlas/.env /opt/atlas/apps/api/.env; do
+  [[ -f "$f" ]] && STRAY="$STRAY $f"
+done
+[[ -z "$STRAY" ]] \
+  && ok "no stray .env in the checkout to override EnvironmentFile" \
+  || bad "stray dotenv outranks systemd:$STRAY"
+
 section "6. Completed system left undisturbed"
 if [[ -n "$CP_TOKEN" ]]; then
   PROJ="$(curl -s --max-time 10 -H "Authorization: Bearer $CP_TOKEN" \
@@ -116,7 +128,9 @@ if [[ -n "$CP_TOKEN" ]]; then
 
   GOV="$(curl -s --max-time 10 -H "Authorization: Bearer $CP_TOKEN" \
     http://127.0.0.1:3100/api/v1/portfolio-governance 2>/dev/null || true)"
-  printf '%s' "$GOV" | grep -q '"ingestEnabled":false' \
+  # The Control Plane pretty-prints (JSON.stringify(data, null, 2)), so the
+  # colon is followed by a space. Match either form.
+  printf '%s' "$GOV" | grep -qE '"ingestEnabled":[[:space:]]*false' \
     && ok "Portfolio safety lock ingestEnabled is still false" \
     || bad "could not confirm ingestEnabled=false in the Portfolio view"
 else
