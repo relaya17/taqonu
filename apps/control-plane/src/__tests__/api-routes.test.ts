@@ -162,6 +162,65 @@ describe("Control Plane — API Routes", () => {
     });
   });
 
+  describe("GET /api/v1/agents/fabric-projection", () => {
+    it("projects FABRIC_AGENT_CATALOG without becoming an execution registry", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("GET", "/api/v1/agents/fabric-projection"),
+        res,
+      );
+      const body = JSON.parse(res._mock.body) as {
+        kind: string;
+        executionAuthority: string;
+        notAnExecutionRegistry: boolean;
+        defaultCatalogStatus: string;
+        items: Array<{ catalogStatus: string; executionEnabledByThisProjection: boolean }>;
+      };
+      expect(body.kind).toBe("FABRIC_PROJECTION");
+      expect(body.executionAuthority).toBe("FABRIC_AGENT_CATALOG");
+      expect(body.notAnExecutionRegistry).toBe(true);
+      expect(body.defaultCatalogStatus).toBe("LAB");
+      expect(body.items).toHaveLength(16);
+      expect(body.items.every((item) => item.catalogStatus === "LAB")).toBe(true);
+      expect(body.items.every((item) => item.executionEnabledByThisProjection === false)).toBe(true);
+    });
+
+    it("does not change GET /api/v1/agents length", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/agents"), res);
+      const body = JSON.parse(res._mock.body) as unknown[];
+      expect(body.length).toBe(9);
+    });
+  });
+
+  describe("GET /api/v1/portfolio-governance", () => {
+    it("returns observational inventory and does not expand application registry", async () => {
+      const portRes = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/portfolio-governance"), portRes);
+      const port = JSON.parse(portRes._mock.body) as {
+        writeAuthority: string;
+        executionRegistry: string;
+        notAnAgentRegistry: boolean;
+        observational: boolean;
+        snapshot: { applications: unknown[]; sourceAgents: unknown[] };
+        summary: { ingestEnabled: boolean; knowledgeIngested: boolean };
+      };
+      expect(port.writeAuthority).toBe("ATLAS_API");
+      expect(port.executionRegistry).toBe("FABRIC_AGENT_CATALOG");
+      expect(port.notAnAgentRegistry).toBe(true);
+      expect(port.observational).toBe(true);
+      expect(port.snapshot.applications.length).toBe(6);
+      expect(port.snapshot.sourceAgents.length).toBeGreaterThan(0);
+      expect(port.summary.ingestEnabled).toBe(false);
+      expect(port.summary.knowledgeIngested).toBe(false);
+
+      const appsRes = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/applications"), appsRes);
+      const apps = JSON.parse(appsRes._mock.body) as { items: unknown[] };
+      expect(apps.items).toHaveLength(1);
+    });
+  });
+
   // ── Audit ──────────────────────────────────────────────────────────
 
   describe("GET /api/v1/audit", () => {

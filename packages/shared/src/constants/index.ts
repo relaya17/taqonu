@@ -15,6 +15,7 @@ export * from "./ai-providers.js";
 export * from "./ai-provider-ar.js";
 export * from "./authority.js";
 export * from "./agents.js";
+export * from "./portfolio-governance.js";
 export * from "./engineering-modes.js";
 export * from "./gates.js";
 export * from "./actions.js";

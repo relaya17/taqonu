@@ -1,24 +1,12 @@
 /**
- * Agent Registry — canonical view of all registered agents, their
- * capabilities, permissions, and current operational status.
+ * Agent Registry — OVERSIGHT snapshot of 9 legacy Control Plane labels.
  *
- * The control plane reads agent definitions from the same catalog the
- * engineering surface uses (agent-core's fabric agent registry), but
- * projects an OVERSIGHT view: what can each agent do, what can't it do,
- * what is its risk profile, and what is its historical performance?
+ * This is NOT the Atlas execution registry and MUST NOT become one.
+ * Agents that actually execute inside Atlas are listed only in
+ * FABRIC_AGENT_CATALOG. See fabric-projection.ts for the catalog projection.
  *
- * This is the source of truth for:
- *   - Agent identity and capability enumeration
- *   - Tool permission matrices (allowedTools / forbiddenTools)
- *   - Entity/action permission grids
- *   - Runtime status (active, suspended, degraded)
- *
- * ── Separation from engineering surface ────────────────────────────────
- *
- * The engineering surface (apps/api) RUNS agents. The control plane
- * INSPECTS and GOVERNS them. An engineer asks "what did the code
- * engineer produce?" A manager asks "is the code engineer allowed to
- * write to production, and should it be?"
+ * Backward compatible: GET /api/v1/agents still returns these 9 items.
+ * Do not silently delete or merge this list into Fabric.
  */
 
 // ── Types ───────────────────────────────────────────────────────────────

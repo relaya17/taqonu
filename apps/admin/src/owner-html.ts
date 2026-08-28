@@ -2,6 +2,14 @@ export interface OwnerPageData {
   readonly controlApi: string;
   readonly applications: readonly Record<string, unknown>[];
   readonly agents: readonly Record<string, unknown>[];
+  readonly portfolioApps: readonly Record<string, unknown>[];
+  readonly portfolioSourceAgents: readonly Record<string, unknown>[];
+  readonly portfolioCapabilities: readonly Record<string, unknown>[];
+  readonly portfolioEvidence: readonly Record<string, unknown>[];
+  readonly portfolioDedup: readonly Record<string, unknown>[];
+  readonly portfolioDecisions: readonly Record<string, unknown>[];
+  readonly portfolioConflicts: readonly Record<string, unknown>[];
+  readonly portfolioCanonicals: readonly Record<string, unknown>[];
   readonly brief: Record<string, unknown> | null;
   readonly selfAudit: Record<string, unknown> | null;
   readonly error: string | null;
@@ -50,6 +58,88 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         <p><strong data-i18n="labelAllowed">Allowed:</strong> ${esc(allowed || "—")}</p>
         <p><strong data-i18n="labelDenied">Denied:</strong> ${esc(denied || "—")}</p>
       </article>`;
+    })
+    .join("");
+
+  const portfolioApps = data.portfolioApps
+    .map((app) => {
+      return `<article class="card glass">
+        <h3>${esc(app["name"] ?? app["slug"])}</h3>
+        <p class="muted">${esc(app["slug"])} · ${esc(app["role"])} · ${esc(String(app["sourceCommit"] ?? "").slice(0, 12))}</p>
+        <p>${esc(app["notes"])}</p>
+      </article>`;
+    })
+    .join("");
+
+  const appsById = new Map(
+    data.portfolioApps.map((app) => [String(app["id"] ?? ""), app]),
+  );
+  const portfolioSourceAgents = data.portfolioSourceAgents
+    .map((sa) => {
+      const app = appsById.get(String(sa["applicationId"] ?? ""));
+      const runtime =
+        sa["runtimeStatus"] && typeof sa["runtimeStatus"] === "object"
+          ? (sa["runtimeStatus"] as Record<string, unknown>)
+          : {};
+      const provenance =
+        sa["provenance"] && typeof sa["provenance"] === "object"
+          ? (sa["provenance"] as Record<string, unknown>)
+          : {};
+      return `<article class="card glass">
+        <h3>${esc(sa["displayName"] ?? sa["sourceKey"])}</h3>
+        <p class="muted">${esc(sa["sourceKey"])} · ${esc(app?.["slug"] ?? "")} · ${esc(sa["implementationClass"])}</p>
+        <p>Verification: ${esc(sa["verificationStatus"])} · Runtime: ${esc(runtime["state"] ?? "UNKNOWN")} / NOT_PROBED</p>
+        <p class="muted">${esc(provenance["sourceRepository"])} @ ${esc(String(provenance["sourceCommit"] ?? "").slice(0, 12))}</p>
+      </article>`;
+    })
+    .join("");
+
+  const portfolioConflicts = data.portfolioConflicts
+    .map((c) => `<li><strong>${esc(c["key"])}</strong> (${esc(c["status"])}) — ${esc(c["summary"])}</li>`)
+    .join("");
+
+  const canonById = new Map(
+    data.portfolioCanonicals.map((c) => [String(c["id"] ?? ""), c]),
+  );
+
+  const portfolioCapabilities = data.portfolioCapabilities
+    .map((cap) => {
+      const canon = cap["canonicalCapabilityId"]
+        ? canonById.get(String(cap["canonicalCapabilityId"]))
+        : null;
+      const canonLabel = canon ? String(canon["key"] ?? "-") : "—";
+      return `<article class="card glass">
+        <h3>${esc(cap["name"])}</h3>
+        <p class="muted">${esc(cap["domain"])} · Canonical: ${esc(canonLabel)}</p>
+        <p>${esc(String(cap["purpose"] ?? "").slice(0, 100))}</p>
+      </article>`;
+    })
+    .join("");
+
+  const portfolioDedup = data.portfolioDedup
+    .slice(0, 20)
+    .map((d) => {
+      const kind = String(d["kind"] ?? "UNKNOWN");
+      return `<li><strong>${esc(kind)}</strong> — ${esc(String(d["notes"] ?? "").slice(0, 80))}</li>`;
+    })
+    .join("");
+
+  const portfolioDecisions = data.portfolioDecisions
+    .map((dec) => {
+      const action = String(dec["action"] ?? "UNKNOWN");
+      const status = String(dec["status"] ?? "UNKNOWN");
+      const rationale = String(dec["rationale"] ?? "").slice(0, 80);
+      return `<li><strong>${esc(action)}</strong> (${esc(status)}) — ${esc(rationale)}</li>`;
+    })
+    .join("");
+
+  const portfolioEvidence = data.portfolioEvidence
+    .slice(0, 15)
+    .map((ev) => {
+      const kind = String(ev["kind"] ?? "UNKNOWN");
+      const authority = String(ev["authorityRank"] ?? "");
+      const path = String(ev["path"] ?? "").slice(0, 60);
+      return `<li><strong>${esc(kind)}</strong> (${esc(authority)}) — ${esc(path)}</li>`;
     })
     .join("");
 
@@ -528,6 +618,21 @@ export function renderOwnerHtml(data: OwnerPageData): string {
     .error { color: var(--danger); }
     a { color: var(--accent); }
 
+    .plane-stack { margin: 12px 0 20px; max-width: 720px; }
+    .plane-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: var(--surface-glass);
+      margin-bottom: 4px;
+    }
+    .plane-card.plane-fabric { border-inline-start: 4px solid var(--accent); }
+    .plane-card.plane-apps { border-inline-start: 4px solid #60a5fa; }
+    .plane-card.plane-source { border-inline-start: 4px solid #fbbf24; }
+    .plane-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .plane-note { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .plane-neq { text-align: center; font-weight: 800; letter-spacing: 0.35em; color: var(--muted); padding: 4px 0; }
+
     ul {
       padding-inline-start: 20px;
       font-size: 13px;
@@ -824,6 +929,40 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       <div class="grid">${apps || "<p class='muted'>No applications registered yet.</p>"}</div>
     </section>
     <section>
+      <h2 data-i18n="sectionPortfolio">Portfolio governance (observability)</h2>
+      <p class="muted" data-i18n="portfolioNote">Inspect sibling applications without duplicating them. Fabric remains the only Atlas execution registry. Source runtimes are UNKNOWN / NOT_PROBED.</p>
+      <div class="plane-stack">
+        <div class="plane-card plane-fabric">
+          <div class="plane-title" data-i18n="planeFabric">Atlas Fabric agents</div>
+          <p class="plane-note" data-i18n="planeFabricNote">FABRIC_AGENT_CATALOG only. Not source agents.</p>
+        </div>
+        <div class="plane-neq" data-i18n="planeNeq">≠</div>
+        <div class="plane-card plane-apps">
+          <div class="plane-title" data-i18n="planeSourceApps">Source applications</div>
+          <p class="plane-note" data-i18n="planeSourceAppsNote">Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. Not Fabric.</p>
+        </div>
+        <div class="plane-neq" data-i18n="planeNeq">≠</div>
+        <div class="plane-card plane-source">
+          <div class="plane-title" data-i18n="planeSourceAgents">Source agents</div>
+          <p class="plane-note" data-i18n="planeSourceAgentsNote">Never assigned a FabricAgentId. Not Atlas agents.</p>
+        </div>
+      </div>
+      <h3 data-i18n="portfolioApps">Applications</h3>
+      <div class="grid">${portfolioApps || "<p class='muted'>No portfolio snapshot.</p>"}</div>
+      <h3 data-i18n="portfolioSourceAgents">Source agents</h3>
+      <div class="grid">${portfolioSourceAgents || "<p class='muted'>No source agents.</p>"}</div>
+      <h3 data-i18n="portfolioCapabilities">Capabilities (${data.portfolioCapabilities.length})</h3>
+      <div class="grid">${portfolioCapabilities || "<p class='muted'>No capabilities.</p>"}</div>
+      <h3 data-i18n="portfolioDedup">Deduplication Relations (${data.portfolioDedup.length})</h3>
+      ${portfolioDedup ? `<ul class="muted">${portfolioDedup}</ul>` : "<p class='muted'>No dedup relations.</p>"}
+      <h3 data-i18n="portfolioEvidence">Evidence (${data.portfolioEvidence.length})</h3>
+      ${portfolioEvidence ? `<ul class="muted">${portfolioEvidence}</ul>` : "<p class='muted'>No evidence.</p>"}
+      <h3 data-i18n="portfolioDecisions">Governance Decisions (${data.portfolioDecisions.length})</h3>
+      ${portfolioDecisions ? `<ul class="muted">${portfolioDecisions}</ul>` : "<p class='muted'>No governance decisions.</p>"}
+      <h3 data-i18n="portfolioConflicts">Conflicts (${data.portfolioConflicts.length})</h3>
+      ${portfolioConflicts ? `<ul class="muted">${portfolioConflicts}</ul>` : "<p class='muted'>No conflicts.</p>"}
+    </section>
+    <section>
       <h2 data-i18n="sectionAgents">Agent registry</h2>
       <div class="grid">${agents}</div>
     </section>
@@ -908,6 +1047,17 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         labelPassword: "סיסמה",
         sectionApprovals: "מה דורש את האישור שלך",
         sectionApps: "אפליקציות רשומות",
+        sectionPortfolio: "ממשל תיק יישומים (תצפית)",
+        portfolioNote: "בדיקת אפליקציות אחיות בלי לשכפל אותן. Fabric הוא רישום הביצוע היחיד. זמן ריצה של מקורות: UNKNOWN / NOT_PROBED.",
+        planeFabric: "סוכני Atlas Fabric",
+        planeFabricNote: "FABRIC_AGENT_CATALOG בלבד. לא סוכני מקור.",
+        planeNeq: "≠",
+        planeSourceApps: "יישומי מקור",
+        planeSourceAppsNote: "Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. לא Fabric.",
+        planeSourceAgents: "סוכני מקור",
+        planeSourceAgentsNote: "לא מקבלים FabricAgentId. לא סוכני Atlas.",
+        portfolioApps: "יישומים",
+        portfolioSourceAgents: "סוכני מקור",
         sectionAgents: "רישום סוכנים",
         sectionAudit: "ביקורת עצמית DEF-000",
         auditNote: "Atlas מזהה ומציע. היא לא יכולה להחליש אימות בשקט, להעניק לעצמה הרשאות או למחוק ביקורת.",
@@ -946,6 +1096,17 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         labelPassword: "Password",
         sectionApprovals: "What requires your approval",
         sectionApps: "Registered applications",
+        sectionPortfolio: "Portfolio governance (observability)",
+        portfolioNote: "Inspect sibling applications without duplicating them. Fabric remains the only Atlas execution registry. Source runtimes are UNKNOWN / NOT_PROBED.",
+        planeFabric: "Atlas Fabric agents",
+        planeFabricNote: "FABRIC_AGENT_CATALOG only. Not source agents.",
+        planeNeq: "≠",
+        planeSourceApps: "Source applications",
+        planeSourceAppsNote: "Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. Not Fabric.",
+        planeSourceAgents: "Source agents",
+        planeSourceAgentsNote: "Never assigned a FabricAgentId. Not Atlas agents.",
+        portfolioApps: "Applications",
+        portfolioSourceAgents: "Source agents",
         sectionAgents: "Agent registry",
         sectionAudit: "DEF-000 self-audit",
         auditNote: "Atlas detects and proposes. It cannot silently weaken auth, grant itself privilege, or delete audit.",
@@ -984,6 +1145,17 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         labelPassword: "كلمة المرور",
         sectionApprovals: "ما يتطلب موافقتك",
         sectionApps: "التطبيقات المسجلة",
+        sectionPortfolio: "حوكمة المحفظة (رصد)",
+        portfolioNote: "افحص التطبيقات الشقيقة دون تكرارها. Fabric هو سجل التنفيذ الوحيد. حالة تشغيل المصادر UNKNOWN / NOT_PROBED.",
+        planeFabric: "وكلاء Atlas Fabric",
+        planeFabricNote: "FABRIC_AGENT_CATALOG فقط. ليسوا وكلاء مصدر.",
+        planeNeq: "≠",
+        planeSourceApps: "تطبيقات المصدر",
+        planeSourceAppsNote: "Vantera و HotelOS و CaseFlow و BrokerOS و LexStudy. ليست Fabric.",
+        planeSourceAgents: "وكلاء المصدر",
+        planeSourceAgentsNote: "لا يُمنحون FabricAgentId. ليسوا وكلاء Atlas.",
+        portfolioApps: "التطبيقات",
+        portfolioSourceAgents: "وكلاء المصدر",
         sectionAgents: "سجل الوكلاء",
         sectionAudit: "التدقيق الذاتي DEF-000",
         auditNote: "Atlas يكتشف ويقترح. لا يمكنه إضعاف المصادقة بصمت أو منح نفسه امتيازات أو حذف التدقيق.",

@@ -6,6 +6,8 @@ import {
   getRegistryStats,
   setAgentRuntimeStatus,
 } from "../services/agent-registry.js";
+import { getFabricProjection } from "../services/fabric-projection.js";
+import { getControlPlanePortfolioView } from "../services/portfolio-governance-view.js";
 import {
   listAuditEntries,
   getAuditEntryCount,
@@ -50,10 +52,14 @@ import {
  *   GET /api/v1/applications
  *   GET /api/v1/applications/:id
  *
- * Agent Registry:
+ * Agent Registry (legacy oversight list — not Fabric execution):
  *   GET /api/v1/agents
  *   GET /api/v1/agents/:id
  *   GET /api/v1/agents/stats
+ *   GET /api/v1/agents/fabric-projection  — FABRIC_AGENT_CATALOG projection
+ *
+ * Portfolio Governance (observability; writes stay on Atlas API):
+ *   GET /api/v1/portfolio-governance
  *
  * Gateway:
  *   POST /api/v1/gateway/events   — application → Atlas (X-Atlas-Reason)
@@ -87,6 +93,14 @@ export function createApiRouter(): Router {
 
   router.get("/api/v1/agents/stats", (_req, res) => {
     json(res, getRegistryStats());
+  });
+
+  router.get("/api/v1/agents/fabric-projection", (_req, res) => {
+    json(res, getFabricProjection());
+  });
+
+  router.get("/api/v1/portfolio-governance", (_req, res) => {
+    json(res, getControlPlanePortfolioView());
   });
 
   router.get("/api/v1/agents/:id", (_req, res, params) => {

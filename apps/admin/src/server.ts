@@ -23,11 +23,12 @@ async function fetchJson(path: string): Promise<unknown> {
 
 async function loadOwnerPage() {
   try {
-    const [apps, agents, brief, selfAudit] = await Promise.all([
+    const [apps, agents, brief, selfAudit, portfolio] = await Promise.all([
       fetchJson("/api/v1/applications"),
       fetchJson("/api/v1/agents"),
       fetchJson("/api/v1/owner/brief"),
       fetchJson("/api/v1/self-audit"),
+      fetchJson("/api/v1/portfolio-governance").catch(() => null),
     ]);
     const appItems =
       apps && typeof apps === "object" && "items" in apps
@@ -36,10 +37,33 @@ async function loadOwnerPage() {
     const agentItems = Array.isArray(agents)
       ? (agents as Record<string, unknown>[])
       : [];
+    const portfolioRecord =
+      portfolio && typeof portfolio === "object"
+        ? (portfolio as {
+            snapshot?: {
+              applications?: Record<string, unknown>[];
+              sourceAgents?: Record<string, unknown>[];
+              capabilities?: Record<string, unknown>[];
+              evidence?: Record<string, unknown>[];
+              dedupRelations?: Record<string, unknown>[];
+              governanceDecisions?: Record<string, unknown>[];
+              conflicts?: Record<string, unknown>[];
+              canonicalCapabilities?: Record<string, unknown>[];
+            };
+          })
+        : null;
     return renderOwnerHtml({
       controlApi: CONTROL_API,
       applications: appItems,
       agents: agentItems,
+      portfolioApps: portfolioRecord?.snapshot?.applications ?? [],
+      portfolioSourceAgents: portfolioRecord?.snapshot?.sourceAgents ?? [],
+      portfolioCapabilities: portfolioRecord?.snapshot?.capabilities ?? [],
+      portfolioEvidence: portfolioRecord?.snapshot?.evidence ?? [],
+      portfolioDedup: portfolioRecord?.snapshot?.dedupRelations ?? [],
+      portfolioDecisions: portfolioRecord?.snapshot?.governanceDecisions ?? [],
+      portfolioConflicts: portfolioRecord?.snapshot?.conflicts ?? [],
+      portfolioCanonicals: portfolioRecord?.snapshot?.canonicalCapabilities ?? [],
       brief: (brief as Record<string, unknown>) ?? null,
       selfAudit: (selfAudit as Record<string, unknown>) ?? null,
       error: null,
@@ -49,6 +73,14 @@ async function loadOwnerPage() {
       controlApi: CONTROL_API,
       applications: [],
       agents: [],
+      portfolioApps: [],
+      portfolioSourceAgents: [],
+      portfolioCapabilities: [],
+      portfolioEvidence: [],
+      portfolioDedup: [],
+      portfolioDecisions: [],
+      portfolioConflicts: [],
+      portfolioCanonicals: [],
       brief: null,
       selfAudit: null,
       error:

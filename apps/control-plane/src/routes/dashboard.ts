@@ -15,7 +15,10 @@
  * process that serves the API.
  */
 
+import { DASHBOARD_TRANSLATIONS } from "./dashboard-i18n.js";
+
 export function getDashboardHtml(): string {
+  const translationsJson = JSON.stringify(DASHBOARD_TRANSLATIONS);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -252,6 +255,45 @@ export function getDashboardHtml(): string {
     .pill-info { background: #1a2744; color: var(--info); }
     .pill-muted { background: #2a2e3d; color: var(--text-muted); }
 
+    .readonly-banner {
+      font-size: 12px;
+      color: var(--warning);
+      border: 1px solid rgba(251,191,36,0.35);
+      background: #2a2208;
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      margin-bottom: 16px;
+    }
+    .plane-stack { margin: 8px 0 20px; }
+    .plane-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      background: var(--surface);
+    }
+    .plane-card.plane-fabric { border-inline-start: 4px solid var(--accent); }
+    .plane-card.plane-apps { border-inline-start: 4px solid var(--info); }
+    .plane-card.plane-source { border-inline-start: 4px solid var(--warning); }
+    .plane-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .plane-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .plane-neq {
+      text-align: center;
+      color: var(--text-muted);
+      font-weight: 800;
+      letter-spacing: 0.35em;
+      font-size: 14px;
+      padding: 6px 0;
+    }
+
     .capability-tag {
       display: inline-block;
       padding: 2px 6px;
@@ -355,6 +397,7 @@ export function getDashboardHtml(): string {
     <div class="tabs">
       <button class="tab active" data-panel="overview" data-i18n="tabOverview">Overview</button>
       <button class="tab" data-panel="agents" data-i18n="tabAgents">Agent Registry</button>
+      <button class="tab" data-panel="portfolio" data-i18n="tabPortfolio">Portfolio</button>
       <button class="tab" data-panel="audit" data-i18n="tabAudit">Audit Trail</button>
       <button class="tab" data-panel="policies" data-i18n="tabPolicies">Policies</button>
       <button class="tab" data-panel="approvals" data-i18n="tabApprovals">Approvals</button>
@@ -387,6 +430,196 @@ export function getDashboardHtml(): string {
           </thead>
           <tbody id="agents-tbody">
             <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Portfolio Governance Panel ──────────────────── -->
+    <div class="panel" id="panel-portfolio">
+      <div class="section-header">
+        <h2 data-i18n="portfolioTitle">Portfolio Governance</h2>
+        <span class="count" id="portfolio-count"></span>
+      </div>
+      <p class="muted" style="margin-bottom:12px;color:var(--text-muted);font-size:13px;" data-i18n="portfolioNote">Observability only. Not an agent registry. Fabric ≠ source applications ≠ source agents. Runtime: UNKNOWN / NOT_PROBED. No knowledge ingest.</p>
+      <div class="readonly-banner" data-i18n="portfolioReadOnly">Read-only — no execution, no ingest, no catalog change.</div>
+      <div class="plane-stack">
+        <div class="plane-card plane-fabric">
+          <div class="plane-title" data-i18n="planeFabric">Atlas Fabric agents</div>
+          <p class="plane-note" data-i18n="planeFabricNote">FABRIC_AGENT_CATALOG only. Not source agents. Not executable from this view.</p>
+        </div>
+        <div class="plane-neq" data-i18n="planeNeq">≠</div>
+        <div class="plane-card plane-apps">
+          <div class="plane-title" data-i18n="planeSourceApps">Source applications</div>
+          <p class="plane-note" data-i18n="planeSourceAppsNote">Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. Not Fabric.</p>
+        </div>
+        <div class="plane-neq" data-i18n="planeNeq">≠</div>
+        <div class="plane-card plane-source">
+          <div class="plane-title" data-i18n="planeSourceAgents">Source agents</div>
+          <p class="plane-note" data-i18n="planeSourceAgentsNote">Never assigned a FabricAgentId. Not Atlas agents.</p>
+        </div>
+      </div>
+      <div class="stats-grid" id="portfolio-stats"></div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioApps">Applications</h2>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thSlug">Slug</th>
+              <th data-i18n="thName">Name</th>
+              <th data-i18n="thRole">Role</th>
+              <th data-i18n="thCommit">Commit</th>
+              <th data-i18n="thNotes">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-apps-tbody">
+            <tr><td colspan="5" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioSourceAgents">Source agents</h2>
+        <span class="count" id="portfolio-source-agents-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thSourceKey">Source key</th>
+              <th data-i18n="thName">Name</th>
+              <th data-i18n="thApplication">Application</th>
+              <th data-i18n="thImplementation">Implementation</th>
+              <th data-i18n="thCapabilities">Capabilities</th>
+              <th data-i18n="thVerification">Verification</th>
+              <th data-i18n="thRuntime">Runtime</th>
+              <th data-i18n="thProvenance">Provenance</th>
+              <th data-i18n="thEvidence">Evidence</th>
+              <th data-i18n="thDecision">Governance decision</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-source-agents-tbody">
+            <tr><td colspan="10" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioCapabilities">Capabilities</h2>
+        <span class="count" id="portfolio-capabilities-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thName">Name</th>
+              <th data-i18n="thDomain">Domain</th>
+              <th data-i18n="thPurpose">Purpose</th>
+              <th data-i18n="thCanonical">Canonical</th>
+              <th data-i18n="thSideEffects">Side Effects</th>
+              <th data-i18n="thReadWrite">Read/Write</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-capabilities-tbody">
+            <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioDedup">Deduplication</h2>
+        <span class="count" id="portfolio-dedup-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thDedupKind">Dedup Kind</th>
+              <th data-i18n="thLeft">Left</th>
+              <th data-i18n="thRight">Right</th>
+              <th data-i18n="thCanonical">Canonical</th>
+              <th data-i18n="thNotes">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-dedup-tbody">
+            <tr><td colspan="5" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioEvidence">Evidence</h2>
+        <span class="count" id="portfolio-evidence-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thEvidenceKind">Kind</th>
+              <th data-i18n="thEvidenceAuthority">Authority</th>
+              <th data-i18n="thEvidencePath">Path</th>
+              <th data-i18n="thApplication">Application</th>
+              <th data-i18n="thNotes">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-evidence-tbody">
+            <tr><td colspan="5" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioDecisions">Governance Decisions</h2>
+        <span class="count" id="portfolio-decisions-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thDecisionAction">Action</th>
+              <th data-i18n="thDecisionStatus">Status</th>
+              <th data-i18n="thApplication">Application</th>
+              <th data-i18n="thCapabilities">Capability</th>
+              <th data-i18n="thRationale">Rationale</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-decisions-tbody">
+            <tr><td colspan="5" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="portfolioConflicts">Conflicts</h2>
+        <span class="count" id="portfolio-conflicts-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thKey">Key</th>
+              <th data-i18n="thStatus">Status</th>
+              <th data-i18n="thSummary">Summary</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-conflicts-tbody">
+            <tr><td colspan="3" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:20px;">
+        <h2 data-i18n="fabricProjectionTitle">Fabric projection</h2>
+        <span class="count" id="fabric-projection-count"></span>
+      </div>
+      <p class="muted" style="margin-bottom:12px;color:var(--text-muted);font-size:13px;" data-i18n="fabricProjectionNote">Projection of FABRIC_AGENT_CATALOG. Catalog status LAB — not ACTIVE.</p>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thAgentId">Agent ID</th>
+              <th data-i18n="thName">Name</th>
+              <th data-i18n="thStatus">Status</th>
+              <th data-i18n="thCode">Code</th>
+            </tr>
+          </thead>
+          <tbody id="fabric-projection-tbody">
+            <tr><td colspan="4" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -457,56 +690,8 @@ export function getDashboardHtml(): string {
   </div>
 
   <script>
-    var TRANSLATIONS = {
-      he: {
-        tabOverview: "סקירה", tabAgents: "רישום סוכנים", tabAudit: "מסלול ביקורת", tabPolicies: "מדיניות", tabApprovals: "אישורים",
-        loading: "טוען...", loadingMetrics: "טוען מדדים...", registeredAgents: "סוכנים רשומים", auditTrail: "מסלול ביקורת",
-        policyDefinitions: "הגדרות מדיניות", approvalRecords: "רשומות אישור",
-        thAgentId: "מזהה סוכן", thName: "שם", thStatus: "סטטוס", thCapabilities: "יכולות", thCode: "קוד", thTools: "כלים",
-        thSeq: "רצף", thTimestamp: "חותמת זמן", thType: "סוג", thActor: "גורם", thRisk: "סיכון", thResult: "תוצאה", thReason: "סיבה",
-        thId: "מזהה", thAgent: "סוכן", thAction: "פעולה", thDecidedBy: "הוחלט על ידי", thCreated: "נוצר", thExpires: "פג תוקף",
-        statTotalAgents: "סך הסוכנים", statActiveAgents: "סוכנים פעילים", statCodeWriters: "כותבי קוד", statReadOnly: "קריאה בלבד",
-        statAuditEntries: "רשומות ביקורת", statSuccesses: "הצלחות", statFailures: "כשלונות", statHighRisk: "סיכון גבוה",
-        statAvgRisk: "ציון סיכון ממוצע", statApprovalsPending: "אישורים ממתינים", statUptime: "זמן פעילות", statDenied: "נדחו",
-        agentsCount: "סוכנים", entriesCount: "רשומות", policiesCount: "מדיניות", recordsCount: "רשומות",
-        noAgents: "אין סוכנים רשומים", noAuditTitle: "אין רשומות ביקורת", noAuditBody: "פעולות ממשל יופיעו כאן",
-        noApprovalsTitle: "אין רשומות אישור", noApprovalsBody: "בקשות אישור יופיעו כאן כשסוכנים מבקשים הרשאות מורחבות",
-        serviceStarting: "השירות עולה", waitingData: "ממתין לנתונים...", failedLoad: "הטעינה נכשלה",
-        approvalRequired: "נדרש אישור", yes: "כן", no: "לא", none: "אין"
-      },
-      en: {
-        tabOverview: "Overview", tabAgents: "Agent Registry", tabAudit: "Audit Trail", tabPolicies: "Policies", tabApprovals: "Approvals",
-        loading: "Loading...", loadingMetrics: "Loading metrics...", registeredAgents: "Registered Agents", auditTrail: "Audit Trail",
-        policyDefinitions: "Policy Definitions", approvalRecords: "Approval Records",
-        thAgentId: "Agent ID", thName: "Name", thStatus: "Status", thCapabilities: "Capabilities", thCode: "Code", thTools: "Tools",
-        thSeq: "Seq", thTimestamp: "Timestamp", thType: "Type", thActor: "Actor", thRisk: "Risk", thResult: "Result", thReason: "Reason",
-        thId: "ID", thAgent: "Agent", thAction: "Action", thDecidedBy: "Decided By", thCreated: "Created", thExpires: "Expires",
-        statTotalAgents: "Total Agents", statActiveAgents: "Active Agents", statCodeWriters: "Code Writers", statReadOnly: "Read-Only",
-        statAuditEntries: "Audit Entries", statSuccesses: "Successes", statFailures: "Failures", statHighRisk: "High Risk",
-        statAvgRisk: "Avg Risk Score", statApprovalsPending: "Approvals Pending", statUptime: "Uptime", statDenied: "Denied",
-        agentsCount: "agents", entriesCount: "entries", policiesCount: "policies", recordsCount: "records",
-        noAgents: "No agents registered", noAuditTitle: "No Audit Entries", noAuditBody: "Governance actions will appear here",
-        noApprovalsTitle: "No Approval Records", noApprovalsBody: "Approval requests will appear here when agents request elevated permissions",
-        serviceStarting: "Service Starting", waitingData: "Waiting for data...", failedLoad: "Failed to load",
-        approvalRequired: "APPROVAL REQUIRED", yes: "YES", no: "NO", none: "NONE"
-      },
-      ar: {
-        tabOverview: "نظرة عامة", tabAgents: "سجل الوكلاء", tabAudit: "مسار التدقيق", tabPolicies: "السياسات", tabApprovals: "الموافقات",
-        loading: "جاري التحميل...", loadingMetrics: "جاري تحميل المقاييس...", registeredAgents: "الوكلاء المسجلون", auditTrail: "مسار التدقيق",
-        policyDefinitions: "تعريفات السياسات", approvalRecords: "سجلات الموافقة",
-        thAgentId: "معرف الوكيل", thName: "الاسم", thStatus: "الحالة", thCapabilities: "القدرات", thCode: "الكود", thTools: "الأدوات",
-        thSeq: "تسلسل", thTimestamp: "الوقت", thType: "النوع", thActor: "الفاعل", thRisk: "المخاطر", thResult: "النتيجة", thReason: "السبب",
-        thId: "المعرف", thAgent: "الوكيل", thAction: "الإجراء", thDecidedBy: "قرر بواسطة", thCreated: "أُنشئ", thExpires: "ينتهي",
-        statTotalAgents: "إجمالي الوكلاء", statActiveAgents: "الوكلاء النشطون", statCodeWriters: "كتّاب الكود", statReadOnly: "للقراءة فقط",
-        statAuditEntries: "سجلات التدقيق", statSuccesses: "نجاحات", statFailures: "إخفاقات", statHighRisk: "مخاطر عالية",
-        statAvgRisk: "متوسط درجة المخاطر", statApprovalsPending: "موافقات معلّقة", statUptime: "وقت التشغيل", statDenied: "مرفوض",
-        agentsCount: "وكلاء", entriesCount: "سجلات", policiesCount: "سياسات", recordsCount: "سجلات",
-        noAgents: "لا يوجد وكلاء مسجلون", noAuditTitle: "لا توجد سجلات تدقيق", noAuditBody: "ستظهر إجراءات الحوكمة هنا",
-        noApprovalsTitle: "لا توجد سجلات موافقة", noApprovalsBody: "ستظهر طلبات الموافقة هنا عندما يطلب الوكلاء صلاحيات أعلى",
-        serviceStarting: "الخدمة قيد التشغيل", waitingData: "في انتظار البيانات...", failedLoad: "فشل التحميل",
-        approvalRequired: "مطلوب موافقة", yes: "نعم", no: "لا", none: "لا يوجد"
-      }
-    };
+    var TRANSLATIONS = ${translationsJson};
+    // END_DASHBOARD_TRANSLATIONS
 
     var currentLang = "he";
     var AGENT_NAMES = {
@@ -547,6 +732,7 @@ export function getDashboardHtml(): string {
         if (reload) {
           loadOverview();
           loadAgents();
+          loadPortfolio();
           loadAudit();
           loadPolicies();
           loadApprovals();
@@ -597,6 +783,7 @@ export function getDashboardHtml(): string {
 
     function statusPill(status) {
       if (status === 'ACTIVE') return '<span class="pill pill-success">' + status + '</span>';
+      if (status === 'LAB' || status === 'UNKNOWN' || status === 'NOT_PROBED') return '<span class="pill pill-muted">' + status + '</span>';
       if (status === 'SUSPENDED') return '<span class="pill pill-danger">' + status + '</span>';
       if (status === 'DEGRADED') return '<span class="pill pill-warning">' + status + '</span>';
       return '<span class="pill pill-muted">' + status + '</span>';
@@ -666,6 +853,254 @@ export function getDashboardHtml(): string {
       } catch (e) {
         var tbody2 = document.getElementById('agents-tbody');
         if (tbody2) tbody2.innerHTML = '<tr><td colspan="6" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+    }
+
+    async function loadPortfolio() {
+      function portfolioError(msg) {
+        var appsFail = document.getElementById('portfolio-apps-tbody');
+        if (appsFail) appsFail.innerHTML = '<tr><td colspan="5" class="loading">' + msg + '</td></tr>';
+        var srcFail = document.getElementById('portfolio-source-agents-tbody');
+        if (srcFail) srcFail.innerHTML = '<tr><td colspan="10" class="loading">' + msg + '</td></tr>';
+      }
+      try {
+        var portRes = await fetch('/api/v1/portfolio-governance');
+        if (!portRes.ok) throw new Error('portfolio-governance ' + portRes.status);
+        var port = await portRes.json();
+        var snapshot = port.snapshot || {};
+        var summary = port.summary || {};
+        var apps = snapshot.applications || [];
+        var sourceAgents = snapshot.sourceAgents || [];
+        var capabilities = snapshot.capabilities || [];
+        var evidence = snapshot.evidence || [];
+        var decisions = snapshot.governanceDecisions || [];
+        var dedupRelations = snapshot.dedupRelations || [];
+        var conflicts = snapshot.conflicts || [];
+        var canonicals = snapshot.canonicalCapabilities || [];
+        var countEl = document.getElementById('portfolio-count');
+        if (countEl) {
+          countEl.textContent =
+            (summary.applicationCount || apps.length) + ' ' + t("portfolioApps") +
+            ' · ' + (summary.sourceAgentCount || sourceAgents.length) + ' ' + t("sourceAgentsCount");
+        }
+        var stats = document.getElementById('portfolio-stats');
+        if (stats) {
+          stats.innerHTML =
+            '<div class="stat-card"><div class="label">' + t("portfolioApps") + '</div><div class="value info">' + (summary.applicationCount || apps.length) + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("sourceAgentsCount") + '</div><div class="value">' + (summary.sourceAgentCount || sourceAgents.length) + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("capabilityCount") + '</div><div class="value">' + (summary.capabilityCount || capabilities.length) + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("dedupCount") + '</div><div class="value">' + dedupRelations.length + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("decisionCount") + '</div><div class="value">' + decisions.length + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("evidenceCount") + '</div><div class="value">' + evidence.length + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("conflictCount") + '</div><div class="value' + (conflicts.length > 0 ? ' warning' : '') + '">' + conflicts.length + '</div></div>' +
+            '<div class="stat-card"><div class="label">' + t("fabricAgentsCount") + '</div><div class="value">' + (summary.fabricAgentRefCount || 0) + '</div></div>';
+        }
+        var appsById = {};
+        apps.forEach(function(a) { appsById[a.id] = a; });
+        var capsById = {};
+        capabilities.forEach(function(c) { capsById[c.id] = c; });
+        var canonById = {};
+        canonicals.forEach(function(c) { canonById[c.id] = c; });
+        var capsByAgent = {};
+        capabilities.forEach(function(c) {
+          if (!capsByAgent[c.sourceAgentId]) capsByAgent[c.sourceAgentId] = [];
+          capsByAgent[c.sourceAgentId].push(c.name);
+        });
+        var evidenceByAgent = {};
+        evidence.forEach(function(ev) {
+          if (!ev.sourceAgentId) return;
+          if (!evidenceByAgent[ev.sourceAgentId]) evidenceByAgent[ev.sourceAgentId] = [];
+          evidenceByAgent[ev.sourceAgentId].push(ev.kind);
+        });
+        var decisionByAgent = {};
+        decisions.forEach(function(d) {
+          if (!d.sourceAgentId) return;
+          decisionByAgent[d.sourceAgentId] = d.action + ' / ' + d.status;
+        });
+        var appsBody = document.getElementById('portfolio-apps-tbody');
+        if (appsBody) {
+          if (apps.length === 0) {
+            appsBody.innerHTML = '<tr><td colspan="5" class="empty-state">' + t("noPortfolioApps") + '</td></tr>';
+          } else {
+            appsBody.innerHTML = apps.map(function(a) {
+              return '<tr>' +
+                '<td class="mono">' + a.slug + '</td>' +
+                '<td>' + a.name + '</td>' +
+                '<td>' + statusPill(a.role) + '</td>' +
+                '<td class="mono" style="font-size:11px">' + String(a.sourceCommit || '').slice(0, 12) + '</td>' +
+                '<td style="font-size:12px">' + truncate(a.notes, 80) + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+        var srcCount = document.getElementById('portfolio-source-agents-count');
+        if (srcCount) srcCount.textContent = sourceAgents.length + ' ' + t("sourceAgentsCount");
+        var srcBody = document.getElementById('portfolio-source-agents-tbody');
+        if (srcBody) {
+          if (sourceAgents.length === 0) {
+            srcBody.innerHTML = '<tr><td colspan="10" class="empty-state">' + t("noSourceAgents") + '</td></tr>';
+          } else {
+            srcBody.innerHTML = sourceAgents.map(function(sa) {
+              var app = appsById[sa.applicationId];
+              var runtime = sa.runtimeStatus || {};
+              var runtimeLabel = (runtime.state || 'UNKNOWN') + ' / ' + (runtime.probeKind === 'NONE' || !runtime.probeKind ? 'NOT_PROBED' : runtime.probeKind);
+              var prov = sa.provenance || {};
+              var provLabel = (prov.sourceRepository || '') + ' @ ' + String(prov.sourceCommit || '').slice(0, 12) + ' · ' + (prov.sourcePath || '');
+              var capNames = capsByAgent[sa.id] || [];
+              var evKinds = evidenceByAgent[sa.id] || [];
+              var capHtml = capNames.length
+                ? capNames.slice(0, 4).map(function(n) { return '<span class="capability-tag">' + n + '</span>'; }).join('')
+                : '<span class="pill pill-muted">' + t("none") + '</span>';
+              var evHtml = evKinds.length ? evKinds.length + ' · ' + evKinds.slice(0, 3).join(', ') : t("none");
+              return '<tr>' +
+                '<td class="mono" style="font-size:11px">' + sa.sourceKey + '</td>' +
+                '<td>' + sa.displayName + '</td>' +
+                '<td>' + (app ? app.slug : '') + '</td>' +
+                '<td><span class="pill pill-info">' + sa.implementationClass + '</span></td>' +
+                '<td>' + capHtml + '</td>' +
+                '<td>' + statusPill(sa.verificationStatus) + '</td>' +
+                '<td>' + statusPill(runtime.state || 'UNKNOWN') + ' <span class="pill pill-muted">' + runtimeLabel + '</span></td>' +
+                '<td style="font-size:11px">' + truncate(provLabel, 72) + '</td>' +
+                '<td style="font-size:11px">' + evHtml + '</td>' +
+                '<td style="font-size:11px">' + (decisionByAgent[sa.id] || t("none")) + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+        // Capabilities table
+        var capCount = document.getElementById('portfolio-capabilities-count');
+        if (capCount) capCount.textContent = capabilities.length + ' ' + t("capabilityCount");
+        var capBody = document.getElementById('portfolio-capabilities-tbody');
+        if (capBody) {
+          if (capabilities.length === 0) {
+            capBody.innerHTML = '<tr><td colspan="6" class="empty-state">' + t("noCapabilities") + '</td></tr>';
+          } else {
+            capBody.innerHTML = capabilities.map(function(c) {
+              var canon = c.canonicalCapabilityId ? canonById[c.canonicalCapabilityId] : null;
+              var sideEffects = Array.isArray(c.sideEffects) ? c.sideEffects.join(', ') : t("none");
+              var readW = (Array.isArray(c.readAccess) ? c.readAccess.length : 0) + 'R / ' + (Array.isArray(c.writeAccess) ? c.writeAccess.length : 0) + 'W';
+              return '<tr>' +
+                '<td class="mono" style="font-size:11px">' + c.name + '</td>' +
+                '<td><span class="pill pill-info">' + c.domain + '</span></td>' +
+                '<td style="font-size:11px">' + truncate(c.purpose, 60) + '</td>' +
+                '<td>' + (canon ? '<span class="capability-tag">' + canon.key + '</span>' : '<span class="pill pill-muted">' + t("none") + '</span>') + '</td>' +
+                '<td style="font-size:11px">' + (sideEffects || t("none")) + '</td>' +
+                '<td style="font-size:11px">' + readW + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+        // Dedup table
+        var dedupCountEl = document.getElementById('portfolio-dedup-count');
+        if (dedupCountEl) dedupCountEl.textContent = dedupRelations.length + ' ' + t("dedupCount");
+        var dedupBody = document.getElementById('portfolio-dedup-tbody');
+        if (dedupBody) {
+          if (dedupRelations.length === 0) {
+            dedupBody.innerHTML = '<tr><td colspan="5" class="empty-state">' + t("noDedup") + '</td></tr>';
+          } else {
+            dedupBody.innerHTML = dedupRelations.map(function(d) {
+              var leftCap = d.leftCapabilityId ? capsById[d.leftCapabilityId] : null;
+              var rightCap = d.rightCapabilityId ? capsById[d.rightCapabilityId] : null;
+              var canon = d.canonicalCapabilityId ? canonById[d.canonicalCapabilityId] : null;
+              var kindClass = d.kind === 'CONFLICTING' ? 'pill-danger' : d.kind === 'UNIQUE' ? 'pill-muted' : 'pill-info';
+              return '<tr>' +
+                '<td><span class="pill ' + kindClass + '">' + d.kind + '</span></td>' +
+                '<td style="font-size:11px">' + (leftCap ? leftCap.name : '-') + '</td>' +
+                '<td style="font-size:11px">' + (rightCap ? rightCap.name : '-') + '</td>' +
+                '<td>' + (canon ? '<span class="capability-tag">' + canon.key + '</span>' : '-') + '</td>' +
+                '<td style="font-size:11px">' + truncate(d.notes, 60) + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+        // Evidence table
+        var evCountEl = document.getElementById('portfolio-evidence-count');
+        if (evCountEl) evCountEl.textContent = evidence.length + ' ' + t("evidenceCount");
+        var evBody = document.getElementById('portfolio-evidence-tbody');
+        if (evBody) {
+          if (evidence.length === 0) {
+            evBody.innerHTML = '<tr><td colspan="5" class="empty-state">' + t("noEvidence") + '</td></tr>';
+          } else {
+            evBody.innerHTML = evidence.map(function(ev) {
+              var app = ev.applicationId ? appsById[ev.applicationId] : null;
+              return '<tr>' +
+                '<td><span class="pill pill-info">' + ev.kind + '</span></td>' +
+                '<td style="font-size:11px">' + ev.authorityRank + '</td>' +
+                '<td class="mono" style="font-size:11px">' + truncate(ev.path, 50) + '</td>' +
+                '<td>' + (app ? app.slug : '-') + '</td>' +
+                '<td style="font-size:11px">' + truncate(ev.note, 50) + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+        // Decisions table
+        var decCountEl = document.getElementById('portfolio-decisions-count');
+        if (decCountEl) decCountEl.textContent = decisions.length + ' ' + t("decisionCount");
+        var decBody = document.getElementById('portfolio-decisions-tbody');
+        if (decBody) {
+          if (decisions.length === 0) {
+            decBody.innerHTML = '<tr><td colspan="5" class="empty-state">' + t("noDecisions") + '</td></tr>';
+          } else {
+            decBody.innerHTML = decisions.map(function(d) {
+              var app = d.applicationId ? appsById[d.applicationId] : null;
+              var cap = d.capabilityId ? capsById[d.capabilityId] : null;
+              var actionClass = d.action === 'ESCALATE' ? 'pill-danger' : d.action === 'DO_NOT_IMPORT' ? 'pill-warning' : 'pill-info';
+              var statusClass = d.status === 'APPROVED' ? 'pill-success' : d.status === 'DENIED' ? 'pill-danger' : 'pill-muted';
+              return '<tr>' +
+                '<td><span class="pill ' + actionClass + '">' + d.action + '</span></td>' +
+                '<td><span class="pill ' + statusClass + '">' + d.status + '</span></td>' +
+                '<td>' + (app ? app.slug : '-') + '</td>' +
+                '<td style="font-size:11px">' + (cap ? cap.name : '-') + '</td>' +
+                '<td style="font-size:11px">' + truncate(d.rationale, 80) + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+        // Conflicts table
+        var confCountEl = document.getElementById('portfolio-conflicts-count');
+        if (confCountEl) confCountEl.textContent = conflicts.length + ' ' + t("conflictCount");
+        var confBody = document.getElementById('portfolio-conflicts-tbody');
+        if (confBody) {
+          if (conflicts.length === 0) {
+            confBody.innerHTML = '<tr><td colspan="3" class="empty-state">' + t("noConflicts") + '</td></tr>';
+          } else {
+            confBody.innerHTML = conflicts.map(function(c) {
+              var statusClass = c.status === 'ESCALATED' ? 'pill-danger' : c.status === 'OPEN' ? 'pill-warning' : 'pill-muted';
+              return '<tr>' +
+                '<td class="mono" style="font-size:11px">' + c.key + '</td>' +
+                '<td><span class="pill ' + statusClass + '">' + c.status + '</span></td>' +
+                '<td style="font-size:12px">' + truncate(c.summary, 100) + '</td>' +
+                '</tr>';
+            }).join('');
+          }
+        }
+      } catch (e) {
+        portfolioError(t("failedLoad"));
+      }
+      try {
+        var fabRes = await fetch('/api/v1/agents/fabric-projection');
+        if (!fabRes.ok) throw new Error('fabric-projection ' + fabRes.status);
+        var fab = await fabRes.json();
+        var items = fab.items || [];
+        var fabCount = document.getElementById('fabric-projection-count');
+        if (fabCount) fabCount.textContent = items.length + ' ' + t("fabricAgentsCount");
+        var fabBody = document.getElementById('fabric-projection-tbody');
+        if (!fabBody) return;
+        if (items.length === 0) {
+          fabBody.innerHTML = '<tr><td colspan="4" class="empty-state">' + t("noFabricAgents") + '</td></tr>';
+          return;
+        }
+        fabBody.innerHTML = items.map(function(a) {
+          return '<tr>' +
+            '<td class="mono">' + a.agentId + '</td>' +
+            '<td>' + a.displayName + '</td>' +
+            '<td>' + statusPill(a.catalogStatus) + '</td>' +
+            '<td>' + (a.canWriteCode ? '<span class="pill pill-warning">' + t("yes") + '</span>' : '<span class="pill pill-muted">' + t("no") + '</span>') + '</td>' +
+            '</tr>';
+        }).join('');
+      } catch (e2) {
+        var fabFail = document.getElementById('fabric-projection-tbody');
+        if (fabFail) fabFail.innerHTML = '<tr><td colspan="4" class="loading">' + t("failedLoad") + '</td></tr>';
       }
     }
 
@@ -759,6 +1194,7 @@ export function getDashboardHtml(): string {
     // ── Initial load ───────────────────────────────────────────────────
     loadOverview();
     loadAgents();
+    loadPortfolio();
     loadAudit();
     loadPolicies();
     loadApprovals();
