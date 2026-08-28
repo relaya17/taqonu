@@ -91,6 +91,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       --accent-fill: #3d5a7a;
       --teal: #4ade9a;
       --teal-fill: #0f7a52;
+      --on-fill: #ffffff;
       --danger: #f87171;
       --border: rgba(200,208,220,0.12);
       --glow: rgba(122,156,198,0.25);
@@ -414,7 +415,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
 
     .hero-btn.primary {
       background: linear-gradient(135deg, var(--accent-fill), var(--teal-fill));
-      color: #fff;
+      color: var(--on-fill);
     }
     .hero-btn.primary:hover { box-shadow: 0 4px 20px var(--glow); transform: translateY(-2px); }
 
@@ -631,8 +632,8 @@ export function renderOwnerHtml(data: OwnerPageData): string {
     .btn-auth-submit {
       width: 100%;
       padding: 12px;
-      background: linear-gradient(135deg, var(--accent), var(--teal));
-      color: white;
+      background: linear-gradient(135deg, var(--accent-fill), var(--teal-fill));
+      color: var(--on-fill);
       border: none;
       border-radius: 8px;
       font: 600 14px var(--font);

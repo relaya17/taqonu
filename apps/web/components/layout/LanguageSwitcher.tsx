@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type MouseEvent } from "react";
-import { Box, Button, Menu, MenuItem, Stack, Typography } from "@mui/material";
+import { Button, Menu, MenuItem, Stack, Typography } from "@mui/material";
 import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
 import { useLocale, useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";

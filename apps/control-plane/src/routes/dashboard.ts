@@ -31,7 +31,7 @@ export function getDashboardHtml(): string {
       --text: #f0f2f5;
       --text-muted: #a8adb8;
       --accent: #7a9cc6;
-      --accent-dim: #5a7a9c;
+      --accent-dim: #3d5a7a;
       --success: #4ade80;
       --warning: #fbbf24;
       --danger: #f87171;

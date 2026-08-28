@@ -140,15 +140,19 @@ async function main(): Promise<void> {
   }, 2_000);
 }
 
-main().catch((error: unknown) => {
-  const message =
-    error instanceof AtlasError
-      ? `${error.code}: ${error.message}`
-      : error instanceof Error
-        ? error.message
-        : "unknown startup error";
-  console.error(JSON.stringify({ level: "error", message, service: "atlas-worker" }));
-  process.exit(1);
-});
+// Vitest imports enqueue/runOnce from this module. Do not call loadServerEnv
+// + process.exit(1) during unit tests (CI: 1658 pass then 5 unhandled exits).
+if (!process.env.VITEST && !process.env.VITEST_WORKER_ID) {
+  main().catch((error: unknown) => {
+    const message =
+      error instanceof AtlasError
+        ? `${error.code}: ${error.message}`
+        : error instanceof Error
+          ? error.message
+          : "unknown startup error";
+    console.error(JSON.stringify({ level: "error", message, service: "atlas-worker" }));
+    process.exit(1);
+  });
+}
 
-export { runOnce };
+export { runOnce, main };

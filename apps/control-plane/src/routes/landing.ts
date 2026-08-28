@@ -176,6 +176,7 @@ export function getLandingHtml(): string {
       --accent-hover: #8eb0d8;
       --teal: #4ade9a;
       --teal-fill: #0f7a52;
+      --on-fill: #ffffff;
       --teal-glow: rgba(74,222,154,0.18);
       --amber: #fbbf24;
       --coral: #f87171;
@@ -193,7 +194,8 @@ export function getLandingHtml(): string {
       --border: rgba(0,0,0,0.1);
       --text: #1a1d24;
       --text-secondary: #4a5568;
-      --text-muted: #718096;
+      --text-muted: #4a5568;
+      --accent: #2c5282;
       --accent-glow: rgba(122,156,198,0.35);
       --overlay-dark: rgba(0,0,0,0.25);
     }
@@ -317,8 +319,8 @@ export function getLandingHtml(): string {
     }
 
     .btn-register-nav {
-      background: linear-gradient(135deg, var(--accent), var(--teal));
-      color: white;
+      background: linear-gradient(135deg, var(--accent-fill), var(--teal-fill));
+      color: var(--on-fill);
       border: none;
       padding: 6px 14px;
       border-radius: 6px;
@@ -597,8 +599,8 @@ export function getLandingHtml(): string {
     }
 
     .hero-btn-primary {
-      background: linear-gradient(135deg, var(--accent), var(--teal));
-      color: white;
+      background: linear-gradient(135deg, var(--accent-fill), var(--teal-fill));
+      color: var(--on-fill);
       padding: 14px 32px;
       border-radius: 10px;
       font: 600 16px/1.2 var(--font);
@@ -724,8 +726,8 @@ export function getLandingHtml(): string {
     .btn-auth-submit {
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, var(--accent), var(--teal));
-      color: white;
+      background: linear-gradient(135deg, var(--accent-fill), var(--teal-fill));
+      color: var(--on-fill);
       border: none;
       border-radius: 10px;
       font-family: var(--font);
