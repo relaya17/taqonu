@@ -160,7 +160,7 @@ describe("Phase 11.3 — Capability Extraction", () => {
   it("does not add any SourceAgent to FABRIC_AGENT_CATALOG", () => {
     const fabricKeys = new Set(FABRIC_AGENT_IDS);
     for (const agent of snapshot.sourceAgents) {
-      expect(fabricKeys.has(agent.sourceKey as any)).toBe(false);
+      expect(fabricKeys.has(agent.sourceKey as string)).toBe(false);
       expect(agent.atlasPromotionBlocked).toBe(true);
     }
     expect(Object.keys(FABRIC_AGENT_CATALOG)).toHaveLength(16);

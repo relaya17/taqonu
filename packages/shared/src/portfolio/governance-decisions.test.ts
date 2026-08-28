@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import { FABRIC_AGENT_IDS, FABRIC_AGENT_CATALOG } from "../constants/agents.js";
 import {
   GOVERNANCE_DECISION_ACTIONS,
-  GOVERNANCE_DECISION_STATUSES,
   requiresOwnerAndCatalogChange,
   isSourceToAtlasPromotionAction,
 } from "../constants/portfolio-governance.js";

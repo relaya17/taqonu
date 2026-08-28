@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FABRIC_AGENT_IDS, FABRIC_AGENT_CATALOG } from "../constants/agents.js";
+import { FABRIC_AGENT_IDS } from "../constants/agents.js";
 import {
   ATLAS_AUTHORITY_INHERITANCE,
   GOVERNANCE_DECISION_STATUSES,
@@ -11,7 +11,6 @@ import {
   atlasPermissionsNeverFromSource,
   buildPortfolioSummary,
   fabricRefsAreNotAnExecutionRegistry,
-  knowledgeNeverIngestedInRecords,
   loadSeedSnapshot,
   noFabricCatalogMutation,
   noKnowledgeIngested,

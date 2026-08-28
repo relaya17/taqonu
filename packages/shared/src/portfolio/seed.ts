@@ -6,13 +6,13 @@
 import { FABRIC_AGENT_IDS, FABRIC_AGENT_CATALOG } from "../constants/agents.js";
 import { PORTFOLIO_GOVERNANCE_VERSION } from "../constants/portfolio-governance.js";
 import {
-  portfolioConflictSchema,
-  portfolioDedupRelationSchema,
-  portfolioEvidenceSchema,
   portfolioGovernanceSnapshotSchema,
   type PortfolioApplication,
   type PortfolioAuditEvent,
   type PortfolioCanonicalCapability,
+  type portfolioConflictSchema,
+  type portfolioDedupRelationSchema,
+  type portfolioEvidenceSchema,
   type PortfolioCapability,
   type PortfolioGovernanceDecision,
   type PortfolioGovernanceSnapshot,
