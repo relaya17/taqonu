@@ -51,10 +51,12 @@ export function PageContainer({
           width: "100%",
           maxWidth: resolvedMaxWidth,
           marginInline: "auto",
+          boxSizing: "border-box",
           ...(noPadding
             ? {}
             : {
-                px: { xs: 0, sm: 1, md: 2 },
+                px: { xs: 2, sm: 3, md: 4 },
+                py: { xs: 2, sm: 2.5, md: 3 },
               }),
           ...(textCenter
             ? {

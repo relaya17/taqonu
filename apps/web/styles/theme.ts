@@ -80,10 +80,44 @@ export function createAtlasTheme(
             : '"Fraunces", "Source Serif 4", serif',
         fontWeight: 650,
         fontSize: "clamp(1.25rem, 2.5vw, 1.5rem)",
+        lineHeight: 1.3,
+      },
+      h3: {
+        fontWeight: 600,
+        fontSize: "clamp(1.1rem, 2vw, 1.25rem)",
+        lineHeight: 1.35,
+      },
+      h4: {
+        fontWeight: 600,
+        fontSize: "clamp(1rem, 1.5vw, 1.1rem)",
+        lineHeight: 1.4,
+      },
+      h5: {
+        fontWeight: 600,
+        fontSize: "clamp(0.9rem, 1.25vw, 1rem)",
+        lineHeight: 1.4,
+      },
+      h6: {
+        fontWeight: 600,
+        fontSize: "clamp(0.85rem, 1vw, 0.95rem)",
+        lineHeight: 1.45,
+      },
+      body1: {
+        fontSize: "clamp(0.9rem, 1.25vw, 1rem)",
+        lineHeight: 1.6,
+      },
+      body2: {
+        fontSize: "clamp(0.8rem, 1vw, 0.875rem)",
+        lineHeight: 1.55,
+      },
+      caption: {
+        fontSize: "clamp(0.7rem, 0.85vw, 0.75rem)",
+        lineHeight: 1.5,
       },
       button: {
         textTransform: "none",
         fontWeight: 600,
+        fontSize: "clamp(0.8rem, 1vw, 0.9rem)",
       },
     },
     shape: {

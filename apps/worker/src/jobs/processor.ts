@@ -21,6 +21,20 @@ export function processJob(
 ): { readonly ok: boolean; readonly detail: string } {
   if (job.kind === "state.reconcile") {
     const input = job.payload as ReconciliationInput;
+    
+    // Validate required fields before processing
+    if (!input || !Array.isArray(input.claims) || !Array.isArray(input.observations)) {
+      logger.warn("state_reconcile_invalid_payload", {
+        jobId: job.id,
+        hasClaims: Array.isArray(input?.claims),
+        hasObservations: Array.isArray(input?.observations),
+      });
+      return {
+        ok: false,
+        detail: "invalid payload: missing claims or observations array",
+      };
+    }
+
     const result = reconcileProjectState(input);
     logger.info("state_reconciled", {
       jobId: job.id,
