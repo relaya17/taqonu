@@ -19,7 +19,12 @@ import {
 function repoRoot(): string {
   const fromEnv = process.env.ATLAS_REPO_ROOT?.trim();
   if (fromEnv) return resolve(fromEnv);
-  return resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+  // Bundlers that emit CJS leave import.meta.url empty, and a serverless
+  // function has no repo checkout to walk up to. Degrade to cwd so the
+  // caller's existsSync miss yields an empty overlay instead of throwing.
+  const moduleUrl = import.meta.url;
+  if (!moduleUrl?.startsWith("file:")) return process.cwd();
+  return resolve(dirname(fileURLToPath(moduleUrl)), "../../../..");
 }
 
 function overlayFilePath(): string {

@@ -7,6 +7,8 @@ dist
 apps/api/vercel-bundle.js
 apps/api/vercel-bundle.cjs
 apps/api/.vercel-bundle-ok
+apps/admin/vercel-bundle.cjs
+apps/control-plane/vercel-bundle.cjs
 .next
 .turbo
 coverage

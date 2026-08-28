@@ -122,7 +122,10 @@ async function requestHandler(
   notFound(res);
 }
 
-const server = createServer((req, res) => {
+function handleControlPlaneRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
   requestHandler(req, res).catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[control-plane] unhandled error: ${message}`);
@@ -134,7 +137,17 @@ const server = createServer((req, res) => {
       res.end(JSON.stringify({ error: "Internal server error" }));
     }
   });
-});
+}
+
+/** Entry used by the Vercel serverless function; see api/index.js. */
+export function createRequestHandler(): (
+  req: IncomingMessage,
+  res: ServerResponse,
+) => void {
+  return handleControlPlaneRequest;
+}
+
+const server = createServer(handleControlPlaneRequest);
 
 function shutdown(signal: string): void {
   console.log(`[control-plane] ${signal} — closing`);
@@ -142,11 +155,14 @@ function shutdown(signal: string): void {
   setTimeout(() => process.exit(1), 10_000).unref();
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+// Vercel invokes the exported handler per request. Binding a port inside a
+// serverless function never gets a listener and stalls the invocation.
+if (!process.env["VERCEL"]) {
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 
-server.listen(PORT, HOST, () => {
-  console.log(`
+  server.listen(PORT, HOST, () => {
+    console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
 ║   Atlas Sentinel                                             ║
@@ -158,6 +174,7 @@ server.listen(PORT, HOST, () => {
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
-});
+  });
+}
 
 export { server };

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && ./node_modules/.bin/turbo run build --filter=@atlas/admin... && pnpm --filter @atlas/admin run bundle:vercel",
+  "env": {
+    "TURBO_TEAM": "",
+    "TURBO_REMOTE_ONLY": "true"
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+}

@@ -1,0 +1,7 @@
+# Sibling apps must not enter the deploy file graph.
+../web
+../web/**
+../worker
+../worker/**
+**/*.tsx
+**/*.jsx

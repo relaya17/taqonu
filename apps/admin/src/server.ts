@@ -91,7 +91,10 @@ async function loadOwnerPage() {
   }
 }
 
-const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+export function handleAdminRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
@@ -115,10 +118,24 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Not found" }));
-});
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`[atlas-admin] Owner Control Plane UI http://${HOST}:${PORT}/`);
-});
+/** Entry used by the Vercel serverless function; see api/index.js. */
+export function createRequestHandler(): (
+  req: IncomingMessage,
+  res: ServerResponse,
+) => void {
+  return handleAdminRequest;
+}
+
+const server = createServer(handleAdminRequest);
+
+// Vercel invokes the exported handler per request. Binding a port inside a
+// serverless function never gets a listener and stalls the invocation.
+if (!process.env["VERCEL"]) {
+  server.listen(PORT, HOST, () => {
+    console.log(`[atlas-admin] Owner Control Plane UI http://${HOST}:${PORT}/`);
+  });
+}
 
 export { server };
