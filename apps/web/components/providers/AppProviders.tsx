@@ -6,12 +6,24 @@ import { CssBaseline, ThemeProvider } from "@mui/material";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { prefixer } from "stylis";
 import rtlPlugin from "stylis-plugin-rtl";
-import { createAtlasTheme } from "@/styles/theme";
+import { createAtlasTheme, type AtlasColorMode } from "@/styles/theme";
 import { AiCompanionProvider } from "@/components/providers/AiCompanionProvider";
 import {
   ColorModeProvider,
   useColorMode,
 } from "@/components/providers/ColorModeProvider";
+
+const CACHE_OPTIONS_LTR = {
+  key: "mui",
+  enableCssLayer: true,
+  stylisPlugins: [prefixer],
+};
+
+const CACHE_OPTIONS_RTL = {
+  key: "muirtl",
+  enableCssLayer: true,
+  stylisPlugins: [prefixer, rtlPlugin],
+};
 
 function ThemedApp({
   locale,
@@ -41,19 +53,8 @@ function ThemedApp({
       }),
   );
 
-  // One Emotion cache only (AppRouterCacheProvider). A second CacheProvider
-  // caused SSR/client className mismatches on Drawer / ListItemButton.
-  const cacheOptions = useMemo(
-    () =>
-      direction === "rtl"
-        ? {
-            key: "muirtl",
-            enableCssLayer: true,
-            stylisPlugins: [prefixer, rtlPlugin],
-          }
-        : { key: "mui", enableCssLayer: true, stylisPlugins: [prefixer] },
-    [direction],
-  );
+  const cacheOptions =
+    direction === "rtl" ? CACHE_OPTIONS_RTL : CACHE_OPTIONS_LTR;
 
   return (
     <AppRouterCacheProvider options={cacheOptions}>
@@ -69,13 +70,15 @@ function ThemedApp({
 
 export function AppProviders({
   locale,
+  initialMode,
   children,
 }: {
   locale: string;
+  initialMode: AtlasColorMode;
   children: ReactNode;
 }) {
   return (
-    <ColorModeProvider>
+    <ColorModeProvider initialMode={initialMode}>
       <ThemedApp locale={locale}>{children}</ThemedApp>
     </ColorModeProvider>
   );

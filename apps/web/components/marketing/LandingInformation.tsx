@@ -5,11 +5,14 @@ const LOOP = ["discover", "understand", "verify", "act"] as const;
 const FAQ = ["q1", "q2", "q3", "q4", "q5"] as const;
 
 const wrap: CSSProperties = {
+  width: "100%",
   maxWidth: 720,
-  margin: "0 auto",
-  padding: "0 1.25rem 4.5rem",
+  marginInline: "auto",
+  paddingInline: "1.25rem",
+  paddingBottom: "4.5rem",
+  boxSizing: "border-box",
   color: "#DCDDE1",
-  textAlign: "start",
+  textAlign: "center",
   lineHeight: 1.65,
 };
 
@@ -29,6 +32,7 @@ export async function LandingInformation() {
   return (
     <article
       style={{
+        width: "100%",
         borderTop: "1px solid rgba(154, 158, 168, 0.14)",
         background:
           "linear-gradient(180deg, #12141A 0%, #16191F 48%, #12141A 100%)",
@@ -61,7 +65,15 @@ export async function LandingInformation() {
         >
           {t("title")}
         </h2>
-        <p style={{ fontSize: "1.08rem", color: "rgba(220,221,225,0.92)", margin: "0 0 2rem" }}>
+        <p
+          style={{
+            fontSize: "1.08rem",
+            color: "rgba(220,221,225,0.92)",
+            margin: "0 auto 2rem",
+            maxWidth: 600,
+            textAlign: "start",
+          }}
+        >
           {t("lead")}
         </p>
 
@@ -73,7 +85,15 @@ export async function LandingInformation() {
 
         <h3 style={h3}>{t("loopTitle")}</h3>
         <p style={p}>{t("loopLead")}</p>
-        <ol style={{ paddingInlineStart: "1.25rem", margin: "0 0 1.5rem" }}>
+        <ol
+          style={{
+            paddingInlineStart: 0,
+            margin: "0 auto 1.5rem",
+            maxWidth: 560,
+            textAlign: "start",
+            listStylePosition: "inside",
+          }}
+        >
           {LOOP.map((step) => (
             <li key={step} style={{ marginBottom: "0.85rem" }}>
               <strong style={{ color: "#C8CBD2" }}>{t(`loop.${step}.title`)}</strong>
@@ -119,11 +139,14 @@ const h3: CSSProperties = {
   fontWeight: 650,
   fontSize: "1.12rem",
   color: "#9A9EA8",
-  margin: "1.75rem 0 0.5rem",
+  margin: "1.75rem auto 0.5rem",
+  textAlign: "center",
 };
 
 const p: CSSProperties = {
-  margin: "0 0 0.75rem",
+  margin: "0 auto 0.75rem",
+  maxWidth: 600,
   color: "rgba(180, 183, 190, 0.95)",
   fontSize: "1.02rem",
+  textAlign: "start",
 };

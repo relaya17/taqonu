@@ -4,14 +4,16 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
-  useSyncExternalStore,
+  useState,
   type ReactNode,
 } from "react";
 import type { AtlasColorMode } from "@/styles/theme";
+import { COLOR_MODE_COOKIE } from "@/lib/color-mode";
 
-const STORAGE_KEY = "atlas.colorMode";
 const CHANGE_EVENT = "atlas-color-mode";
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 interface ColorModeContextValue {
   mode: AtlasColorMode;
@@ -22,42 +24,32 @@ interface ColorModeContextValue {
 
 const ColorModeContext = createContext<ColorModeContextValue | null>(null);
 
-function readStoredMode(): AtlasColorMode {
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "dark" || stored === "light") return stored;
-  } catch {
-    // ignore
-  }
-  return "light";
-}
-
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(CHANGE_EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(CHANGE_EVENT, onChange);
-  };
+function readCookieMode(): AtlasColorMode | null {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${COLOR_MODE_COOKIE}=(dark|light)`),
+  );
+  return match ? (match[1] as AtlasColorMode) : null;
 }
 
 function writeMode(next: AtlasColorMode): void {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, next);
-  } catch {
-    // ignore
-  }
+  document.cookie = `${COLOR_MODE_COOKIE}=${next}; path=/; max-age=${ONE_YEAR_SECONDS}; samesite=lax`;
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-export function ColorModeProvider({ children }: { children: ReactNode }) {
-  // Server snapshot is always light so SSR HTML matches the first hydrate pass.
-  // After hydrate, React switches to the stored value without a mismatch warning.
-  const mode = useSyncExternalStore(
-    subscribe,
-    readStoredMode,
-    (): AtlasColorMode => "light",
-  );
+export function ColorModeProvider({
+  initialMode,
+  children,
+}: {
+  initialMode: AtlasColorMode;
+  children: ReactNode;
+}) {
+  const [mode, setModeState] = useState<AtlasColorMode>(initialMode);
+
+  useEffect(() => {
+    const sync = () => setModeState(readCookieMode() ?? initialMode);
+    window.addEventListener(CHANGE_EVENT, sync);
+    return () => window.removeEventListener(CHANGE_EVENT, sync);
+  }, [initialMode]);
 
   const setMode = useCallback((next: AtlasColorMode) => {
     writeMode(next);

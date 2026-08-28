@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
+import { COLOR_MODE_COOKIE, parseColorMode } from "@/lib/color-mode";
 import { AppProviders } from "@/components/providers/AppProviders";
 import { AppShell } from "@/components/layout/AppShell";
 import { routing } from "@/i18n/routing";
@@ -44,6 +46,8 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
   const messages = await getMessages();
   const dir = locale === "en" ? "ltr" : "rtl";
+  const cookieStore = await cookies();
+  const initialMode = parseColorMode(cookieStore.get(COLOR_MODE_COOKIE)?.value);
 
   return (
     <html lang={locale} dir={dir}>
@@ -57,7 +61,7 @@ export default async function LocaleLayout({
       </head>
       <body>
         <NextIntlClientProvider messages={messages}>
-          <AppProviders locale={locale}>
+          <AppProviders locale={locale} initialMode={initialMode}>
             <AppShell>
               <Suspense fallback={null}>{children}</Suspense>
             </AppShell>
