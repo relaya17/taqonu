@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
-  "buildCommand": "cd ../.. && pnpm turbo run build --filter=@atlas/web..."
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && ./node_modules/.bin/turbo run build --filter=@atlas/web...",
+  "env": {
+    "TURBO_TEAM": "",
+    "TURBO_REMOTE_ONLY": "true"
+  }
 }
