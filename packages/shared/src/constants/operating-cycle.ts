@@ -70,7 +70,7 @@ const NON_EXECUTABLE: ReadonlySet<AgentRuntimeControl> = new Set([
 ]);
 
 export function agentMayExecute(status: AgentRuntimeControl): boolean {
-  return status === "ACTIVE" || status === "DEGRADED";
+  return !NON_EXECUTABLE.has(status);
 }
 
 export interface OperatingCycleInput {

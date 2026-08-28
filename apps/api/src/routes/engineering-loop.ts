@@ -600,7 +600,7 @@ export async function registerEngineeringLoopRoutes(
   });
 
   app.get("/api/v1/proof/status", async (request) => {
-    const user = await requireUser(app, request);
+    await requireUser(app, request);
     const q = z
       .object({ projectId: uuidSchema.optional() })
       .parse(request.query ?? {});

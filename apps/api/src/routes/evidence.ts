@@ -40,7 +40,7 @@ export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void
    * Admins bypass the filter to see all evidence (including legacy stub-owned
    * records for system/migration visibility).
    */
-  app.get("/api/v1/evidence", async (request, reply) => {
+  app.get("/api/v1/evidence", async (request) => {
     const user = await requireUser(app, request);
 
     const allItems = [...osStore.evidence.values()]

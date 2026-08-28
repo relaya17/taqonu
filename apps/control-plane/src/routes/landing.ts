@@ -19,7 +19,7 @@ const ICON_GLOBE =
 const ICON_MENU =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M5 7.5h14M5 12h14M5 16.5h14"/></svg>';
 
-const TRANSLATIONS = {
+const _TRANSLATIONS = {
   he: {
     title: "Atlas Sentinel — פלטפורמת פיקוח AI",
     heroEyebrow: "פלטפורמת ממשל AI",

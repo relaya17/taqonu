@@ -10,7 +10,6 @@ import {
 import {
   cpAuditEntrySchema,
   importCpAuditBatch,
-  type CpAuditEntry,
 } from "../services/audit-bridge.js";
 
 const querySchema = z.object({

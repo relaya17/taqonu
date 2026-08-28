@@ -125,7 +125,6 @@ async function requestHandler(
 const server = createServer((req, res) => {
   requestHandler(req, res).catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
     console.error(`[control-plane] unhandled error: ${message}`);
     if (!res.headersSent) {
       res.writeHead(500, {
@@ -138,7 +137,6 @@ const server = createServer((req, res) => {
 });
 
 function shutdown(signal: string): void {
-  // eslint-disable-next-line no-console
   console.log(`[control-plane] ${signal} — closing`);
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
@@ -148,7 +146,6 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
 server.listen(PORT, HOST, () => {
-  // eslint-disable-next-line no-console
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║

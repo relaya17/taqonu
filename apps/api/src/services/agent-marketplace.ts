@@ -10,7 +10,6 @@
 
 import {
   FABRIC_AGENT_CATALOG,
-  FABRIC_AGENT_IDS,
   type FabricAgentId,
 } from "@atlas/shared";
 import {

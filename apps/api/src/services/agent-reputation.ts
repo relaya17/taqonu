@@ -200,7 +200,6 @@ export interface AgentRanking {
 }
 
 export function computeAgentRankings(domain: string): AgentRanking[] {
-  const generatedAt = new Date().toISOString();
   const metrics = computeExpertBattleMetrics();
 
   return metrics.map((m) => ({

@@ -368,7 +368,6 @@ describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {
   });
 
   it("redacts a fake AWS access key embedded in a QA pattern's title/summary before persisting the memory", () => {
-    const now = new Date().toISOString();
     const fakeSecret = "AKIAIOSFODNN7EXAMPLE";
     const finding1 = crypto.randomUUID();
     const pattern: Pick<

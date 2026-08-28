@@ -35,7 +35,7 @@ const basePatch = {
 
 describe("patchArtifactSchema", () => {
   it("accepts a well-formed patch and defaults epistemicState/confidence/authorityHint", () => {
-    const { epistemicState, confidence, authorityHint, ...withoutDefaults } =
+    const { epistemicState: _epistemicState, confidence: _confidence, authorityHint: _authorityHint, ...withoutDefaults } =
       basePatch as Record<string, unknown>;
     const parsed = patchArtifactSchema.parse(withoutDefaults);
     expect(parsed.epistemicState).toBe("PROPOSED");

@@ -236,7 +236,7 @@ function computeConfidence(supporting: number, contradicting: number): number {
  * Generate hypothesis suggestions from recent evidence.
  * This is a placeholder for the full ML-based suggestion engine.
  */
-export function suggestHypotheses(projectId: string | null): HypothesisCreateInput[] {
+export function suggestHypotheses(_projectId: string | null): HypothesisCreateInput[] {
   // Placeholder: in full implementation, this would analyze
   // recent evidence, patterns, and known issues to suggest hypotheses
   return [];

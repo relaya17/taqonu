@@ -86,7 +86,6 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 });
 
 server.listen(PORT, HOST, () => {
-  // eslint-disable-next-line no-console
   console.log(`[atlas-admin] Owner Control Plane UI http://${HOST}:${PORT}/`);
 });
 

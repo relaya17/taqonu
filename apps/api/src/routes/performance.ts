@@ -5,7 +5,6 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { readCache, type CacheStats } from "../services/response-cache.js";
 import {
   PERFORMANCE_LIMITS,

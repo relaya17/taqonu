@@ -62,7 +62,7 @@ describe("agentRunResultSchema", () => {
   };
 
   it("accepts a well-formed run result and defaults claims/evidenceRefs to []", () => {
-    const { claims, evidenceRefs, ...withoutDefaults } = base;
+    const { claims: _claims, evidenceRefs: _evidenceRefs, ...withoutDefaults } = base;
     const parsed = agentRunResultSchema.parse(withoutDefaults);
     expect(parsed.claims).toEqual([]);
     expect(parsed.evidenceRefs).toEqual([]);

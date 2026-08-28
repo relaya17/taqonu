@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AtlasError, uuidSchema } from "@atlas/shared";
 import { authorizeEntityAction } from "@atlas/agent-core";
-import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import {
   assertProjectReadAccess,
   assertProjectWriteAccess,
