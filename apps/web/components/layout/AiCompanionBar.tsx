@@ -19,6 +19,11 @@ import { apiGet } from "@/lib/api";
 import { useAiCompanion } from "@/components/providers/AiCompanionProvider";
 import { COMPANION_PROVIDER_IDS } from "@/lib/ai-provider-preference";
 
+function hasSessionCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie.includes("atlas.session");
+}
+
 interface ProviderItem {
   id: string;
   titleEn: string;
@@ -60,11 +65,18 @@ export function AiCompanionBar() {
     });
   };
 
+  const [hasSession, setHasSession] = useState(false);
+  useEffect(() => {
+    setHasSession(hasSessionCookie());
+  }, []);
+
   const providers = useQuery({
     queryKey: ["ai-providers"],
     queryFn: () =>
       apiGet<{ items: ProviderItem[] }>("/api/v1/ai/providers"),
     staleTime: 5 * 60_000,
+    retry: false,
+    enabled: hasSession,
   });
 
   const options = (providers.data?.items ?? []).filter(
