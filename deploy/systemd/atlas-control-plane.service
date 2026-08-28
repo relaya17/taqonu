@@ -1,0 +1,39 @@
+[Unit]
+Description=Atlas Control Plane (ADR-021 CONTROL trust plane, :3100)
+Documentation=file:///opt/atlas/docs/deployment/private-plane.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atlas
+Group=atlas
+WorkingDirectory=/opt/atlas/apps/control-plane
+EnvironmentFile=/etc/atlas/control-plane.env
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=atlas-control-plane
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Node's JIT requires W+X pages.
+MemoryDenyWriteExecute=false
+ReadWritePaths=/var/lib/atlas
+
+[Install]
+WantedBy=multi-user.target

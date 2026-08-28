@@ -1,0 +1,39 @@
+[Unit]
+Description=Atlas Worker (background job loop, no HTTP surface)
+Documentation=file:///opt/atlas/docs/deployment/private-plane.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atlas
+Group=atlas
+WorkingDirectory=/opt/atlas/apps/worker
+EnvironmentFile=/etc/atlas/worker.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=atlas-worker
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+# Durable queue file lives here (ATLAS_QUEUE_PATH).
+ReadWritePaths=/var/lib/atlas
+
+[Install]
+WantedBy=multi-user.target
