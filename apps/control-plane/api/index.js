@@ -1,3 +1,4 @@
+/* eslint-env node */
 /**
  * Vercel Serverless Function entry for the Control Plane surface.
  * All traffic is rewritten here via vercel.json.
