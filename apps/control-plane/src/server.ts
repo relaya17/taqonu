@@ -83,6 +83,12 @@ async function requestHandler(
   ).pathname;
   const method = (req.method ?? "GET").toUpperCase();
 
+  if (pathname === "/favicon.ico" && (method === "GET" || method === "HEAD")) {
+    res.writeHead(204, { "Cache-Control": "public, max-age=86400" });
+    res.end();
+    return;
+  }
+
   if (!isControlPlanePublicPath(pathname)) {
     const limited = checkRateLimit(req);
     if (!limited.allowed) {

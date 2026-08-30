@@ -100,11 +100,17 @@ export function handleAdminRequest(
     res.end();
     return;
   }
-  if (!authorizeAdminRequest(req, res)) return;
   const pathname = new URL(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   ).pathname;
+  const method = (req.method ?? "GET").toUpperCase();
+  if (pathname === "/favicon.ico" && (method === "GET" || method === "HEAD")) {
+    res.writeHead(204, { "Cache-Control": "public, max-age=86400" });
+    res.end();
+    return;
+  }
+  if (!authorizeAdminRequest(req, res)) return;
   if (pathname === "/" || pathname === "/index.html") {
     void loadOwnerPage().then((html) => {
       res.writeHead(200, {
