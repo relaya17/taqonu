@@ -665,8 +665,8 @@ export function ensureDevLocalUser(): {
   const existing = findUserByEmail(email);
   if (existing) {
     setLocalPasswordByEmail(email, password);
-    if (existing.role !== "admin" && existing.role !== "owner") {
-      setLocalUserRole(existing.id, "admin");
+    if (existing.role !== "owner") {
+      setLocalUserRole(existing.id, "owner");
     }
     return { email, created: false };
   }
@@ -676,8 +676,8 @@ export function ensureDevLocalUser(): {
     displayName: "Atlas Dev",
     locale: "he",
   });
-  if (user.role !== "admin" && user.role !== "owner") {
-    setLocalUserRole(user.id, "admin");
+  if (user.role !== "owner") {
+    setLocalUserRole(user.id, "owner");
   }
   return { email, created: true };
 }

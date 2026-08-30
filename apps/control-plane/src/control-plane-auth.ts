@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { json } from "./routes/router.js";
+import { readControlBrowserSession } from "./browser-session.js";
 
 /** Authenticated Control Plane caller — a SERVICE, never a default owner. */
 export const CONTROL_PLANE_SERVICE_ID = "cp:service";
@@ -162,6 +163,21 @@ export function authorizeControlPlaneRequest(
   // Check operator token
   if (operatorToken && presented && tokensEqual(presented, operatorToken)) {
     resolvedPrincipalRole = "OPERATOR";
+    return true;
+  }
+
+  const browserSession = readControlBrowserSession(req);
+  if (browserSession) {
+    const method = (req.method ?? "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const origin = req.headers.origin;
+      const host = req.headers.host;
+      if (!host || (origin !== `https://${host}` && origin !== `http://${host}`)) {
+        json(res, { error: "Control Plane origin verification failed" }, 403);
+        return false;
+      }
+    }
+    resolvedPrincipalRole = browserSession.role;
     return true;
   }
 

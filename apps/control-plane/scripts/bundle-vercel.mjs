@@ -1,4 +1,3 @@
-/* eslint-env node */
 import * as esbuild from "esbuild";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -23,6 +23,17 @@ export default [
   eslint.configs.recommended,
   prettier,
   {
+    // Hand-written Vercel Node entrypoints and esbuild bundling scripts run under Node, not TS type-checking.
+    files: ["apps/*/api/index.js", "apps/*/scripts/*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       parser: tsparser,

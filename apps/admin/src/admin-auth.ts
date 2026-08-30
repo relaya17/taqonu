@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readAdminBrowserSession } from "./browser-session.js";
 
 export function adminToken(): string | null {
   const raw = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
@@ -36,6 +37,20 @@ export function authorizeAdminRequest(
 
   if (token) {
     if (presented && tokensEqual(presented, token)) return true;
+    const browserSession = readAdminBrowserSession(req);
+    if (browserSession) {
+      const method = (req.method ?? "GET").toUpperCase();
+      if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+        const origin = req.headers.origin;
+        const host = req.headers.host;
+        if (!host || (origin !== `https://${host}` && origin !== `http://${host}`)) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Owner Admin origin verification failed" }));
+          return false;
+        }
+      }
+      return true;
+    }
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Owner Control Plane authentication required" }));
     return false;

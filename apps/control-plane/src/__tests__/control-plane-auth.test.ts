@@ -12,6 +12,10 @@ import {
   resolveControlPlanePrincipal,
   verifyReauthTicket,
 } from "../control-plane-auth.js";
+import {
+  issueControlBrowserSession,
+  readControlBrowserSession,
+} from "../browser-session.js";
 
 function fakeReq(auth?: string, remote = "127.0.0.1"): IncomingMessage {
   return {
@@ -70,6 +74,19 @@ describe("Control Plane auth (ADR-021)", () => {
         "/dashboard",
       ),
     ).toBe(true);
+  });
+
+  it("accepts a signed browser session and rejects tampering", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    const pair = issueControlBrowserSession("OWNER", "owner-1").split(";")[0]!;
+    const request = fakeReq();
+    request.headers.cookie = pair;
+    expect(readControlBrowserSession(request)).toEqual({ role: "OWNER", subject: "owner-1" });
+    expect(authorizeControlPlaneRequest(request, fakeRes(), "/dashboard")).toBe(true);
+    expect(resolveControlPlanePrincipal().role).toBe("OWNER");
+
+    request.headers.cookie = `${pair}x`;
+    expect(readControlBrowserSession(request)).toBeNull();
   });
 
   it("fails closed in production without a token", () => {
