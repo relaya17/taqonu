@@ -238,8 +238,50 @@ export function renderOwnerHtml(data: OwnerPageData): string {
     .nav-end {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 8px;
       flex-shrink: 0;
+    }
+
+    .nav-auth {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-nav-link {
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font: 500 12px/1.2 var(--font);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-nav-link:hover {
+      background: rgba(80,90,110,0.28);
+      color: var(--text);
+    }
+
+    .btn-login {
+      background: rgba(36,42,54,0.6);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font: 500 12px/1.2 var(--font);
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-login:hover {
+      background: rgba(80,90,110,0.28);
+      color: var(--text);
+    }
+
+    @media (max-width: 720px) {
+      .nav-auth { display: none; }
     }
 
     .icon-btn {
@@ -876,6 +918,11 @@ export function renderOwnerHtml(data: OwnerPageData): string {
     </a>
 
     <div class="nav-end">
+      <div class="nav-auth">
+        <a href="${(data.webOrigin ?? "http://localhost:3000").replace(/\/$/, "")}/he/welcome" class="btn-nav-link" id="navLinkAtlas" data-i18n="navAtlas">Atlas</a>
+        <a href="${data.controlApi.replace(/\/$/, "")}" class="btn-nav-link" id="navLinkSentinel" data-i18n="navSentinel">Sentinel</a>
+        <a href="/login" class="btn-login" id="navLoginBtn" data-i18n="btnLogin">Login</a>
+      </div>
       <button class="icon-btn" id="themeBtn" aria-label="Toggle theme">${ICON_MOON}</button>
       <div class="lang-wrap">
         <button class="icon-btn" id="langBtn" aria-label="Language">${ICON_GLOBE}</button>
@@ -891,6 +938,8 @@ export function renderOwnerHtml(data: OwnerPageData): string {
 
   <!-- Mobile Menu -->
   <div class="mobile-menu" id="mobileMenu">
+    <a href="${(data.webOrigin ?? "http://localhost:3000").replace(/\/$/, "")}/he/welcome" data-i18n="navAtlas">Atlas</a>
+    <a href="${data.controlApi.replace(/\/$/, "")}" data-i18n="navSentinel">Sentinel</a>
     <a href="/login" id="mobileLoginBtn" data-i18n="btnLogin">Login</a>
     <a href="${(data.webOrigin ?? "http://localhost:3000").replace(/\/$/, "")}/he/auth/register" id="mobileRegisterBtn" data-i18n="btnRegister">Register</a>
     <a href="http://127.0.0.1:3100/dashboard" data-i18n="navDashboard">Dashboard</a>
@@ -917,8 +966,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         Enterprise-grade security for your AI operations.
       </p>
       <div class="hero-cta">
-        <a href="/login" class="hero-btn primary" id="heroRegisterBtn" data-i18n="ctaGetStarted">Get Started</a>
-        <a href="http://127.0.0.1:3100/dashboard" class="hero-btn secondary" id="linkDashboard" data-i18n="navDashboard">Dashboard</a>
+        <a href="http://127.0.0.1:3100/dashboard" class="hero-btn primary" id="linkDashboard" data-i18n="navDashboard">Dashboard</a>
       </div>
     </div>
   </section>
@@ -1039,9 +1087,9 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         heroTitle1: "Atlas Admin",
         heroTitle2: "ממשל ופיקוח",
         heroSubtitle: "שליטה מלאה על סוכני AI, מדיניות ומסלולי ביקורת. אבטחה ברמת ארגון לפעולות ה-AI שלך.",
-        ctaGetStarted: "התחל עכשיו",
         navDashboard: "לוח בקרה",
         navAtlas: "Atlas",
+        navSentinel: "Atlas Sentinel",
         btnLogin: "התחברות",
         btnRegister: "הרשמה",
         authSubtitleLogin: "התחבר לחשבון שלך",
@@ -1088,9 +1136,9 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         heroTitle1: "Atlas Admin",
         heroTitle2: "Governance & Oversight",
         heroSubtitle: "Complete control over AI agents, policies, and audit trails. Enterprise-grade security for your AI operations.",
-        ctaGetStarted: "Get Started",
         navDashboard: "Dashboard",
         navAtlas: "Atlas",
+        navSentinel: "Atlas Sentinel",
         btnLogin: "Login",
         btnRegister: "Register",
         authSubtitleLogin: "Sign in to your account",
@@ -1137,9 +1185,9 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         heroTitle1: "Atlas Admin",
         heroTitle2: "الحوكمة والرقابة",
         heroSubtitle: "تحكم كامل في وكلاء الذكاء الاصطناعي والسياسات ومسارات التدقيق. أمان على مستوى المؤسسات لعمليات الذكاء الاصطناعي الخاصة بك.",
-        ctaGetStarted: "ابدأ الآن",
         navDashboard: "لوحة التحكم",
         navAtlas: "Atlas",
+        navSentinel: "Atlas Sentinel",
         btnLogin: "تسجيل الدخول",
         btnRegister: "التسجيل",
         authSubtitleLogin: "سجل الدخول إلى حسابك",
@@ -1330,8 +1378,6 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       authMode = authMode === "login" ? "register" : "login";
       updateAuthModal();
     });
-
-    document.getElementById("heroRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = "/login"; });
 
     // Mobile menu
     var mobileMenu = document.getElementById("mobileMenu");
