@@ -3,6 +3,7 @@
   "framework": null,
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && ./node_modules/.bin/turbo run build --filter=@atlas/api... && pnpm --filter @atlas/api run bundle:vercel",
+  "outputDirectory": "public",
   "env": {
     "TURBO_TEAM": "",
     "TURBO_REMOTE_ONLY": "true"
