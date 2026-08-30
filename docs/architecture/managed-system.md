@@ -16,7 +16,7 @@ Category: **The Truth & Control Layer for AI-Native Software.**
 ## Rule
 
 Connectors observe from the outside (Git, API, DB, CI, deploy).  
-Atlas does not embed inside Vantera / HotelOS / CaseFlow / BrokerOS.
+Atlas does not embed inside Vantera / HotelOS / CaseFlow / BrokerOS / Civio.
 
 Every connected product becomes a **Managed System**. Atlas itself is one too (DEF-000).
 

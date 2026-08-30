@@ -85,4 +85,17 @@ describe("dispatchAgentPlan", () => {
     expect(a.id).not.toBe(b.id);
     expect(a.traceId).not.toBe(b.traceId);
   });
+
+  it("does not expose Civio-scoped knowledge to an unauthorized specialist", async () => {
+    const result = await dispatchAgentPlan({
+      request: "תעודת זכאות לדיור ציבורי",
+      agentIds: ["LEGAL_MEDIA_COMMS", "SECURITY"],
+      runJudge: false,
+    });
+    const legal = result.runs.find((run) => run.agentId === "LEGAL_MEDIA_COMMS");
+    const security = result.runs.find((run) => run.agentId === "SECURITY");
+
+    expect(legal?.claims.some((claim) => claim.includes("תעודת זכאות"))).toBe(true);
+    expect(security?.claims.some((claim) => claim.includes("תעודת זכאות"))).toBe(false);
+  });
 });

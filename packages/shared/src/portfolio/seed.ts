@@ -32,6 +32,7 @@ const COMMITS = {
   caseflow: "62bca234e4e8da03deeddc54c3869ef5651bcd7b",
   brokeros: "a7638bb0298293ddd3432d0db65806975e21c5d2",
   lexstudy: "0d005a430d95313d27c24133a75001e9f09cdaae",
+  civio: "0f79e86dfae62f4ce3ef7fff041a2957ddbdafdb",
 } as const;
 
 const RUNTIME_UNKNOWN = {
@@ -80,6 +81,7 @@ const APP = {
   caseflow: uid(4),
   brokeros: uid(5),
   lexstudy: uid(6),
+  civio: uid(7),
 } as const;
 
 function application(
@@ -194,6 +196,16 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
       "main",
       COMMITS.lexstudy,
       "28 registry IDs; LEX-AG-027 is mock; 003/005 overlap 002 phases.",
+    ),
+    application(
+      APP.civio,
+      "civio",
+      "Civio / Michtavia",
+      "SOURCE",
+      "github.com/relaya17/civio",
+      "main",
+      COMMITS.civio,
+      "Civic-rights application. Knowledge snapshot is scoped to RESEARCHER and LEGAL_MEDIA_COMMS; runtime UNKNOWN / NOT_PROBED.",
     ),
   ];
 
@@ -530,6 +542,55 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
     );
   });
 
+  sourceAgents.push(
+    agent({
+      seq: 450,
+      applicationId: APP.civio,
+      sourceKey: "CIV-AG-001",
+      displayName: "Civio Civic Rights Agent",
+      implementationClass: "IMPLEMENTED",
+      verificationStatus: "VERIFIED",
+      provenance: prov({
+        applicationId: APP.civio,
+        repo: "github.com/relaya17/civio",
+        branch: "main",
+        commit: COMMITS.civio,
+        path: "packages/logic/src/housing-agent/answerEngine.ts",
+        pkg: "@repo/logic",
+        symbol: "answerHousingQuestion",
+        sourceType: "AGENT",
+        originalStatus: "ACTIVE",
+        atlasClassification: "civic-rights-grounded-answer",
+      }),
+      purpose: "Answer civic and public-housing questions from a reviewed rights catalog with cited sources and a fixed disclaimer.",
+      domain: "civic-rights",
+      notes: "KB-first with optional Gemini phrasing. Source runtime remains external and is never executed by portfolio governance.",
+    }),
+    agent({
+      seq: 451,
+      applicationId: APP.civio,
+      sourceKey: "CIV-AG-002",
+      displayName: "Civio Legal AI Services",
+      implementationClass: "IMPLEMENTED",
+      verificationStatus: "PARTIALLY_VERIFIED",
+      provenance: prov({
+        applicationId: APP.civio,
+        repo: "github.com/relaya17/civio",
+        branch: "main",
+        commit: COMMITS.civio,
+        path: "apps/server/src/routes/ai.ts",
+        pkg: "server",
+        symbol: "aiRouter",
+        sourceType: "AGENT",
+        originalStatus: "ACTIVE",
+        atlasClassification: "legal-ai-source-routes",
+      }),
+      purpose: "Authenticated legal Q&A, contract review, and text improvement backed by Civio knowledge and Gemini.",
+      domain: "legal-services",
+      notes: "External provider calls and Civio authentication stay source-specific. No source authority is inherited by Atlas.",
+    }),
+  );
+
   const canonicalCapabilities: PortfolioCanonicalCapability[] = FABRIC_AGENT_IDS.map((id, i) => ({
     id: uid(800 + i),
     key: id,
@@ -628,6 +689,62 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
   }
 
   const byKey = Object.fromEntries(sourceAgents.map((a) => [a.sourceKey, a]));
+
+  const civioRights = byKey["CIV-AG-001"]!;
+  const civioRightsCap = addCap({
+    sourceAgentId: civioRights.id,
+    name: "civio-verified-rights-answer",
+    purpose: "Retrieve reviewed Israeli civic-rights guidance with official source links and disclaimers",
+    domain: "civic-rights",
+    inputs: "Hebrew civic-rights or public-housing question",
+    outputs: "grounded answer, confidence, matched topics, sources, disclaimer",
+    tools: ["searchHousingKnowledgeBase", "answerHousingQuestion"],
+    sideEffects: [],
+    readAccess: ["RIGHTS_ITEMS", "LEGAL_FOUNDATIONS", "published-rights"],
+    writeAccess: [],
+    externalCommunication: [],
+    externalAuthority: false,
+    dependencies: ["@repo/logic/housing-agent"],
+    applicationContext: "Civio civic-rights guidance; informational only, not legal advice",
+    authority: "READ",
+    applicationSpecific: false,
+    canonicalKey: "LEGAL_MEDIA_COMMS",
+  });
+  permissions.push({
+    id: uid(permSeq++),
+    sourceAgentId: civioRights.id,
+    sourceAuthority: "READ",
+    description: "Reads Civio's reviewed rights catalog. Atlas inheritance NONE; only the approved snapshot is available to scoped agents.",
+    atlasInheritance: "NONE",
+  });
+
+  const civioLegalAi = byKey["CIV-AG-002"]!;
+  addCap({
+    sourceAgentId: civioLegalAi.id,
+    name: "civio-legal-ai-routes",
+    purpose: "Generate legal-information responses and contract review through authenticated Civio routes",
+    domain: "legal-services",
+    inputs: "authenticated text, question, or contract",
+    outputs: "draft, structured contract scan, or legal-information response",
+    tools: ["aiRouter", "getAgentCatalog", "Gemini"],
+    sideEffects: ["EXTERNAL_CALL"],
+    readAccess: ["published-rights", "LEGAL_FOUNDATIONS", "request-content"],
+    writeAccess: [],
+    externalCommunication: ["HTTP_CALL"],
+    externalAuthority: true,
+    dependencies: ["Civio auth", "Gemini API", "Civio rights catalog"],
+    applicationContext: "Civio authenticated AI services; provider execution remains inside Civio",
+    authority: "EXTERNAL_SOURCE",
+    applicationSpecific: true,
+    canonicalKey: null,
+  });
+  permissions.push({
+    id: uid(permSeq++),
+    sourceAgentId: civioLegalAi.id,
+    sourceAuthority: "EXTERNAL_SOURCE",
+    description: "Civio may call its configured AI provider. Atlas inheritance NONE and Atlas never receives provider credentials.",
+    atlasInheritance: "NONE",
+  });
 
   const vone = byKey["VAN-AG-001"]!;
   addCap({
@@ -1603,6 +1720,8 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
               ? "docs/engineering-standard/11-ai-agents/01-HOTELOS-AGENT-REGISTRY.md"
               : a.slug === "caseflow"
                 ? "docs/CASEFLOW_AGENT_REGISTRY.md"
+                : a.slug === "civio"
+                  ? "apps/housing-agent/README.md"
                 : "docs/agents/LEXSTUDY_AGENT_MASTER_REGISTRY.md",
       note: "Static inspection of source registry documentation and code. Not live runtime.",
       authorityRank: "ARCHITECTURE_DOCUMENT" as const,
@@ -1721,6 +1840,33 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
       isRuntimeProbe: false as const,
     });
   }
+
+  evidence.push(
+    {
+      id: uid(1017),
+      sourceAgentId: civioRights.id,
+      applicationId: APP.civio,
+      capabilityId: civioRightsCap,
+      kind: "SOURCE_CODE",
+      path: "packages/logic/src/housing-agent/answerEngine.ts",
+      note: "KB-first answer engine with source citations, confidence labels, and fixed legal disclaimer.",
+      authorityRank: "SOURCE_CODE",
+      extractedAt: EXTRACTED_AT,
+      isRuntimeProbe: false as const,
+    },
+    {
+      id: uid(1018),
+      sourceAgentId: civioRights.id,
+      applicationId: APP.civio,
+      capabilityId: civioRightsCap,
+      kind: "TEST",
+      path: "apps/housing-agent/src/lib/answerEngine.test.ts",
+      note: "Tests KB fallback, source formatting, and the mandatory not-legal-advice disclaimer.",
+      authorityRank: "AUTOMATED_VERIFIED_TEST",
+      extractedAt: EXTRACTED_AT,
+      isRuntimeProbe: false as const,
+    },
+  );
 
   const orchCanon = canonByKey["ORCHESTRATOR"]!;
   const secCanon = canonByKey["SECURITY"]!;
@@ -2114,6 +2260,24 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
       canonicalCapabilityId: knowledgeCanon["KNOWLEDGE_NO_SELF_VALIDATE"] ?? null,
       notes: "LexStudy question validation implements no-self-validate pattern. Knowledge-only candidate.",
     },
+    {
+      id: uid(1142),
+      kind: "COMPLEMENTARY",
+      leftCapabilityId: civioRightsCap,
+      rightCapabilityId: null,
+      leftSourceAgentId: civioRights.id,
+      canonicalCapabilityId: legalCanon,
+      notes: "Civio contributes reviewed Israeli civic-rights sources to LEGAL_MEDIA_COMMS without importing its runtime agent.",
+    },
+    {
+      id: uid(1143),
+      kind: "UNIQUE",
+      leftCapabilityId: capabilities.find((c) => c.name === "civio-legal-ai-routes")?.id ?? null,
+      rightCapabilityId: null,
+      leftSourceAgentId: civioLegalAi.id,
+      canonicalCapabilityId: null,
+      notes: "Civio authentication, contract review, and provider calls remain application-specific.",
+    },
   ];
 
   const conflicts: z.input<typeof portfolioConflictSchema>[] = [
@@ -2242,6 +2406,32 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
       sourceAgentId: null,
       capabilityId: null,
       rationale: "Pedagogy/court sim stay in LexStudy. Validator split is knowledge-only candidate, not ingested.",
+      decidedBy: null,
+      decidedAt: null,
+      fabricCatalogMutated: false,
+      knowledgeIngested: false,
+    },
+    {
+      id: uid(1321),
+      action: "KEEP_SOURCE_SPECIFIC",
+      status: "PROPOSED",
+      applicationId: APP.civio,
+      sourceAgentId: civioLegalAi.id,
+      capabilityId: capabilities.find((c) => c.name === "civio-legal-ai-routes")?.id ?? null,
+      rationale: "Civio authentication, Gemini calls, contract review, and runtime operations remain inside Civio. Atlas supervises but does not execute them.",
+      decidedBy: null,
+      decidedAt: null,
+      fabricCatalogMutated: false,
+      knowledgeIngested: false,
+    },
+    {
+      id: uid(1322),
+      action: "IMPORT_KNOWLEDGE_ONLY",
+      status: "PROPOSED",
+      applicationId: APP.civio,
+      sourceAgentId: civioRights.id,
+      capabilityId: civioRightsCap,
+      rationale: "Owner approved a commit-pinned snapshot of RIGHTS_ITEMS and LEGAL_FOUNDATIONS for RESEARCHER and LEGAL_MEDIA_COMMS only.",
       decidedBy: null,
       decidedAt: null,
       fabricCatalogMutated: false,
@@ -2494,6 +2684,26 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
         permissionsInherited: false,
       },
     },
+    {
+      id: uid(1402),
+      at: "2026-08-30T00:00:00.000Z",
+      type: "portfolio.ingestion_decision",
+      actorId: "owner:explicit-approval",
+      payload: {
+        application: "civio",
+        action: "IMPORT_KNOWLEDGE_ONLY",
+        sourceCommit: COMMITS.civio,
+        documentsIngested: 180,
+        allowedAgentIds: ["RESEARCHER", "LEGAL_MEDIA_COMMS"],
+        governanceDecisionId: uid(1322),
+        knowledgeRecordId: uid(1504),
+        fabricCatalogMutated: false,
+        atlasAgentsCreated: 0,
+        sourceExecutionPerformed: false,
+        secretsTouched: false,
+        permissionsInherited: false,
+      },
+    },
   ];
 
   // Phase 11.15: Knowledge records for Owner-approved IMPORT_KNOWLEDGE_ONLY decisions
@@ -2594,6 +2804,30 @@ export function buildPortfolioSeedSnapshot(): PortfolioGovernanceSnapshot {
       ingested: true,
       ingestEnabled: false,
       governanceDecisionId: uid(1319),
+    },
+    {
+      id: uid(1504),
+      applicationId: APP.civio,
+      sourceAgentId: civioRights.id,
+      capabilityId: civioRightsCap,
+      provenance: prov({
+        applicationId: APP.civio,
+        repo: "github.com/relaya17/civio",
+        branch: "main",
+        commit: COMMITS.civio,
+        path: "packages/logic/src/rights/database.data.js + packages/logic/src/housing-agent/legalFoundations.ts",
+        pkg: "@repo/logic",
+        symbol: "RIGHTS_ITEMS + LEGAL_FOUNDATIONS",
+        sourceType: "KNOWLEDGE",
+        originalStatus: "ACTIVE",
+        atlasClassification: "APPROVED_SCOPED_KNOWLEDGE",
+      }),
+      title: "Civio Verified Civic Rights Snapshot",
+      summary:
+        "Commit-pinned snapshot of 167 reviewed rights and 13 legal foundations. Retrieval is restricted to RESEARCHER and LEGAL_MEDIA_COMMS; sources and disclaimers remain attached and no Civio runtime authority is inherited.",
+      ingested: true,
+      ingestEnabled: false,
+      governanceDecisionId: uid(1322),
     },
   ];
 

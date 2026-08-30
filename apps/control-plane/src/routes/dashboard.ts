@@ -451,7 +451,7 @@ export function getDashboardHtml(): string {
         <div class="plane-neq" data-i18n="planeNeq">≠</div>
         <div class="plane-card plane-apps">
           <div class="plane-title" data-i18n="planeSourceApps">Source applications</div>
-          <p class="plane-note" data-i18n="planeSourceAppsNote">Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. Not Fabric.</p>
+          <p class="plane-note" data-i18n="planeSourceAppsNote">Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy, Civio. Not Fabric.</p>
         </div>
         <div class="plane-neq" data-i18n="planeNeq">≠</div>
         <div class="plane-card plane-source">

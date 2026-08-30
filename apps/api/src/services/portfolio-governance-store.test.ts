@@ -154,9 +154,9 @@ describe("Phase 11.5 — Portfolio Persistence and Data Layer", () => {
       osStore.forceReload?.() ?? osStore.ensureLoaded();
 
       const snapshot = getPortfolioSnapshot();
-      expect(snapshot.sourceAgents.length).toBe(52);
-      expect(snapshot.capabilities.length).toBe(44);
-      expect(snapshot.evidence.length).toBe(12);
+      expect(snapshot.sourceAgents.length).toBe(54);
+      expect(snapshot.capabilities.length).toBe(46);
+      expect(snapshot.evidence.length).toBe(15);
       expect(snapshot.governanceDecisions).toHaveLength(seedDecisionCount + 1);
       const addedDecision = snapshot.governanceDecisions.find(
         (d) => d.id === "a11c0000-0000-4000-a000-000000000003",
@@ -292,9 +292,9 @@ describe("Phase 11.5 — Portfolio Persistence and Data Layer", () => {
     it("evidence records survive persistence with capabilityId intact", () => {
       const snapshot = getPortfolioSnapshot();
 
-      expect(snapshot.evidence.length).toBe(12);
+      expect(snapshot.evidence.length).toBe(15);
       const linked = snapshot.evidence.filter((e) => e.capabilityId !== null);
-      expect(linked.length).toBe(7);
+      expect(linked.length).toBe(9);
     });
 
     it("isRuntimeProbe remains false for all evidence", () => {
@@ -393,31 +393,31 @@ describe("Phase 11.5 — Portfolio Persistence and Data Layer", () => {
   });
 
   describe("data completeness", () => {
-    it("persists 52 SourceAgents", () => {
+    it("persists 54 SourceAgents", () => {
       const snapshot = getPortfolioSnapshot();
-      expect(snapshot.sourceAgents.length).toBe(52);
+      expect(snapshot.sourceAgents.length).toBe(54);
     });
 
-    it("persists 44 capability-bearing SourceAgents", () => {
+    it("persists 46 capability-bearing SourceAgents", () => {
       const snapshot = getPortfolioSnapshot();
       const agentsWithCaps = new Set(snapshot.capabilities.map((c) => c.sourceAgentId));
-      expect(agentsWithCaps.size).toBe(44);
+      expect(agentsWithCaps.size).toBe(46);
     });
 
-    it("persists 44 capabilities", () => {
+    it("persists 46 capabilities", () => {
       const snapshot = getPortfolioSnapshot();
-      expect(snapshot.capabilities.length).toBe(44);
+      expect(snapshot.capabilities.length).toBe(46);
     });
 
-    it("persists 12 evidence records", () => {
+    it("persists 15 evidence records", () => {
       const snapshot = getPortfolioSnapshot();
-      expect(snapshot.evidence.length).toBe(12);
+      expect(snapshot.evidence.length).toBe(15);
     });
 
-    it("persists 7 capability-linked evidence records", () => {
+    it("persists 9 capability-linked evidence records", () => {
       const snapshot = getPortfolioSnapshot();
       const linked = snapshot.evidence.filter((e) => e.capabilityId !== null);
-      expect(linked.length).toBe(7);
+      expect(linked.length).toBe(9);
     });
   });
 });

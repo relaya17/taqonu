@@ -225,9 +225,9 @@ describe("Phase 4 — Provenance and Evidence", () => {
       const unlinked = snapshot.evidence.filter(
         (e) => e.capabilityId === null && e.applicationId !== null,
       ).length;
-      expect(total).toBe(12);
-      expect(linked).toBe(7);
-      expect(unlinked).toBe(5);
+      expect(total).toBe(15);
+      expect(linked).toBe(9);
+      expect(unlinked).toBe(6);
     });
   });
 });

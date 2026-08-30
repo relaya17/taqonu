@@ -10,6 +10,7 @@ import {
   resolveKnowledgeCorpusPath,
   savePersistedCorpus,
 } from "./persisted-store.js";
+import { CIVIO_RIGHTS_SNAPSHOT } from "./civio-rights.snapshot.js";
 
 export interface CorpusDoc {
   id: string;
@@ -20,6 +21,8 @@ export interface CorpusDoc {
   sourceUpdatedAt: string | null;
   projectScoped: boolean;
   contentHash: string;
+  /** Omit for shared documents; scoped documents require an allowed agent identity. */
+  allowedAgentIds?: string[] | null;
   /** Optional cached local-hash (or other) embedding for durable hybrid search. */
   embedding?: number[] | null;
 }
@@ -42,9 +45,15 @@ const TECH_SEED: CorpusDoc[] = verifiedTechSourcesAsCorpusSeed().map((s) => ({
   contentHash: hashDoc(s.title, s.excerpt),
 }));
 
+const CIVIO_SEED: CorpusDoc[] = CIVIO_RIGHTS_SNAPSHOT.map((doc) => ({
+  ...doc,
+  allowedAgentIds: [...doc.allowedAgentIds],
+}));
+
 /** Seed fabric corpus — verified tech allow-list + a few operational lessons. */
 const SEED_CORPUS: CorpusDoc[] = [
   ...TECH_SEED,
+  ...CIVIO_SEED,
   {
     id: "kf_github_rest",
     title: "GitHub REST API overview",
@@ -195,6 +204,7 @@ export function ingestKnowledgeDocument(input: {
   url?: string | null;
   sourceUpdatedAt?: string | null;
   projectScoped?: boolean;
+  allowedAgentIds?: string[] | null;
   embedding?: number[] | null;
 }): CorpusDoc {
   const contentHash = hashDoc(input.title, input.excerpt);
@@ -215,6 +225,7 @@ export function ingestKnowledgeDocument(input: {
     sourceUpdatedAt: input.sourceUpdatedAt ?? new Date().toISOString(),
     projectScoped: input.projectScoped ?? false,
     contentHash,
+    ...(input.allowedAgentIds ? { allowedAgentIds: [...input.allowedAgentIds] } : {}),
     ...(input.embedding ? { embedding: [...input.embedding] } : {}),
   };
   CORPUS.push(doc);
@@ -231,6 +242,7 @@ export function upsertKnowledgeDocument(input: {
   url?: string | null;
   sourceUpdatedAt?: string | null;
   projectScoped?: boolean;
+  allowedAgentIds?: string[] | null;
   embedding?: number[] | null;
 }): CorpusDoc {
   const contentHash = hashDoc(input.title, input.excerpt);
@@ -245,6 +257,11 @@ export function upsertKnowledgeDocument(input: {
     existing.sourceUpdatedAt = input.sourceUpdatedAt ?? new Date().toISOString();
     existing.contentHash = contentHash;
     existing.projectScoped = input.projectScoped ?? existing.projectScoped;
+    if (input.allowedAgentIds !== undefined) {
+      existing.allowedAgentIds = input.allowedAgentIds
+        ? [...input.allowedAgentIds]
+        : input.allowedAgentIds;
+    }
     if (input.embedding) existing.embedding = [...input.embedding];
     persistIfConfigured();
     return existing;
@@ -259,6 +276,7 @@ export function upsertKnowledgeDocument(input: {
       sourceUpdatedAt: input.sourceUpdatedAt ?? new Date().toISOString(),
       projectScoped: input.projectScoped ?? false,
       contentHash,
+      ...(input.allowedAgentIds ? { allowedAgentIds: [...input.allowedAgentIds] } : {}),
       ...(input.embedding ? { embedding: [...input.embedding] } : {}),
     };
     CORPUS.push(doc);
@@ -278,6 +296,7 @@ export function searchKnowledgeFabric(input: {
   maxResults?: number;
   minAuthority?: number;
   allowStale?: boolean;
+  requestingAgentIds?: readonly string[];
   /** Optional vector similarities keyed by doc id (from embeddings / pgvector). */
   vectorScores?: Readonly<Record<string, number>>;
   /** Override active corpus (e.g. pgvector candidate set). */
@@ -291,9 +310,19 @@ export function searchKnowledgeFabric(input: {
   const docs = input.corpus ?? CORPUS;
   const q = input.query.toLowerCase();
   const now = new Date().toISOString();
-  let filteredOut = 0;
+  const visibleDocs = docs.filter((doc) => {
+    const allowed = doc.allowedAgentIds;
+    if (!allowed || allowed.length === 0) return true;
+    const requesting = input.requestingAgentIds;
+    return Boolean(
+      requesting &&
+      requesting.length > 0 &&
+      requesting.every((agentId) => allowed.includes(agentId)),
+    );
+  });
+  let filteredOut = docs.length - visibleDocs.length;
 
-  const scored = docs.map((doc) => {
+  const scored = visibleDocs.map((doc) => {
     const authority =
       EXTERNAL_SOURCE_CONFIDENCE[doc.sourceClass] ??
       EXTERNAL_SOURCE_CONFIDENCE.TECHNICAL_ARTICLE ??
@@ -369,6 +398,7 @@ export function searchKnowledgeFabric(input: {
 export function buildEvidencePackageForAgent(input: {
   query: string;
   agentSpecialtyHints: string[];
+  agentIds: readonly string[];
   maxItems?: number;
 }): KnowledgeSearchResult {
   const q = [input.query, ...input.agentSpecialtyHints].join(" ");
@@ -377,6 +407,7 @@ export function buildEvidencePackageForAgent(input: {
     maxResults: input.maxItems ?? 8,
     minAuthority: 0.4,
     allowStale: false,
+    requestingAgentIds: input.agentIds,
   });
 }
 

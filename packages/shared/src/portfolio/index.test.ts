@@ -19,13 +19,13 @@ import {
 describe("portfolio governance seed (Phase 11.1–11.3)", () => {
   const snapshot = loadSeedSnapshot();
 
-  it("has six applications, Atlas TARGET, siblings SOURCE", () => {
-    expect(snapshot.applications).toHaveLength(6);
+  it("has seven applications, Atlas TARGET, siblings SOURCE", () => {
+    expect(snapshot.applications).toHaveLength(7);
     const atlas = snapshot.applications.find((a) => a.slug === "atlas");
     expect(atlas?.role).toBe("TARGET");
     expect(
       snapshot.applications.filter((a) => a.role === "SOURCE").map((a) => a.slug),
-    ).toEqual(["vantera", "hotelos", "caseflow", "brokeros", "lexstudy"]);
+    ).toEqual(["vantera", "hotelos", "caseflow", "brokeros", "lexstudy", "civio"]);
   });
 
   it("records full provenance: repo, branch, 40-char SHA, path, type, extractedAt", () => {

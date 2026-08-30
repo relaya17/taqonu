@@ -370,7 +370,7 @@ describe("Portfolio Governance Audit (Phase 11.12)", () => {
       const summary = buildPortfolioSummary(snapshot);
       // Phase 11.15: 4 knowledge records were Owner-approved and ingested
       expect(summary.knowledgeIngested).toBe(true);
-      expect(summary.ingestedKnowledgeCount).toBe(4);
+      expect(summary.ingestedKnowledgeCount).toBe(5);
       expect(summary.fabricCatalogMutated).toBe(false);
       // ingestEnabled remains false to prevent unapproved future ingestion
       expect(summary.ingestEnabled).toBe(false);
@@ -391,7 +391,7 @@ describe("Portfolio Governance Audit (Phase 11.12)", () => {
       const summary = buildPortfolioSummary(merged);
       // Phase 11.15: Knowledge ingestion is now true (4 records)
       expect(summary.knowledgeIngested).toBe(true);
-      expect(summary.ingestedKnowledgeCount).toBe(4);
+      expect(summary.ingestedKnowledgeCount).toBe(5);
       expect(summary.fabricCatalogMutated).toBe(false);
       expect(summary.pendingFabricChangeCount).toBeGreaterThan(0);
     });

@@ -209,7 +209,8 @@ describe("Control Plane — API Routes", () => {
       expect(port.executionRegistry).toBe("FABRIC_AGENT_CATALOG");
       expect(port.notAnAgentRegistry).toBe(true);
       expect(port.observational).toBe(true);
-      expect(port.snapshot.applications.length).toBe(6);
+      expect(port.snapshot.applications.length).toBe(7);
+      expect(port.snapshot.applications.some((application) => application.slug === "civio")).toBe(true);
       expect(port.snapshot.sourceAgents.length).toBeGreaterThan(0);
       expect(port.summary.ingestEnabled).toBe(false);
       expect(port.summary.knowledgeIngested).toBe(true); // Phase 11.15: 4 Owner-approved records ingested

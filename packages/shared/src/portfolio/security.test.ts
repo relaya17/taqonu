@@ -191,7 +191,7 @@ describe("Portfolio Governance Security (Phase 11.11)", () => {
     it("knowledge ingestion is controlled by Owner-approved governance decisions", () => {
       // Phase 11.15: 4 knowledge records were explicitly approved by Owner
       const ingestedRecords = snapshot.knowledgeRecords.filter((r) => r.ingested);
-      expect(ingestedRecords.length).toBe(4);
+      expect(ingestedRecords.length).toBe(5);
       // All ingested records must have a governance decision ID
       for (const record of ingestedRecords) {
         expect(record.governanceDecisionId).not.toBeNull();

@@ -16,6 +16,7 @@ function loadKnowledge(request: string, agentIds: FabricAgentId[]): KnowledgeSea
   return buildEvidencePackageForAgent({
     query: request,
     agentSpecialtyHints: agentIds.map((id) => getFabricAgent(id).specialty),
+    agentIds,
     maxItems: 12,
   });
 }
@@ -122,8 +123,9 @@ export async function dispatchAgentPlan(input: {
   for (const g of [...byGroup.keys()].sort((a, b) => a - b)) {
     for (const s of byGroup.get(g) ?? []) {
       if (s.agentId === "JUDGE") continue;
+      const specialistKnowledge = loadKnowledge(input.request, [s.agentId]);
       const override = await input.specialistOverride?.(s.agentId, input.request);
-      runs.push(override ?? runSpecialistStub(s.agentId, input.request, knowledge));
+      runs.push(override ?? runSpecialistStub(s.agentId, input.request, specialistKnowledge));
     }
   }
 

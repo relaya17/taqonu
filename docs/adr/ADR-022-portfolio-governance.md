@@ -7,7 +7,7 @@
 ## Context
 
 Atlas should inspect and govern a portfolio of sibling applications and their
-agents (Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy) without becoming a
+agents (Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy, Civio) without becoming a
 duplicate of those applications and without executing them.
 
 `FABRIC_AGENT_CATALOG` is the sole source of truth for agents that actually
@@ -45,6 +45,17 @@ Non-negotiable:
   A value in one plane is never silently another plane.
 - Dedup and conflict classification occur before any proposed ingest.
 - Canonical audit for decisions is API NDJSON.
+
+## Civio onboarding
+
+Civio is a SOURCE application pinned to an inspected commit. Its runtime,
+authentication, Gemini calls, and write authority remain inside Civio and are
+not inherited by Atlas.
+
+The approved knowledge snapshot contains Civio `RIGHTS_ITEMS` and
+`LEGAL_FOUNDATIONS` only. Corpus access is fail-closed and restricted to the
+`RESEARCHER` and `LEGAL_MEDIA_COMMS` Fabric agents. Every document retains its
+official source URL; the snapshot generator records the Civio source commit.
 
 ## Consequences
 

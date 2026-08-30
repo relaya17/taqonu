@@ -247,10 +247,10 @@ describe("Phase 11.3 — Capability Extraction", () => {
       expect(stubsWithoutCaps.length).toBe(2);
     });
 
-    it("exactly 44 capabilities exist for 44 capability-bearing agents", () => {
-      expect(snapshot.capabilities.length).toBe(44);
+    it("exactly 46 capabilities exist for 46 capability-bearing agents", () => {
+      expect(snapshot.capabilities.length).toBe(46);
       const uniqueAgents = new Set(snapshot.capabilities.map((c) => c.sourceAgentId));
-      expect(uniqueAgents.size).toBe(44);
+      expect(uniqueAgents.size).toBe(46);
     });
 
     it("BrokerOS TRANSACTION_AGENT has capability", () => {

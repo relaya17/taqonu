@@ -165,6 +165,7 @@ export function runIntelligenceKernel(input: {
         agentSpecialtyHints: plan.requiredAgents.flatMap((id) =>
           getRegisteredAgent(id).capabilities.slice(0, 2),
         ),
+        agentIds: plan.requiredAgents,
         maxItems: 8,
       });
 

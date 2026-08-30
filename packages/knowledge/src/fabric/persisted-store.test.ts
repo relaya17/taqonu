@@ -36,7 +36,23 @@ describe("durable knowledge corpus", () => {
     const result = hydrateKnowledgeCorpus({ path, enablePersist: true });
     expect(result.source).toBe("seed");
     expect(listKnowledgeCorpus().length).toBeGreaterThan(0);
+    expect(listKnowledgeCorpus().filter((doc) => doc.id.startsWith("civio_"))).toHaveLength(180);
     expect(getKnowledgeCorpusSource()).toBe("seed");
+  });
+
+  it("retrieves Civio rights only for approved agents", () => {
+    const query = "תעודת זכאות לדיור ציבורי";
+    const legal = searchKnowledgeFabric({
+      query,
+      requestingAgentIds: ["LEGAL_MEDIA_COMMS"],
+    });
+    const security = searchKnowledgeFabric({
+      query,
+      requestingAgentIds: ["SECURITY"],
+    });
+
+    expect(legal.hits.some((hit) => hit.id.startsWith("civio_"))).toBe(true);
+    expect(security.hits.some((hit) => hit.id.startsWith("civio_"))).toBe(false);
   });
 
   it("prefers persisted corpus when present and write-through on ingest", () => {
@@ -106,5 +122,37 @@ describe("durable knowledge corpus", () => {
     expect(search.hits).toHaveLength(0);
     expect(search.plainLanguage).toMatch(/INSUFFICIENT_EVIDENCE/);
     expect(search.retrievalBackend).toBe("local");
+  });
+
+  it("keeps agent-scoped documents hidden unless an allowed agent is identified", () => {
+    ingestKnowledgeDocument({
+      title: "Civio verified rights",
+      excerpt: "Verified Israeli public housing rights and official sources.",
+      sourceClass: "REPOSITORY_SOURCE",
+      allowedAgentIds: ["RESEARCHER", "LEGAL_MEDIA_COMMS"],
+    });
+
+    expect(
+      searchKnowledgeFabric({ query: "public housing rights" }).hits
+        .some((hit) => hit.title === "Civio verified rights"),
+    ).toBe(false);
+    expect(
+      searchKnowledgeFabric({
+        query: "public housing rights",
+        requestingAgentIds: ["SECURITY"],
+      }).hits.some((hit) => hit.title === "Civio verified rights"),
+    ).toBe(false);
+    expect(
+      searchKnowledgeFabric({
+        query: "public housing rights",
+        requestingAgentIds: ["RESEARCHER"],
+      }).hits.some((hit) => hit.title === "Civio verified rights"),
+    ).toBe(true);
+    expect(
+      searchKnowledgeFabric({
+        query: "public housing rights",
+        requestingAgentIds: ["RESEARCHER", "SECURITY"],
+      }).hits.some((hit) => hit.title === "Civio verified rights"),
+    ).toBe(false);
   });
 });

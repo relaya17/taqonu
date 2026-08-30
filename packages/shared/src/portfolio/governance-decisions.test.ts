@@ -31,7 +31,7 @@ describe("Phase 11.8 — Governance Decisions", () => {
     });
 
     it("has correct number of governance decisions", () => {
-      expect(snapshot.governanceDecisions.length).toBe(21);
+      expect(snapshot.governanceDecisions.length).toBe(23);
     });
 
     it("covers all SOURCE applications", () => {
@@ -162,7 +162,7 @@ describe("Phase 11.8 — Governance Decisions", () => {
   describe("decision by action type", () => {
     it("has KEEP_SOURCE_SPECIFIC decisions", () => {
       const keep = snapshot.governanceDecisions.filter((d) => d.action === "KEEP_SOURCE_SPECIFIC");
-      expect(keep.length).toBe(4);
+      expect(keep.length).toBe(5);
     });
 
     it("has ADD_PROVENANCE decisions", () => {
@@ -174,7 +174,7 @@ describe("Phase 11.8 — Governance Decisions", () => {
       const importKnowledge = snapshot.governanceDecisions.filter(
         (d) => d.action === "IMPORT_KNOWLEDGE_ONLY",
       );
-      expect(importKnowledge.length).toBe(4);
+      expect(importKnowledge.length).toBe(5);
     });
 
     it("has DO_NOT_IMPORT decisions", () => {

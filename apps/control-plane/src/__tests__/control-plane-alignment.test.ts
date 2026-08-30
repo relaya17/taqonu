@@ -141,7 +141,7 @@ describe("Control Plane alignment (Phase 11.10)", () => {
       const view = getControlPlanePortfolioView();
       expect(view.summary.ingestEnabled).toBe(false); // Global ingest remains disabled
       expect(view.summary.knowledgeIngested).toBe(true); // Phase 11.15: 4 Owner-approved records
-      expect(view.summary.ingestedKnowledgeCount).toBe(4);
+      expect(view.summary.ingestedKnowledgeCount).toBe(5);
     });
   });
 
@@ -166,12 +166,12 @@ describe("Control Plane alignment (Phase 11.10)", () => {
 
     it("15. No structural breaking changes from Phase 11.9", () => {
       const view = getControlPlanePortfolioView();
-      expect(view.snapshot.applications.length).toBe(6);
-      expect(view.snapshot.sourceAgents.length).toBe(52);
-      expect(view.snapshot.capabilities.length).toBe(44);
+      expect(view.snapshot.applications.length).toBe(7);
+      expect(view.snapshot.sourceAgents.length).toBe(54);
+      expect(view.snapshot.capabilities.length).toBe(46);
       expect(view.snapshot.canonicalCapabilities.length).toBe(20);
-      expect(view.snapshot.dedupRelations.length).toBe(42);
-      expect(view.snapshot.evidence.length).toBe(12);
+      expect(view.snapshot.dedupRelations.length).toBe(44);
+      expect(view.snapshot.evidence.length).toBe(15);
       expect(view.snapshot.conflicts.length).toBe(4);
     });
   });
@@ -188,7 +188,7 @@ describe("Control Plane alignment (Phase 11.10)", () => {
       const legacy = listRegisteredAgents();
       const view = getControlPlanePortfolioView();
       expect(legacy.length).toBe(9);
-      expect(view.snapshot.sourceAgents.length).toBe(52);
+      expect(view.snapshot.sourceAgents.length).toBe(54);
       const legacyIds = legacy.map((a) => a.agentId);
       const sourceKeys = view.snapshot.sourceAgents.map((a) => a.sourceKey);
       for (const sourceKey of sourceKeys) {

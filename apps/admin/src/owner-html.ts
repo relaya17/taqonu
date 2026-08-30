@@ -939,7 +939,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         <div class="plane-neq" data-i18n="planeNeq">≠</div>
         <div class="plane-card plane-apps">
           <div class="plane-title" data-i18n="planeSourceApps">Source applications</div>
-          <p class="plane-note" data-i18n="planeSourceAppsNote">Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. Not Fabric.</p>
+          <p class="plane-note" data-i18n="planeSourceAppsNote">Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy, Civio. Not Fabric.</p>
         </div>
         <div class="plane-neq" data-i18n="planeNeq">≠</div>
         <div class="plane-card plane-source">
@@ -1053,7 +1053,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         planeFabricNote: "FABRIC_AGENT_CATALOG בלבד. לא סוכני מקור.",
         planeNeq: "≠",
         planeSourceApps: "יישומי מקור",
-        planeSourceAppsNote: "Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. לא Fabric.",
+        planeSourceAppsNote: "Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy, Civio. לא Fabric.",
         planeSourceAgents: "סוכני מקור",
         planeSourceAgentsNote: "לא מקבלים FabricAgentId. לא סוכני Atlas.",
         portfolioApps: "יישומים",
@@ -1102,7 +1102,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         planeFabricNote: "FABRIC_AGENT_CATALOG only. Not source agents.",
         planeNeq: "≠",
         planeSourceApps: "Source applications",
-        planeSourceAppsNote: "Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy. Not Fabric.",
+        planeSourceAppsNote: "Vantera, HotelOS, CaseFlow, BrokerOS, LexStudy, Civio. Not Fabric.",
         planeSourceAgents: "Source agents",
         planeSourceAgentsNote: "Never assigned a FabricAgentId. Not Atlas agents.",
         portfolioApps: "Applications",

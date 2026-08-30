@@ -15,7 +15,7 @@ describe("Phase 11.2 application + source-agent inventory", () => {
     expect(view.applications).toBe(snapshot.applications);
     expect(view.notAnAgentRegistry).toBe(true);
     expect(view.executionRegistry).toBe("FABRIC_AGENT_CATALOG");
-    expect(snapshot.applications).toHaveLength(6);
+    expect(snapshot.applications).toHaveLength(7);
     expect(snapshot.applications.map((a) => a.slug)).toEqual([
       "atlas",
       "vantera",
@@ -23,6 +23,7 @@ describe("Phase 11.2 application + source-agent inventory", () => {
       "caseflow",
       "brokeros",
       "lexstudy",
+      "civio",
     ]);
   });
 
@@ -62,9 +63,24 @@ describe("Phase 11.2 application + source-agent inventory", () => {
     // Phase 11.15: 4 knowledge records were Owner-approved and ingested
     // ingestEnabled remains false to prevent unapproved future ingestion
     const ingestedCount = snapshot.knowledgeRecords.filter((r) => r.ingested).length;
-    expect(ingestedCount).toBe(4);
+    expect(ingestedCount).toBe(5);
     expect(snapshot.knowledgeRecords.every((r) => r.ingestEnabled === false)).toBe(true);
     expect(FABRIC_AGENT_IDS).toHaveLength(16);
+  });
+
+  it("inventories Civio without promoting or inheriting its authority", () => {
+    const civio = snapshot.applications.find((application) => application.slug === "civio");
+    const civioAgents = snapshot.sourceAgents.filter(
+      (agent) => agent.applicationId === civio?.id,
+    );
+
+    expect(civioAgents.map((agent) => agent.sourceKey)).toEqual(["CIV-AG-001", "CIV-AG-002"]);
+    expect(civioAgents.every((agent) => agent.atlasPromotionBlocked)).toBe(true);
+    expect(
+      snapshot.sourcePermissions
+        .filter((permission) => civioAgents.some((agent) => agent.id === permission.sourceAgentId))
+        .every((permission) => permission.atlasInheritance === "NONE"),
+    ).toBe(true);
   });
 
   it("joins implementation, capabilities, verification, runtime, provenance, evidence, and decisions", () => {

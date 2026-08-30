@@ -125,7 +125,7 @@ describe("Phase 11.6 — Global Deduplication", () => {
 
   describe("no automatic merging", () => {
     it("capabilities remain separate entities", () => {
-      const beforeCount = 44;
+      const beforeCount = 46;
       expect(snapshot.capabilities.length).toBe(beforeCount);
     });
 

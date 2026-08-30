@@ -18,12 +18,12 @@ describe("Phase 11.7 — Canonical Capability Mapping", () => {
   describe("mapping coverage", () => {
     it("has correct number of mapped capabilities", () => {
       const mapped = snapshot.capabilities.filter((c) => c.canonicalCapabilityId !== null);
-      expect(mapped.length).toBe(15);
+      expect(mapped.length).toBe(16);
     });
 
     it("has correct number of unmapped capabilities", () => {
       const unmapped = snapshot.capabilities.filter((c) => c.canonicalCapabilityId === null);
-      expect(unmapped.length).toBe(29);
+      expect(unmapped.length).toBe(30);
     });
 
     it("all mappings reference valid canonical capabilities", () => {
@@ -252,7 +252,7 @@ describe("Phase 11.7 — Canonical Capability Mapping", () => {
       expect(mappingCount["ORCHESTRATOR"]).toBe(3);
       expect(mappingCount["SECURITY"]).toBe(3);
       expect(mappingCount["ADVERSARY"]).toBe(2);
-      expect(mappingCount["LEGAL_MEDIA_COMMS"]).toBe(2);
+      expect(mappingCount["LEGAL_MEDIA_COMMS"]).toBe(3);
       expect(mappingCount["KNOWLEDGE_CONFIRM_BEFORE_SEND"]).toBe(2);
     });
   });
