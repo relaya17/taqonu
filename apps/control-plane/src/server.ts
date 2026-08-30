@@ -61,11 +61,22 @@ const HOST =
 
 const apiRouter = createApiRouter();
 
-function loginHtml(message = ""): string {
-  const escaped = message.replace(/[&<>"']/g, (character) => ({
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[character] ?? character);
-  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atlas Control</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#f5f5f5;font:16px sans-serif}main{width:min(360px,calc(100% - 40px));padding:28px;border:1px solid #30343b;background:#14171c}h1{font-size:24px;margin:0 0 8px}p{color:#aeb4be}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;margin-top:6px;padding:11px;background:#0b0d10;color:#fff;border:1px solid #454b55}button{width:100%;margin-top:20px;padding:12px;border:0;background:#fff;color:#111;font-weight:700;cursor:pointer}.error{color:#ff8c8c}</style></head><body><main><h1>Atlas Control</h1><p>כניסת מפעיל או בעלים</p>${escaped ? `<p class="error">${escaped}</p>` : ""}<form method="post" action="/auth/login"><label>אימייל<input type="email" name="email" autocomplete="username" required></label><label>סיסמה<input type="password" name="password" autocomplete="current-password" required></label><button type="submit">כניסה</button></form></main></body></html>`;
+}
+
+function loginHtml(message = ""): string {
+  const development = process.env["NODE_ENV"] !== "production";
+  const email = development
+    ? escapeHtml(process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local")
+    : "";
+  const password = development
+    ? escapeHtml(process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!")
+    : "";
+  const escaped = escapeHtml(message);
+  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atlas Control</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#f5f5f5;font:16px sans-serif}main{width:min(360px,calc(100% - 40px));padding:28px;border:1px solid #30343b;background:#14171c}h1{font-size:24px;margin:0 0 8px}p{color:#aeb4be}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;margin-top:6px;padding:11px;background:#0b0d10;color:#fff;border:1px solid #454b55}button{width:100%;margin-top:20px;padding:12px;border:0;background:#fff;color:#111;font-weight:700;cursor:pointer}.error{color:#ff8c8c}</style></head><body><main><h1>Atlas Control</h1><p>כניסת מפעיל או בעלים</p>${escaped ? `<p class="error">${escaped}</p>` : ""}<form method="post" action="/auth/login"><label>אימייל<input type="email" name="email" value="${email}" autocomplete="username" required></label><label>סיסמה<input type="password" name="password" value="${password}" autocomplete="current-password" required autofocus></label><button type="submit">כניסה</button></form></main></body></html>`;
 }
 
 async function readLogin(req: IncomingMessage): Promise<{ email: string; password: string }> {
