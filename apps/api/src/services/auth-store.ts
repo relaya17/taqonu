@@ -659,7 +659,10 @@ export function ensureDevLocalUser(): {
   readonly email: string;
   readonly created: boolean;
 } | null {
-  if (process.env.NODE_ENV === "production") return null;
+  const demoEnabled =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ATLAS_DEMO_LOGIN_ENABLED === "1";
+  if (!demoEnabled) return null;
   const email = (process.env.ATLAS_DEV_EMAIL ?? DEV_LOCAL_EMAIL).trim().toLowerCase();
   const password = process.env.ATLAS_DEV_PASSWORD ?? DEV_LOCAL_PASSWORD;
   const existing = findUserByEmail(email);

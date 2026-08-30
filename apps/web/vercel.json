@@ -1,10 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "outputDirectory": ".next",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && ./node_modules/.bin/turbo run build --filter=@atlas/web...",
   "env": {
     "TURBO_TEAM": "",
-    "TURBO_REMOTE_ONLY": "true"
+    "TURBO_REMOTE_ONLY": "true",
+    "NEXT_PUBLIC_DEMO_LOGIN_ENABLED": "1"
   }
 }

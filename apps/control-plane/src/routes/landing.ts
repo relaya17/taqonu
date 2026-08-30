@@ -148,7 +148,25 @@ const _TRANSLATIONS = {
   },
 } as const;
 
-export function getLandingHtml(): string {
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character] ?? character);
+}
+
+export function getLandingHtml(options?: {
+  readonly webOrigin?: string;
+  readonly adminOrigin?: string;
+  readonly demoEmail?: string;
+  readonly demoPassword?: string;
+}): string {
+  const webOrigin = (options?.webOrigin ?? "http://localhost:3000").replace(/\/$/, "");
+  const adminOrigin = (options?.adminOrigin ?? "http://127.0.0.1:3200").replace(/\/$/, "");
+  const demoEmail = escapeHtml(options?.demoEmail ?? "");
+  const demoPassword = escapeHtml(options?.demoPassword ?? "");
+  const demoNote = demoEmail && demoPassword
+    ? `<div class="auth-dev-note">${demoEmail} · ${demoPassword}</div>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -1037,8 +1055,8 @@ export function getLandingHtml(): string {
         </div>
       </div>
       <div class="nav-auth">
-        <a href="#login" class="btn-login" data-i18n="btnLogin" id="loginBtn">Login</a>
-        <a href="#register" class="btn-register-nav" data-i18n="btnRegister" id="registerNavBtn">Register</a>
+        <a href="/login" class="btn-login" data-i18n="btnLogin" id="loginBtn">Login</a>
+        <a href="${webOrigin}/he/auth/register" class="btn-register-nav" data-i18n="btnRegister" id="registerNavBtn">Register</a>
       </div>
     </div>
 
@@ -1057,8 +1075,8 @@ export function getLandingHtml(): string {
   <div class="mobile-menu" id="mobileMenu">
     <a href="#features" data-i18n="navFeatures">Features</a>
     <a href="/dashboard" data-i18n="navDashboard">Dashboard</a>
-    <a href="#login" data-i18n="btnLogin" id="mobileLoginBtn">Login</a>
-    <a href="#register" data-i18n="btnRegister" id="mobileRegisterBtn">Register</a>
+    <a href="/login" data-i18n="btnLogin" id="mobileLoginBtn">Login</a>
+    <a href="${webOrigin}/he/auth/register" data-i18n="btnRegister" id="mobileRegisterBtn">Register</a>
   </div>
 
   <!-- Full Page Video Background -->
@@ -1182,9 +1200,7 @@ export function getLandingHtml(): string {
       <h3 id="authTitle" data-i18n="btnLogin">Login</h3>
       <p class="auth-sub" id="authSubtitle" data-i18n="authSubtitleLogin">Sign in to your account</p>
       
-      <div class="auth-dev-note">
-        dev@atlas.local · AtlasDev1!
-      </div>
+      ${demoNote}
 
       <form id="authForm">
         <div class="form-group" id="displayNameGroup" style="display:none;">
@@ -1193,11 +1209,11 @@ export function getLandingHtml(): string {
         </div>
         <div class="form-group">
           <label for="email" data-i18n="labelEmail">Email</label>
-          <input type="email" id="email" value="dev@atlas.local" required>
+          <input type="email" id="email" value="${demoEmail}" required>
         </div>
         <div class="form-group">
           <label for="password" data-i18n="labelPassword">Password</label>
-          <input type="password" id="password" value="AtlasDev1!" minlength="8" required>
+          <input type="password" id="password" value="${demoPassword}" minlength="8" required>
         </div>
         <button type="submit" class="btn-auth-submit" id="authSubmitBtn" data-i18n="btnLogin">Login</button>
       </form>
@@ -1393,15 +1409,9 @@ export function getLandingHtml(): string {
       return "http://" + host + ":4000";
     }
 
-    function atlasWeb() {
-      var host = location.hostname === "127.0.0.1" ? "127.0.0.1" : "localhost";
-      return "http://" + host + ":3000";
-    }
+    function atlasWeb() { return ${JSON.stringify(webOrigin)}; }
 
-    function ownerAdmin() {
-      var host = location.hostname === "127.0.0.1" ? "127.0.0.1" : "localhost";
-      return "http://" + host + ":3200";
-    }
+    function ownerAdmin() { return ${JSON.stringify(adminOrigin)}; }
 
     (function bindSurfaceLinks() {
       var atlas = document.getElementById("linkAtlas");
@@ -1501,15 +1511,15 @@ export function getLandingHtml(): string {
     });
 
     // Open modal from nav buttons
-    document.getElementById("loginBtn").addEventListener("click", function(e) { e.preventDefault(); openAuthModal("login"); });
-    document.getElementById("registerNavBtn").addEventListener("click", function(e) { e.preventDefault(); openAuthModal("register"); });
-    document.getElementById("heroRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); openAuthModal("register"); });
+    document.getElementById("loginBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = "/login"; });
+    document.getElementById("registerNavBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = atlasWeb() + "/he/auth/register"; });
+    document.getElementById("heroRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = atlasWeb() + "/he/auth/register"; });
 
     // Mobile menu
     var mobileMenu = document.getElementById("mobileMenu");
     document.getElementById("hamburgerBtn").addEventListener("click", function() { mobileMenu.classList.toggle("open"); });
-    document.getElementById("mobileLoginBtn").addEventListener("click", function(e) { e.preventDefault(); mobileMenu.classList.remove("open"); openAuthModal("login"); });
-    document.getElementById("mobileRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); mobileMenu.classList.remove("open"); openAuthModal("register"); });
+    document.getElementById("mobileLoginBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = "/login"; });
+    document.getElementById("mobileRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = atlasWeb() + "/he/auth/register"; });
 
     // Language dropdown
     var langBtn = document.getElementById("langBtn");

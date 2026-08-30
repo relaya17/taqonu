@@ -6,7 +6,10 @@
   "buildCommand": "cd ../.. && ./node_modules/.bin/turbo run build --filter=@atlas/admin... && pnpm --filter @atlas/admin run bundle:vercel",
   "env": {
     "TURBO_TEAM": "",
-    "TURBO_REMOTE_ONLY": "true"
+    "TURBO_REMOTE_ONLY": "true",
+    "ATLAS_DEMO_LOGIN_ENABLED": "1",
+    "WEB_ORIGIN": "https://taqonu-web.vercel.app",
+    "ATLAS_CONTROL_PLANE_URL": "https://taqonu-control-plane.vercel.app"
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }

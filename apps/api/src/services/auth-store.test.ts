@@ -9,6 +9,7 @@ import {
   setLocalPasswordByEmail,
   setUserDisabled,
   signSession,
+  ensureDevLocalUser,
   updateLocalUserProfile,
   verifyLocalPassword,
 } from "./auth-store.js";
@@ -24,6 +25,8 @@ afterEach(() => {
   delete process.env.ATLAS_AUTH_PATH;
   delete process.env.ATLAS_SESSIONS_PATH;
   delete process.env.ATLAS_RESET_PATH;
+  delete process.env.ATLAS_DEMO_LOGIN_ENABLED;
+  delete process.env.NODE_ENV;
   for (const d of temps.splice(0)) {
     try {
       rmSync(d, { recursive: true, force: true });
@@ -97,5 +100,18 @@ describe("auth user system", () => {
 
     setUserDisabled(resetUser!.id, true);
     expect(verifyLocalPassword("member@example.com", "freshpass")).toBeNull();
+  });
+
+  it("enables the demo owner in production only with an explicit flag", () => {
+    sandbox();
+    process.env.NODE_ENV = "production";
+    expect(ensureDevLocalUser()).toBeNull();
+
+    process.env.ATLAS_DEMO_LOGIN_ENABLED = "1";
+    expect(ensureDevLocalUser()).toEqual({
+      email: "dev@atlas.local",
+      created: true,
+    });
+    expect(verifyLocalPassword("dev@atlas.local", "AtlasDev1!")?.role).toBe("owner");
   });
 });

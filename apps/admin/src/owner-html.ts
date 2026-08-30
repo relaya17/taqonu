@@ -1,5 +1,9 @@
 export interface OwnerPageData {
   readonly controlApi: string;
+  readonly webOrigin?: string;
+  readonly promoOnly?: boolean;
+  readonly demoEmail?: string;
+  readonly demoPassword?: string;
   readonly applications: readonly Record<string, unknown>[];
   readonly agents: readonly Record<string, unknown>[];
   readonly portfolioApps: readonly Record<string, unknown>[];
@@ -30,7 +34,9 @@ function esc(value: unknown): string {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 export function renderOwnerHtml(data: OwnerPageData): string {
@@ -885,8 +891,8 @@ export function renderOwnerHtml(data: OwnerPageData): string {
 
   <!-- Mobile Menu -->
   <div class="mobile-menu" id="mobileMenu">
-    <a href="#login" id="mobileLoginBtn" data-i18n="btnLogin">Login</a>
-    <a href="#register" id="mobileRegisterBtn" data-i18n="btnRegister">Register</a>
+    <a href="/login" id="mobileLoginBtn" data-i18n="btnLogin">Login</a>
+    <a href="${(data.webOrigin ?? "http://localhost:3000").replace(/\/$/, "")}/he/auth/register" id="mobileRegisterBtn" data-i18n="btnRegister">Register</a>
     <a href="http://127.0.0.1:3100/dashboard" data-i18n="navDashboard">Dashboard</a>
   </div>
 
@@ -911,13 +917,13 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         Enterprise-grade security for your AI operations.
       </p>
       <div class="hero-cta">
-        <a href="#register" class="hero-btn primary" id="heroRegisterBtn" data-i18n="ctaGetStarted">Get Started</a>
+        <a href="/login" class="hero-btn primary" id="heroRegisterBtn" data-i18n="ctaGetStarted">Get Started</a>
         <a href="http://127.0.0.1:3100/dashboard" class="hero-btn secondary" id="linkDashboard" data-i18n="navDashboard">Dashboard</a>
       </div>
     </div>
   </section>
 
-  <!-- Main Content -->
+  ${data.promoOnly ? "" : `<!-- Private owner content -->
   <main>
     ${data.error ? `<p class="error">${esc(data.error)}</p>` : ""}
     <section>
@@ -971,7 +977,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       <ul>${findings}</ul>
       <p class="muted" data-i18n="auditNote">Atlas detects and proposes. It cannot silently weaken auth, grant itself privilege, or delete audit.</p>
     </section>
-  </main>
+  </main>`}
 
   <!-- Footer -->
   <footer>
@@ -1002,7 +1008,7 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       <button class="auth-modal-close" id="authClose">&times;</button>
       <h3 id="authTitle" data-i18n="btnLogin">Login</h3>
       <p class="auth-sub" id="authSubtitle" data-i18n="authSubtitleLogin">Sign in to your account</p>
-      <div class="auth-dev-note">dev@atlas.local · AtlasDev1!</div>
+      ${data.demoEmail && data.demoPassword ? `<div class="auth-dev-note">${esc(data.demoEmail)} · ${esc(data.demoPassword)}</div>` : ""}
       <form id="authForm">
         <div class="form-group" id="displayNameGroup" style="display:none;">
           <label for="displayName" data-i18n="labelDisplayName">Display Name</label>
@@ -1010,11 +1016,11 @@ export function renderOwnerHtml(data: OwnerPageData): string {
         </div>
         <div class="form-group">
           <label for="email" data-i18n="labelEmail">Email</label>
-          <input type="email" id="email" value="dev@atlas.local" required>
+          <input type="email" id="email" value="${esc(data.demoEmail)}" required>
         </div>
         <div class="form-group">
           <label for="password" data-i18n="labelPassword">Password</label>
-          <input type="password" id="password" value="AtlasDev1!" minlength="8" required>
+          <input type="password" id="password" value="${esc(data.demoPassword)}" minlength="8" required>
         </div>
         <button type="submit" class="btn-auth-submit" id="authSubmitBtn" data-i18n="btnLogin">Login</button>
       </form>
@@ -1226,15 +1232,9 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       return "http://" + host + ":4000";
     }
 
-    function atlasWeb() {
-      var host = location.hostname === "127.0.0.1" ? "127.0.0.1" : "localhost";
-      return "http://" + host + ":3000";
-    }
+    function atlasWeb() { return ${JSON.stringify((data.webOrigin ?? "http://localhost:3000").replace(/\/$/, ""))}; }
 
-    function sentinel() {
-      var host = location.hostname === "127.0.0.1" ? "127.0.0.1" : "localhost";
-      return "http://" + host + ":3100";
-    }
+    function sentinel() { return ${JSON.stringify(data.controlApi.replace(/\/$/, ""))}; }
 
     (function bindSurfaceLinks() {
       var atlas = document.getElementById("linkAtlas");
@@ -1331,13 +1331,13 @@ export function renderOwnerHtml(data: OwnerPageData): string {
       updateAuthModal();
     });
 
-    document.getElementById("heroRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); openAuthModal("register"); });
+    document.getElementById("heroRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = "/login"; });
 
     // Mobile menu
     var mobileMenu = document.getElementById("mobileMenu");
     document.getElementById("hamburgerBtn").addEventListener("click", function() { mobileMenu.classList.toggle("open"); });
-    document.getElementById("mobileLoginBtn").addEventListener("click", function(e) { e.preventDefault(); mobileMenu.classList.remove("open"); openAuthModal("login"); });
-    document.getElementById("mobileRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); mobileMenu.classList.remove("open"); openAuthModal("register"); });
+    document.getElementById("mobileLoginBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = "/login"; });
+    document.getElementById("mobileRegisterBtn").addEventListener("click", function(e) { e.preventDefault(); window.location.href = atlasWeb() + "/he/auth/register"; });
 
     // Language dropdown
     var langBtn = document.getElementById("langBtn");

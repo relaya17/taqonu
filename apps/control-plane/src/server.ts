@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createApiRouter } from "./routes/api.js";
 import { getDashboardHtml } from "./routes/dashboard.js";
+import { getLandingHtml } from "./routes/landing.js";
 import { html, json, methodNotAllowed, notFound } from "./routes/router.js";
 import {
   authorizeControlPlaneRequest,
@@ -68,11 +69,13 @@ function escapeHtml(value: string): string {
 }
 
 function loginHtml(message = ""): string {
-  const development = process.env["NODE_ENV"] !== "production";
-  const email = development
+  const demoEnabled =
+    process.env["NODE_ENV"] !== "production" ||
+    process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+  const email = demoEnabled
     ? escapeHtml(process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local")
     : "";
-  const password = development
+  const password = demoEnabled
     ? escapeHtml(process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!")
     : "";
   const escaped = escapeHtml(message);
@@ -125,7 +128,26 @@ async function requestHandler(
     return;
   }
 
-  if ((pathname === "/" || pathname === "/login") && method === "GET") {
+  if (pathname === "/" && method === "GET") {
+    const webOrigin = process.env["WEB_ORIGIN"];
+    const adminOrigin = process.env["ATLAS_ADMIN_URL"];
+    const demoEnabled =
+      process.env["NODE_ENV"] !== "production" ||
+      process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+    html(res, getLandingHtml({
+      ...(webOrigin ? { webOrigin } : {}),
+      ...(adminOrigin ? { adminOrigin } : {}),
+      ...(demoEnabled
+        ? {
+            demoEmail: process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local",
+            demoPassword: process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!",
+          }
+        : {}),
+    }));
+    return;
+  }
+
+  if (pathname === "/login" && method === "GET") {
     if (readControlBrowserSession(req)) {
       res.writeHead(303, { Location: "/dashboard" });
       res.end();

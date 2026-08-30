@@ -122,4 +122,23 @@ describe("admin owner Portfolio projection (Phase 11.2)", () => {
     expect(html).toContain("Capabilities (1)");
     expect(html).toContain("Governance Decisions (1)");
   });
+
+  it("renders the public promo without private owner data", () => {
+    const html = ownerPage({ promoOnly: true });
+    expect(html).toContain("<video autoplay muted loop");
+    expect(html).toContain("Atlas Admin");
+    expect(html).not.toContain("VAN-AG-001");
+    expect(html).not.toContain('data-agent-id="CODE_ENGINEER"');
+    expect(html).not.toContain("AtlasDev1!");
+  });
+
+  it("includes demo credentials only when explicitly supplied", () => {
+    const html = ownerPage({
+      promoOnly: true,
+      demoEmail: "dev@atlas.local",
+      demoPassword: "AtlasDev1!",
+    });
+    expect(html).toContain("dev@atlas.local");
+    expect(html).toContain("AtlasDev1!");
+  });
 });

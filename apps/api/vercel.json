@@ -6,7 +6,10 @@
   "outputDirectory": "public",
   "env": {
     "TURBO_TEAM": "",
-    "TURBO_REMOTE_ONLY": "true"
+    "TURBO_REMOTE_ONLY": "true",
+    "ATLAS_DEMO_LOGIN_ENABLED": "1",
+    "ATLAS_AUTH_PATH": "/tmp/atlas-demo-users.json",
+    "ATLAS_SESSIONS_PATH": "/tmp/atlas-demo-sessions.json"
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "crons": [

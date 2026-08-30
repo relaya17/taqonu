@@ -15,6 +15,40 @@ const CONTROL_API =
     /\/$/,
     "",
   );
+const WEB_ORIGIN = (process.env["WEB_ORIGIN"] ?? "http://localhost:3000").replace(
+  /\/$/,
+  "",
+);
+const DEMO_LOGIN_ENABLED =
+  process.env["NODE_ENV"] !== "production" ||
+  process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+
+function ownerPageData(overrides: Partial<Parameters<typeof renderOwnerHtml>[0]> = {}) {
+  return {
+    controlApi: CONTROL_API,
+    webOrigin: WEB_ORIGIN,
+    ...(DEMO_LOGIN_ENABLED
+      ? {
+          demoEmail: process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local",
+          demoPassword: process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!",
+        }
+      : {}),
+    applications: [],
+    agents: [],
+    portfolioApps: [],
+    portfolioSourceAgents: [],
+    portfolioCapabilities: [],
+    portfolioEvidence: [],
+    portfolioDedup: [],
+    portfolioDecisions: [],
+    portfolioConflicts: [],
+    portfolioCanonicals: [],
+    brief: null,
+    selfAudit: null,
+    error: null,
+    ...overrides,
+  };
+}
 
 async function fetchJson(path: string): Promise<unknown> {
   const headers: Record<string, string> = {};
@@ -58,8 +92,7 @@ async function loadOwnerPage() {
             };
           })
         : null;
-    return renderOwnerHtml({
-      controlApi: CONTROL_API,
+    return renderOwnerHtml(ownerPageData({
       applications: appItems,
       agents: agentItems,
       portfolioApps: portfolioRecord?.snapshot?.applications ?? [],
@@ -72,28 +105,14 @@ async function loadOwnerPage() {
       portfolioCanonicals: portfolioRecord?.snapshot?.canonicalCapabilities ?? [],
       brief: (brief as Record<string, unknown>) ?? null,
       selfAudit: (selfAudit as Record<string, unknown>) ?? null,
-      error: null,
-    });
+    }));
   } catch (error) {
-    return renderOwnerHtml({
-      controlApi: CONTROL_API,
-      applications: [],
-      agents: [],
-      portfolioApps: [],
-      portfolioSourceAgents: [],
-      portfolioCapabilities: [],
-      portfolioEvidence: [],
-      portfolioDedup: [],
-      portfolioDecisions: [],
-      portfolioConflicts: [],
-      portfolioCanonicals: [],
-      brief: null,
-      selfAudit: null,
+    return renderOwnerHtml(ownerPageData({
       error:
         error instanceof Error
           ? `Control API unreachable (${error.message}). Start apps/control-plane on 3100.`
           : "Control API unreachable",
-    });
+    }));
   }
 }
 
@@ -104,11 +123,13 @@ function escapeHtml(value: string): string {
 }
 
 function loginHtml(message = ""): string {
-  const development = process.env["NODE_ENV"] !== "production";
-  const email = development
+  const demoEnabled =
+    process.env["NODE_ENV"] !== "production" ||
+    process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+  const email = demoEnabled
     ? escapeHtml(process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local")
     : "";
-  const password = development
+  const password = demoEnabled
     ? escapeHtml(process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!")
     : "";
   const escaped = escapeHtml(message);
@@ -169,12 +190,22 @@ async function handleAdminRequestAsync(
     res.end();
     return;
   }
-  if ((pathname === "/" || pathname === "/login") && method === "GET") {
+  if (pathname === "/" && method === "GET") {
+    const hasBearer = typeof req.headers.authorization === "string";
+    if (!hasBearer && !readAdminBrowserSession(req)) {
+      sendHtml(res, renderOwnerHtml(ownerPageData({ promoOnly: true })));
+      return;
+    }
+  }
+  if (pathname === "/login" && method === "GET") {
     const hasBearer = typeof req.headers.authorization === "string";
     if (!hasBearer && !readAdminBrowserSession(req)) {
       sendHtml(res, loginHtml());
       return;
     }
+    res.writeHead(303, { Location: "/" });
+    res.end();
+    return;
   }
   if (pathname === "/auth/login" && method === "POST") {
     const credentials = await readLogin(req);
