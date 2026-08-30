@@ -49,4 +49,16 @@ describe("apps/admin auth", () => {
     expect(readAdminBrowserSession(request)).toBeNull();
     delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
   });
+
+  it("uses a browser-session fallback only outside production", () => {
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    process.env.NODE_ENV = "development";
+    expect(() => issueAdminBrowserSession("dev-owner")).not.toThrow();
+
+    process.env.NODE_ENV = "production";
+    expect(() => issueAdminBrowserSession("dev-owner")).toThrow(
+      "ATLAS_CONTROL_PLANE_TOKEN is required",
+    );
+    delete process.env.NODE_ENV;
+  });
 });

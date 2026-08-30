@@ -3,9 +3,13 @@ import type { IncomingMessage } from "node:http";
 
 const COOKIE_NAME = "atlas_admin_session";
 const MAX_AGE_SECONDS = 8 * 60 * 60;
+const DEVELOPMENT_SECRET = "atlas-local-admin-browser-session";
 
 function secret(): string | null {
-  return process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim() || null;
+  return (
+    process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim() ||
+    (process.env["NODE_ENV"] === "production" ? null : DEVELOPMENT_SECRET)
+  );
 }
 
 function sign(payload: string, key: string): string {

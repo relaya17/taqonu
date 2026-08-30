@@ -194,4 +194,14 @@ describe("Control Plane auth (ADR-021)", () => {
     expect(resolveControlPlanePrincipal().role).toBe("OPERATOR");
     expect(isOwnerPrincipal()).toBe(false);
   });
+
+  it("uses a browser-session fallback only outside production", () => {
+    process.env.NODE_ENV = "development";
+    expect(() => issueControlBrowserSession("OWNER", "dev-owner")).not.toThrow();
+
+    process.env.NODE_ENV = "production";
+    expect(() => issueControlBrowserSession("OWNER", "dev-owner")).toThrow(
+      "ATLAS_CONTROL_PLANE_TOKEN is required",
+    );
+  });
 });
