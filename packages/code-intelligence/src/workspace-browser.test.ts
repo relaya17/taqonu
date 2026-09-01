@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -62,5 +69,32 @@ describe("workspace-browser", () => {
     expect(() => writeWorkspaceFile(root, "../outside.ts", "nope")).toThrow(
       /escapes/,
     );
+  });
+
+  it("refuses a write through a symlink/junction that points outside the workspace", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-studio-write-"));
+    const outside = mkdtempSync(join(tmpdir(), "atlas-studio-outside-"));
+
+    let linked = false;
+    try {
+      symlinkSync(outside, join(root, "escape-hatch"), "junction");
+      linked = true;
+    } catch {
+      // Windows refuses symlink creation without the right privilege.
+      // Skipping is honest; silently passing would report coverage that
+      // never ran.
+    }
+
+    if (!linked) {
+      rmSync(outside, { recursive: true, force: true });
+      return;
+    }
+
+    expect(() =>
+      writeWorkspaceFile(root, "escape-hatch/evil.ts", "pwned"),
+    ).toThrow(/escapes workspace/);
+    expect(existsSync(join(outside, "evil.ts"))).toBe(false);
+
+    rmSync(outside, { recursive: true, force: true });
   });
 });

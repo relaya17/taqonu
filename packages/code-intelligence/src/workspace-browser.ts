@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -53,8 +54,53 @@ function toPosix(rel: string): string {
 }
 
 /**
+ * Walk upward from `path` until an existing entry is found (itself, or the
+ * nearest existing parent). Used to canonicalize a not-yet-existing write
+ * target: `realpathSync` cannot resolve a path that doesn't exist yet, but
+ * an ancestor directory that DOES exist can still be a symlink or Windows
+ * junction pointing outside the workspace -- exactly what write-side
+ * containment must catch (unlike a read, where a missing target is simply
+ * a dead end and nothing is written through it).
+ */
+function nearestExistingAncestor(path: string): string {
+  let current = path;
+  while (!existsSync(current)) {
+    const parent = dirname(current);
+    if (parent === current) {
+      // Reached the filesystem root without finding anything real --
+      // give up; the lexical check already ran, and there is nothing
+      // left to canonicalize against.
+      return current;
+    }
+    current = parent;
+  }
+  return current;
+}
+
+/**
  * Resolve a relative path under workspaceRoot. Throws if it escapes the root
- * (path traversal / absolute / null bytes).
+ * (path traversal / absolute / null bytes / symlink or junction escape).
+ *
+ * Two stages, in order:
+ *
+ *  1. LEXICAL -- the checks that existed here before: rejects `..` segments
+ *     and any resolved path that doesn't sit under `root` as a string.
+ *  2. CANONICAL -- re-checks containment on the REAL path (`fs.realpathSync`,
+ *     which resolves symlinks and, on Windows, directory junctions). The
+ *     lexical check alone cannot catch `<root>/foo` being a symlink/junction
+ *     that points outside `root` -- stage 1 sees a string that looks
+ *     contained; the filesystem would actually read or write somewhere
+ *     else. Mirrors `resolveInsideRoot()` in
+ *     `packages/agent-core/src/tools/runtime.ts`, adapted for writes: the
+ *     target may not exist yet (creating a new file), so the nearest
+ *     *existing* ancestor is canonicalized instead of the leaf itself -- an
+ *     ancestor directory can still be a symlink/junction even when the leaf
+ *     filename is brand new.
+ *
+ * The canonical stage is skipped (falling back to the lexical result) when
+ * `workspaceRoot` itself doesn't exist on disk -- callers already require it
+ * to exist before reaching here, and there is nothing to canonicalize
+ * against.
  */
 export function resolveUnderWorkspace(
   workspaceRoot: string,
@@ -73,6 +119,37 @@ export function resolveUnderWorkspace(
   if (full !== root && !full.startsWith(rootWithSep)) {
     throw new Error("Path escapes workspace");
   }
+
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = realpathSync(root);
+  } catch {
+    return full;
+  }
+
+  const existingAncestor = nearestExistingAncestor(full);
+  let canonicalAncestor: string;
+  try {
+    canonicalAncestor = realpathSync(existingAncestor);
+  } catch {
+    return full;
+  }
+  const suffix = relative(existingAncestor, full);
+  const canonicalFull =
+    suffix === "" ? canonicalAncestor : resolve(canonicalAncestor, suffix);
+
+  const canonicalRootWithSep = canonicalRoot.endsWith(sep)
+    ? canonicalRoot
+    : canonicalRoot + sep;
+  if (
+    canonicalFull !== canonicalRoot &&
+    !canonicalFull.startsWith(canonicalRootWithSep)
+  ) {
+    throw new Error(
+      "Path escapes workspace (resolves via symlink or junction outside the project root)",
+    );
+  }
+
   return full;
 }
 
