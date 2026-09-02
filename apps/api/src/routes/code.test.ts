@@ -13,8 +13,9 @@ import { patchArtifactSchema } from "@atlas/shared";
  * binary approve→apply status check. Mirrors the pattern already proven for
  * `POST /api/v1/admin/automation/run-checks` in `./admin-ops.test.ts`:
  * no `?approvalId` -> 202 + a created approval request; retry with an
- * APPROVED request's id -> consumed + proceeds. Low-risk patches must still
- * apply with zero extra round trips.
+ * APPROVED request's id -> claimed helper, not consume. Low-risk patches must
+ * still apply with zero extra round trips. DOCUMENT.EXECUTE after claim is
+ * still subject to Phase 3E HUMAN_ONLY.
  */
 
 const storeDir = mkdtempSync(join(tmpdir(), "atlas-code-route-store-"));
@@ -34,9 +35,12 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 
 const { registerCodeRoutes } = await import("./code.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
-const { decideApprovalRequest } = await import("../services/approvals.js");
+const { decideApprovalRequest, getApprovalRequest } = await import("../services/approvals.js");
 const { resetApprovalsForTests } = await import(
   "../services/approvals-test-store.js"
+);
+const { resetGovernedClaimStartsForTests } = await import(
+  "../services/governed-claimed-execution.js"
 );
 const { osStore } = await import("../store/os-store.js");
 const { readAuditLogTail, setAuditLogPathForTests } = await import(
@@ -120,6 +124,7 @@ beforeEach(() => {
   getRequestUser.mockReset();
   getRequestUser.mockReturnValue(testUser());
   resetApprovalsForTests();
+  resetGovernedClaimStartsForTests();
 
   workspaceRoot = mkdtempSync(join(tmpdir(), "atlas-code-route-ws-"));
   writeFileSync(join(workspaceRoot, "test.txt"), "original content", "utf8");
@@ -132,6 +137,8 @@ beforeEach(() => {
 
 afterEach(() => {
   setAuditLogPathForTests(null);
+  resetApprovalsForTests();
+  resetGovernedClaimStartsForTests();
   rmSync(workspaceRoot, { recursive: true, force: true });
   rmSync(logDir, { recursive: true, force: true });
 });
@@ -167,7 +174,7 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
     expect(String(entry?.payload.reason)).toMatch(/score=/);
   });
 
-  it("blocks a HIGH-risk patch with 202 + approvalId on first call, then applies once the approval is APPROVED and consumed", async () => {
+  it("blocks a HIGH-risk patch with 202, then holds HUMAN_ONLY after claim instead of consuming", async () => {
     const patch = makePatch({
       risk: "HIGH",
       confidence: 0.9,
@@ -186,7 +193,6 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
     expect(typeof firstBody.approvalId).toBe("string");
     expect(["APPROVAL", "HUMAN_ONLY"]).toContain(firstBody.riskBucket);
 
-    // Applying is still blocked: the file must not have changed yet.
     expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
       "original content",
     );
@@ -202,23 +208,26 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
       url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${firstBody.approvalId}`,
       payload: { workspaceRoot },
     });
-    expect(second.statusCode).toBe(200);
-    expect(second.json().patch.status).toBe("APPLIED");
+    // Claimed DOCUMENT.EXECUTE re-check is HUMAN_ONLY. Consume no longer
+    // bypasses that hold. The file must not change.
+    expect(second.statusCode).toBe(202);
+    expect(second.json().status).toBe("APPROVAL_REQUIRED");
     expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
-      "modified content",
+      "original content",
     );
+    const claimed = await getApprovalRequest(firstBody.approvalId);
+    expect(claimed?.status).not.toBe("CONSUMED");
+    expect(claimed?.status).toBe("FAILED");
 
-    const entry = lastAuditEntry("code.patch.applied");
-    expect(entry?.payload.risk).toBe("HIGH");
-    expect(entry?.payload.approval).toBe("APPROVED");
-
-    // The approval was consumed by the successful apply — replay must fail.
     const replay = await app.inject({
       method: "POST",
       url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${firstBody.approvalId}`,
       payload: { workspaceRoot },
     });
     expect(replay.statusCode).toBe(403);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+      "original content",
+    );
   });
 
   it("still 403s a not-yet-approved patch exactly as before (existing invariant preserved)", async () => {
@@ -235,7 +244,7 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
 });
 
 describe("POST /api/v1/code/patches/:id/rollback", async () => {
-  it("blocks rollback with 202 + approvalId on first call (rollback always requires approval), then rolls back once approved", async () => {
+  it("blocks rollback with 202, then holds HUMAN_ONLY after claim instead of consuming", async () => {
     writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
     const patch = makePatch({
       risk: "LOW",
@@ -271,18 +280,14 @@ describe("POST /api/v1/code/patches/:id/rollback", async () => {
       url: `/api/v1/code/patches/${patch.id}/rollback?approvalId=${firstBody.approvalId}`,
       payload: { workspaceRoot },
     });
-    expect(second.statusCode).toBe(200);
-    const body = second.json();
-    expect(body.patch.status).toBe("ROLLED_BACK");
-    expect(body.restored).toContain("test.txt");
+    expect(second.statusCode).toBe(202);
+    expect(second.json().status).toBe("APPROVAL_REQUIRED");
     expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
-      "original content",
+      "modified content",
     );
-
-    const entry = lastAuditEntry("code.patch.rolled_back");
-    expect(entry).toBeDefined();
-    expect(entry?.payload.approval).toBe("APPROVED");
-    expect(String(entry?.payload.reason)).toMatch(/score=/);
+    const claimed = await getApprovalRequest(firstBody.approvalId);
+    expect(claimed?.status).not.toBe("CONSUMED");
+    expect(claimed?.status).toBe("FAILED");
   });
 
   it("404s when the apply-flow approvalId is unknown, and 403s when it is still PENDING", async () => {

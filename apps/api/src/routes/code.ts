@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   applyPatchSchema,
   approvePatchSchema,
@@ -9,6 +9,7 @@ import {
   ENGINEERING_AGENT_MODES,
   isControlPlaneRole,
   memorySchema,
+  type AuthUser,
   type EngineeringAgentMode,
   type PatchArtifact,
   type PatchRisk,
@@ -29,6 +30,7 @@ import {
   bucketForRiskScore,
   computeActionRiskScore,
   explainRiskScore,
+  type EntityAction,
   type EntityAuthorizationDecision,
 } from "@atlas/agent-core";
 import { z } from "zod";
@@ -49,12 +51,13 @@ import {
   applyApprovedPatch,
   assertPatchApprovedForApply,
 } from "../services/patch-write.js";
-import {
-  consumeApprovalRequest,
-  createApprovalRequest,
-  getApprovalRequest,
-} from "../services/approvals.js";
+import { createApprovalRequest } from "../services/approvals.js";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
+import {
+  runGovernedClaimedExecution,
+  type HelperResult,
+} from "../services/governed-claimed-execution.js";
+import { computeArtifactHash } from "../services/governed-execution.js";
 
 async function assertPatchWrite(
   app: FastifyInstance,
@@ -93,20 +96,14 @@ function patchRiskToToolRisk(risk: PatchRisk): ToolRisk {
 }
 
 /**
- * Runs the entity-policy check + continuous risk score for a patch
- * apply/rollback, shared by both handlers below.
+ * Route-level 202 gate only. Does not authorize live execution.
  *
- * `entityApproved` reflects whether a human has *already* signed off on
- * this specific action through an existing, independent mechanism:
- *   - apply: the patch's own status is APPROVED (via the pre-existing
- *     `POST /patches/:id/approve` step, enforced by
- *     `assertPatchApprovedForApply` before this runs) — so `approved: true`.
- *   - rollback: there is no equivalent pre-approval step today, so
- *     `approved: false` — rollback always at least hits
- *     `APPROVAL_REQUIRED` at the entity-policy layer, which floors its
- *     risk score into the APPROVAL bucket (see `REQUIRES_APPROVAL_FLOOR`
- *     in risk-score.ts), matching the intuition that reverting
- *     already-applied changes is inherently HIGH_RISK_WRITE-or-worse.
+ * `entityApproved` is the patch-status signal for this score:
+ *   - apply: `assertPatchApprovedForApply` already proved POST /patches/:id/approve
+ *   - rollback: no equivalent patch-status gate, so false
+ *
+ * A live `ApprovalRequest` is never established by this boolean. Execution
+ * goes through `runGovernedClaimedExecution`.
  */
 function evaluatePatchActionRisk(input: {
   readonly patch: PatchArtifact;
@@ -136,6 +133,121 @@ function evaluatePatchActionRisk(input: {
   const explanation = explainRiskScore(riskInput);
 
   return { entityAuthz, score, bucket, explanation };
+}
+
+function patchArtifactHash(patch: PatchArtifact): string {
+  return computeArtifactHash(
+    JSON.stringify({
+      id: patch.id,
+      files: patch.filesChanged.map((file) => ({
+        path: file.path,
+        action: file.action,
+        afterContent: file.afterContent ?? null,
+      })),
+    }),
+  );
+}
+
+function approvalRequiredBody(
+  approvalId: string,
+  extras?: { readonly riskScore?: number; readonly riskBucket?: string },
+) {
+  return {
+    status: "APPROVAL_REQUIRED" as const,
+    approvalId,
+    ...(extras?.riskScore !== undefined ? { riskScore: extras.riskScore } : {}),
+    ...(extras?.riskBucket !== undefined ? { riskBucket: extras.riskBucket } : {}),
+    message:
+      "Submit POST /api/v1/approvals/:id/decide to approve, then retry this " +
+      `request with ?approvalId=${approvalId}.`,
+  };
+}
+
+function throwPatchHelperFailure(helper: HelperResult<unknown>): never {
+  const reason = "reason" in helper ? helper.reason : "governed execution failed";
+  if (helper.status === "DENIED" && /not found/i.test(helper.reason)) {
+    throw new AtlasError("NOT_FOUND", helper.reason, { statusCode: 404 });
+  }
+  if (helper.status === "OUTCOME_UNKNOWN" || helper.status === "FINALIZE_INCOMPLETE") {
+    throw new AtlasError("CONFLICT", reason, { statusCode: 409 });
+  }
+  throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+}
+
+async function runPatchClaimedExecution<T>(input: {
+  readonly user: AuthUser;
+  readonly patch: PatchArtifact;
+  readonly requestId: string;
+  readonly routeLabel: string;
+  readonly approvalRequestId?: string;
+  readonly action: EntityAction;
+  readonly execute: () => T;
+  readonly evidence: (value: T) => string;
+}): Promise<HelperResult<T>> {
+  return runGovernedClaimedExecution({
+    executorId: input.user.id,
+    actor: {
+      kind: "AGENT",
+      agentId: input.user.id,
+      onBehalfOfUserId: input.user.id,
+    },
+    entityType: "DOCUMENT",
+    action: input.action,
+    artifactHash: patchArtifactHash(input.patch),
+    ...(input.approvalRequestId !== undefined
+      ? { approvalRequestId: input.approvalRequestId }
+      : {}),
+    requestId: input.requestId,
+    sourceContext: { origin: "user_message", trustLevel: "trusted" },
+    ...(input.patch.projectId ? { projectId: input.patch.projectId } : {}),
+    routeLabel: input.routeLabel,
+    dispatchInput: { patchId: input.patch.id, route: input.routeLabel },
+    executeOnce: async () => {
+      try {
+        const value = input.execute();
+        return {
+          kind: "SUCCESS",
+          value,
+          outputEvidence: input.evidence(value),
+        };
+      } catch (error) {
+        return {
+          kind: "FAILURE",
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  });
+}
+
+async function sendPatchHelperResult<T>(
+  reply: FastifyReply,
+  helper: HelperResult<T>,
+): Promise<T> {
+  if (helper.status === "EXECUTED") {
+    // Terminal FULFILLED replay has no gate. Do not report a second success
+    // and do not run the callback again.
+    if (helper.gate === undefined) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        helper.approval
+          ? `Approval request ${helper.approval.id} is already finalized`
+          : "approval already finalized",
+        { statusCode: 403 },
+      );
+    }
+    return helper.value;
+  }
+  if (helper.status === "APPROVAL_REQUIRED") {
+    const extras =
+      helper.gate.decision === "APPROVAL_REQUIRED"
+        ? { riskScore: helper.gate.score, riskBucket: helper.gate.bucket }
+        : undefined;
+    return reply.status(202).send(
+      approvalRequiredBody(helper.approvalRequestId, extras),
+    ) as T;
+  }
+  throwPatchHelperFailure(helper);
 }
 
 const analyzeBody = z.object({
@@ -566,8 +678,6 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
 
     const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk({
       patch: existing,
-      // assertPatchApprovedForApply above already proved a human approved
-      // this exact patch via POST /patches/:id/approve.
       entityApproved: true,
     });
     if (entityAuthz.decision === "DENIED") {
@@ -577,57 +687,50 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const needsApprovalRequest = bucket === "APPROVAL" || bucket === "HUMAN_ONLY";
-    if (needsApprovalRequest) {
-      if (!query.approvalId) {
-        const approval = await createApprovalRequest({
-          entityType: "DOCUMENT",
-          action: "EXECUTE",
-          requestedBy: user.id,
-          reason: `apply patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
-          context: {
-            route: "code.patch.apply",
-            patchId: existing.id,
-            risk: existing.risk,
-          },
-        });
-        return reply.status(202).send({
-          status: "APPROVAL_REQUIRED" as const,
-          approvalId: approval.id,
-          riskScore: score,
-          riskBucket: bucket,
-          message:
-            "Submit POST /api/v1/approvals/:id/decide to approve, then retry this " +
-            `request with ?approvalId=${approval.id}.`,
-        });
-      }
-
-      const approval = await getApprovalRequest(query.approvalId);
-      if (!approval) {
-        throw new AtlasError(
-          "NOT_FOUND",
-          `Approval request ${query.approvalId} not found`,
-          { statusCode: 404 },
-        );
-      }
-      if (approval.status !== "APPROVED") {
-        throw new AtlasError(
-          "FORBIDDEN",
-          `Approval request ${query.approvalId} is not APPROVED (status=${approval.status}) — ` +
-            "it must be approved via POST /api/v1/approvals/:id/decide before this action can run.",
-          {
-            statusCode: 403,
-            details: { approvalId: query.approvalId, status: approval.status },
-          },
-        );
-      }
-      await consumeApprovalRequest(query.approvalId);
+    if (needsApprovalRequest && !query.approvalId) {
+      const approval = await createApprovalRequest({
+        entityType: "DOCUMENT",
+        action: "EXECUTE",
+        requestedBy: user.id,
+        reason: `apply patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
+        context: {
+          route: "code.patch.apply",
+          patchId: existing.id,
+          risk: existing.risk,
+        },
+      });
+      return reply.status(202).send(approvalRequiredBody(approval.id, {
+        riskScore: score,
+        riskBucket: bucket,
+      }));
     }
 
-    const result = applyApprovedPatch({
-      existing,
+    // AUTO/AUTO_LOG: helper no-approval path. DOCUMENT.READ is Policy-ALLOWED
+    // so this does not invent `approved: true` and does not force a
+    // DOCUMENT.EXECUTE HUMAN_ONLY hold onto a patch already scored auto.
+    // Approval-backed apply claims the minted DOCUMENT.EXECUTE record.
+    const helper = await runPatchClaimedExecution({
       user,
-      bodyWorkspaceRoot: body.workspaceRoot ?? null,
+      patch: existing,
+      requestId: request.id,
+      routeLabel: "code.patch.apply.gate",
+      action: needsApprovalRequest ? "EXECUTE" : "READ",
+      ...(needsApprovalRequest && query.approvalId
+        ? { approvalRequestId: query.approvalId }
+        : {}),
+      execute: () =>
+        applyApprovedPatch({
+          existing,
+          user,
+          bodyWorkspaceRoot: body.workspaceRoot ?? null,
+        }),
+      evidence: (value) =>
+        JSON.stringify({ status: value.patch.status, applied: value.apply.applied }),
     });
+    const result = await sendPatchHelperResult(reply, helper);
+    if (helper.status !== "EXECUTED") {
+      return result;
+    }
 
     appendUnifiedAuditEntry({
       type: "code.patch.applied",
@@ -671,9 +774,6 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       );
     }
 
-    // Rollback has no pre-existing human-approval step of its own (unlike
-    // apply, which rides on POST /patches/:id/approve) — it reverts changes
-    // that were already live, so it is never treated as pre-approved here.
     const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk({
       patch: existing,
       entityApproved: false,
@@ -685,67 +785,57 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const needsApprovalRequest = bucket === "APPROVAL" || bucket === "HUMAN_ONLY";
-    if (needsApprovalRequest) {
-      if (!query.approvalId) {
-        const approval = await createApprovalRequest({
-          entityType: "DOCUMENT",
-          action: "EXECUTE",
-          requestedBy: user.id,
-          reason: `rollback patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
-          context: {
-            route: "code.patch.rollback",
-            patchId: existing.id,
-            risk: existing.risk,
-          },
-        });
-        return reply.status(202).send({
-          status: "APPROVAL_REQUIRED" as const,
-          approvalId: approval.id,
-          riskScore: score,
-          riskBucket: bucket,
-          message:
-            "Submit POST /api/v1/approvals/:id/decide to approve, then retry this " +
-            `request with ?approvalId=${approval.id}.`,
-        });
-      }
-
-      const approval = await getApprovalRequest(query.approvalId);
-      if (!approval) {
-        throw new AtlasError(
-          "NOT_FOUND",
-          `Approval request ${query.approvalId} not found`,
-          { statusCode: 404 },
-        );
-      }
-      if (approval.status !== "APPROVED") {
-        throw new AtlasError(
-          "FORBIDDEN",
-          `Approval request ${query.approvalId} is not APPROVED (status=${approval.status}) — ` +
-            "it must be approved via POST /api/v1/approvals/:id/decide before this action can run.",
-          {
-            statusCode: 403,
-            details: { approvalId: query.approvalId, status: approval.status },
-          },
-        );
-      }
-      await consumeApprovalRequest(query.approvalId);
+    if (needsApprovalRequest && !query.approvalId) {
+      const approval = await createApprovalRequest({
+        entityType: "DOCUMENT",
+        action: "EXECUTE",
+        requestedBy: user.id,
+        reason: `rollback patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
+        context: {
+          route: "code.patch.rollback",
+          patchId: existing.id,
+          risk: existing.risk,
+        },
+      });
+      return reply.status(202).send(approvalRequiredBody(approval.id, {
+        riskScore: score,
+        riskBucket: bucket,
+      }));
     }
 
-    const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);
-    const now = new Date().toISOString();
-    const patch = patchArtifactSchema.parse({
-      ...existing,
-      status: "ROLLED_BACK",
-      updatedAt: now,
-      evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} file(s).`,
+    const helper = await runPatchClaimedExecution({
+      user,
+      patch: existing,
+      requestId: request.id,
+      routeLabel: "code.patch.rollback.gate",
+      action: "EXECUTE",
+      ...(query.approvalId !== undefined ? { approvalRequestId: query.approvalId } : {}),
+      execute: () => {
+        const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);
+        const now = new Date().toISOString();
+        const patch = patchArtifactSchema.parse({
+          ...existing,
+          status: "ROLLED_BACK",
+          updatedAt: now,
+          evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} file(s).`,
+        });
+        osStore.upsertPatch(patch);
+        osStore.appendAudit({
+          type: "code.patch.rolled_back",
+          patchId: id,
+          at: now,
+          by: user.id,
+        });
+        return { patch, restored };
+      },
+      evidence: (value) =>
+        JSON.stringify({ status: value.patch.status, restored: value.restored }),
     });
-    osStore.upsertPatch(patch);
-    osStore.appendAudit({
-      type: "code.patch.rolled_back",
-      patchId: id,
-      at: now,
-      by: user.id,
-    });
+    const executed = await sendPatchHelperResult(reply, helper);
+    if (helper.status !== "EXECUTED") {
+      return executed;
+    }
+    const { patch, restored } = executed;
 
     appendUnifiedAuditEntry({
       type: "code.patch.rolled_back",
