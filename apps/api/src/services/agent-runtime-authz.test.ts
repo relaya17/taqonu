@@ -1,14 +1,36 @@
-import { describe, expect, it } from "vitest";
-import {
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// `resolveAgentIdentity` now calls `assertGovernedProjectExists`, which
+// reads `osStore.getProject`. Mocked the same way `project-access.test.ts`
+// mocks the store, so this stays a real unit test of identity resolution
+// rather than depending on a real project being seeded on disk.
+const getProject = vi.fn();
+vi.mock("../store/os-store.js", () => ({
+  osStore: {
+    getProject: (id: string) => getProject(id),
+  },
+}));
+
+const {
   enforceAgentToolAuthorization,
   resolveAgentIdentity,
-  type AuthenticatedAgentIdentity,
-} from "./agent-runtime-authz.js";
+} = await import("./agent-runtime-authz.js");
+type AuthenticatedAgentIdentity = ReturnType<typeof resolveAgentIdentity>;
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
 const PROJECT_A = "33333333-3333-4333-8333-333333333333";
 const PROJECT_B = "44444444-4444-4444-8444-444444444444";
+
+beforeEach(() => {
+  getProject.mockReset();
+  // Default: any projectId used by the existing fixtures below resolves to
+  // a real project, so tests written before the existence check was added
+  // keep testing what they were written to test.
+  getProject.mockImplementation((id: string) =>
+    id === PROJECT_A || id === PROJECT_B ? { id } : undefined,
+  );
+});
 
 function identity(
   overrides: Partial<AuthenticatedAgentIdentity> = {},
@@ -72,6 +94,76 @@ describe("P0.2 — identity is resolved server-side, never declared", () => {
     expect(() =>
       resolveAgentIdentity({ fabricAgentId: "QA", sessionOwnerId: "", projectId: null }),
     ).toThrow(/authenticated session owner/);
+  });
+});
+
+describe("Phase 2 — governed-project existence (assertGovernedProjectExists via resolveAgentIdentity)", () => {
+  it("ALLOWS a projectId that resolves to a real project", () => {
+    getProject.mockReturnValue({ id: PROJECT_A });
+    expect(() =>
+      resolveAgentIdentity({
+        fabricAgentId: "SECURITY",
+        sessionOwnerId: OWNER_A,
+        projectId: PROJECT_A,
+      }),
+    ).not.toThrow();
+  });
+
+  it("REJECTS a projectId that does not exist", () => {
+    getProject.mockReturnValue(undefined);
+    expect(() =>
+      resolveAgentIdentity({
+        fabricAgentId: "SECURITY",
+        sessionOwnerId: OWNER_A,
+        projectId: "99999999-9999-4999-8999-999999999999",
+      }),
+    ).toThrow(/Project not found/);
+  });
+
+  it("ALLOWS projectId: null without requiring any project to exist (project-less/tenant-scoped identity)", () => {
+    getProject.mockReturnValue(undefined);
+    expect(() =>
+      resolveAgentIdentity({
+        fabricAgentId: "SECURITY",
+        sessionOwnerId: OWNER_A,
+        projectId: null,
+      }),
+    ).not.toThrow();
+    expect(getProject).not.toHaveBeenCalled();
+  });
+
+  it("does not apply ownership matching — a real project owned by a different tenant still resolves (existence-only, by design; see project-access.ts doc comment)", () => {
+    // OWNER_B's project, referenced by an OWNER_A-session call. This is the
+    // deliberate scope boundary from Phase 2 discovery §D/§G: ownership
+    // matching is a separate, not-yet-decided question, not a regression.
+    getProject.mockReturnValue({ id: PROJECT_B, ownerId: OWNER_B });
+    expect(() =>
+      resolveAgentIdentity({
+        fabricAgentId: "SECURITY",
+        sessionOwnerId: OWNER_A,
+        projectId: PROJECT_B,
+      }),
+    ).not.toThrow();
+  });
+
+  it("a nonexistent project blocks identity resolution before any tool authorization can run", () => {
+    // No identity is ever returned, so enforceAgentToolAuthorization —
+    // which requires an identity as input — cannot be reached at all for
+    // this request. Asserted structurally: resolveAgentIdentity itself is
+    // what throws, not a downstream gate.
+    getProject.mockReturnValue(undefined);
+    let identityWasResolved = false;
+    try {
+      const resolved = resolveAgentIdentity({
+        fabricAgentId: "SECURITY",
+        sessionOwnerId: OWNER_A,
+        projectId: "99999999-9999-4999-8999-999999999999",
+      });
+      identityWasResolved = Boolean(resolved);
+    } catch {
+      // expected
+    }
+    expect(identityWasResolved).toBe(false);
   });
 });
 

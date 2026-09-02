@@ -33,6 +33,20 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     delete process.env.ATLAS_SKIP_AUDIT_LOG;
     resetToolRegistryForTests();
     resetApprovalsForTests();
+    // `resolveAgentIdentity` (via `fulfillGatewayHandoff`) now requires
+    // PROJECT_A to actually exist in the store (Phase 2 —
+    // assertGovernedProjectExists). Real store, real record, matching this
+    // file's existing convention (isolated ATLAS_STORE_PATH, not a mock).
+    osStore.upsertProject({
+      id: PROJECT_A,
+      slug: "gw-fulfill-test-project",
+      name: "Gateway Fulfillment Test Project",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
   });
 
   afterEach(() => {

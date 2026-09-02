@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,12 +24,31 @@ import {
 } from "./governed-execution.js";
 import { listGovernanceDecisions } from "./governance-decision.js";
 
+// `resolveAgentIdentity` (called by this file's own `identity()` helper)
+// now calls `assertGovernedProjectExists`, which reads `osStore.getProject`.
+// Nothing else reachable from `governed-execution.ts` touches the store
+// (confirmed by grep before adding this), so a narrow mock keeps this file
+// a fast, isolated unit test rather than depending on a real project row.
+const getProject = vi.fn();
+vi.mock("../store/os-store.js", () => ({
+  osStore: {
+    getProject: (id: string) => getProject(id),
+  },
+}));
+
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
 const PROJECT_A = "33333333-3333-4333-8333-333333333333";
 const PROJECT_B = "44444444-4444-4444-8444-444444444444";
 
 const ARTIFACT = "export const answer = 42;";
+
+beforeEach(() => {
+  getProject.mockReset();
+  getProject.mockImplementation((id: string) =>
+    id === PROJECT_A || id === PROJECT_B ? { id } : undefined,
+  );
+});
 
 describe("P0.9 — adversarial suite against the full governed-execution chain", () => {
   let dir: string;

@@ -91,6 +91,33 @@ export function getProjectOwnerId(projectId: string): string | null {
   return readOwners()[projectId] ?? null;
 }
 
+/**
+ * Governance-boundary existence check for `resolveAgentIdentity` —
+ * deliberately NOT an ownership check.
+ *
+ * `assertProjectWriteAccess`/`assertProjectReadAccess` above already
+ * exempt admin/control-plane roles from ownership matching, and the one
+ * caller reaching this check today (`/api/v1/gateway/fulfill`, via
+ * `resolveAgentIdentity`) is operator-only (`requireOperator`). Adding
+ * ownership matching here would therefore be a no-op for the only current
+ * caller, and silently reproduce the existing bypass under a new name.
+ *
+ * What was actually missing was cheaper and unconditional: nothing verified
+ * the referenced project exists at all before an `AuthenticatedAgentIdentity`
+ * — and therefore a governed execution and its persisted `GovernanceDecision`
+ * — could be built around it. This closes that gap only. Ownership matching
+ * for this path remains an open architectural question (Phase 2 discovery,
+ * §G) for whenever non-operator callers might reach this identity path.
+ */
+export function assertGovernedProjectExists(projectId: string | null): void {
+  if (projectId === null) return;
+  if (!osStore.getProject(projectId)) {
+    throw new AtlasError("NOT_FOUND", `Project not found: ${projectId}`, {
+      statusCode: 404,
+    });
+  }
+}
+
 export function bindProjectOwner(
   projectId: string,
   ownerId: string,

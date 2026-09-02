@@ -4,6 +4,7 @@ import {
   FABRIC_AGENT_CATALOG,
   type FabricAgentId,
 } from "@atlas/shared";
+import { assertGovernedProjectExists } from "./project-access.js";
 
 /**
  * P0.2 — Agent Identity + Runtime Authorization Enforcement.
@@ -139,7 +140,13 @@ export function resolveAgentIdentity(input: {
       { statusCode: 403 },
     );
   }
-  
+
+  // Governance-boundary existence check (Phase 2 discovery) — an identity
+  // must not be built around a projectId that refers to nothing. See
+  // `assertGovernedProjectExists` for why this is existence-only, not an
+  // ownership check.
+  assertGovernedProjectExists(input.projectId);
+
   // Compute authority scope based on project context
   const authorityScope = input.projectId
     ? `project:${input.projectId}`
