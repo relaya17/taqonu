@@ -339,7 +339,7 @@ Rules:
 | Runtime `UNKNOWN` / `NOT_PROBED` | `RUNTIME_UNKNOWN` in `seed.ts`; ADR-022 | IMPLEMENTED (as inventory policy) |
 | `atlasInheritance: NONE` | `seed.ts` source permission records | IMPLEMENTED (inventory) |
 | CP application registry includes siblings | Seeded `def-000` only; Civio is registered after an accepted HMAC event | PARTIAL |
-| Live connectors to those apps | Civio Atlas-side HMAC ingress IMPLEMENTED (`POST /api/v1/connectors/civio/events`, `emitCivioEventToControl`). Civio runtime is not in this repo (wiring NOT IMPLEMENTED). Other siblings have no connector. | PARTIAL (Civio Atlas-side only) |
+| Live connectors to those apps | Civio HMAC ingress IMPLEMENTED. Civio runtime emit IMPLEMENTED in `relaya17/civio` `POST /api/ai/legal-query`. Other siblings have no connector. | PARTIAL (Civio only; execution NOT IMPLEMENTED) |
 | Civio knowledge snapshot | `packages/knowledge/src/fabric/civio-rights.snapshot.ts`; fail-closed `allowedAgentIds`: `RESEARCHER`, `LEGAL_MEDIA_COMMS` | PARTIAL (knowledge only) |
 | CaseFlow “office personal agent” | Seed path `apps/server/src/services/jurisdiction/personalAgentService.js` — **CaseFlow source**, “No Atlas equivalent” | NOT an Atlas agent |
 
@@ -839,7 +839,7 @@ These are **real conflicts**. They are not automatically bugs to “fix” in th
 | --- | --- |
 | Phase 1 — platform hierarchy | Implemented 2026-09-02 |
 | Phase 2 — Control operational foundation | Implemented 2026-09-02. Contracts only; no live sibling connectors |
-| Phase 3 — Civio → Atlas Control connector | Implemented 2026-09-02. Atlas HMAC ingress + production caller. Civio-repo wiring and execution NOT IMPLEMENTED. |
+| Phase 3 — Civio → Atlas Control connector | Implemented 2026-09-02. Atlas HMAC ingress + Civio runtime emit from authenticated legal-query. Execution NOT IMPLEMENTED. |
 | Phase 4+ | Not started |
 
 **Planning table (do not treat as automatically authorized):**

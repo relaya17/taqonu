@@ -211,7 +211,7 @@ export function buildCivioConnectorContract(): CivioConnectorContract {
     },
     remainingDeployment: [
       "Set ATLAS_CIVIO_CONNECTOR_SECRET, ATLAS_CIVIO_TENANT_ID, and ATLAS_CIVIO_PROJECT_ID on Atlas Control.",
-      "Call emitCivioEventToControl from the Civio runtime (github.com/relaya17/civio). That wiring is not in this repository.",
+      "Civio runtime emit is wired in relaya17/civio at POST /api/ai/legal-query. Set ATLAS_CIVIO_* on both runtimes.",
       `Operator status: GET ${CIVIO_CONNECTOR_STATUS_PATH}`,
     ],
   };

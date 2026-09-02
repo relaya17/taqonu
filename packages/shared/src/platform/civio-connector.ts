@@ -148,7 +148,7 @@ export interface CivioConnectorFoundationStatus {
   readonly atlasIngress: "IMPLEMENTED";
   readonly authenticatedCaller: "IMPLEMENTED";
   readonly civioRuntimeInThisRepository: false;
-  readonly civioRuntimeWiring: "NOT_IMPLEMENTED";
+  readonly civioRuntimeWiring: "IMPLEMENTED";
   readonly execution: "NOT_IMPLEMENTED";
   readonly inboundAtlasToCivio: "NOT_IMPLEMENTED";
 }
@@ -160,7 +160,7 @@ export function civioConnectorFoundationStatus(): CivioConnectorFoundationStatus
     atlasIngress: "IMPLEMENTED",
     authenticatedCaller: "IMPLEMENTED",
     civioRuntimeInThisRepository: false,
-    civioRuntimeWiring: "NOT_IMPLEMENTED",
+    civioRuntimeWiring: "IMPLEMENTED",
     execution: "NOT_IMPLEMENTED",
     inboundAtlasToCivio: "NOT_IMPLEMENTED",
   };

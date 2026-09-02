@@ -15,7 +15,7 @@ This amendment **supersedes observe-only for that Civio ingress only**.
 - Application identity is `civio`, never `def-000`.
 - Authentication is a deployment-configured HMAC secret (`ATLAS_CIVIO_CONNECTOR_SECRET`) bound to `ATLAS_CIVIO_TENANT_ID` and `ATLAS_CIVIO_PROJECT_ID`. Fail closed if any are missing.
 - Control evaluates Event → Policy → Risk → Decision. It does **not** execute Civio or Atlas tools on ingest.
-- Civio is not in this monorepo. `emitCivioEventToControl` is the production caller; wiring it inside `github.com/relaya17/civio` remains a deployment step.
+- Civio is not in this monorepo. The Civio runtime (`github.com/relaya17/civio`) emits from authenticated `POST /api/ai/legal-query` via `emitCivioEventToControl`. Deploy `ATLAS_CIVIO_*` on both runtimes.
 - CaseFlow, HotelOS, BrokerOS, LexStudy, and Vantera stay observe-only / not connected.
 - Portfolio seed remains inventory. Knowledge snapshot rules are unchanged.
 - Atlas-to-Civio inbound actions are not implemented.
