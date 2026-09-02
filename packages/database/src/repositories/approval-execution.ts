@@ -1,3 +1,15 @@
+/**
+ * PARKED per ADR-023 (docs/adr/ADR-023-single-live-approval-authority.md).
+ *
+ * This repository ("Unit 2") has no production caller. The live approval
+ * authority is `LiveApprovalRequestRepository` (`live-approval-requests.ts`),
+ * wired through `apps/api/src/services/approvals.ts`. Do not wire this class
+ * into `dispatchAgentAction` / `executeGovernedAction` or any other live
+ * path without a new, explicit ADR — doing so would create a second,
+ * competing approval authority, which ADR-023 forbids. An ESLint rule
+ * (see eslint.config.js) enforces this at build time.
+ */
+
 import {
   canonicalizeJson,
   type ExecutionApprovalEnvelopeV1,
