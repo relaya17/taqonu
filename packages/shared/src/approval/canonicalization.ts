@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 export const CANONICALIZATION_VERSION = "atlas-c14n-json/v1" as const;
 export const HASH_ALGORITHM = "sha256" as const;
 
@@ -90,14 +88,6 @@ export function canonicalizeJson(value: unknown): string {
   return canonicalizeValue(value, new Set<object>());
 }
 
-export function sha256Hex(value: string | Uint8Array): string {
-  return createHash(HASH_ALGORITHM).update(value).digest("hex");
-}
-
-export function hashCanonicalJson(value: unknown): string {
-  return sha256Hex(canonicalizeJson(value));
-}
-
 function validateManifestPath(path: string): void {
   if (!path || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => part === "" || part === "." || part === "..")) {
     throw new TypeError("Invalid artifact manifest path");
@@ -120,12 +110,4 @@ export function createArtifactManifest(entries: readonly ArtifactManifestEntry[]
     throw new TypeError("Artifact manifest paths must be unique");
   }
   return { schemaVersion: "atlas-artifact-manifest/v1", entries: normalized };
-}
-
-export function hashArtifactManifest(entries: readonly ArtifactManifestEntry[]): string {
-  return hashCanonicalJson(createArtifactManifest(entries));
-}
-
-export function hashArtifactBytes(content: Uint8Array): string {
-  return sha256Hex(content);
 }

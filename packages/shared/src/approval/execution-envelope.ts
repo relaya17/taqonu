@@ -1,7 +1,5 @@
-import {
-  CANONICALIZATION_VERSION,
-  hashCanonicalJson,
-} from "./canonicalization.js";
+import { CANONICALIZATION_VERSION } from "./canonicalization.js";
+import { hashCanonicalJson } from "./hash.js";
 import {
   executionApprovalEnvelopeSchema,
   type ExecutionApprovalEnvelopeV1,

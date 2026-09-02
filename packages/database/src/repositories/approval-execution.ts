@@ -1,10 +1,12 @@
 import {
   canonicalizeJson,
+  type ExecutionApprovalEnvelopeV1,
+} from "@atlas/shared";
+import {
   computeEnvelopeHash,
   hashCanonicalJson,
   validateExecutionApprovalEnvelope,
-  type ExecutionApprovalEnvelopeV1,
-} from "@atlas/shared";
+} from "@atlas/shared/node";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type GovernanceAuthorizationContext = Readonly<{

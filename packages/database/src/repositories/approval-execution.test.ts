@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createExecutionApprovalEnvelope, type ExecutionCandidate } from "@atlas/shared";
+import { createExecutionApprovalEnvelope, type ExecutionCandidate } from "@atlas/shared/node";
 import { ApprovalExecutionRepository } from "./approval-execution.js";
 
 const HASH = "a".repeat(64);
