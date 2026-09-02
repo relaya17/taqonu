@@ -26,7 +26,7 @@ describe("isAllowedWebOrigin", () => {
     ).toBe(false);
   });
 
-  it("allows Sentinel and Owner Admin loopback surfaces", () => {
+  it("allows Control and Atlas Admin loopback surfaces", () => {
     expect(
       isAllowedWebOrigin("http://127.0.0.1:3100", "http://localhost:3000"),
     ).toBe(true);

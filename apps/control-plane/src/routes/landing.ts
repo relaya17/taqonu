@@ -29,7 +29,7 @@ const _TRANSLATIONS = {
     navFeatures: "יכולות",
     navDashboard: "לוח בקרה",
     navAtlas: "Atlas",
-    navOwnerAdmin: "ניהול בעלים",
+    navOwnerAdmin: "אדמין Atlas",
     navRegister: "הרשמה",
     formTitle: "התחברות והרשמה",
     formSubtitle: "מצב פיתוח — atlas.local",
@@ -71,7 +71,7 @@ const _TRANSLATIONS = {
     navFeatures: "Features",
     navDashboard: "Dashboard",
     navAtlas: "Atlas",
-    navOwnerAdmin: "Owner Admin",
+    navOwnerAdmin: "Atlas Admin",
     navRegister: "Register",
     formTitle: "Login & Register",
     formSubtitle: "Dev mode — atlas.local",
@@ -113,7 +113,7 @@ const _TRANSLATIONS = {
     navFeatures: "الميزات",
     navDashboard: "لوحة التحكم",
     navAtlas: "Atlas",
-    navOwnerAdmin: "إدارة المالك",
+    navOwnerAdmin: "إدارة Atlas",
     navRegister: "التسجيل",
     formTitle: "تسجيل الدخول والتسجيل",
     formSubtitle: "وضع التطوير — atlas.local",
@@ -1180,7 +1180,7 @@ export function getLandingHtml(options?: {
         <li><a href="#contact" data-i18n="footerContact">Contact</a></li>
         <li><a href="/dashboard" data-i18n="navDashboard">Dashboard</a></li>
         <li><a id="linkAtlas" href="http://localhost:3000/he/welcome" data-i18n="navAtlas">Atlas</a></li>
-        <li><a id="linkOwnerAdmin" href="http://127.0.0.1:3200" data-i18n="navOwnerAdmin">Owner Admin</a></li>
+        <li><a id="linkOwnerAdmin" href="http://127.0.0.1:3200" data-i18n="navOwnerAdmin">Atlas Admin</a></li>
       </ul>
       <div class="footer-brand">
         <div class="logo-mini"></div>
@@ -1239,7 +1239,7 @@ export function getLandingHtml(options?: {
         navFeatures: "יכולות",
         navDashboard: "לוח בקרה",
         navAtlas: "Atlas",
-        navOwnerAdmin: "ניהול בעלים",
+        navOwnerAdmin: "אדמין Atlas",
         ctaGetStarted: "התחל עכשיו",
         labelDisplayName: "שם תצוגה",
         labelEmail: "אימייל",
@@ -1291,7 +1291,7 @@ export function getLandingHtml(options?: {
         navFeatures: "Features",
         navDashboard: "Dashboard",
         navAtlas: "Atlas",
-        navOwnerAdmin: "Owner Admin",
+        navOwnerAdmin: "Atlas Admin",
         ctaGetStarted: "Get Started",
         labelDisplayName: "Display Name",
         labelEmail: "Email",
@@ -1343,7 +1343,7 @@ export function getLandingHtml(options?: {
         navFeatures: "الميزات",
         navDashboard: "لوحة التحكم",
         navAtlas: "Atlas",
-        navOwnerAdmin: "إدارة المالك",
+        navOwnerAdmin: "إدارة Atlas",
         ctaGetStarted: "ابدأ الآن",
         labelDisplayName: "اسم العرض",
         labelEmail: "البريد الإلكتروني",

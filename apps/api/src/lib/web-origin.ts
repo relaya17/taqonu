@@ -1,7 +1,7 @@
 /** Loopback hosts treated as equivalent for local CORS (localhost ↔ 127.0.0.1). */
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
 
-/** Atlas product (3000), Sentinel (3100), Owner Admin (3200). */
+/** Atlas product / Studio (3000), Control (3100), Atlas Admin (3200). */
 const ATLAS_DEV_SURFACE_PORTS = new Set(["3000", "3100", "3200"]);
 
 /**

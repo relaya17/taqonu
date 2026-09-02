@@ -1,7 +1,7 @@
 # `deploy/` — Atlas private plane artifacts
 
-Configuration for running the **CONTROL** trust plane on a private VM, per
-[ADR-021](../docs/adr/ADR-021-private-by-default-control-plane.md).
+Configuration for running Control and Atlas Admin on a private VM, per
+[ADR-021](../docs/adr/ADR-021-private-by-default-control-plane.md) (amended 2026-09-02).
 
 Full guide: [`docs/deployment/private-plane.md`](../docs/deployment/private-plane.md)
 
@@ -10,9 +10,9 @@ Full guide: [`docs/deployment/private-plane.md`](../docs/deployment/private-plan
 | `bootstrap.sh` | Idempotent VM provisioning. `--update` pulls and rebuilds. |
 | `verify.sh` | Read-only post-deployment checks. Exits non-zero on failure. |
 | `systemd/atlas-control-plane.service` | Control Plane on `127.0.0.1:3100` |
-| `systemd/atlas-admin.service` | Owner Admin on `127.0.0.1:3200` |
+| `systemd/atlas-admin.service` | Atlas Admin on `127.0.0.1:3200` |
 | `systemd/atlas-worker.service` | Worker loop, no HTTP surface |
-| `nginx/atlas-admin.conf` | Tailscale-only reverse proxy for the Owner UI |
+| `nginx/atlas-admin.conf` | Tailscale-only reverse proxy for Atlas Admin |
 | `env/*.env.example` | Environment templates — **variable names only** |
 
 ## Scope

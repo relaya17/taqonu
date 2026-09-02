@@ -199,10 +199,11 @@ canonical hash-chain. Outbound HTTPS needs no inbound rule. Set
 - [ ] `GET /api/v1/agents` without a token → **401/403**
 - [ ] `GET /api/v1/agents` with the operator token → **200**
 
-### Owner Admin
+### Atlas Admin
 - [ ] `GET /` without a token → **401** (token set) or **503** (token missing)
 - [ ] `GET /` with the operator token → **200**
-- [ ] Browsing `http://<tailscale-ip>:8443/` renders the Owner UI
+- [ ] Browsing `http://<tailscale-ip>:8443/` renders Atlas Admin (not a Control dashboard clone)
+- [ ] `GET /api/v1/platform/hierarchy` with auth → Admin supervises Control and Studio
 
 ### Private-by-default
 - [ ] `:3100` and `:3200` bound to `127.0.0.1`, never `0.0.0.0`

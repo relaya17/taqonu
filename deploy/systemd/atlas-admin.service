@@ -1,5 +1,5 @@
 [Unit]
-Description=Atlas Owner Admin UI (ADR-021 CONTROL trust plane, :3200)
+Description=Atlas Admin platform supervisor (ADR-021 ADMIN surface, :3200)
 Documentation=file:///opt/atlas/docs/deployment/private-plane.md
 # Admin renders an error page when the Control Plane is down, so ordering is a
 # soft hint rather than a hard Requires=.

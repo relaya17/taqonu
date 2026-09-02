@@ -1,6 +1,6 @@
 # Atlas Target Architecture
 
-**Status:** Approved direction — Phase 1 (platform hierarchy) in implementation  
+**Status:** Approved direction — Phase 1 (platform hierarchy) implemented; later phases wait for approval
 **Date:** 2026-09-02  
 **Kind:** Authoritative target architecture (product model)  
 **Baseline:** Current repository implementation  
@@ -56,28 +56,24 @@ Atlas observes and governs **from the outside**. It is not “an AI wired into e
 
 ### 2.3 Trust and deployment (current facts vs target)
 
-**Current (ADR-021, `docs/architecture/overview.md`, `docs/architecture/remaining-work.md`):** three HTTP origins plus tenant API:
+**Current (ADR-021 amended 2026-09-02):** four surfaces plus tenant API:
 
 | Origin | App | Default port |
 | --- | --- | --- |
-| Developer / user-plane UI | `apps/web` | `:3000` |
+| Developer / user-plane UI (includes Studio) | `apps/web` | `:3000` |
 | Tenant API | `apps/api` | `:4000` |
-| Control Plane API + dashboard | `apps/control-plane` | `:3100` |
-| Owner Admin UI | `apps/admin` | `:3200` |
+| Atlas Control | `apps/control-plane` | `:3100` |
+| Atlas Admin | `apps/admin` | `:3200` |
 
-**Target:** keep three **product surfaces** (Admin, Control, Studio). Studio remains a route **inside** `apps/web`. Admin and Control remain separately deployable runtimes. Do not collapse them into one port or one Vercel project.
+Studio remains a route **inside** `apps/web`. Admin and Control remain separately deployable runtimes. Do not collapse them into one port or one Vercel project.
 
-**Conflict (recorded, not resolved here):** ADR-021 places Owner Admin UI and Control API on the same **CONTROL** trust plane. The product model in this document treats Admin as a **higher** surface that supervises Control. See §19.
+ADR-021 originally placed Admin and Control on one CONTROL plane. **Amended:** Admin is the parent platform supervisor. See the ADR amendment and §19 (historical conflict).
 
 ### 2.4 Naming of current “admin” surfaces (do not confuse)
 
-The repository currently has **three different things named Admin**:
-
-1. `apps/admin` (`:3200`) — Owner HTML that **fetches Control Plane GETs**. No Admin API of its own (`apps/admin/src/server.ts` → `fetchJson` against `ATLAS_CONTROL_PLANE_URL`).
-2. `apps/control-plane` (`:3100`) — real Control APIs + dashboard (`apps/control-plane/src/routes/api.ts`, `dashboard.ts`). Login title is “Atlas Control.”
-3. `apps/web/app/admin` — tenant “Oracle / Command Center” against `/api/v1/admin/*` (`apps/web/app/admin/page.tsx`). Customer `admin` **or** owner/operator (ADR-021).
-
-**Target:** only (1) is Atlas Admin. (2) is Atlas Control. (3) is tenant administration inside the user plane, not Atlas Admin.
+1. `apps/admin` (`:3200`) — Atlas Admin. Hierarchy/overview contracts; supervises Control and Studio. Not a Control operational dashboard.
+2. `apps/control-plane` (`:3100`) — Atlas Control operational APIs + dashboard.
+3. `apps/web/app/admin` — tenant administration against `/api/v1/admin/*`. Customer `admin` is not Atlas Admin.
 
 ---
 
@@ -116,11 +112,12 @@ Admin **must not** become a second Control dashboard (live process feeds, agent 
 
 | Claim | Evidence | Classification |
 | --- | --- | --- |
-| Owner UI exists on `:3200` | `apps/admin/src/server.ts` (`ADMIN_PORT` default `3200`) | IMPLEMENTED |
-| Owner UI has no Admin write API | `loadOwnerPage()` only `GET`s Control routes | PARTIAL |
-| Owner UI duplicates Control readouts | `fetchJson("/api/v1/applications" \| "/agents" \| "/owner/brief" \| "/self-audit" \| "/portfolio-governance")` | CONFLICTING vs target Admin |
+| Atlas Admin exists on `:3200` | `apps/admin/src/server.ts` (`ADMIN_PORT` default `3200`) | IMPLEMENTED |
+| Admin exposes hierarchy/overview contracts | `GET /api/v1/platform/hierarchy`, `GET /api/v1/platform/overview` | IMPLEMENTED |
+| Admin no longer mirrors Control operational dumps | `composePlatformOverview` consumes Control `GET /api/v1/supervision` only | IMPLEMENTED |
+| Admin supervises Studio without hosting it | Studio card + `GET /api/v1/platform/studio-supervision` on tenant API | PARTIAL (live counts require owner session on API) |
 | Auth is browser session + Control token | `apps/admin/src/admin-auth.ts`, `browser-session.ts` | PARTIAL |
-| Tenant Oracle is a different surface | `apps/web/app/admin/page.tsx` → `/api/v1/admin/command-center` | LEGACY naming |
+| Tenant `/admin` is a different surface | `apps/web/app/admin` labeled tenant admin | IMPLEMENTED |
 
 ### 3.4 Target Admin shape
 
@@ -730,7 +727,7 @@ Inspected read-only. Documentation is **not** treated as implementation.
 | Studio + rest of developer UI | `apps/web` | 3000 |
 | Tenant API, Fabric execution, Studio APIs, memory, patches | `apps/api` | 4000 |
 | Control | `apps/control-plane` | 3100 |
-| Owner Admin UI (Control readout) | `apps/admin` | 3200 |
+| Atlas Admin (platform supervisor) | `apps/admin` | 3200 |
 | Tenant Oracle | `apps/web/app/admin` | 3000 |
 
 ### 17.2 Packages (relevant)
@@ -774,7 +771,7 @@ Inspected read-only. Documentation is **not** treated as implementation.
 
 | Area | Current State | Target State | Gap | Classification |
 | --- | --- | --- | --- | --- |
-| Admin | `apps/admin` re-renders Control GETs; no Admin API; tenant Oracle is a third “admin” | Highest platform supervisor over Control + Studio; not a Control clone | Rebuild Admin **purpose** (not a new Studio); stop duplicating Control | CONFLICTING |
+| Admin | Hierarchy + supervision contracts; no longer a Control operational mirror | Highest platform supervisor over Control + Studio; not a Control clone | Broader Admin API (users, policy authoring) still later | PARTIAL |
 | Control | `:3100` oversight of Atlas-self (`def-000`); gateway evaluate without live fulfill; fail-open telemetry | Supervisory control of connected apps, PSA, processes, enforcement | Live apps, PSA, wired enforcement, process store | PARTIAL |
 | Studio | Single page in `apps/web`; tree/file/save/ask-agent; textarea | Upgraded developer workspace; one write policy; Fabric propose; evidence | Editor, AuthZ hole, knowledge, in-page governance UX | PARTIAL |
 | Connected Apps | Portfolio seed; runtime UNKNOWN; CP registry = Atlas only | Independent apps via connectors | No live connectors | MISSING |
@@ -841,7 +838,7 @@ These are **real conflicts**. They are not automatically bugs to “fix” in th
 | Phase | Intent | Depends on |
 | --- | --- | --- |
 | **P0 — Approval** | Owner approves this target + Studio write policy A or B | This document |
-| **P1 — Bound the surfaces** | Document and UI naming: Admin ≠ Control ≠ tenant Oracle ≠ Studio. No feature work. Admin stops being described as Control. | P0 |
+| **P1 — Bound the surfaces** | **Implemented 2026-09-02.** Admin ≠ Control ≠ tenant admin ≠ Studio. Admin supervises Control and Studio via contracts. | P0 |
 | **P2 — Studio AuthZ + honesty** | Ask-agent uses `resolveStudioWorkspaceRoot`. Align README/copy/comments with chosen write policy. Tests for ask-agent ownership. **No new Studio app.** | P0 |
 | **P3 — Audit SoR** | Studio writes and CP decisions reach `appendUnifiedAuditEntry`. Start or replace `audit-sync` with a reachable path. | P1 |
 | **P4 — Studio upgrade (in place)** | Editor quality, evidenceIds on proposals, optional in-page patch status, Fabric propose-only for developer agents, optional Knowledge retrieval with allow-lists. | P0, P2, P3 |
@@ -868,7 +865,5 @@ Out of scope for all phases unless the Owner reopens this document:
 | --- | --- |
 | Path | `docs/architecture/atlas-target-architecture.md` |
 | Supersedes as *target* | Informal three-surface discussions; does **not** auto-void ADR-014–022 |
-| Implementation authorized | **No** |
-| Next step | Owner approval of §§2–8 and especially §5.4 (write policy A or B) |
-
-**STOP.** No implementation follows from the existence of this file.
+| Implementation authorized | Phase 1 only |
+| Next step | Owner approval before Phase 2 |

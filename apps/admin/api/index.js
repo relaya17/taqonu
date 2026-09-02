@@ -1,5 +1,5 @@
 /**
- * Vercel Serverless Function entry for the Owner Admin surface.
+ * Vercel Serverless Function entry for Atlas Admin (platform supervisor).
  * All traffic is rewritten here via vercel.json.
  *
  * Bundle is produced by `pnpm run bundle:vercel` during the Vercel build.

@@ -63,6 +63,9 @@ describe("Atlas Admin platform HTML", () => {
     expect(html).not.toContain("VAN-AG-001");
     expect(html).not.toContain("KEEP_SOURCE_SPECIFIC");
     expect(html).not.toContain('data-agent-id="CODE_ENGINEER"');
+    expect(html).not.toContain("Owner Control Plane");
+    expect(html).not.toContain("Owner Control Panel");
+    expect(html).not.toContain("Owner Admin");
   });
 
   it("renders the public promo without private supervision metrics", () => {

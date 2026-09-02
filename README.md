@@ -240,14 +240,14 @@ pnpm dev
 | CONTROL | **Atlas Sentinel** landing | http://127.0.0.1:3100 |
 | CONTROL | Sentinel dashboard | http://127.0.0.1:3100/dashboard |
 | CONTROL | Sentinel liveness | http://127.0.0.1:3100/api/v1/status |
-| CONTROL | **Owner Admin** | http://127.0.0.1:3200 |
+| ADMIN | **Atlas Admin** (supervises Control + Studio) | http://127.0.0.1:3200 |
 | WEB admin (user plane) | Command login | http://localhost:3000/admin/login |
 
 Dev credentials (local only): `dev@atlas.local` / `AtlasDev1!` — see `apps/web/lib/dev-credentials.ts`.
 
 ### Vercel (USER plane only)
 
-Two Vercel projects. Do **not** put Sentinel (`:3100`) or Owner Admin (`:3200`) on Vercel.
+Two Vercel projects. Do **not** put Control (`:3100`) or Atlas Admin (`:3200`) on Vercel.
 
 | Project root | Config | Role |
 | --- | --- | --- |

@@ -10,6 +10,9 @@ describe("Control Plane public promo", () => {
     expect(html).toContain('function atlasWeb() { return "https://atlas.example"; }');
     expect(html).toContain('atlasWeb() + "/he/auth/register"');
     expect(html).not.toContain("AtlasDev1!");
+    expect(html).toContain("Atlas Admin");
+    expect(html).not.toContain("Owner Admin");
+    expect(html).not.toContain("Owner Control Plane");
   });
 
   it("includes demo credentials only when explicitly supplied", () => {

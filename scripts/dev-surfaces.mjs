@@ -1,7 +1,6 @@
 /**
- * One Atlas product, three HTTP origins (ADR-021). Do not merge these
- * into a single port or a single Vercel project — that collapses the
- * control-plane trust boundary into the tenant app.
+ * One Atlas product, four surfaces on separate origins (ADR-021 amended).
+ * Do not merge these into a single port or a single Vercel project.
  */
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -15,10 +14,10 @@ const admin = "http://127.0.0.1:3200";
 const api = "http://localhost:4000";
 
 console.log(`
-Atlas surfaces (keep these three origins separate)
-  Atlas product ............. ${web}
-  Atlas Sentinel (oversight)  ${sentinel}
-  Owner Admin ............... ${admin}
+Atlas surfaces (keep these origins separate)
+  Atlas product / Studio .... ${web}
+  Atlas Control ............. ${sentinel}
+  Atlas Admin ............... ${admin}
   Tenant API (not a UI) ..... ${api}
 `);
 
