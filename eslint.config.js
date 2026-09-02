@@ -66,4 +66,43 @@ export default [
       ],
     },
   },
+  {
+    // Guardrail for ADR-023 (docs/adr/ADR-023-single-live-approval-authority.md):
+    // ApprovalExecutionRepository ("Unit 2") is parked, non-live prepared
+    // infrastructure. It must never become a second approval authority
+    // alongside the live LiveApprovalRequestRepository path. This rule fails
+    // the build if anything outside the repository's own file/tests/index
+    // re-export imports it.
+    files: ["**/*.{ts,tsx}"],
+    ignores: [
+      "packages/database/src/repositories/approval-execution.ts",
+      "packages/database/src/repositories/approval-execution.test.ts",
+      "packages/database/src/index.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@atlas/database",
+              importNames: ["ApprovalExecutionRepository"],
+              message:
+                "ApprovalExecutionRepository (Unit 2) is parked per ADR-023 and must not become a second approval authority. See docs/adr/ADR-023-single-live-approval-authority.md.",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "**/repositories/approval-execution",
+                "**/repositories/approval-execution.js",
+              ],
+              message:
+                "ApprovalExecutionRepository (Unit 2) is parked per ADR-023 and must not become a second approval authority. See docs/adr/ADR-023-single-live-approval-authority.md.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
