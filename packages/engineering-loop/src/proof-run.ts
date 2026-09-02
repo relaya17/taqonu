@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
+import { dirname, resolve, relative, sep, normalize, isAbsolute } from "node:path";
 import {
   atlasProofReportSchema,
   type AtlasProofReport,
@@ -60,6 +61,7 @@ export interface ResolvedGoldenWorkspace {
   source: GoldenWorkspaceSource;
   exists: boolean;
   slug: string;
+  _validationError?: string | undefined; // DECISION 4: Carry validation result for re-validation
 }
 
 function findRepoRoot(from = process.cwd()): string {
@@ -91,6 +93,98 @@ export function inRepoGoldenFixtureRoot(fromCwd = process.cwd()): string {
   return resolve(findRepoRoot(fromCwd), "fixtures", "golden-brokeros");
 }
 
+/**
+ * Validate that a candidate path stays within an authorized root.
+ * Performs lexical + canonical checks to reject:
+ * - Path traversal (..)
+ * - Symlinks/junctions escaping the root
+ *
+ * Returns {ok: true, path} on success or {ok: false, reason} on failure.
+ */
+function validatePathContainment(
+  authorizedRoot: string,
+  candidate: string,
+): { ok: true; path: string } | { ok: false; reason: string } {
+  if (typeof candidate !== "string" || candidate.trim().length === 0) {
+    return { ok: false, reason: "path must be a non-empty string" };
+  }
+
+  const root = resolve(authorizedRoot);
+  const target = resolve(root, normalize(candidate));
+
+  // LEXICAL CHECK: Reject traversal by comparing path segments
+  const rel = relative(root, target);
+  if (rel === "") return { ok: true, path: target };
+  if (rel.startsWith("..") || rel.split(sep).includes("..")) {
+    return { ok: false, reason: "path escapes the authorized root (lexical containment)" };
+  }
+
+  // CANONICAL CHECK: Resolve symlinks/junctions and re-check containment
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = realpathSync(root);
+  } catch {
+    // Root doesn't exist on disk; nothing to canonicalize against
+    return { ok: true, path: target };
+  }
+
+  let canonicalTarget: string;
+  try {
+    canonicalTarget = realpathSync(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      // Target doesn't exist; cannot be a symlink escape
+      return { ok: true, path: target };
+    }
+    return {
+      ok: false,
+      reason: `failed to canonicalize path: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  // Check canonical containment
+  const canonicalRel = relative(canonicalRoot, canonicalTarget);
+  if (canonicalRel === "") return { ok: true, path: target };
+  if (canonicalRel.startsWith("..") || canonicalRel.split(sep).includes("..")) {
+    return {
+      ok: false,
+      reason: "path resolves (via symlink or junction) outside the authorized root (canonical containment)",
+    };
+  }
+
+  return { ok: true, path: target };
+}
+
+/**
+ * Validate that a root path is authorized for filesystem operations.
+ * Ensures the path can be canonicalized and doesn't violate containment.
+ */
+function validateRootPath(
+  root: string,
+  source: GoldenWorkspaceSource,
+): { ok: true } | { ok: false; reason: string } {
+  if (!root || root.trim().length === 0) {
+    return { ok: false, reason: "root path must not be empty" };
+  }
+
+  // DECISION 3: Canonicalize before treating as authority
+  // Attempt to resolve the real path (accounts for symlinks/junctions on Windows)
+  try {
+    realpathSync(root);
+    // Path resolved successfully; it's a valid filesystem path
+    return { ok: true };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      // Path doesn't exist yet, but syntax is valid
+      return { ok: true };
+    }
+    return {
+      ok: false,
+      reason: `root path canonicalization failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
 export function findEvalsRoot(fromCwd = process.cwd()): string {
   const fromEnv = process.env.ATLAS_EVALS_ROOT;
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
@@ -101,8 +195,10 @@ export function findEvalsRoot(fromCwd = process.cwd()): string {
 }
 
 /**
- * Resolve Golden Project root:
- * explicit → ATLAS_GOLDEN_PROJECT_ROOT → brokerOS-main candidates → in-repo fixture.
+ * Resolve Golden Project root.
+ * DECISION 1 + 2: Explicit authorization only. No ambient sibling scanning or hardcoded paths.
+ * Order: explicit → env → in-repo fixture.
+ * DECISION 3 + 4: Validate containment and re-validate before authority transition.
  */
 export function resolveGoldenWorkspace(opts?: {
   explicitRoot?: string | null;
@@ -113,49 +209,42 @@ export function resolveGoldenWorkspace(opts?: {
   const slug = opts?.slug || process.env.ATLAS_GOLDEN_PROJECT_SLUG || "brokeros";
   const cwd = opts?.cwd ?? process.cwd();
 
+  // DECISION 1: Explicit root only (no implicit discovery)
   if (opts?.explicitRoot && opts.explicitRoot.length > 0) {
     const root = resolve(opts.explicitRoot);
+    const validation = validateRootPath(root, "explicit");
     return {
       workspaceRoot: root,
       source: "explicit",
       exists: existsSync(root),
       slug,
+      _validationError: validation.ok ? undefined : validation.reason,
     };
   }
 
+  // DECISION 1: Environment variable only (no fallback scanning)
   const envRoot = opts?.envRoot ?? process.env.ATLAS_GOLDEN_PROJECT_ROOT ?? null;
-  if (envRoot && existsSync(envRoot)) {
+  if (envRoot && envRoot.length > 0) {
+    const validation = validateRootPath(envRoot, "env");
     return {
-      workspaceRoot: resolve(envRoot),
+      workspaceRoot: envRoot,
       source: "env",
-      exists: true,
+      exists: existsSync(envRoot),
       slug,
+      _validationError: validation.ok ? undefined : validation.reason,
     };
   }
 
-  const brokerCandidates = [
-    resolve(cwd, "..", "..", "brokerOS-main"),
-    resolve(cwd, "..", "brokerOS-main"),
-    resolve(findRepoRoot(cwd), "..", "brokerOS-main"),
-    "C:\\Users\\User\\Desktop\\game\\brokerOS-main",
-  ];
-  for (const c of brokerCandidates) {
-    if (existsSync(c)) {
-      return {
-        workspaceRoot: resolve(c),
-        source: "brokeros",
-        exists: true,
-        slug,
-      };
-    }
-  }
-
+  // DECISION 2: No hardcoded paths, no sibling scanning
+  // Fall back to in-repo fixture only
   const fixture = inRepoGoldenFixtureRoot(cwd);
+  const validation = validateRootPath(fixture, "fixture");
   return {
     workspaceRoot: fixture,
     source: "fixture",
     exists: existsSync(fixture),
     slug,
+    _validationError: validation.ok ? undefined : validation.reason,
   };
 }
 
@@ -223,6 +312,73 @@ export function runAtlasProof(input: RunAtlasProofInput = {}): AtlasProofReport 
     slug: input.projectSlug ?? null,
     ...(input.cwd ? { cwd: input.cwd } : {}),
   });
+
+  // DECISION 4: Re-validate filesystem authority at metadata → authority transition
+  // Fail closed if validation error exists OR workspace doesn't exist
+  const shouldFailClosed = golden._validationError || !golden.exists;
+  if (shouldFailClosed) {
+    // Fail closed: validation error or missing workspace means we cannot proceed
+    const now = new Date().toISOString();
+    const errorGates: ProofGateResult[] = GOLDEN_PROOF_GATES.map((g) => ({
+      id: g.id,
+      taskId: g.taskId,
+      title: g.title,
+      status: "ERROR" as const,
+      notes: golden._validationError
+        ? `Filesystem authority validation failed: ${golden._validationError}`
+        : "Workspace does not exist",
+      evidenceCount: 0,
+      unauthorizedWrite: false,
+    }));
+
+    const errorReport = atlasProofReportSchema.parse({
+      id: randomUUID(),
+      atlasVersion: version,
+      status: "FAIL",
+      golden: {
+        slug: golden.slug,
+        workspaceRoot: golden.workspaceRoot,
+        source: golden.source,
+        exists: false,
+      },
+      evalsRoot: input.evalsRoot ?? findEvalsRoot(input.cwd),
+      suite: {
+        id: randomUUID(),
+        atlasVersion: version,
+        startedAt: now,
+        completedAt: now,
+        results: [],
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        passRate: 0,
+        unauthorizedWrites: 0,
+        projectId: input.projectId ?? null,
+        ownerId: input.ownerId ?? null,
+      },
+      gates: errorGates,
+      checklist: {
+        workspaceExists: false,
+        allGatesPass: false,
+        unauthorizedWritesZero: false,
+        suitePassRateOk: false,
+      },
+      metrics: {
+        truth: 0,
+        engineeringSuccess: 0,
+        qaAccuracy: 0,
+        autonomy: 0,
+      },
+      verdictSummary: input.verdictSummary ?? null,
+      evidenceReportMarkdown: `# Filesystem Authority Validation Failed\n\n${golden._validationError ?? "Workspace does not exist"}`,
+      plainLanguageSummary: `Atlas Proof validation FAIL · ${golden._validationError ?? "Workspace does not exist"}`,
+      createdAt: now,
+      projectId: input.projectId ?? null,
+    });
+
+    return errorReport;
+  }
+
   const evalsRoot = input.evalsRoot ?? findEvalsRoot(input.cwd);
   const taskIds = input.taskIds?.length ? input.taskIds : [...GOLDEN_TASK_IDS];
 
