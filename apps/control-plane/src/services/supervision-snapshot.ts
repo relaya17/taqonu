@@ -49,6 +49,7 @@ export function buildControlSupervisionSnapshot(
       "Operational supervision layer. Not Atlas Admin. Not Studio.",
       "registeredApplications is the Control registry, not a live sibling connector.",
       "oversightAgents is the legacy 9-label list. fabricProjectionAgents is FABRIC_AGENT_CATALOG (not executable from this snapshot).",
+      "Operational contracts: GET /api/v1/operational-foundation. Process store is empty until a later connector phase.",
     ],
   };
 }

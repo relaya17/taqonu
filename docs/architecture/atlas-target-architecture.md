@@ -1,6 +1,6 @@
 # Atlas Target Architecture
 
-**Status:** Approved direction — Phase 1 (platform hierarchy) implemented; later phases wait for approval
+**Status:** Approved direction — Phase 1 hierarchy and Phase 2 Control operational foundation implemented; later phases wait for approval
 **Date:** 2026-09-02  
 **Kind:** Authoritative target architecture (product model)  
 **Baseline:** Current repository implementation  
@@ -833,7 +833,15 @@ These are **real conflicts**. They are not automatically bugs to “fix” in th
 
 ## 21. Implementation Phases
 
-**Planning only. Do not implement any phase from this document.**
+**Owner implementation sequence (separate from the planning table below):**
+
+| Owner phase | Status |
+| --- | --- |
+| Phase 1 — platform hierarchy | Implemented 2026-09-02 |
+| Phase 2 — Control operational foundation | Implemented 2026-09-02. Contracts only; no live sibling connectors |
+| Phase 3+ | Not started |
+
+**Planning table (do not treat as automatically authorized):**
 
 | Phase | Intent | Depends on |
 | --- | --- | --- |
@@ -865,5 +873,5 @@ Out of scope for all phases unless the Owner reopens this document:
 | --- | --- |
 | Path | `docs/architecture/atlas-target-architecture.md` |
 | Supersedes as *target* | Informal three-surface discussions; does **not** auto-void ADR-014–022 |
-| Implementation authorized | Phase 1 only |
-| Next step | Owner approval before Phase 2 |
+| Implementation authorized | Phase 1 and Phase 2 |
+| Next step | Owner approval before Phase 3 |

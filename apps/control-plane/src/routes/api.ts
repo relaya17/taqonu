@@ -29,6 +29,10 @@ import {
 import { ownerBrief, runSelfAudit } from "../services/self-audit.js";
 import { buildControlSupervisionSnapshot } from "../services/supervision-snapshot.js";
 import {
+  buildControlOperationalFoundation,
+  listSupervisedProcesses,
+} from "../services/operational-foundation.js";
+import {
   issueReauthTicket,
   resolveControlPlanePrincipal,
   verifyReauthTicket,
@@ -88,6 +92,8 @@ import {
  *
  * Platform supervision (consumed by Atlas Admin — not a dashboard clone):
  *   GET /api/v1/supervision
+ *   GET /api/v1/operational-foundation
+ *   GET /api/v1/processes          — empty contract; not live supervision
  */
 
 export function createApiRouter(): Router {
@@ -206,6 +212,14 @@ export function createApiRouter(): Router {
 
   router.get("/api/v1/supervision", (_req, res) => {
     json(res, buildControlSupervisionSnapshot());
+  });
+
+  router.get("/api/v1/operational-foundation", (_req, res) => {
+    json(res, buildControlOperationalFoundation());
+  });
+
+  router.get("/api/v1/processes", (_req, res) => {
+    json(res, listSupervisedProcesses());
   });
 
   router.get("/api/v1/applications", (_req, res) => {

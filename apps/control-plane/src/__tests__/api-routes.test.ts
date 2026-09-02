@@ -116,6 +116,51 @@ describe("Control Plane — API Routes", () => {
     });
   });
 
+  describe("GET /api/v1/operational-foundation", () => {
+    it("exposes Control operational contracts without inventing live sibling connections", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("GET", "/api/v1/operational-foundation"),
+        res,
+      );
+      const body = JSON.parse(res._mock.body) as {
+        kind: string;
+        parentSurface: string;
+        notStudio: boolean;
+        liveSiblingConnectors: boolean;
+        lifecycle: string[];
+        registeredApplicationIds: string[];
+        domains: Array<{ domain: string; live: boolean; status: string }>;
+      };
+      expect(body.kind).toBe("ATLAS_CONTROL_OPERATIONAL_FOUNDATION");
+      expect(body.parentSurface).toBe("ADMIN");
+      expect(body.notStudio).toBe(true);
+      expect(body.liveSiblingConnectors).toBe(false);
+      expect(body.lifecycle[0]).toBe("APPLICATION");
+      expect(body.lifecycle).toContain("AUDIT");
+      expect(body.registeredApplicationIds).toEqual(["def-000"]);
+      expect(body.domains.find((d) => d.domain === "processes")?.status).toBe(
+        "MISSING",
+      );
+      expect(body.domains.every((d) => d.live === false)).toBe(true);
+    });
+  });
+
+  describe("GET /api/v1/processes", () => {
+    it("returns an empty process contract and does not invent records", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/processes"), res);
+      const body = JSON.parse(res._mock.body) as {
+        items: unknown[];
+        live: boolean;
+        note: string;
+      };
+      expect(body.items).toEqual([]);
+      expect(body.live).toBe(false);
+      expect(body.note).toContain("process-audit");
+    });
+  });
+
   describe("GET /api/v1/supervision", () => {
     it("returns a platform supervision snapshot for Admin, not an agent dump", async () => {
       const res = createMockRes();

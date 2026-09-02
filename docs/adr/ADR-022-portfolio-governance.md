@@ -1,8 +1,28 @@
 # ADR-022 — Portfolio Governance (observability over sibling applications)
 
-**Status:** Accepted  
+**Status:** Accepted — amended 2026-09-02
 **Date:** 2026-08-28  
 **Product:** Atlas / ArletOS
+
+## Amendment 2026-09-02 — Control operational contracts (Phase 2)
+
+Atlas Control now publishes an **operational foundation**
+(`GET /api/v1/operational-foundation`) and an empty process contract
+(`GET /api/v1/processes`).
+
+**This amendment does not lift observe-only / no-probe / no-ingest.**
+
+- Contracts are not live connectors.
+- Portfolio seed remains inventory, not a runtime connection.
+- CaseFlow, HotelOS, Civio, BrokerOS, LexStudy, and Vantera are not connected.
+- A later phase must explicitly authorize the first sibling connector.
+
+The Control operational lifecycle is:
+
+`Application → Process → Event → Control → Policy → Risk → Decision → Approval → Execution → Verification → Evidence → Audit`
+
+It sits beside the existing per-request operating cycle. It does not replace
+`evaluateOperatingCycle` or `FABRIC_AGENT_CATALOG`.
 
 ## Context
 

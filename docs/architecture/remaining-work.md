@@ -27,7 +27,11 @@ Honest remaining gaps (not a missing executor):
   control-plane, worker.
 
 ## 02 GATEWAY COMPLETION
-Wired. Control Plane does not run tools. See commit `e7773e0`.
+Evaluate + handoff exist. Control does not run tools. See commit `e7773e0`.
+**Honest gap:** `fulfillAllow` does not call tenant `POST /api/v1/gateway/fulfill`.
+Phase 2 (2026-09-02) added Control operational contracts
+(`GET /api/v1/operational-foundation`, empty `GET /api/v1/processes`).
+Those contracts are not live sibling connectors (ADR-022 still observe-only).
 
 ```
 Application → Gateway → Identity → Registries → Capability
