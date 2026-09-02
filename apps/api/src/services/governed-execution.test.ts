@@ -22,6 +22,7 @@ import {
   executeGovernedAction,
   resetGovernedIdempotencyForTests,
 } from "./governed-execution.js";
+import { resetGovernedClaimStartsForTests } from "./governed-claimed-execution.js";
 import { listGovernanceDecisions } from "./governance-decision.js";
 
 // `resolveAgentIdentity` (called by this file's own `identity()` helper)
@@ -70,6 +71,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       run: async () => "observation: answer = 42",
     });
     resetGovernedIdempotencyForTests();
+    resetGovernedClaimStartsForTests();
   });
 
   afterEach(() => {
@@ -77,6 +79,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     resetApprovalsForTests();
     resetToolRegistryForTests();
     resetGovernedIdempotencyForTests();
+    resetGovernedClaimStartsForTests();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -180,8 +183,17 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.status).toBe("DENIED");
   });
 
-  // ── ATTACK 6: replay of an already-consumed approval ──────────────────
-  it("BLOCKS replay of an approval that already authorized one execution", async () => {
+  // ── ATTACK 6: replay of a finalized approval must not execute again ──
+  it("REPLAYS a finalized approval without executing a second time", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        return "observation: answer = 42";
+      },
+    });
     const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
@@ -196,11 +208,11 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     });
 
     const first = await executeGovernedAction(baseRequest({ approvalRequestId: approved.id }));
-    expect(first.status).not.toBe("DENIED");
+    expect(first.status).toBe("EXECUTED");
 
     const replay = await executeGovernedAction(baseRequest({ approvalRequestId: approved.id }));
-    expect(replay.stage).toBe("APPROVAL");
-    expect(replay.status).toBe("DENIED");
+    expect(replay.status).toBe("EXECUTED");
+    expect(runs).toBe(1);
   });
 
   // ── ATTACK 7: escalated action under a narrower approval ──────────────
@@ -258,7 +270,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.artifactHash).toBe(computeArtifactHash(ARTIFACT));
   });
 
-  it("does not re-require approval at Stage 4 after a matching RECORD.CREATE consume", async () => {
+  it("does not re-require approval at Stage 4 after a matching RECORD.CREATE claim", async () => {
     const approved = await createApprovalRequest({
       entityType: "RECORD",
       action: "CREATE",

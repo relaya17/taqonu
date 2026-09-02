@@ -34,12 +34,12 @@ import { createApprovalRequest } from "./approvals.js";
  *    ("self-approved write"). It throws on anything but ALLOWED, because for
  *    that call shape APPROVAL_REQUIRED/DENIED are both exceptional.
  *  - `dispatchAgentAction` never takes a caller boolean as approval authority.
- *    `approved` for `authorizeEntityAction` is re-derived from a consumed
- *    `ApprovalRequest` (entity/action/artifact/`requestedBy` vs executor),
- *    matching `consumeApprovalRequest`. No record → same as today (`false`).
+ *    `approved` for `authorizeEntityAction` is re-derived from a CLAIMED
+ *    `ApprovalRequest` (entity/action/artifact/`requestedBy`/`claimedBy` vs
+ *    executor). No record → same as today (`false`).
  *    A presented record that does not match fails closed (DENIED).
  *    APPROVAL_REQUIRED is an ordinary outcome when nothing matches. HUMAN_ONLY
- *    is never satisfied by a consumed record.
+ *    is never satisfied by a claimed record.
  *
  * On top of the Policy Engine + Risk Engine + Audit Log combination
  * `enforceEntityWrite` already established, this module adds two risk
@@ -115,10 +115,10 @@ export interface DispatchAgentActionOptions {
   /** Agent A → B hops. Each hop floors to approval; never inherits unlimited authority. */
   readonly delegationHopCount?: number;
   /**
-   * Consumed Stage-3 `ApprovalRequest` record. Re-derived here — not a boolean.
+   * Claimed Stage-3 `ApprovalRequest` record. Re-derived here — not a boolean.
    * Absent → current behavior. Present but mismatched → DENIED (fail closed).
    */
-  readonly consumedApproval?: ApprovalRequest;
+  readonly claimedApproval?: ApprovalRequest;
 }
 
 export interface DispatchGovernanceEvaluation {
@@ -259,11 +259,10 @@ function floorBucketForAutomationActor(
 }
 
 /**
- * Same binding `consumeApprovalRequest` enforces: entity, action, executor
- * vs `requestedBy`, and artifact when the record is artifact-bound.
- * Status must already be CONSUMED — Stage 3 is the only producer.
+ * Claimed-record match: status CLAIMED, entity, action, executor vs
+ * requestedBy and claimedBy, and artifact when the record is artifact-bound.
  */
-function consumedApprovalMatchesGovernedAction(
+function claimedApprovalMatchesGovernedAction(
   record: ApprovalRequest,
   current: {
     readonly entityType: string;
@@ -272,10 +271,11 @@ function consumedApprovalMatchesGovernedAction(
     readonly artifactHash?: string;
   },
 ): boolean {
-  if (record.status !== "CONSUMED") return false;
+  if (record.status !== "CLAIMED") return false;
   if (record.entityType !== current.entityType) return false;
   if (record.action !== current.action) return false;
   if (current.executorId !== record.requestedBy) return false;
+  if (record.claimedBy !== current.executorId) return false;
   if (record.artifactHash) {
     if (current.artifactHash === undefined) return false;
     if (current.artifactHash !== record.artifactHash) return false;
@@ -328,12 +328,12 @@ export async function dispatchAgentAction(
     };
   }
 
-  // Step 1: never a caller boolean. A consumed record is re-checked against
+  // Step 1: never a caller boolean. A claimed record is re-checked against
   // this exact entity/action/executor/artifact. No record → approved false
   // (today). A presented mismatch fails closed and does not open the write gate.
   const artifactHash = presentedArtifactHash(options.input);
-  const approvalSatisfied = options.consumedApproval
-    ? consumedApprovalMatchesGovernedAction(options.consumedApproval, {
+  const approvalSatisfied = options.claimedApproval
+    ? claimedApprovalMatchesGovernedAction(options.claimedApproval, {
         entityType,
         action,
         executorId: actor.agentId,
@@ -341,8 +341,8 @@ export async function dispatchAgentAction(
       })
     : false;
 
-  if (options.consumedApproval !== undefined && !approvalSatisfied) {
-    const reason = "Consumed approval does not match this governed action";
+  if (options.claimedApproval !== undefined && !approvalSatisfied) {
+    const reason = "Claimed approval does not match this governed action";
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,

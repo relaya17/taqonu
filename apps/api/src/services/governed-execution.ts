@@ -11,18 +11,17 @@ import type {
   GovernanceDecisionInput,
 } from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
-import { consumeApprovalRequest, getApprovalRequest } from "./approvals.js";
 import {
   enforceAgentToolAuthorization,
   type AuthenticatedAgentIdentity,
   type ToolExecutionPayload,
 } from "./agent-runtime-authz.js";
 import {
-  dispatchAgentAction,
   type DispatchAgentActionResult,
   type DispatchSourceContext,
 } from "./agent-dispatch-guard.js";
 import { persistGovernanceDecision } from "./governance-decision.js";
+import { runGovernedClaimedExecution } from "./governed-claimed-execution.js";
 
 /**
  * P0.7 — the single transactional execution gate.
@@ -44,19 +43,19 @@ import { persistGovernanceDecision } from "./governance-decision.js";
  *
  *   1. Tool authorization   — may this agent use this tool at all?
  *   2. Artifact hashing     — pin exactly what is about to run.
- *   3. Approval consumption — is there a live approval for THIS artifact?
- *   4. Policy / Risk gate   — does the entity-action itself pass?
- *   5. Execution            — only now does anything actually happen.
+ *   3. Claim or resume      — durable CLAIMED occupancy for THIS artifact
+ *   4. Phase 3E + Policy/Risk
+ *   5. Mark started + execute once + finalize
  *   6. Audit                — always, including on every refusal above.
  *
  * Every stage that cannot reach a positive answer — UNAUTHORIZED, MISSING,
  * STALE, MISMATCH, EXPIRED, UNKNOWN — halts the pipeline. There is no
  * "continue and hope"; the default at every branch is refusal.
  *
- * ── Why approval is consumed BEFORE the risk gate ────────────────────
+ * ── Why approval is claimed BEFORE the risk gate ─────────────────────
  *
- * Consumption is the step that can fail on grounds the caller must not be
- * able to retry around (wrong artifact, expired, replayed). Doing it before
+ * Claim is the step that can fail on grounds the caller must not be able to
+ * retry around (wrong artifact, expired, already claimed). Doing it before
  * the risk gate means a mismatched artifact is rejected on its own terms
  * rather than being masked by a risk decision that happens to also deny.
  */
@@ -178,7 +177,7 @@ function resolveApprovalStatus(
 ): GovernanceDecision["approval"]["status"] {
   if (outcome.stage === "APPROVAL" && outcome.status === "DENIED") return "REJECTED";
   if (generatedApprovalId) return "REQUIRED";
-  if (approval?.status === "CONSUMED") return "CONSUMED";
+  if (approval?.status === "FULFILLED" || approval?.status === "CLAIMED") return "CONSUMED";
   return "NOT_REQUIRED";
 }
 
@@ -363,30 +362,8 @@ export async function executeGovernedAction(
     return outcome;
   }
 
-  // ── 2/3. Approval, bound to THIS artifact (P0.3) ────────────────────
-  let approval: ApprovalRequest | undefined;
-  if (request.approvalRequestId !== undefined) {
-    approval = await getApprovalRequest(request.approvalRequestId);
-    try {
-      approval = await consumeApprovalRequest(request.approvalRequestId, {
-        artifactHash,
-        entityType: request.entityType,
-        action: request.action,
-        agentId: request.identity.agentId,
-      });
-    } catch (err) {
-      const outcome: GovernedExecutionOutcome = {
-        stage: "APPROVAL",
-        status: "DENIED",
-        reason: err instanceof Error ? err.message : String(err),
-      };
-      auditOutcome(request, artifactHash, outcome, { gate: undefined, approval });
-      return outcome;
-    }
-  }
-
-  // ── 4. Policy + Risk gate ───────────────────────────────────────────
-  const gate = await dispatchAgentAction({
+  const helper = await runGovernedClaimedExecution({
+    executorId: request.identity.agentId,
     actor: {
       kind: "AGENT",
       agentId: request.identity.agentId,
@@ -394,100 +371,94 @@ export async function executeGovernedAction(
     },
     entityType: request.entityType,
     action: request.action,
-    routeLabel: `${request.routeLabel}.gate`,
+    artifactHash,
+    ...(request.approvalRequestId !== undefined
+      ? { approvalRequestId: request.approvalRequestId }
+      : {}),
+    requestId: request.requestId,
     sourceContext: request.sourceContext,
     projectId: request.identity.projectId,
-    input: { toolName: request.toolName, artifactHash },
-    // Authority attenuation: runtime status and delegation hop count
-    // Spread conditionally due to exactOptionalPropertyTypes
+    routeLabel: `${request.routeLabel}.gate`,
     ...(request.agentRuntimeStatus !== undefined
       ? { agentRuntimeStatus: request.agentRuntimeStatus }
       : {}),
     ...(request.delegationHopCount !== undefined
       ? { delegationHopCount: request.delegationHopCount }
       : {}),
-    ...(approval !== undefined ? { consumedApproval: approval } : {}),
+    dispatchInput: { toolName: request.toolName, artifactHash },
+    executeOnce: async ({ gate }) => {
+      let toolResult: ToolExecutionOutcome;
+      try {
+        toolResult = await executeTool(request.toolName, request.toolArgs, {
+          projectRoot: request.projectRoot,
+          projectId: request.identity.projectId,
+          correlation: {
+            requestId: request.requestId,
+            agentId: request.identity.agentId,
+            proposalId: null,
+            governanceDecisionId: gate.decision === "ALLOWED" ? gate.auditId : null,
+            authorizationId: request.approvalRequestId ?? null,
+            executionId: "",
+            toolCallId: "",
+          },
+        });
+      } catch (err) {
+        return {
+          kind: "FAILURE",
+          reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
+        };
+      }
+      if (toolResult.status !== "OK") {
+        const rawReason =
+          toolResult.status === "DENIED"
+            ? toolResult.reason
+            : toolResult.status === "APPROVAL_REQUIRED"
+              ? `tool "${request.toolName}" requires approval`
+              : toolResult.status === "TIMEOUT"
+                ? `tool timed out after ${toolResult.timeoutMs}ms`
+                : toolResult.reason;
+        return { kind: "FAILURE", reason: sanitizeErrorMessage(rawReason) };
+      }
+      return {
+        kind: "SUCCESS",
+        value: toolResult.output,
+        outputEvidence: toolResult.output,
+      };
+    },
   });
 
-  if (gate.decision !== "ALLOWED") {
-    const outcome: GovernedExecutionOutcome = {
+  const approval = helper.approvalRecord;
+  const gate = helper.gate;
+  let outcome: GovernedExecutionOutcome;
+  if (helper.status === "EXECUTED") {
+    outcome = {
+      stage: "EXECUTION",
+      status: "EXECUTED",
+      artifactHash,
+      output: typeof helper.value === "string" ? helper.value : String(helper.value ?? ""),
+    };
+  } else if (helper.status === "DENIED") {
+    outcome = {
+      stage: helper.stage === "APPROVAL" ? "APPROVAL" : "POLICY",
+      status: "DENIED",
+      reason: helper.reason,
+    };
+  } else if (helper.status === "APPROVAL_REQUIRED") {
+    outcome = {
       stage: "POLICY",
-      status: gate.decision === "DENIED" ? "DENIED" : "APPROVAL_REQUIRED",
-      reason:
-        gate.decision === "DENIED"
-          ? gate.reason
-          : `approval ${gate.approvalRequestId} required before execution`,
+      status: "APPROVAL_REQUIRED",
+      reason: helper.reason,
     };
-    auditOutcome(request, artifactHash, outcome, { gate, approval });
-    return outcome;
-  }
-
-  // ── 5. Execution, through the Tool Runtime's own policy layer ───────
-  let toolResult: ToolExecutionOutcome;
-  try {
-    toolResult = await executeTool(request.toolName, request.toolArgs, {
-      projectRoot: request.projectRoot,
-      projectId: request.identity.projectId,
-      // Invariant 10 — the correlation chain. Every id here is a real one
-      // this layer actually holds; none is minted to satisfy the check.
-      correlation: {
-        requestId: request.requestId,
-        agentId: request.identity.agentId,
-        // This route executes a tool directly; no `AgentProposal` precedes
-        // it, so there is no proposal to point at. Stated as null rather
-        // than omitted — see `ExecutionCorrelation` on why the key stays.
-        proposalId: null,
-        // The gate's audit entry is the governance decision. It is nullable
-        // at the source, and that null is carried through rather than
-        // papered over with a placeholder.
-        governanceDecisionId: gate.auditId,
-        // Present only when this action actually redeemed an approval.
-        authorizationId: request.approvalRequestId ?? null,
-        // Runtime-owned per the ownership rules: `executeTool()` mints both
-        // and overwrites these. No layer may create ids outside its domain.
-        executionId: "",
-        toolCallId: "",
-      },
-    });
-  } catch (err) {
-    const outcome: GovernedExecutionOutcome = {
+  } else {
+    outcome = {
       stage: "EXECUTION",
       status: "FAILED",
-      reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
+      reason: helper.reason,
     };
-    auditOutcome(request, artifactHash, outcome, { gate, approval });
-    return outcome;
   }
 
-  if (toolResult.status !== "OK") {
-    // The Tool Runtime's own refusals (unpoliced tool, timeout, secret in
-    // output) are surfaced as execution failures rather than being flattened
-    // into a generic error — an auditor needs to see WHICH control stopped it.
-    const rawReason =
-      toolResult.status === "DENIED"
-        ? toolResult.reason
-        : toolResult.status === "APPROVAL_REQUIRED"
-          ? `tool "${request.toolName}" requires approval`
-          : toolResult.status === "TIMEOUT"
-            ? `tool timed out after ${toolResult.timeoutMs}ms`
-            : toolResult.reason;
-    const outcome: GovernedExecutionOutcome = {
-      stage: "EXECUTION",
-      status: "FAILED",
-      reason: sanitizeErrorMessage(rawReason),
-    };
-    auditOutcome(request, artifactHash, outcome, { gate, approval });
-    return outcome;
-  }
-
-  const outcome: GovernedExecutionOutcome = {
-    stage: "EXECUTION",
-    status: "EXECUTED",
-    artifactHash,
-    output: toolResult.output,
-  };
   auditOutcome(request, artifactHash, outcome, { gate, approval });
-  if (request.idempotencyKey) {
+  if (request.idempotencyKey && outcome.status === "EXECUTED") {
     governedIdempotency.set(request.idempotencyKey, { artifactHash, outcome });
   }
   return outcome;

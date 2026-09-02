@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setAuditLogPathForTests, listUnifiedAuditEntries } from "./audit-log.js";
 import {
-  consumeApprovalRequest,
+  claimApprovalRequest,
   createApprovalRequest,
   decideApprovalRequest,
   getApprovalRequest,
@@ -253,7 +253,7 @@ describe("dispatchAgentAction", () => {
 
   const ARTIFACT_HASH = "a".repeat(64);
 
-  async function consumedMatchingCreate(overrides: {
+  async function claimedMatchingCreate(overrides: {
     entityType?: string;
     action?: string;
     requestedBy?: string;
@@ -273,16 +273,16 @@ describe("dispatchAgentAction", () => {
       approve: true,
       decisionReason: "ok",
     });
-    return await consumeApprovalRequest(created.id, {
+    return await claimApprovalRequest(created.id, {
       entityType: created.entityType,
       action: created.action,
-      agentId: created.requestedBy,
+      executorId: created.requestedBy,
       ...(created.artifactHash ? { artifactHash: created.artifactHash } : {}),
     });
   }
 
-  it("1. matching consumed approval satisfies the Stage 4 re-check for an otherwise approval-gated write", async () => {
-    const consumed = await consumedMatchingCreate();
+  it("1. matching claimed approval satisfies the Stage 4 re-check for an otherwise approval-gated write", async () => {
+    const claimed = await claimedMatchingCreate();
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -291,7 +291,7 @@ describe("dispatchAgentAction", () => {
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       projectId: PROJECT,
       input: { artifactHash: ARTIFACT_HASH },
-      consumedApproval: consumed,
+      claimedApproval: claimed,
     });
     expect(result.decision).toBe("ALLOWED");
     if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
@@ -300,7 +300,7 @@ describe("dispatchAgentAction", () => {
     expect(result.bucket).toBeDefined();
   });
 
-  it("2. missing consumed approval preserves current APPROVAL_REQUIRED for RECORD.CREATE", async () => {
+  it("2. missing claimed approval preserves current APPROVAL_REQUIRED for RECORD.CREATE", async () => {
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -312,8 +312,8 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("APPROVAL_REQUIRED");
   });
 
-  it("3. entity mismatch on a presented consumed record fails closed", async () => {
-    const consumed = await consumedMatchingCreate({ entityType: "DOCUMENT" });
+  it("3. entity mismatch on a presented claimed record fails closed", async () => {
+    const claimed = await claimedMatchingCreate({ entityType: "DOCUMENT" });
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -321,15 +321,15 @@ describe("dispatchAgentAction", () => {
       routeLabel: "test.agent.recheck.entity-mismatch",
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       input: { artifactHash: ARTIFACT_HASH },
-      consumedApproval: consumed,
+      claimedApproval: claimed,
     });
     expect(result.decision).toBe("DENIED");
     if (result.decision !== "DENIED") throw new Error("expected DENIED");
     expect(result.reason).toMatch(/does not match/i);
   });
 
-  it("4. action mismatch on a presented consumed record fails closed", async () => {
-    const consumed = await consumedMatchingCreate({ action: "UPDATE" });
+  it("4. action mismatch on a presented claimed record fails closed", async () => {
+    const claimed = await claimedMatchingCreate({ action: "UPDATE" });
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -337,13 +337,13 @@ describe("dispatchAgentAction", () => {
       routeLabel: "test.agent.recheck.action-mismatch",
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       input: { artifactHash: ARTIFACT_HASH },
-      consumedApproval: consumed,
+      claimedApproval: claimed,
     });
     expect(result.decision).toBe("DENIED");
   });
 
-  it("5. artifact mismatch on a bound consumed record fails closed", async () => {
-    const consumed = await consumedMatchingCreate({ artifactHash: ARTIFACT_HASH });
+  it("5. artifact mismatch on a bound claimed record fails closed", async () => {
+    const claimed = await claimedMatchingCreate({ artifactHash: ARTIFACT_HASH });
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -351,13 +351,13 @@ describe("dispatchAgentAction", () => {
       routeLabel: "test.agent.recheck.artifact-mismatch",
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       input: { artifactHash: "b".repeat(64) },
-      consumedApproval: consumed,
+      claimedApproval: claimed,
     });
     expect(result.decision).toBe("DENIED");
   });
 
-  it("6. requester/executor mismatch fails closed using consume requestedBy semantics", async () => {
-    const consumed = await consumedMatchingCreate({ requestedBy: USER_ID });
+  it("6. requester/executor mismatch fails closed using claimed requestedBy/claimedBy semantics", async () => {
+    const claimed = await claimedMatchingCreate({ requestedBy: USER_ID });
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -365,13 +365,27 @@ describe("dispatchAgentAction", () => {
       routeLabel: "test.agent.recheck.actor-mismatch",
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       input: { artifactHash: ARTIFACT_HASH },
-      consumedApproval: consumed,
+      claimedApproval: claimed,
     });
     expect(result.decision).toBe("DENIED");
   });
 
-  it("7. HUMAN_ONLY stays blocked even with a matching consumed approval", async () => {
-    const consumed = await consumedMatchingCreate({ action: "DELETE" });
+  it("6b. claimedBy mismatch fails closed", async () => {
+    const claimed = await claimedMatchingCreate();
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "test.agent.recheck.claimed-by-mismatch",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      input: { artifactHash: ARTIFACT_HASH },
+      claimedApproval: { ...claimed, claimedBy: "someone-else" },
+    });
+    expect(result.decision).toBe("DENIED");
+  });
+
+  it("7. HUMAN_ONLY stays blocked even with a matching claimed approval", async () => {
+    const claimed = await claimedMatchingCreate({ action: "DELETE" });
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
@@ -379,7 +393,7 @@ describe("dispatchAgentAction", () => {
       routeLabel: "test.agent.recheck.human-only",
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       input: { artifactHash: ARTIFACT_HASH },
-      consumedApproval: consumed,
+      claimedApproval: claimed,
     });
     expect(result.decision).toBe("APPROVAL_REQUIRED");
     if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
