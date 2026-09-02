@@ -21,9 +21,8 @@ const { registerBuiltinAutomationRules, resetAutomationRulesForTests } = await i
 const { readAuditLogTail, setAuditLogPathForTests } = await import(
   "./audit-log.js"
 );
-const { resetApprovalsForTests, listApprovalRequests } = await import(
-  "./approvals.js"
-);
+const { listApprovalRequests } = await import("./approvals.js");
+const { resetApprovalsForTests } = await import("./approvals-test-store.js");
 
 async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -57,7 +56,7 @@ describe("built-in automation rules", () => {
     }
   });
 
-  it("registerBuiltinAutomationRules() registers exactly the three built-in rule ids", () => {
+  it("registerBuiltinAutomationRules() registers exactly the three built-in rule ids", async () => {
     registerBuiltinAutomationRules();
     expect(listRegisteredAutomationRuleIds().sort()).toEqual([
       "gate-blocked-audit",
@@ -88,7 +87,7 @@ describe("built-in automation rules", () => {
     expect(readAuditLogTail(10)).toHaveLength(1);
   });
 
-  describe("gate-blocked-audit: gate.evaluated -> HIGH-risk audit entry", () => {
+  describe("gate-blocked-audit: gate.evaluated -> HIGH-risk audit entry", async () => {
     it("writes a HIGH-risk audit entry when a gate node is BLOCKED", async () => {
       registerBuiltinAutomationRules();
       appendDomainEvent({
@@ -183,7 +182,7 @@ describe("built-in automation rules", () => {
     });
   });
 
-  describe("readiness-certificate-blockers-audit: evaluation.completed -> CRITICAL-risk audit entry", () => {
+  describe("readiness-certificate-blockers-audit: evaluation.completed -> CRITICAL-risk audit entry", async () => {
     it("writes a CRITICAL-risk audit entry when a readiness certificate has blockers", async () => {
       registerBuiltinAutomationRules();
       appendDomainEvent({
@@ -280,7 +279,7 @@ describe("built-in automation rules", () => {
     });
   });
 
-  describe("gate-persistent-block-case: gate.evaluated -> AUTOMATION-actor CASE.CREATE via dispatchAgentAction", () => {
+  describe("gate-persistent-block-case: gate.evaluated -> AUTOMATION-actor CASE.CREATE via dispatchAgentAction", async () => {
     const CASE_CREATE_TYPE = "automation.gate-persistent-block.case.create";
 
     function evaluateBlocked(graphId: string, blockedNodeId = "release-gate") {
@@ -333,7 +332,7 @@ describe("built-in automation rules", () => {
       const dispatchOutput = dispatchPayload.output as { approvalRequestId?: string };
       expect(typeof dispatchOutput.approvalRequestId).toBe("string");
 
-      const pending = listApprovalRequests("PENDING");
+      const pending = await listApprovalRequests("PENDING");
       const approval = pending.find((r) => r.id === dispatchOutput.approvalRequestId);
       expect(approval).toBeDefined();
       expect(approval?.entityType).toBe("CASE");
@@ -372,7 +371,7 @@ describe("built-in automation rules", () => {
       expect(
         readAuditLogTail(20).filter((r) => r.type === CASE_CREATE_TYPE),
       ).toHaveLength(0);
-      expect(listApprovalRequests("PENDING")).toHaveLength(0);
+      expect(await listApprovalRequests("PENDING")).toHaveLength(0);
     });
 
     it("tracks streaks independently per graphId — a different graph's blocked count never contributes to another graph's streak", async () => {

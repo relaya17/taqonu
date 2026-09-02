@@ -366,9 +366,9 @@ export async function executeGovernedAction(
   // ── 2/3. Approval, bound to THIS artifact (P0.3) ────────────────────
   let approval: ApprovalRequest | undefined;
   if (request.approvalRequestId !== undefined) {
-    approval = getApprovalRequest(request.approvalRequestId);
+    approval = await getApprovalRequest(request.approvalRequestId);
     try {
-      approval = consumeApprovalRequest(request.approvalRequestId, {
+      approval = await consumeApprovalRequest(request.approvalRequestId, {
         artifactHash,
         entityType: request.entityType,
         action: request.action,
@@ -386,7 +386,7 @@ export async function executeGovernedAction(
   }
 
   // ── 4. Policy + Risk gate ───────────────────────────────────────────
-  const gate = dispatchAgentAction({
+  const gate = await dispatchAgentAction({
     actor: {
       kind: "AGENT",
       agentId: request.identity.agentId,

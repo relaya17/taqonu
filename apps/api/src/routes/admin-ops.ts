@@ -173,7 +173,7 @@ export async function registerAdminOpsRoutes(
       .parse(request.query ?? {});
 
     if (!query.approvalId) {
-      const approval = createApprovalRequest({
+      const approval = await createApprovalRequest({
         entityType: "CONFIGURATION",
         action: "EXECUTE",
         requestedBy: user.id,
@@ -189,7 +189,7 @@ export async function registerAdminOpsRoutes(
       });
     }
 
-    const approval = getApprovalRequest(query.approvalId);
+    const approval = await getApprovalRequest(query.approvalId);
     if (!approval) {
       throw new AtlasError(
         "NOT_FOUND",
@@ -205,7 +205,7 @@ export async function registerAdminOpsRoutes(
         { statusCode: 403, details: { approvalId: query.approvalId, status: approval.status } },
       );
     }
-    consumeApprovalRequest(query.approvalId);
+    await consumeApprovalRequest(query.approvalId);
 
     const entityAuthz = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
       mode: "WRITE",

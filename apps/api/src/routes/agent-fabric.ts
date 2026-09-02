@@ -263,7 +263,7 @@ export async function registerAgentFabricRoutes(
         // scans and legal-media reviews. If the gate denies or requires
         // approval, return a SKIPPED run carrying the reason.
         if (agentId === "SECURITY" || agentId === "LEGAL_MEDIA_COMMS") {
-          const gate = dispatchAgentAction({
+          const gate = await dispatchAgentAction({
             actor: {
               kind: "AGENT",
               agentId,

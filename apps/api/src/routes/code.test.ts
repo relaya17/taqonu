@@ -34,8 +34,9 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 
 const { registerCodeRoutes } = await import("./code.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
-const { decideApprovalRequest, resetApprovalsForTests } = await import(
-  "../services/approvals.js"
+const { decideApprovalRequest } = await import("../services/approvals.js");
+const { resetApprovalsForTests } = await import(
+  "../services/approvals-test-store.js"
 );
 const { osStore } = await import("../store/os-store.js");
 const { readAuditLogTail, setAuditLogPathForTests } = await import(
@@ -190,7 +191,7 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
       "original content",
     );
 
-    decideApprovalRequest(firstBody.approvalId, {
+    await decideApprovalRequest(firstBody.approvalId, {
       decidedBy: testUser().id,
       approve: true,
       decisionReason: "approved for test",
@@ -233,7 +234,7 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
   });
 });
 
-describe("POST /api/v1/code/patches/:id/rollback", () => {
+describe("POST /api/v1/code/patches/:id/rollback", async () => {
   it("blocks rollback with 202 + approvalId on first call (rollback always requires approval), then rolls back once approved", async () => {
     writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
     const patch = makePatch({
@@ -259,7 +260,7 @@ describe("POST /api/v1/code/patches/:id/rollback", () => {
       "modified content",
     );
 
-    decideApprovalRequest(firstBody.approvalId, {
+    await decideApprovalRequest(firstBody.approvalId, {
       decidedBy: testUser().id,
       approve: true,
       decisionReason: "approved rollback for test",

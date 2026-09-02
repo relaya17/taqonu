@@ -5,6 +5,7 @@ export * from "./repositories/memories.js";
 export * from "./repositories/decisions.js";
 export * from "./repositories/account-plans.js";
 export * from "./repositories/approval-execution.js";
+export * from "./repositories/live-approval-requests.js";
 export * from "./persist.js";
 export * from "./knowledge-persist.js";
 export * from "./memory-persist.js";

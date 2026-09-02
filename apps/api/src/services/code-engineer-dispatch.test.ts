@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { resetLlmDedupCache, resetModelCostTracker } from "@atlas/agent-core";
 import { setAuditLogPathForTests, listUnifiedAuditEntries } from "./audit-log.js";
-import { resetApprovalsForTests } from "./approvals.js";
+import { resetApprovalsForTests } from "./approvals-test-store.js";
 import { runCodeEngineerSpecialistViaLlm } from "./code-engineer-dispatch.js";
 import { runResearcherSpecialistViaLlm } from "./research-analyst-dispatch.js";
 

@@ -14,8 +14,8 @@ import {
 import {
   createApprovalRequest,
   decideApprovalRequest,
-  resetApprovalsForTests,
 } from "./approvals.js";
+import { resetApprovalsForTests } from "./approvals-test-store.js";
 import { resolveAgentIdentity } from "./agent-runtime-authz.js";
 import {
   computeArtifactHash,
@@ -134,14 +134,14 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
 
   // ── ATTACK 4: artifact swapped after approval ─────────────────────────
   it("BLOCKS execution when the artifact changed after the approval was granted", async () => {
-    const approved = createApprovalRequest({
+    const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "reviewed read",
       artifactHash: computeArtifactHash(ARTIFACT),
     });
-    decideApprovalRequest(approved.id, {
+    await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "ok",
@@ -159,7 +159,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
 
   // ── ATTACK 5: expired approval ────────────────────────────────────────
   it("BLOCKS an expired approval", async () => {
-    const approved = createApprovalRequest({
+    const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "RESEARCHER",
@@ -167,7 +167,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       artifactHash: computeArtifactHash(ARTIFACT),
       expiresAt: new Date(Date.now() - 1_000).toISOString(),
     });
-    decideApprovalRequest(approved.id, {
+    await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "ok",
@@ -182,14 +182,14 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
 
   // ── ATTACK 6: replay of an already-consumed approval ──────────────────
   it("BLOCKS replay of an approval that already authorized one execution", async () => {
-    const approved = createApprovalRequest({
+    const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "one-shot",
       artifactHash: computeArtifactHash(ARTIFACT),
     });
-    decideApprovalRequest(approved.id, {
+    await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "ok",
@@ -205,14 +205,14 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
 
   // ── ATTACK 7: escalated action under a narrower approval ──────────────
   it("BLOCKS an approval for READ being redeemed for DELETE", async () => {
-    const approved = createApprovalRequest({
+    const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "read only",
       artifactHash: computeArtifactHash(ARTIFACT),
     });
-    decideApprovalRequest(approved.id, {
+    await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "ok",
@@ -259,14 +259,14 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
   });
 
   it("does not re-require approval at Stage 4 after a matching RECORD.CREATE consume", async () => {
-    const approved = createApprovalRequest({
+    const approved = await createApprovalRequest({
       entityType: "RECORD",
       action: "CREATE",
       requestedBy: "RESEARCHER",
       reason: "phase-3e governed re-check",
       artifactHash: computeArtifactHash(ARTIFACT),
     });
-    decideApprovalRequest(approved.id, {
+    await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "ok",

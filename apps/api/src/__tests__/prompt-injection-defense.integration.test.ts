@@ -7,7 +7,7 @@ import {
   detectInjectionPattern,
 } from "@atlas/agent-core";
 import { setAuditLogPathForTests } from "../services/audit-log.js";
-import { resetApprovalsForTests } from "../services/approvals.js";
+import { resetApprovalsForTests } from "../services/approvals-test-store.js";
 
 const { dispatchAgentAction } = await import("../services/agent-dispatch-guard.js");
 
@@ -51,7 +51,7 @@ describe("prompt injection defense — end-to-end simulated attack", () => {
     }
   });
 
-  it("an injection attempt embedded in ingested content is flagged, structurally contained, and still blocked from auto-executing an elevated action", () => {
+  it("an injection attempt embedded in ingested content is flagged, structurally contained, and still blocked from auto-executing an elevated action", async () => {
     // Step 1: a realistic piece of ingested content (e.g. a scraped
     // web page, an inbound email body, a third-party webhook payload)
     // carrying a real prompt-injection attempt — text that, if obeyed by
@@ -107,7 +107,7 @@ describe("prompt injection defense — end-to-end simulated attack", () => {
     // agent-dispatch-guard.test.ts uses to demonstrate a real ALLOWED/AUTO
     // outcome when the source IS trusted), the untrusted-content risk floor
     // must still force human approval before anything executes.
-    const dispatchResult = dispatchAgentAction({
+    const dispatchResult = await dispatchAgentAction({
       actor: {
         kind: "AGENT",
         agentId: "agent-fabric-security",

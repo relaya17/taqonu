@@ -292,7 +292,7 @@ function gatePersistentlyBlocked(event: DomainEvent): boolean {
 /** The dispatching AUTOMATION actor's stable identity for audit/approval trails. */
 const GATE_PERSISTENT_BLOCK_AGENT_ID = "automation-engine.gate-persistent-block";
 
-function onGatePersistentlyBlocked(event: DomainEvent): void {
+async function onGatePersistentlyBlocked(event: DomainEvent): Promise<void> {
   const payload = event.payload as {
     graphId?: unknown;
     summary?: unknown;
@@ -302,7 +302,7 @@ function onGatePersistentlyBlocked(event: DomainEvent): void {
   const blocked = blockedGateNodeIds(statuses);
   const graphId = String(payload.graphId ?? "unknown");
 
-  const result = dispatchAgentAction({
+  const result = await dispatchAgentAction({
     actor: {
       kind: "AUTOMATION",
       agentId: GATE_PERSISTENT_BLOCK_AGENT_ID,

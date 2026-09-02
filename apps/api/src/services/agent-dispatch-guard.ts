@@ -290,9 +290,9 @@ function presentedArtifactHash(
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-export function dispatchAgentAction(
+export async function dispatchAgentAction(
   options: DispatchAgentActionOptions,
-): DispatchAgentActionResult {
+): Promise<DispatchAgentActionResult> {
   const { actor, entityType, action, routeLabel, sourceContext } = options;
   const policyLabel = `${entityType}.${action}`;
 
@@ -472,7 +472,7 @@ export function dispatchAgentAction(
     // it; when there is none (a bare AUTOMATION actor), the agent itself is
     // the genuine requester — not a fabricated placeholder.
     const requestedBy = actor.onBehalfOfUserId ?? actor.agentId;
-    const approvalRequest = createApprovalRequest({
+    const approvalRequest = await createApprovalRequest({
       entityType,
       action,
       requestedBy,

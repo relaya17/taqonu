@@ -26,8 +26,9 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 });
 
 const { registerApprovalRoutes } = await import("./approvals.js");
-const { createApprovalRequest, resetApprovalsForTests } = await import(
-  "../services/approvals.js"
+const { createApprovalRequest } = await import("../services/approvals.js");
+const { resetApprovalsForTests } = await import(
+  "../services/approvals-test-store.js"
 );
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 
@@ -63,7 +64,7 @@ beforeEach(() => {
 
 describe("GET /api/v1/approvals", () => {
   it("lists approval requests for an admin", async () => {
-    createApprovalRequest({
+    await createApprovalRequest({
       entityType: "CONFIGURATION",
       action: "EXECUTE",
       requestedBy: "user-1",
@@ -78,7 +79,7 @@ describe("GET /api/v1/approvals", () => {
   });
 
   it("filters by status", async () => {
-    createApprovalRequest({
+    await createApprovalRequest({
       entityType: "CONFIGURATION",
       action: "EXECUTE",
       requestedBy: "user-1",
@@ -100,7 +101,7 @@ describe("GET /api/v1/approvals", () => {
   });
 });
 
-describe("GET /api/v1/approvals/:id", () => {
+describe("GET /api/v1/approvals/:id", async () => {
   it("404s for an unknown id", async () => {
     const res = await app.inject({
       method: "GET",
@@ -111,7 +112,7 @@ describe("GET /api/v1/approvals/:id", () => {
   });
 
   it("returns the approval request for a known id", async () => {
-    const request = createApprovalRequest({
+    const request = await createApprovalRequest({
       entityType: "CONFIGURATION",
       action: "EXECUTE",
       requestedBy: "user-1",
@@ -127,9 +128,9 @@ describe("GET /api/v1/approvals/:id", () => {
   });
 });
 
-describe("POST /api/v1/approvals/:id/decide", () => {
+describe("POST /api/v1/approvals/:id/decide", async () => {
   it("requires a non-empty reason", async () => {
-    const request = createApprovalRequest({
+    const request = await createApprovalRequest({
       entityType: "CONFIGURATION",
       action: "EXECUTE",
       requestedBy: "user-1",
@@ -145,7 +146,7 @@ describe("POST /api/v1/approvals/:id/decide", () => {
   });
 
   it("approves a pending request", async () => {
-    const request = createApprovalRequest({
+    const request = await createApprovalRequest({
       entityType: "CONFIGURATION",
       action: "EXECUTE",
       requestedBy: "user-1",
@@ -164,7 +165,7 @@ describe("POST /api/v1/approvals/:id/decide", () => {
   });
 
   it("403s for a non-admin", async () => {
-    const request = createApprovalRequest({
+    const request = await createApprovalRequest({
       entityType: "CONFIGURATION",
       action: "EXECUTE",
       requestedBy: "user-1",

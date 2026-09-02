@@ -579,7 +579,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     const needsApprovalRequest = bucket === "APPROVAL" || bucket === "HUMAN_ONLY";
     if (needsApprovalRequest) {
       if (!query.approvalId) {
-        const approval = createApprovalRequest({
+        const approval = await createApprovalRequest({
           entityType: "DOCUMENT",
           action: "EXECUTE",
           requestedBy: user.id,
@@ -601,7 +601,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const approval = getApprovalRequest(query.approvalId);
+      const approval = await getApprovalRequest(query.approvalId);
       if (!approval) {
         throw new AtlasError(
           "NOT_FOUND",
@@ -620,7 +620,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           },
         );
       }
-      consumeApprovalRequest(query.approvalId);
+      await consumeApprovalRequest(query.approvalId);
     }
 
     const result = applyApprovedPatch({
@@ -687,7 +687,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     const needsApprovalRequest = bucket === "APPROVAL" || bucket === "HUMAN_ONLY";
     if (needsApprovalRequest) {
       if (!query.approvalId) {
-        const approval = createApprovalRequest({
+        const approval = await createApprovalRequest({
           entityType: "DOCUMENT",
           action: "EXECUTE",
           requestedBy: user.id,
@@ -709,7 +709,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const approval = getApprovalRequest(query.approvalId);
+      const approval = await getApprovalRequest(query.approvalId);
       if (!approval) {
         throw new AtlasError(
           "NOT_FOUND",
@@ -728,7 +728,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           },
         );
       }
-      consumeApprovalRequest(query.approvalId);
+      await consumeApprovalRequest(query.approvalId);
     }
 
     const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);

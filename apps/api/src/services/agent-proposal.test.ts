@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { ZodError } from "zod";
 import type { AgentProposal } from "@atlas/shared";
 import { setAuditLogPathForTests, listUnifiedAuditEntries } from "./audit-log.js";
-import { resetApprovalsForTests, getApprovalRequest } from "./approvals.js";
+import { getApprovalRequest } from "./approvals.js";
+import { resetApprovalsForTests } from "./approvals-test-store.js";
 import { submitAgentProposal } from "./agent-proposal.js";
 import { generateStubAgentProposal } from "./agent-proposal-stub-generator.js";
 
@@ -75,10 +76,10 @@ describe("submitAgentProposal", () => {
     }
   });
 
-  it("(a) a well-formed proposal is validated and correctly translated into a dispatchAgentAction() call, with the right actor/entity/action mapping", () => {
+  it("(a) a well-formed proposal is validated and correctly translated into a dispatchAgentAction() call, with the right actor/entity/action mapping", async () => {
     const proposal = buildProposal();
 
-    const result = submitAgentProposal(proposal, {
+    const result = await submitAgentProposal(proposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: USER_ID,
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
@@ -113,53 +114,53 @@ describe("submitAgentProposal", () => {
     expect(entry?.approval).toBe("NOT_REQUIRED");
   });
 
-  it("(b) a malformed proposal (missing claims) is rejected before ever reaching the dispatch gate", () => {
+  it("(b) a malformed proposal (missing claims) is rejected before ever reaching the dispatch gate", async () => {
     const proposal = buildProposal({ claims: [] });
 
-    expect(() =>
+    await expect(
       submitAgentProposal(proposal, {
         actorKind: "AGENT",
         onBehalfOfUserId: USER_ID,
         sourceContext: { origin: "user_message", trustLevel: "trusted" },
         routeLabel: "test.agent-proposal.malformed.claims",
       }),
-    ).toThrow(ZodError);
+    ).rejects.toThrow(ZodError);
 
     // No audit entry means dispatchAgentAction() was never called.
     expect(listUnifiedAuditEntries()).toEqual([]);
   });
 
-  it("(b) a malformed proposal (missing evidence) is rejected before ever reaching the dispatch gate", () => {
+  it("(b) a malformed proposal (missing evidence) is rejected before ever reaching the dispatch gate", async () => {
     const proposal = buildProposal({ evidence: [] });
 
-    expect(() =>
+    await expect(
       submitAgentProposal(proposal, {
         actorKind: "AGENT",
         onBehalfOfUserId: USER_ID,
         sourceContext: { origin: "user_message", trustLevel: "trusted" },
         routeLabel: "test.agent-proposal.malformed.evidence",
       }),
-    ).toThrow(ZodError);
+    ).rejects.toThrow(ZodError);
 
     expect(listUnifiedAuditEntries()).toEqual([]);
   });
 
-  it("(b) a malformed proposal (confidence out of range) is rejected before ever reaching the dispatch gate", () => {
+  it("(b) a malformed proposal (confidence out of range) is rejected before ever reaching the dispatch gate", async () => {
     const proposal = buildProposal({ confidence: 1.5 });
 
-    expect(() =>
+    await expect(
       submitAgentProposal(proposal, {
         actorKind: "AGENT",
         onBehalfOfUserId: USER_ID,
         sourceContext: { origin: "user_message", trustLevel: "trusted" },
         routeLabel: "test.agent-proposal.malformed.confidence",
       }),
-    ).toThrow(ZodError);
+    ).rejects.toThrow(ZodError);
 
     expect(listUnifiedAuditEntries()).toEqual([]);
   });
 
-  it("(c) end-to-end: stub generator -> submitAgentProposal -> dispatchAgentAction returns a result whose audit trail carries the proposal's rationale/claims", () => {
+  it("(c) end-to-end: stub generator -> submitAgentProposal -> dispatchAgentAction returns a result whose audit trail carries the proposal's rationale/claims", async () => {
     const proposal = generateStubAgentProposal({
       agentId: "DEBUGGER",
       taskId: TASK_ID,
@@ -196,7 +197,7 @@ describe("submitAgentProposal", () => {
       })),
     };
 
-    const result = submitAgentProposal(verifiableProposal, {
+    const result = await submitAgentProposal(verifiableProposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: USER_ID,
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
@@ -226,7 +227,7 @@ describe("submitAgentProposal", () => {
     // The approval request created underneath also embeds the same input
     // (createApprovalRequest's `context.input`), so a human reviewing the
     // pending approval sees the same rationale/claims a later auditor would.
-    const approval = getApprovalRequest(result.approvalRequestId);
+    const approval = await getApprovalRequest(result.approvalRequestId);
     expect(approval?.context?.["input"]).toMatchObject({
       claims: proposal.claims,
       rationale: proposal.rationale,
@@ -239,7 +240,7 @@ describe("submitAgentProposal", () => {
 });
 
 describe("submitAgentProposal — verification gate (runs before dispatch)", () => {
-  it("records INCONCLUSIVE (and still dispatches) when the only evidence is the model's own inference", () => {
+  it("records INCONCLUSIVE (and still dispatches) when the only evidence is the model's own inference", async () => {
     // The stub generator emits `authorityRank: "LLM_INFERENCE"` verbatim.
     // A proposal that cites only its own reasoning has proven nothing, so it
     // must never reach the Policy/Risk gate at all — no audit entry for a
@@ -254,7 +255,7 @@ describe("submitAgentProposal — verification gate (runs before dispatch)", () 
       action: "READ",
     });
 
-    const result = submitAgentProposal(proposal, {
+    const result = await submitAgentProposal(proposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: USER_ID,
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
@@ -276,7 +277,7 @@ describe("submitAgentProposal — verification gate (runs before dispatch)", () 
     expect(entry?.input?.["verificationVerdict"]).toBe("INCONCLUSIVE");
   });
 
-  it("DENIES without dispatching when a proposal overclaims confidence on inference-only evidence", () => {
+  it("DENIES without dispatching when a proposal overclaims confidence on inference-only evidence", async () => {
     const base = generateStubAgentProposal({
       agentId: "DEBUGGER",
       taskId: TASK_ID,
@@ -288,7 +289,7 @@ describe("submitAgentProposal — verification gate (runs before dispatch)", () 
     const overclaimed = { ...base, confidence: 0.97 };
 
     const before = listUnifiedAuditEntries().length;
-    const result = submitAgentProposal(overclaimed, {
+    const result = await submitAgentProposal(overclaimed, {
       actorKind: "AGENT",
       onBehalfOfUserId: USER_ID,
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
@@ -301,7 +302,7 @@ describe("submitAgentProposal — verification gate (runs before dispatch)", () 
     expect(listUnifiedAuditEntries().length).toBe(before);
   });
 
-  it("carries the verification verdict onto the audit entry when it does dispatch", () => {
+  it("carries the verification verdict onto the audit entry when it does dispatch", async () => {
     const proposal = generateStubAgentProposal({
       agentId: "DEBUGGER",
       taskId: TASK_ID,
@@ -318,7 +319,7 @@ describe("submitAgentProposal — verification gate (runs before dispatch)", () 
       })),
     };
 
-    const result = submitAgentProposal(verifiable, {
+    const result = await submitAgentProposal(verifiable, {
       actorKind: "AGENT",
       onBehalfOfUserId: USER_ID,
       sourceContext: { origin: "user_message", trustLevel: "trusted" },

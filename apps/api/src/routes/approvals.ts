@@ -22,14 +22,14 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
   app.get("/api/v1/approvals", async (request) => {
     await requireAdmin(app, request);
     const query = listQuerySchema.parse(request.query ?? {});
-    const items = listApprovalRequests(query.status);
+    const items = await listApprovalRequests(query.status);
     return { items };
   });
 
   app.get("/api/v1/approvals/:id", async (request) => {
     await requireAdmin(app, request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    const item = getApprovalRequest(id);
+    const item = await getApprovalRequest(id);
     if (!item) {
       throw new AtlasError("NOT_FOUND", `Approval request ${id} not found`, {
         statusCode: 404,
@@ -55,7 +55,7 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
     });
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = decideBodySchema.parse(request.body);
-    const updated = decideApprovalRequest(id, {
+    const updated = await decideApprovalRequest(id, {
       decidedBy: user.id,
       approve: body.approve,
       decisionReason: body.reason,

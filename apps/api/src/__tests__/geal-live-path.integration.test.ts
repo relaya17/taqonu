@@ -48,8 +48,8 @@ const {
 const {
   createApprovalRequest,
   decideApprovalRequest,
-  resetApprovalsForTests,
 } = await import("../services/approvals.js");
+const { resetApprovalsForTests } = await import("../services/approvals-test-store.js");
 
 let app: FastifyInstance;
 let auditDir: string;
@@ -105,7 +105,7 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
 
     // ─── 2. Create approval with LOCKED verification plan ─────────────────────
     // This is the key: observations are bound to the approval, not the fulfill body
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "CODE_ENGINEER", // Must match agent ID for consume
@@ -113,7 +113,7 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
       expectedObservations: ["3 TypeScript files", "coverage 87%"],
       baselineObservations: [], // No regression check for this test
     });
-    decideApprovalRequest(approval.id, {
+    await decideApprovalRequest(approval.id, {
       decidedBy: OWNER_ID,
       approve: true,
       decisionReason: "Integration test approval",
@@ -206,7 +206,7 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
     getRequestUser.mockReturnValue(ownerUser());
 
     // Approval with baseline that WON'T appear in output
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "CODE_ENGINEER",
@@ -214,7 +214,7 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
       expectedObservations: ["3 TypeScript files"], // Will match
       baselineObservations: ["authz still enforced"], // Will NOT match → FAILED
     });
-    decideApprovalRequest(approval.id, {
+    await decideApprovalRequest(approval.id, {
       decidedBy: OWNER_ID,
       approve: true,
       decisionReason: "Regression test",

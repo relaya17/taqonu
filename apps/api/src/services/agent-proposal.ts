@@ -102,10 +102,10 @@ export type SubmitAgentProposalResult = DispatchAgentActionResult & {
   readonly verification: ProposalVerificationResult;
 };
 
-export function submitAgentProposal(
+export async function submitAgentProposal(
   proposal: AgentProposal,
   options: SubmitAgentProposalOptions,
-): SubmitAgentProposalResult {
+): Promise<SubmitAgentProposalResult> {
   // Validate FIRST — a malformed proposal must never reach the dispatch
   // gate. `agentProposalSchema.parse` throws (ZodError) on anything that
   // doesn't satisfy the contract (missing claims, missing evidence,
@@ -161,7 +161,7 @@ export function submitAgentProposal(
     };
   }
 
-  const dispatchResult = dispatchAgentAction({
+  const dispatchResult = await dispatchAgentAction({
     actor: {
       kind: options.actorKind,
       agentId: parsed.agentId,

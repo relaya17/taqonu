@@ -33,8 +33,8 @@ const {
 const {
   createApprovalRequest,
   decideApprovalRequest,
-  resetApprovalsForTests,
 } = await import("../services/approvals.js");
+const { resetApprovalsForTests } = await import("../services/approvals-test-store.js");
 
 let app: FastifyInstance;
 let auditDir: string;
@@ -156,7 +156,7 @@ describe("POST /api/v1/gateway/fulfill", () => {
   });
 });
 
-describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED live path", () => {
+describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED live path", async () => {
   it("produces audit entry, memory event, and receipt when execution succeeds", async () => {
     getRequestUser.mockReturnValue(ownerUser());
     registerTool({
@@ -212,7 +212,7 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
     });
 
     // Create approval with locked verification plan
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "CODE_ENGINEER",
@@ -220,7 +220,7 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
       expectedObservations: ["3 TypeScript files"],
       baselineObservations: [],
     });
-    decideApprovalRequest(approval.id, {
+    await decideApprovalRequest(approval.id, {
       decidedBy: ownerUser().id,
       approve: true,
       decisionReason: "approved",

@@ -102,7 +102,7 @@ export async function fulfillGatewayHandoff(
 
   // When an approval exists, use its locked verification plan — caller cannot override.
   const approval = handoff.approvalRequestId
-    ? getApprovalRequest(handoff.approvalRequestId)
+    ? await getApprovalRequest(handoff.approvalRequestId)
     : undefined;
   const expectedObservations =
     approval?.expectedObservations ?? handoff.expectedObservations ?? [];

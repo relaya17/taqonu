@@ -27,8 +27,9 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 
 const { registerAdminOpsRoutes } = await import("./admin-ops.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
-const { decideApprovalRequest, resetApprovalsForTests } = await import(
-  "../services/approvals.js"
+const { decideApprovalRequest } = await import("../services/approvals.js");
+const { resetApprovalsForTests } = await import(
+  "../services/approvals-test-store.js"
 );
 
 let app: FastifyInstance;
@@ -81,7 +82,7 @@ describe("POST /api/v1/admin/automation/run-checks", () => {
     });
     const { approvalId } = requested.json();
 
-    decideApprovalRequest(approvalId, {
+    await decideApprovalRequest(approvalId, {
       decidedBy: adminUser().id,
       approve: true,
       decisionReason: "approved for test",
@@ -131,7 +132,7 @@ describe("POST /api/v1/admin/automation/run-checks", () => {
   });
 });
 
-describe("POST /api/v1/admin/oracle/refresh-queue (untouched sibling endpoint)", () => {
+describe("POST /api/v1/admin/oracle/refresh-queue (untouched sibling endpoint)", async () => {
   it("still 200s for an admin exactly as before — the new gate is scoped to run-checks only", async () => {
     const res = await app.inject({
       method: "POST",
@@ -144,7 +145,7 @@ describe("POST /api/v1/admin/oracle/refresh-queue (untouched sibling endpoint)",
   });
 });
 
-describe("GET /api/v1/admin/command-center (untouched read endpoint)", () => {
+describe("GET /api/v1/admin/command-center (untouched read endpoint)", async () => {
   it("still 200s for an admin", async () => {
     const res = await app.inject({
       method: "GET",

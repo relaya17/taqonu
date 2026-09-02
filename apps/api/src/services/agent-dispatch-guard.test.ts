@@ -9,8 +9,8 @@ import {
   decideApprovalRequest,
   getApprovalRequest,
   listApprovalRequests,
-  resetApprovalsForTests,
 } from "./approvals.js";
+import { resetApprovalsForTests } from "./approvals-test-store.js";
 import type { DispatchAgentActionOptions } from "./agent-dispatch-guard.js";
 
 const { dispatchAgentAction } = await import("./agent-dispatch-guard.js");
@@ -61,8 +61,8 @@ describe("dispatchAgentAction", () => {
     }
   });
 
-  it("a real ALLOWED decision (real Policy Engine, no mocking) proceeds and logs a SUCCESS audit entry with the real agentId as actorId", () => {
-    const result = dispatchAgentAction({
+  it("a real ALLOWED decision (real Policy Engine, no mocking) proceeds and logs a SUCCESS audit entry with the real agentId as actorId", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "READ",
@@ -86,7 +86,7 @@ describe("dispatchAgentAction", () => {
     expect(result.auditId).toBe(entry?.id);
   });
 
-  it("a genuinely DENIED decision (real, unmocked authorizeEntityAction — unknown entity/action fail-safe) returns DENIED without throwing and logs a REJECTED/FAILURE entry", () => {
+  it("a genuinely DENIED decision (real, unmocked authorizeEntityAction — unknown entity/action fail-safe) returns DENIED without throwing and logs a REJECTED/FAILURE entry", async () => {
     // `DEFAULT_ENTITY_POLICIES` covers every valid BusinessEntityType x
     // EntityAction pair, so the only way `authorizeEntityAction` genuinely
     // returns DENIED for the fixed mode:"WRITE"/writeGateOpen:true call
@@ -95,7 +95,7 @@ describe("dispatchAgentAction", () => {
     // `authorizeEntityAction` in entity-policies.ts. We reach that branch
     // deliberately (not via mocking) with an entity type that isn't in the
     // table, simulating a caller passing an unrecognized/misspelled value.
-    const result = dispatchAgentAction({
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "NOT_A_REAL_ENTITY_TYPE" as never,
       action: "READ",
@@ -116,10 +116,10 @@ describe("dispatchAgentAction", () => {
     expect(entry?.ownerId).toBe(USER_ID);
   });
 
-  it("untrusted-source floor: never resolves to AUTO/AUTO_LOG across multiple normally-AUTO-eligible entity/action pairs, even with maximally favorable confidence/evidence", () => {
+  it("untrusted-source floor: never resolves to AUTO/AUTO_LOG across multiple normally-AUTO-eligible entity/action pairs, even with maximally favorable confidence/evidence", async () => {
     for (const { entityType, action } of NORMALLY_AUTO_ELIGIBLE_PAIRS) {
       resetApprovalsForTests();
-      const result = dispatchAgentAction({
+      const result = await dispatchAgentAction({
         actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
         entityType,
         action,
@@ -140,8 +140,8 @@ describe("dispatchAgentAction", () => {
     }
   });
 
-  it("automation floor: AUTOMATION + CREATE never resolves ALLOWED with bucket AUTO/AUTO_LOG, even trusted with high confidence/evidence — always ends up APPROVAL_REQUIRED", () => {
-    const result = dispatchAgentAction({
+  it("automation floor: AUTOMATION + CREATE never resolves ALLOWED with bucket AUTO/AUTO_LOG, even trusted with high confidence/evidence — always ends up APPROVAL_REQUIRED", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AUTOMATION", agentId: AGENT_ID, onBehalfOfUserId: null },
       entityType: "RECORD",
       action: "CREATE",
@@ -157,8 +157,8 @@ describe("dispatchAgentAction", () => {
     expect(result.bucket).not.toBe("AUTO_LOG");
   });
 
-  it("automation floor does not apply to READ: AUTOMATION + READ can still reach ALLOWED/AUTO when the raw score justifies it", () => {
-    const result = dispatchAgentAction({
+  it("automation floor does not apply to READ: AUTOMATION + READ can still reach ALLOWED/AUTO when the raw score justifies it", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AUTOMATION", agentId: AGENT_ID, onBehalfOfUserId: null },
       entityType: "RECORD",
       action: "READ",
@@ -173,8 +173,8 @@ describe("dispatchAgentAction", () => {
     expect(result.bucket).toBe("AUTO");
   });
 
-  it("APPROVAL_REQUIRED creates a real, retrievable approval request via approvals.ts", () => {
-    const result = dispatchAgentAction({
+  it("APPROVAL_REQUIRED creates a real, retrievable approval request via approvals.ts", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "DELETE",
@@ -186,14 +186,14 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("APPROVAL_REQUIRED");
     if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
 
-    const stored = getApprovalRequest(result.approvalRequestId);
+    const stored = await getApprovalRequest(result.approvalRequestId);
     expect(stored).toBeDefined();
     expect(stored?.status).toBe("PENDING");
     expect(stored?.entityType).toBe("RECORD");
     expect(stored?.action).toBe("DELETE");
     expect(stored?.requestedBy).toBe(USER_ID);
 
-    const pending = listApprovalRequests("PENDING");
+    const pending = await listApprovalRequests("PENDING");
     expect(pending.some((r) => r.id === result.approvalRequestId)).toBe(true);
 
     // `createApprovalRequest` writes its own "approval.requested" audit
@@ -205,8 +205,8 @@ describe("dispatchAgentAction", () => {
     expect(entry?.ownerId).toBe(USER_ID);
   });
 
-  it("AUTOMATION with no human in the loop (onBehalfOfUserId null) uses the agentId as the approval request's requestedBy, never a fabricated user id", () => {
-    const result = dispatchAgentAction({
+  it("AUTOMATION with no human in the loop (onBehalfOfUserId null) uses the agentId as the approval request's requestedBy, never a fabricated user id", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AUTOMATION", agentId: AGENT_ID, onBehalfOfUserId: null },
       entityType: "RECORD",
       action: "DELETE",
@@ -217,15 +217,15 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("APPROVAL_REQUIRED");
     if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
 
-    const stored = getApprovalRequest(result.approvalRequestId);
+    const stored = await getApprovalRequest(result.approvalRequestId);
     expect(stored?.requestedBy).toBe(AGENT_ID);
 
     const entry = listUnifiedAuditEntries().find((e) => e.type === "test.automation.record.delete");
     expect(entry?.ownerId ?? null).toBeNull();
   });
 
-  it("denies a quarantined agent at dispatch time, not only at run start", () => {
-    const result = dispatchAgentAction({
+  it("denies a quarantined agent at dispatch time, not only at run start", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "READ",
@@ -238,8 +238,8 @@ describe("dispatchAgentAction", () => {
     expect(result.reason).toMatch(/QUARANTINED/);
   });
 
-  it("floors agent-to-agent delegation to approval", () => {
-    const result = dispatchAgentAction({
+  it("floors agent-to-agent delegation to approval", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "READ",
@@ -253,13 +253,13 @@ describe("dispatchAgentAction", () => {
 
   const ARTIFACT_HASH = "a".repeat(64);
 
-  function consumedMatchingCreate(overrides: {
+  async function consumedMatchingCreate(overrides: {
     entityType?: string;
     action?: string;
     requestedBy?: string;
     artifactHash?: string | null;
   } = {}) {
-    const created = createApprovalRequest({
+    const created = await createApprovalRequest({
       entityType: overrides.entityType ?? "RECORD",
       action: overrides.action ?? "CREATE",
       requestedBy: overrides.requestedBy ?? AGENT_ID,
@@ -268,12 +268,12 @@ describe("dispatchAgentAction", () => {
         ? { artifactHash: overrides.artifactHash }
         : { artifactHash: ARTIFACT_HASH }),
     });
-    decideApprovalRequest(created.id, {
+    await decideApprovalRequest(created.id, {
       decidedBy: USER_ID,
       approve: true,
       decisionReason: "ok",
     });
-    return consumeApprovalRequest(created.id, {
+    return await consumeApprovalRequest(created.id, {
       entityType: created.entityType,
       action: created.action,
       agentId: created.requestedBy,
@@ -281,9 +281,9 @@ describe("dispatchAgentAction", () => {
     });
   }
 
-  it("1. matching consumed approval satisfies the Stage 4 re-check for an otherwise approval-gated write", () => {
-    const consumed = consumedMatchingCreate();
-    const result = dispatchAgentAction({
+  it("1. matching consumed approval satisfies the Stage 4 re-check for an otherwise approval-gated write", async () => {
+    const consumed = await consumedMatchingCreate();
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
@@ -300,8 +300,8 @@ describe("dispatchAgentAction", () => {
     expect(result.bucket).toBeDefined();
   });
 
-  it("2. missing consumed approval preserves current APPROVAL_REQUIRED for RECORD.CREATE", () => {
-    const result = dispatchAgentAction({
+  it("2. missing consumed approval preserves current APPROVAL_REQUIRED for RECORD.CREATE", async () => {
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
@@ -312,9 +312,9 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("APPROVAL_REQUIRED");
   });
 
-  it("3. entity mismatch on a presented consumed record fails closed", () => {
-    const consumed = consumedMatchingCreate({ entityType: "DOCUMENT" });
-    const result = dispatchAgentAction({
+  it("3. entity mismatch on a presented consumed record fails closed", async () => {
+    const consumed = await consumedMatchingCreate({ entityType: "DOCUMENT" });
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
@@ -328,9 +328,9 @@ describe("dispatchAgentAction", () => {
     expect(result.reason).toMatch(/does not match/i);
   });
 
-  it("4. action mismatch on a presented consumed record fails closed", () => {
-    const consumed = consumedMatchingCreate({ action: "UPDATE" });
-    const result = dispatchAgentAction({
+  it("4. action mismatch on a presented consumed record fails closed", async () => {
+    const consumed = await consumedMatchingCreate({ action: "UPDATE" });
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
@@ -342,9 +342,9 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("DENIED");
   });
 
-  it("5. artifact mismatch on a bound consumed record fails closed", () => {
-    const consumed = consumedMatchingCreate({ artifactHash: ARTIFACT_HASH });
-    const result = dispatchAgentAction({
+  it("5. artifact mismatch on a bound consumed record fails closed", async () => {
+    const consumed = await consumedMatchingCreate({ artifactHash: ARTIFACT_HASH });
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
@@ -356,9 +356,9 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("DENIED");
   });
 
-  it("6. requester/executor mismatch fails closed using consume requestedBy semantics", () => {
-    const consumed = consumedMatchingCreate({ requestedBy: USER_ID });
-    const result = dispatchAgentAction({
+  it("6. requester/executor mismatch fails closed using consume requestedBy semantics", async () => {
+    const consumed = await consumedMatchingCreate({ requestedBy: USER_ID });
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
@@ -370,9 +370,9 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("DENIED");
   });
 
-  it("7. HUMAN_ONLY stays blocked even with a matching consumed approval", () => {
-    const consumed = consumedMatchingCreate({ action: "DELETE" });
-    const result = dispatchAgentAction({
+  it("7. HUMAN_ONLY stays blocked even with a matching consumed approval", async () => {
+    const consumed = await consumedMatchingCreate({ action: "DELETE" });
+    const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "DELETE",
@@ -388,7 +388,7 @@ describe("dispatchAgentAction", () => {
     expect(result.score).toBeGreaterThanOrEqual(80);
   });
 
-  it("8. an approved boolean is not authority and is ignored", () => {
+  it("8. an approved boolean is not authority and is ignored", async () => {
     const forged = {
       actor: { kind: "AGENT" as const, agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD" as const,
@@ -397,7 +397,7 @@ describe("dispatchAgentAction", () => {
       sourceContext: { origin: "user_message" as const, trustLevel: "trusted" as const },
       approved: true,
     } as DispatchAgentActionOptions & { approved: boolean };
-    const result = dispatchAgentAction(forged);
+    const result = await dispatchAgentAction(forged);
     expect(result.decision).toBe("APPROVAL_REQUIRED");
   });
 });

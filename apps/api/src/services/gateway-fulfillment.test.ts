@@ -18,8 +18,8 @@ const { fulfillGatewayHandoff } = await import("./gateway-fulfillment.js");
 const {
   createApprovalRequest,
   decideApprovalRequest,
-  resetApprovalsForTests,
 } = await import("./approvals.js");
+const { resetApprovalsForTests } = await import("./approvals-test-store.js");
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const PROJECT_A = "33333333-3333-4333-8333-333333333333";
@@ -225,7 +225,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     // mapGatewayHandoff("request_agent_run", "CODE_ENGINEER") returns:
     // { toolName: "analyze_repo", entityType: "DOCUMENT", action: "READ" }
     // requestedBy must be the agent ID that will consume it (consumeApprovalRequest checks this)
-    const approval = createApprovalRequest({
+    const approval = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "CODE_ENGINEER",
@@ -233,7 +233,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       expectedObservations: ["3 TypeScript files"],
       baselineObservations: [],
     });
-    decideApprovalRequest(approval.id, {
+    await decideApprovalRequest(approval.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "approved with locked plan",

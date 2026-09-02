@@ -139,9 +139,9 @@ export async function runProposalBackedSpecialist(
     ...proposal.claims,
   ];
 
-  let gate: ReturnType<typeof submitAgentProposal>;
+  let gate: Awaited<ReturnType<typeof submitAgentProposal>>;
   try {
-    gate = submitAgentProposal(proposal, {
+    gate = await submitAgentProposal(proposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: input.ownerId,
       // `request` is the authenticated caller's own free-text prompt, so it
