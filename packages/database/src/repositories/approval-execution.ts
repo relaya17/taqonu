@@ -88,7 +88,31 @@ export type DurableApprovalExpired = Readonly<{
 export type DurableApprovalDecision = Readonly<{
   decisionId: string;
   approvalId: string;
-  state: "REQUESTED";
+  /**
+   * The parent approval's state immediately after this decision. Prior to
+   * the Phase 3B migration (`20260902010000_approval_lifecycle_state_
+   * transitions.sql`), `record_approval_decision` recorded the decision but
+   * never wrote it back onto `approval_requests.state`, so this always came
+   * back `"REQUESTED"`. It now genuinely reflects the decision made.
+   */
+  state: "APPROVED" | "REJECTED";
+}>;
+
+export type RevokeApprovalInput = Readonly<{
+  approvalId: string;
+  ownerId: string;
+  projectId: string;
+  envelopeHash: string;
+  revokerPrincipalId: string;
+  reason: string;
+  authorizationContext: GovernanceAuthorizationContext;
+  correlationId: string;
+  auditPayload: SafeAuditPayload;
+}>;
+
+export type DurableApprovalRevoked = Readonly<{
+  approvalId: string;
+  state: "REVOKED";
 }>;
 
 export type FinalizeApprovalRedemptionInput = Readonly<{
@@ -249,10 +273,39 @@ export class ApprovalExecutionRepository {
     if (result.state === "EXPIRED" && result.replayed === false && requiredString(result, "approvalId") === input.approvalId) {
       return { approvalId: input.approvalId, state: "EXPIRED", replayed: false };
     }
-    if (state !== "REQUESTED" || requiredString(result, "approvalId") !== input.approvalId) {
+    if ((state !== "APPROVED" && state !== "REJECTED") || requiredString(result, "approvalId") !== input.approvalId) {
       throw new TypeError("Unexpected durable approval decision response");
     }
     return { decisionId: requiredString(result, "decisionId"), approvalId: input.approvalId, state };
+  }
+
+  /**
+   * Revokes a `REQUESTED` or `APPROVED` durable approval (REVOCATION BEATS
+   * APPROVAL — mirrors `revokeApprovalRequest` in the live, in-memory
+   * `apps/api/src/services/approvals.ts`). Backed by the `revoke_approval`
+   * RPC added in `20260902010000_approval_lifecycle_state_transitions.sql`;
+   * there was no durable revoke path before that migration.
+   */
+  async revokeApproval(input: RevokeApprovalInput): Promise<DurableApprovalRevoked> {
+    assertScope(input.authorizationContext, input.ownerId, input.projectId);
+    assertSafeAuditPayload(input.auditPayload);
+    const { data, error } = await this.client.rpc("revoke_approval", {
+      p_approval_id: input.approvalId,
+      p_owner_id: input.ownerId,
+      p_project_id: input.projectId,
+      p_envelope_hash: input.envelopeHash,
+      p_revoker_principal_id: input.revokerPrincipalId,
+      p_reason: input.reason,
+      p_authorization_context: input.authorizationContext,
+      p_correlation_id: input.correlationId,
+      p_event_payload: input.auditPayload,
+    });
+    if (error) throw error;
+    const result = asRecord(data);
+    if (requiredString(result, "state") !== "REVOKED" || requiredString(result, "approvalId") !== input.approvalId) {
+      throw new TypeError("Unexpected durable approval revocation response");
+    }
+    return { approvalId: input.approvalId, state: "REVOKED" };
   }
 
   async finalizeApprovalRedemption(input: FinalizeApprovalRedemptionInput): Promise<DurableRedemptionFinalization> {
