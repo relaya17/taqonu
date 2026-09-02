@@ -107,10 +107,10 @@ export function methodNotAllowed(res: ServerResponse, message: string): void {
   json(res, { error: message }, 405);
 }
 
-export function readJsonBody(
+export function readRawBody(
   req: IncomingMessage,
   limit = 256_000,
-): Promise<unknown> {
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -124,16 +124,22 @@ export function readJsonBody(
       chunks.push(chunk);
     });
     req.on("end", () => {
-      if (chunks.length === 0) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      } catch {
-        reject(new Error("invalid json"));
-      }
+      resolve(Buffer.concat(chunks).toString("utf8"));
     });
     req.on("error", reject);
+  });
+}
+
+export function readJsonBody(
+  req: IncomingMessage,
+  limit = 256_000,
+): Promise<unknown> {
+  return readRawBody(req, limit).then((raw) => {
+    if (raw.length === 0) return {};
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      throw new Error("invalid json");
+    }
   });
 }

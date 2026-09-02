@@ -76,6 +76,11 @@ export function isControlPlanePublicPath(pathname: string): boolean {
   return pathname === "/api/v1/status";
 }
 
+/** HMAC-authenticated Civio ingress — not a public unauthenticated path. */
+export function isCivioConnectorIngressPath(pathname: string): boolean {
+  return pathname === "/api/v1/connectors/civio/events";
+}
+
 const REAUTH_TTL_MS = 5 * 60 * 1000;
 const consumedReauthTickets = new Set<string>();
 
@@ -149,6 +154,7 @@ export function authorizeControlPlaneRequest(
   resolvedPrincipalRole = null;
 
   if (isControlPlanePublicPath(pathname)) return true;
+  if (isCivioConnectorIngressPath(pathname)) return true;
 
   const ownerToken = controlPlaneOwnerToken();
   const operatorToken = controlPlaneToken();

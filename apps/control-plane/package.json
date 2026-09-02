@@ -25,6 +25,7 @@
     "vitest": "^3.0.8"
   },
   "dependencies": {
-    "@atlas/shared": "workspace:*"
+    "@atlas/shared": "workspace:*",
+    "@atlas/integrations-civio": "workspace:*"
   }
 }

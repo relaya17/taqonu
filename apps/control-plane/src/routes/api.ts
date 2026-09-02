@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import { Router, json, readJsonBody } from "./router.js";
+import { Router, json, readJsonBody, readRawBody } from "./router.js";
 import {
   listRegisteredAgents,
   getRegisteredAgent,
@@ -32,6 +32,16 @@ import {
   buildControlOperationalFoundation,
   listSupervisedProcesses,
 } from "../services/operational-foundation.js";
+import {
+  buildCivioConnectorContract,
+  headerString,
+  ingestCivioConnectorEvent,
+} from "../services/civio-connector.js";
+import {
+  CIVIO_NONCE_HEADER,
+  CIVIO_SIGNATURE_HEADER,
+  CIVIO_TIMESTAMP_HEADER,
+} from "@atlas/shared";
 import {
   issueReauthTicket,
   resolveControlPlanePrincipal,
@@ -93,7 +103,9 @@ import {
  * Platform supervision (consumed by Atlas Admin — not a dashboard clone):
  *   GET /api/v1/supervision
  *   GET /api/v1/operational-foundation
- *   GET /api/v1/processes          — empty contract; not live supervision
+ *   GET /api/v1/processes          — observed Civio processes only (no invented ids)
+ *   GET /api/v1/connectors/civio   — Civio connector contract (operator)
+ *   POST /api/v1/connectors/civio/events — HMAC Civio ingress
  */
 
 export function createApiRouter(): Router {
@@ -220,6 +232,36 @@ export function createApiRouter(): Router {
 
   router.get("/api/v1/processes", (_req, res) => {
     json(res, listSupervisedProcesses());
+  });
+
+  router.get("/api/v1/connectors/civio", (_req, res) => {
+    json(res, buildCivioConnectorContract());
+  });
+
+  router.post("/api/v1/connectors/civio/events", async (req, res) => {
+    let rawBody: string;
+    try {
+      rawBody = await readRawBody(req);
+    } catch (error) {
+      json(
+        res,
+        {
+          accepted: false,
+          disposition: "REJECTED",
+          reason: error instanceof Error ? error.message : "invalid body",
+          execution: "NOT_IMPLEMENTED",
+        },
+        400,
+      );
+      return;
+    }
+    const result = ingestCivioConnectorEvent({
+      rawBody,
+      timestamp: headerString(req.headers, CIVIO_TIMESTAMP_HEADER),
+      nonce: headerString(req.headers, CIVIO_NONCE_HEADER),
+      signature: headerString(req.headers, CIVIO_SIGNATURE_HEADER),
+    });
+    json(res, result.body, result.status);
   });
 
   router.get("/api/v1/applications", (_req, res) => {

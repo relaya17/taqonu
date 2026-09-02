@@ -18,6 +18,10 @@ import {
   getAuditEntryCount,
   listApprovalRecords,
 } from "./governance-state.js";
+import {
+  civioAcceptedEventCount,
+  listObservedCivioProcesses,
+} from "./civio-connector.js";
 
 export function buildControlSupervisionSnapshot(
   origin = ATLAS_PLATFORM_HIERARCHY.CONTROL.defaultOrigin,
@@ -44,12 +48,15 @@ export function buildControlSupervisionSnapshot(
       fabricProjectionAgents: getFabricProjection().items.length,
       pendingApprovals: listApprovalRecords({ status: "PENDING" }).length,
       auditEntries: getAuditEntryCount(),
+      civioEventsAccepted: civioAcceptedEventCount(),
+      civioProcessesObserved: listObservedCivioProcesses().length,
     },
     notes: [
       "Operational supervision layer. Not Atlas Admin. Not Studio.",
       "registeredApplications is the Control registry, not a live sibling connector.",
       "oversightAgents is the legacy 9-label list. fabricProjectionAgents is FABRIC_AGENT_CATALOG (not executable from this snapshot).",
-      "Operational contracts: GET /api/v1/operational-foundation. Process store is empty until a later connector phase.",
+      "Operational contracts: GET /api/v1/operational-foundation. Civio HMAC ingress: POST /api/v1/connectors/civio/events.",
+      "Civio runtime is not in this repository; process records appear only when a signed event includes processId.",
     ],
   };
 }

@@ -1,8 +1,24 @@
 # ADR-022 — Portfolio Governance (observability over sibling applications)
 
-**Status:** Accepted — amended 2026-09-02
+**Status:** Accepted — amended 2026-09-02 (Phase 3 Civio connector)
 **Date:** 2026-08-28  
 **Product:** Atlas / ArletOS
+
+## Amendment 2026-09-02 — Civio connector (Phase 3)
+
+Phase 3 authorizes **one** sibling path:
+
+`Civio runtime → HMAC connector client → POST /api/v1/connectors/civio/events → evaluateOperatingCycle`
+
+This amendment **supersedes observe-only for that Civio ingress only**.
+
+- Application identity is `civio`, never `def-000`.
+- Authentication is a deployment-configured HMAC secret (`ATLAS_CIVIO_CONNECTOR_SECRET`) bound to `ATLAS_CIVIO_TENANT_ID` and `ATLAS_CIVIO_PROJECT_ID`. Fail closed if any are missing.
+- Control evaluates Event → Policy → Risk → Decision. It does **not** execute Civio or Atlas tools on ingest.
+- Civio is not in this monorepo. `emitCivioEventToControl` is the production caller; wiring it inside `github.com/relaya17/civio` remains a deployment step.
+- CaseFlow, HotelOS, BrokerOS, LexStudy, and Vantera stay observe-only / not connected.
+- Portfolio seed remains inventory. Knowledge snapshot rules are unchanged.
+- Atlas-to-Civio inbound actions are not implemented.
 
 ## Amendment 2026-09-02 — Control operational contracts (Phase 2)
 

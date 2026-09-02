@@ -4,6 +4,7 @@ import {
   authorizeControlPlaneRequest,
   CONTROL_PLANE_SERVICE_ID,
   isControlPlanePublicPath,
+  isCivioConnectorIngressPath,
   isOwnerPrincipal,
   issueReauthTicket,
   requireOwnerRole,
@@ -56,6 +57,19 @@ describe("Control Plane auth (ADR-021)", () => {
   it("status is always public", () => {
     expect(isControlPlanePublicPath("/api/v1/status")).toBe(true);
     expect(isControlPlanePublicPath("/dashboard")).toBe(false);
+    expect(isControlPlanePublicPath("/api/v1/connectors/civio/events")).toBe(false);
+    expect(isCivioConnectorIngressPath("/api/v1/connectors/civio/events")).toBe(true);
+  });
+
+  it("lets Civio ingress past Control bearer so HMAC can fail closed", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    expect(
+      authorizeControlPlaneRequest(
+        fakeReq(),
+        fakeRes(),
+        "/api/v1/connectors/civio/events",
+      ),
+    ).toBe(true);
   });
 
   it("requires bearer token when configured", () => {

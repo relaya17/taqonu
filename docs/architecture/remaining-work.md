@@ -31,7 +31,11 @@ Evaluate + handoff exist. Control does not run tools. See commit `e7773e0`.
 **Honest gap:** `fulfillAllow` does not call tenant `POST /api/v1/gateway/fulfill`.
 Phase 2 (2026-09-02) added Control operational contracts
 (`GET /api/v1/operational-foundation`, empty `GET /api/v1/processes`).
-Those contracts are not live sibling connectors (ADR-022 still observe-only).
+Phase 3 (2026-09-02) added the first sibling ingress: HMAC
+`POST /api/v1/connectors/civio/events` plus `emitCivioEventToControl`.
+Civio is not in this repository; runtime wiring in `github.com/relaya17/civio`
+is NOT IMPLEMENTED. Execution on ingest is NOT IMPLEMENTED. Other siblings
+remain observe-only (ADR-022 Phase 3 amendment).
 
 ```
 Application → Gateway → Identity → Registries → Capability

@@ -338,8 +338,8 @@ Rules:
 | Six siblings exist as **portfolio seed** | `packages/shared/src/portfolio/seed.ts` (`APP.vantera` … `APP.civio`, commit pins e.g. Civio `0f79e86…`) | IMPLEMENTED (inventory) |
 | Runtime `UNKNOWN` / `NOT_PROBED` | `RUNTIME_UNKNOWN` in `seed.ts`; ADR-022 | IMPLEMENTED (as inventory policy) |
 | `atlasInheritance: NONE` | `seed.ts` source permission records | IMPLEMENTED (inventory) |
-| CP application registry includes siblings | Only `def-000` in `application-registry.ts` | MISSING |
-| Live connectors to those apps | No runtime connector; GitHub/local in `apps/web/app/[locale]/integrations/page.tsx` are **developer** integrations | MISSING |
+| CP application registry includes siblings | Seeded `def-000` only; Civio is registered after an accepted HMAC event | PARTIAL |
+| Live connectors to those apps | Civio Atlas-side HMAC ingress IMPLEMENTED (`POST /api/v1/connectors/civio/events`, `emitCivioEventToControl`). Civio runtime is not in this repo (wiring NOT IMPLEMENTED). Other siblings have no connector. | PARTIAL (Civio Atlas-side only) |
 | Civio knowledge snapshot | `packages/knowledge/src/fabric/civio-rights.snapshot.ts`; fail-closed `allowedAgentIds`: `RESEARCHER`, `LEGAL_MEDIA_COMMS` | PARTIAL (knowledge only) |
 | CaseFlow “office personal agent” | Seed path `apps/server/src/services/jurisdiction/personalAgentService.js` — **CaseFlow source**, “No Atlas equivalent” | NOT an Atlas agent |
 
@@ -763,7 +763,7 @@ Inspected read-only. Documentation is **not** treated as implementation.
 | `apps/control-plane/src/__tests__/atlas-gateway.test.ts` | CP evaluate + handoff object; not live HTTP fulfill |
 | `apps/control-plane/src/__tests__/control-plane-alignment.test.ts` | Portfolio does not mutate Fabric (16 agents) |
 | `packages/knowledge/src/fabric/persisted-store.test.ts` | Civio allow-list fail-closed |
-| **Absent** | Studio UI e2e; ask-agent AuthZ; PSA; live sibling connector |
+| **Absent** | Studio UI e2e; ask-agent AuthZ; PSA; Civio-repo wiring; CaseFlow/HotelOS/BrokerOS/LexStudy/Vantera connectors |
 
 ---
 
@@ -839,7 +839,8 @@ These are **real conflicts**. They are not automatically bugs to “fix” in th
 | --- | --- |
 | Phase 1 — platform hierarchy | Implemented 2026-09-02 |
 | Phase 2 — Control operational foundation | Implemented 2026-09-02. Contracts only; no live sibling connectors |
-| Phase 3+ | Not started |
+| Phase 3 — Civio → Atlas Control connector | Implemented 2026-09-02. Atlas HMAC ingress + production caller. Civio-repo wiring and execution NOT IMPLEMENTED. |
+| Phase 4+ | Not started |
 
 **Planning table (do not treat as automatically authorized):**
 

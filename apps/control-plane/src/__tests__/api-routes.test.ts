@@ -7,6 +7,7 @@ import {
 } from "../services/governance-state.js";
 import { resetAgentRuntimeForTests } from "../services/agent-registry.js";
 import { resetApplicationRegistryForTests } from "../services/application-registry.js";
+import { resetCivioConnectorForTests } from "../services/civio-connector.js";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -100,6 +101,7 @@ describe("Control Plane — API Routes", () => {
     resetGovernanceStateForTests();
     resetApplicationRegistryForTests();
     resetAgentRuntimeForTests();
+    resetCivioConnectorForTests();
   });
 
   // ── Status ─────────────────────────────────────────────────────────
@@ -130,12 +132,15 @@ describe("Control Plane — API Routes", () => {
         liveSiblingConnectors: boolean;
         lifecycle: string[];
         registeredApplicationIds: string[];
+        civioConnector: { applicationId: string; atlasIngress: string };
         domains: Array<{ domain: string; live: boolean; status: string }>;
       };
       expect(body.kind).toBe("ATLAS_CONTROL_OPERATIONAL_FOUNDATION");
       expect(body.parentSurface).toBe("ADMIN");
       expect(body.notStudio).toBe(true);
       expect(body.liveSiblingConnectors).toBe(false);
+      expect(body.civioConnector.applicationId).toBe("civio");
+      expect(body.civioConnector.atlasIngress).toBe("IMPLEMENTED");
       expect(body.lifecycle[0]).toBe("APPLICATION");
       expect(body.lifecycle).toContain("AUDIT");
       expect(body.registeredApplicationIds).toEqual(["def-000"]);

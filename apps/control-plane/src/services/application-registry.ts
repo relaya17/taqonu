@@ -17,6 +17,8 @@ export interface RegisteredApplication {
   readonly lastAuditAt: string | null;
   readonly lastEventAt: string | null;
   readonly lastEventType: string | null;
+  readonly tenantId: string | null;
+  readonly projectId: string | null;
 }
 
 const ATLAS_SELF: RegisteredApplication = {
@@ -31,6 +33,8 @@ const ATLAS_SELF: RegisteredApplication = {
   lastAuditAt: null,
   lastEventAt: null,
   lastEventType: null,
+  tenantId: "atlas",
+  projectId: null,
 };
 
 const applications = new Map<string, RegisteredApplication>();
@@ -70,6 +74,8 @@ export function upsertRegisteredApplication(
     lastAuditAt: patch.lastAuditAt ?? existing?.lastAuditAt ?? null,
     lastEventAt: patch.lastEventAt ?? existing?.lastEventAt ?? null,
     lastEventType: patch.lastEventType ?? existing?.lastEventType ?? null,
+    tenantId: patch.tenantId ?? existing?.tenantId ?? null,
+    projectId: patch.projectId ?? existing?.projectId ?? null,
   };
   applications.set(next.applicationId, next);
   return next;
@@ -123,7 +129,7 @@ export function applicationIntegrationContract(app: RegisteredApplication): {
       environment: app.environment,
       version: app.version,
       kind: "APPLICATION" as const,
-      tenantId: app.applicationId === "def-000" ? "atlas" : null,
+      tenantId: app.tenantId ?? (app.applicationId === "def-000" ? "atlas" : null),
     },
     health: app.health,
     capabilities: app.capabilities,

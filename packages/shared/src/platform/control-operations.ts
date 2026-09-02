@@ -1,3 +1,5 @@
+import type { CivioConnectorFoundationStatus } from "./civio-connector.js";
+
 /**
  * Atlas Control operational supervision contracts.
  *
@@ -111,6 +113,7 @@ export interface ControlOperationalFoundation {
   readonly supervisionModes: typeof CONTROL_SUPERVISION_MODES;
   readonly domains: readonly ControlDomainContract[];
   readonly liveSiblingConnectors: false;
+  readonly civioConnector: CivioConnectorFoundationStatus;
   readonly generatedAt: string;
 }
 
@@ -123,6 +126,7 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
       route: "GET /api/v1/applications",
       notes: [
         "Control application registry. Seeded Atlas-self (def-000) only.",
+        "Civio is registered only after an accepted HMAC connector event — never as def-000.",
         "Portfolio inventory is not a live connector.",
       ],
     },
@@ -142,7 +146,8 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
       live: false,
       route: "GET /api/v1/processes",
       notes: [
-        "No live process store. /process-audit is a local QA file scan, not process supervision.",
+        "Process records appear only when an accepted Civio event includes processId.",
+        "/process-audit is a local QA file scan, not process supervision.",
       ],
     },
     {
@@ -151,8 +156,8 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
       live: false,
       route: "POST /api/v1/gateway/events",
       notes: [
-        "Gateway ingest exists. There is no sibling event feed.",
-        "An audit log is not process monitoring.",
+        "Generic gateway ingest remains operator-authenticated and is not Civio identity.",
+        "Civio events enter through POST /api/v1/connectors/civio/events with HMAC proof.",
       ],
     },
     {
