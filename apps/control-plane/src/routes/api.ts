@@ -27,6 +27,7 @@ import {
   ingestGatewayEvent,
 } from "../services/atlas-gateway.js";
 import { ownerBrief, runSelfAudit } from "../services/self-audit.js";
+import { buildControlSupervisionSnapshot } from "../services/supervision-snapshot.js";
 import {
   issueReauthTicket,
   resolveControlPlanePrincipal,
@@ -84,6 +85,9 @@ import {
  * Health & Cost:
  *   GET /api/v1/health           — computed health metrics
  *   GET /api/v1/status           — service liveness check
+ *
+ * Platform supervision (consumed by Atlas Admin — not a dashboard clone):
+ *   GET /api/v1/supervision
  */
 
 export function createApiRouter(): Router {
@@ -198,6 +202,10 @@ export function createApiRouter(): Router {
       version: "0.1.0",
       timestamp: new Date().toISOString(),
     });
+  });
+
+  router.get("/api/v1/supervision", (_req, res) => {
+    json(res, buildControlSupervisionSnapshot());
   });
 
   router.get("/api/v1/applications", (_req, res) => {

@@ -116,6 +116,29 @@ describe("Control Plane — API Routes", () => {
     });
   });
 
+  describe("GET /api/v1/supervision", () => {
+    it("returns a platform supervision snapshot for Admin, not an agent dump", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/supervision"), res);
+      const body = JSON.parse(res._mock.body) as {
+        surface: string;
+        parentSurface: string;
+        role: string;
+        metrics: Record<string, number>;
+        notes: string[];
+      };
+      expect(body.surface).toBe("CONTROL");
+      expect(body.parentSurface).toBe("ADMIN");
+      expect(body.role).toBe("operational_supervision");
+      expect(body.metrics["registeredApplications"]).toBe(1);
+      expect(body.metrics["oversightAgents"]).toBe(9);
+      expect(body.metrics["fabricProjectionAgents"]).toBe(16);
+      expect(body.notes.some((note) => note.includes("Not Atlas Admin"))).toBe(
+        true,
+      );
+    });
+  });
+
   // ── Agents ─────────────────────────────────────────────────────────
 
   describe("GET /api/v1/agents", () => {

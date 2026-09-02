@@ -43,6 +43,7 @@ import { registerReadinessRoutes } from "./routes/readiness.js";
 import { registerCommercialValidationRoutes } from "./routes/commercial.js";
 import { registerByoCloudRoutes } from "./routes/byo-cloud.js";
 import { registerAdminOpsRoutes } from "./routes/admin-ops.js";
+import { registerPlatformSupervisionRoutes } from "./routes/platform-supervision.js";
 import { registerAgentFabricRoutes } from "./routes/agent-fabric.js";
 import { registerKernelRoutes } from "./routes/kernel.js";
 import { registerEngineeringAuditRoutes } from "./routes/engineering-audit.js";
@@ -183,6 +184,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerCommercialValidationRoutes(app);
   await registerByoCloudRoutes(app);
   await registerAdminOpsRoutes(app);
+  await registerPlatformSupervisionRoutes(app);
   await registerAgentFabricRoutes(app);
   await registerKernelRoutes(app);
   await registerEngineeringAuditRoutes(app);

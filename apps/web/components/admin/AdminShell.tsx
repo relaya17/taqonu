@@ -59,13 +59,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
           letterSpacing: "-0.03em",
         }}
       >
-        ArletOS Oracle
+        ArletOS Tenant Admin
       </Typography>
       <Typography
         variant="caption"
         sx={{ px: 2, mb: 2, display: "block", opacity: 0.7 }}
       >
-        ניטור · ידע · סייבר הגנתי · אוטומציה
+        ניהול דייר — לא Atlas Admin (פורט 3200)
       </Typography>
       <List dense>
         {LINKS.map((link) => {

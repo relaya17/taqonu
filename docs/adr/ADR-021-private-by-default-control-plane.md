@@ -1,8 +1,33 @@
 # ADR-021 — Private-by-default and a separate Atlas Control Plane
 
-**Status:** Accepted  
+**Status:** Accepted — amended 2026-09-02
 **Date:** 2026-08-26  
 **Product:** Atlas / ArletOS
+
+## Amendment 2026-09-02 — Admin is the parent platform surface
+
+The original decision placed `apps/admin` and `apps/control-plane` on one
+**CONTROL** trust plane (`later apps/admin`). That made Owner Admin a Control
+client/mirror.
+
+**Superseded:** “CONTROL PLANE = apps/control-plane (later apps/admin)”.
+
+**Now normative:**
+
+```
+PUBLIC          www — welcome, plan, approved docs
+USER PLANE      apps/web + tenant API — includes Studio and tenant /admin
+CONTROL         apps/control-plane :3100 — operational supervision
+ADMIN           apps/admin :3200 — platform supervisor over Control and Studio
+```
+
+- Atlas Admin supervises Control and Studio. It is not a second Control dashboard.
+- Control remains the operational layer (connected apps, processes, operational agents).
+- Studio remains `apps/web` `/[locale]/studio`.
+- `apps/web/app/admin` is **tenant** administration. Customer role `admin` is not Atlas Admin.
+- Owner / operator roles are unchanged. User-directory UI still must not grant them.
+
+Private-by-default, controlled egress, and self-governance are unchanged.
 
 ## Context
 
@@ -35,12 +60,17 @@ that data “never leaves.”
 
 Detect → analyze → propose → policy/risk → human approval → apply → verify → audit.
 
-### Three trust planes (one monorepo)
+### Trust planes (one monorepo)
+
+Historical (2026-08-26): PUBLIC / USER / CONTROL (Admin later folded into Control).
+
+Amended (2026-09-02): PUBLIC / USER / CONTROL / ADMIN — see Amendment above.
 
 ```
 PUBLIC          www — welcome, plan, approved docs
 USER PLANE      apps/web + tenant API — authenticated + authorized + owned
-CONTROL PLANE   apps/control-plane (later apps/admin) — owner/operator only
+CONTROL         apps/control-plane :3100 — owner/operator operational plane
+ADMIN           apps/admin :3200 — owner platform supervisor
 ```
 
 Roles:

@@ -45,14 +45,14 @@ export function authorizeAdminRequest(
         const host = req.headers.host;
         if (!host || (origin !== `https://${host}` && origin !== `http://${host}`)) {
           res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Owner Admin origin verification failed" }));
+          res.end(JSON.stringify({ error: "Atlas Admin origin verification failed" }));
           return false;
         }
       }
       return true;
     }
     res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Owner Control Plane authentication required" }));
+    res.end(JSON.stringify({ error: "Atlas Admin authentication required" }));
     return false;
   }
 

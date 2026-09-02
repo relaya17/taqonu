@@ -45,12 +45,12 @@ import {
  * But they are independently deployable: upgrading one does not require
  * upgrading the other.
  *
- * ── Port assignment (one product, three origins — never share PORT) ────
+ * ── Port assignment (never share PORT) ────
  *
- * Atlas product UI:    3000  (apps/web)
- * Tenant API:          4000  (apps/api)
- * Sentinel / CP:       3100  (apps/control-plane)  CONTROL_PLANE_PORT
- * Owner Admin UI:      3200  (apps/admin)          ADMIN_PORT
+ * Atlas product UI / Studio: 3000  (apps/web)
+ * Tenant API:                4000  (apps/api)
+ * Atlas Control:             3100  (apps/control-plane)
+ * Atlas Admin:               3200  (apps/admin) — supervises Control + Studio
  *
  * Do not read generic PORT here — Vercel and shells set PORT for the API.
  */

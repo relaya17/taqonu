@@ -19,11 +19,12 @@ Honest remaining gaps (not a missing executor):
 - `apps/api` build/typecheck: `tsconfig.build.json` (excludes tests).
   IDE check: `tsconfig.json` includes tests with `noEmit`. Vitest uses
   `tsconfig.test.json`.
-- Three HTTP origins (ADR-021) — do not merge into one port or one Vercel
-  project: Atlas product `http://localhost:3000`, Sentinel / Control Plane
-  `http://127.0.0.1:3100`, Owner Admin `http://127.0.0.1:3200`. Tenant API
-  `http://localhost:4000`. `pnpm dev` prints these and starts all five
-  processes (web, api, admin, control-plane, worker).
+- Four product surfaces (ADR-021 amended): Studio lives on the user-plane
+  product `http://localhost:3000`, Control `http://127.0.0.1:3100`, Atlas
+  Admin `http://127.0.0.1:3200` (supervises Control and Studio — not a
+  Control clone). Tenant API `http://localhost:4000`. Do not merge into one
+  port or one Vercel project. `pnpm dev` starts web, api, admin,
+  control-plane, worker.
 
 ## 02 GATEWAY COMPLETION
 Wired. Control Plane does not run tools. See commit `e7773e0`.

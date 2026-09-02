@@ -1,11 +1,15 @@
 /**
- * ADR-021 — Atlas trust planes. One monorepo, three boundaries.
+ * ADR-021 (amended 2026-09-02) — Atlas trust planes.
  *
  * PUBLIC        — explicitly published marketing / health / auth handshake
- * USER PLANE    — authenticated tenant data (code, memory, evidence, graph)
- * CONTROL PLANE — Atlas owner / operator only (platform governance)
+ * USER PLANE    — authenticated tenant data; includes Studio and tenant /admin
+ * CONTROL       — operational supervision (`apps/control-plane` :3100)
+ * ADMIN         — platform supervisor over Control and Studio (`apps/admin` :3200)
+ *
+ * Admin is a parent surface. It is not a second Control dashboard.
+ * Customer `admin` role is tenant administration, not Atlas Admin.
  */
-export const ATLAS_TRUST_PLANES = ["public", "user", "control"] as const;
+export const ATLAS_TRUST_PLANES = ["public", "user", "control", "admin"] as const;
 export type AtlasTrustPlane = (typeof ATLAS_TRUST_PLANES)[number];
 
 export const CONTROL_PLANE_ROLES = ["operator", "owner"] as const;

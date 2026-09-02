@@ -4,9 +4,9 @@ import { AdminProviders } from "@/components/admin/AdminProviders";
 import { AdminShell } from "@/components/admin/AdminShell";
 
 export const metadata = {
-  title: "ArletOS Admin Oracle",
+  title: "ArletOS Tenant Admin",
   description:
-    "Admin Oracle command center — proactive monitoring, allowlisted intel, gated automation",
+    "Customer / tenant administration — not Atlas platform Admin (apps/admin :3200)",
 };
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

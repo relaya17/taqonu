@@ -16,6 +16,9 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     expect(isPublicAtlasRoute("GET", "/api/v1/memory")).toBe(false);
     expect(isPublicAtlasRoute("POST", "/api/v1/code/analyze")).toBe(false);
     expect(isPublicAtlasRoute("GET", "/api/v1/admin/command-center")).toBe(false);
+    expect(isPublicAtlasRoute("GET", "/api/v1/platform/studio-supervision")).toBe(
+      false,
+    );
     expect(isPublicAtlasRoute("GET", "/api/v1/graph/nodes")).toBe(false);
   });
 });

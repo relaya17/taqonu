@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { platformHierarchyDocument } from "@atlas/shared";
 import { authorizeAdminRequest } from "./admin-auth.js";
-import { renderOwnerHtml } from "./owner-html.js";
+import { renderPlatformHtml } from "./platform-html.js";
+import { composePlatformOverview } from "./platform-overview.js";
 import {
   authenticateAdminBrowser,
   clearAdminBrowserSession,
@@ -23,97 +25,55 @@ const DEMO_LOGIN_ENABLED =
   process.env["NODE_ENV"] !== "production" ||
   process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
 
-function ownerPageData(overrides: Partial<Parameters<typeof renderOwnerHtml>[0]> = {}) {
+function adminOrigin(): string {
+  return `http://${HOST}:${PORT}`;
+}
+
+function demoFields(): { demoEmail?: string; demoPassword?: string } {
+  if (!DEMO_LOGIN_ENABLED) return {};
   return {
-    controlApi: CONTROL_API,
-    webOrigin: WEB_ORIGIN,
-    ...(DEMO_LOGIN_ENABLED
-      ? {
-          demoEmail: process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local",
-          demoPassword: process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!",
-        }
-      : {}),
-    applications: [],
-    agents: [],
-    portfolioApps: [],
-    portfolioSourceAgents: [],
-    portfolioCapabilities: [],
-    portfolioEvidence: [],
-    portfolioDedup: [],
-    portfolioDecisions: [],
-    portfolioConflicts: [],
-    portfolioCanonicals: [],
-    brief: null,
-    selfAudit: null,
-    error: null,
-    ...overrides,
+    demoEmail: process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local",
+    demoPassword: process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!",
   };
 }
 
-async function fetchJson(path: string): Promise<unknown> {
+function platformPageBase() {
+  return {
+    controlOrigin: CONTROL_API,
+    studioOrigin: WEB_ORIGIN,
+    adminOrigin: adminOrigin(),
+    ...demoFields(),
+  };
+}
+
+async function fetchSupervisedJson(url: string): Promise<unknown> {
   const headers: Record<string, string> = {};
   const token = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${CONTROL_API}${path}`, { headers });
+  if (token && url.startsWith(CONTROL_API)) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(url, { headers });
   if (!res.ok) {
-    throw new Error(`${path} → ${res.status}`);
+    throw new Error(`${url} → ${res.status}`);
   }
   return res.json();
 }
 
-async function loadOwnerPage() {
-  try {
-    const [apps, agents, brief, selfAudit, portfolio] = await Promise.all([
-      fetchJson("/api/v1/applications"),
-      fetchJson("/api/v1/agents"),
-      fetchJson("/api/v1/owner/brief"),
-      fetchJson("/api/v1/self-audit"),
-      fetchJson("/api/v1/portfolio-governance").catch(() => null),
-    ]);
-    const appItems =
-      apps && typeof apps === "object" && "items" in apps
-        ? (apps as { items: Record<string, unknown>[] }).items
-        : [];
-    const agentItems = Array.isArray(agents)
-      ? (agents as Record<string, unknown>[])
-      : [];
-    const portfolioRecord =
-      portfolio && typeof portfolio === "object"
-        ? (portfolio as {
-            snapshot?: {
-              applications?: Record<string, unknown>[];
-              sourceAgents?: Record<string, unknown>[];
-              capabilities?: Record<string, unknown>[];
-              evidence?: Record<string, unknown>[];
-              dedupRelations?: Record<string, unknown>[];
-              governanceDecisions?: Record<string, unknown>[];
-              conflicts?: Record<string, unknown>[];
-              canonicalCapabilities?: Record<string, unknown>[];
-            };
-          })
-        : null;
-    return renderOwnerHtml(ownerPageData({
-      applications: appItems,
-      agents: agentItems,
-      portfolioApps: portfolioRecord?.snapshot?.applications ?? [],
-      portfolioSourceAgents: portfolioRecord?.snapshot?.sourceAgents ?? [],
-      portfolioCapabilities: portfolioRecord?.snapshot?.capabilities ?? [],
-      portfolioEvidence: portfolioRecord?.snapshot?.evidence ?? [],
-      portfolioDedup: portfolioRecord?.snapshot?.dedupRelations ?? [],
-      portfolioDecisions: portfolioRecord?.snapshot?.governanceDecisions ?? [],
-      portfolioConflicts: portfolioRecord?.snapshot?.conflicts ?? [],
-      portfolioCanonicals: portfolioRecord?.snapshot?.canonicalCapabilities ?? [],
-      brief: (brief as Record<string, unknown>) ?? null,
-      selfAudit: (selfAudit as Record<string, unknown>) ?? null,
-    }));
-  } catch (error) {
-    return renderOwnerHtml(ownerPageData({
-      error:
-        error instanceof Error
-          ? `Control API unreachable (${error.message}). Start apps/control-plane on 3100.`
-          : "Control API unreachable",
-    }));
-  }
+async function loadPlatformOverview() {
+  return composePlatformOverview({
+    adminOrigin: adminOrigin(),
+    controlOrigin: CONTROL_API,
+    studioOrigin: WEB_ORIGIN,
+    fetchJson: fetchSupervisedJson,
+  });
+}
+
+async function loadPlatformPage() {
+  const overview = await loadPlatformOverview();
+  return renderPlatformHtml({
+    ...platformPageBase(),
+    overview,
+  });
 }
 
 function escapeHtml(value: string): string {
@@ -193,7 +153,7 @@ async function handleAdminRequestAsync(
   if (pathname === "/" && method === "GET") {
     const hasBearer = typeof req.headers.authorization === "string";
     if (!hasBearer && !readAdminBrowserSession(req)) {
-      sendHtml(res, renderOwnerHtml(ownerPageData({ promoOnly: true })));
+      sendHtml(res, renderPlatformHtml({ ...platformPageBase(), promoOnly: true }));
       return;
     }
   }
@@ -226,15 +186,31 @@ async function handleAdminRequestAsync(
     return;
   }
   if (!authorizeAdminRequest(req, res)) return;
-  if (pathname === "/" || pathname === "/index.html") {
-    void loadOwnerPage().then((html) => {
-      res.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Robots-Tag": "noindex, nofollow",
-      });
-      res.end(html);
+  if (pathname === "/api/v1/platform/hierarchy" && method === "GET") {
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
     });
+    res.end(JSON.stringify(platformHierarchyDocument()));
+    return;
+  }
+  if (pathname === "/api/v1/platform/overview" && method === "GET") {
+    const overview = await loadPlatformOverview();
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify(overview));
+    return;
+  }
+  if (pathname === "/" || pathname === "/index.html") {
+    const html = await loadPlatformPage();
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    });
+    res.end(html);
     return;
   }
   res.writeHead(404, { "Content-Type": "application/json" });
@@ -255,7 +231,7 @@ const server = createServer(handleAdminRequest);
 // serverless function never gets a listener and stalls the invocation.
 if (!process.env["VERCEL"]) {
   server.listen(PORT, HOST, () => {
-    console.log(`[atlas-admin] Owner Control Plane UI http://${HOST}:${PORT}/`);
+    console.log(`[atlas-admin] Atlas Admin (platform supervisor) http://${HOST}:${PORT}/`);
   });
 }
 

@@ -190,11 +190,11 @@ export default function AdminHomePage() {
             letterSpacing: "-0.03em",
           }}
         >
-          מרכז פיקוד · {command.data?.platform.name ?? "ArletOS"}
+          מרכז פיקוד דייר · {command.data?.platform.name ?? "ArletOS"}
         </Typography>
         <Typography sx={{ mt: 1, color: "rgba(154,163,178,0.9)", maxWidth: 640 }}>
-          Admin Oracle מנהל את הלוח — אוטומציה · גרף ידע · ניטור פרואקטיבי · מקורות
-          מאומתים בלבד · סייבר הגנתי
+          זהו ניהול דייר (tenant admin). Atlas Admin — שכבת הפיקוח על Control
+          ו-Studio — רץ בנפרד על פורט 3200 ואינו המסך הזה.
         </Typography>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
           <Chip
