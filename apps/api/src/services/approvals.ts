@@ -7,8 +7,10 @@ import {
   LiveApprovalRequestRepository,
   createDatabaseClients,
   isLiveSupabase,
+  type ClaimLiveApprovalInput,
   type CreateLiveApprovalInput,
   type DecideLiveApprovalInput,
+  type FinalizeLiveApprovalInput,
   type PresentedLiveExecution,
   type RevokeLiveApprovalInput,
 } from "@atlas/database";
@@ -26,6 +28,8 @@ export type CreateApprovalRequestInput = CreateLiveApprovalInput;
 export type DecideApprovalRequestInput = DecideLiveApprovalInput;
 export type RevokeApprovalRequestInput = RevokeLiveApprovalInput;
 export type PresentedExecution = PresentedLiveExecution;
+export type ClaimApprovalRequestInput = ClaimLiveApprovalInput;
+export type FinalizeApprovalRequestInput = FinalizeLiveApprovalInput;
 
 export function configureLiveApprovalStore(
   next: LiveApprovalRequestRepository,
@@ -273,6 +277,51 @@ export async function consumeApprovalRequest(
 ): Promise<ApprovalRequest> {
   try {
     return await requireStore().consume(id, presented);
+  } catch (error) {
+    rethrowStoreError(error);
+  }
+}
+
+/**
+ * Claims an APPROVED approval for exactly one execution. The store mints
+ * `liveExecutionId`. Callers cannot supply it.
+ */
+export async function claimApprovalRequest(
+  id: string,
+  presented: ClaimApprovalRequestInput,
+): Promise<ApprovalRequest> {
+  try {
+    return await requireStore().claim(id, presented);
+  } catch (error) {
+    rethrowStoreError(error);
+  }
+}
+
+/**
+ * Marks Stage 5 as started on a CLAIMED approval. Same `liveExecutionId` is
+ * idempotent; a different id conflicts.
+ */
+export async function markApprovalExecutionStarted(
+  id: string,
+  liveExecutionId: string,
+): Promise<ApprovalRequest> {
+  try {
+    return await requireStore().markExecutionStarted(id, liveExecutionId);
+  } catch (error) {
+    rethrowStoreError(error);
+  }
+}
+
+/**
+ * Finalizes a CLAIMED approval. Does not execute. Terminal replay returns
+ * the stored row; a different outcome or id conflicts.
+ */
+export async function finalizeApprovalRequest(
+  id: string,
+  input: FinalizeApprovalRequestInput,
+): Promise<ApprovalRequest> {
+  try {
+    return await requireStore().finalize(id, input);
   } catch (error) {
     rethrowStoreError(error);
   }

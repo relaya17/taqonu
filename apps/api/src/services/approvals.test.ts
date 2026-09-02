@@ -8,13 +8,16 @@ import {
 process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 
 const {
+  claimApprovalRequest,
   clearLiveApprovalStoreForTests,
   configureLiveApprovalStore,
   consumeApprovalRequest,
   createApprovalRequest,
   decideApprovalRequest,
+  finalizeApprovalRequest,
   getApprovalRequest,
   listApprovalRequests,
+  markApprovalExecutionStarted,
   revokeApprovalRequest,
 } = await import("./approvals.js");
 
@@ -583,5 +586,303 @@ describe("Phase 3F durable authority — fail-closed and isolation", () => {
         reason: "unconfigured",
       }),
     ).rejects.toThrow(/not configured/i);
+  });
+});
+
+describe("CP2 claim / mark-started / finalize service contract", () => {
+  beforeEach(() => {
+    resetApprovalsForTests();
+  });
+
+  afterEach(() => {
+    resetApprovalsForTests();
+  });
+
+  const matching = {
+    entityType: "RECORD",
+    action: "CREATE",
+    executorId: "agent-1",
+  } as const;
+
+  async function approve(overrides: {
+    entityType?: string;
+    action?: string;
+    requestedBy?: string;
+    reason?: string;
+    artifactHash?: string;
+    expiresAt?: string;
+  } = {}) {
+    const created = await createApprovalRequest({
+      entityType: overrides.entityType ?? "RECORD",
+      action: overrides.action ?? "CREATE",
+      requestedBy: overrides.requestedBy ?? "agent-1",
+      reason: overrides.reason ?? "cp2",
+      ...(overrides.artifactHash !== undefined ? { artifactHash: overrides.artifactHash } : {}),
+      ...(overrides.expiresAt !== undefined ? { expiresAt: overrides.expiresAt } : {}),
+    });
+    return decideApprovalRequest(created.id, {
+      decidedBy: "admin-1",
+      approve: true,
+      decisionReason: "ok",
+    });
+  }
+
+  it("create, decide, revoke, and consume still behave unchanged", async () => {
+    const created = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "unchanged consume path",
+    });
+    expect(created.status).toBe("PENDING");
+    const decided = await decideApprovalRequest(created.id, {
+      decidedBy: "admin-1",
+      approve: true,
+      decisionReason: "ok",
+    });
+    expect(decided.status).toBe("APPROVED");
+    expect((await consumeApprovalRequest(decided.id)).status).toBe("CONSUMED");
+
+    const toRevoke = await approve({ reason: "revoke-still-works" });
+    expect(
+      (await revokeApprovalRequest(toRevoke.id, { revokedBy: "human-1", reason: "withdrawn" }))
+        .status,
+    ).toBe("REVOKED");
+  });
+
+  it("claims APPROVED → CLAIMED and returns a store-minted liveExecutionId", async () => {
+    const approved = await approve();
+    const claimed = await claimApprovalRequest(approved.id, {
+      ...matching,
+      requestId: "req-1",
+    });
+    expect(claimed.status).toBe("CLAIMED");
+    expect(claimed.liveExecutionId).toEqual(expect.any(String));
+    expect(claimed.claimedBy).toBe("agent-1");
+    expect(claimed.requestId).toBe("req-1");
+    expect(await getApprovalRequest(claimed.id)).toEqual(claimed);
+  });
+
+  it("rejects binding mismatches, expiry, revoke, and a second claim", async () => {
+    const bound = await approve({
+      entityType: "DOCUMENT",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      artifactHash: "sha256:abc",
+    });
+    await expect(
+      claimApprovalRequest(bound.id, {
+        entityType: "RECORD",
+        action: "UPDATE",
+        executorId: "agent-alpha",
+        artifactHash: "sha256:abc",
+      }),
+    ).rejects.toThrow(/authorizes entityType/);
+    await expect(
+      claimApprovalRequest(bound.id, {
+        entityType: "DOCUMENT",
+        action: "DELETE",
+        executorId: "agent-alpha",
+        artifactHash: "sha256:abc",
+      }),
+    ).rejects.toThrow(/authorizes action/);
+    await expect(
+      claimApprovalRequest(bound.id, {
+        entityType: "DOCUMENT",
+        action: "UPDATE",
+        executorId: "agent-beta",
+        artifactHash: "sha256:abc",
+      }),
+    ).rejects.toThrow(/cannot be claimed/);
+    await expect(
+      claimApprovalRequest(bound.id, {
+        entityType: "DOCUMENT",
+        action: "UPDATE",
+        executorId: "agent-alpha",
+        artifactHash: "sha256:evil",
+      }),
+    ).rejects.toThrow(/authorizes artifact/);
+
+    const expired = await approve({
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    await expect(claimApprovalRequest(expired.id, matching)).rejects.toThrow(/expired at/);
+
+    const revoked = await approve({ reason: "revoke-then-claim" });
+    await revokeApprovalRequest(revoked.id, { revokedBy: "human-1", reason: "withdrawn" });
+    await expect(claimApprovalRequest(revoked.id, matching)).rejects.toThrow(/REVOKED/);
+
+    const once = await approve({ reason: "second-claim" });
+    expect((await claimApprovalRequest(once.id, matching)).status).toBe("CLAIMED");
+    await expect(claimApprovalRequest(once.id, matching)).rejects.toThrow(/not APPROVED/);
+  });
+
+  it("get returns CLAIMED and terminal records with persisted claim metadata", async () => {
+    const claimed = await claimApprovalRequest(await approve(), matching);
+    expect((await getApprovalRequest(claimed.id))?.liveExecutionId).toBe(claimed.liveExecutionId);
+    await markApprovalExecutionStarted(claimed.id, claimed.liveExecutionId as string);
+    const finalized = await finalizeApprovalRequest(claimed.id, {
+      liveExecutionId: claimed.liveExecutionId as string,
+      outcome: "FULFILLED",
+      outputEvidence: "ok",
+    });
+    const reloaded = await getApprovalRequest(claimed.id);
+    expect(reloaded?.status).toBe("FULFILLED");
+    expect(reloaded?.finalOutcome).toBe("FULFILLED");
+    expect(reloaded?.liveExecutionId).toBe(claimed.liveExecutionId);
+    expect(reloaded).toEqual(finalized);
+  });
+
+  it("marks execution started idempotently for the same liveExecutionId", async () => {
+    const claimed = await claimApprovalRequest(await approve(), matching);
+    const started = await markApprovalExecutionStarted(
+      claimed.id,
+      claimed.liveExecutionId as string,
+    );
+    expect(started.executionStartedAt).toEqual(expect.any(String));
+    const replayed = await markApprovalExecutionStarted(
+      claimed.id,
+      claimed.liveExecutionId as string,
+    );
+    expect(replayed.executionStartedAt).toBe(started.executionStartedAt);
+    await expect(
+      markApprovalExecutionStarted(claimed.id, "00000000-0000-4000-8000-000000000099"),
+    ).rejects.toThrow(/liveExecutionId/);
+    const pending = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "CREATE",
+      requestedBy: "agent-1",
+      reason: "not-claimed",
+    });
+    await expect(
+      markApprovalExecutionStarted(pending.id, "00000000-0000-4000-8000-000000000099"),
+    ).rejects.toThrow(/not CLAIMED/);
+  });
+
+  it("finalizes CLAIMED to FULFILLED, FAILED, and OUTCOME_UNKNOWN", async () => {
+    const fulfilledClaim = await claimApprovalRequest(await approve({ reason: "ok" }), matching);
+    await markApprovalExecutionStarted(
+      fulfilledClaim.id,
+      fulfilledClaim.liveExecutionId as string,
+    );
+    expect(
+      (
+        await finalizeApprovalRequest(fulfilledClaim.id, {
+          liveExecutionId: fulfilledClaim.liveExecutionId as string,
+          outcome: "FULFILLED",
+          runtimeExecutionId: "11111111-1111-4111-8111-111111111111",
+          outputEvidence: "ok",
+        })
+      ).status,
+    ).toBe("FULFILLED");
+
+    const failedClaim = await claimApprovalRequest(await approve({ reason: "fail" }), matching);
+    expect(
+      (
+        await finalizeApprovalRequest(failedClaim.id, {
+          liveExecutionId: failedClaim.liveExecutionId as string,
+          outcome: "FAILED",
+          reason: "tool exploded",
+        })
+      ).status,
+    ).toBe("FAILED");
+
+    const unknownClaim = await claimApprovalRequest(
+      await approve({ reason: "unknown" }),
+      matching,
+    );
+    await markApprovalExecutionStarted(
+      unknownClaim.id,
+      unknownClaim.liveExecutionId as string,
+    );
+    expect(
+      (
+        await finalizeApprovalRequest(unknownClaim.id, {
+          liveExecutionId: unknownClaim.liveExecutionId as string,
+          outcome: "OUTCOME_UNKNOWN",
+          reason: "process died after start",
+        })
+      ).status,
+    ).toBe("OUTCOME_UNKNOWN");
+  });
+
+  it("rejects illegal finalize and does not reopen or reclaim", async () => {
+    const claimed = await claimApprovalRequest(await approve(), matching);
+    await expect(
+      finalizeApprovalRequest(claimed.id, {
+        liveExecutionId: claimed.liveExecutionId as string,
+        outcome: "FULFILLED",
+      }),
+    ).rejects.toThrow(/FULFILLED requires execution evidence/);
+    await expect(
+      finalizeApprovalRequest(claimed.id, {
+        liveExecutionId: claimed.liveExecutionId as string,
+        outcome: "FAILED",
+      }),
+    ).rejects.toThrow(/FAILED requires a reason/);
+    await expect(
+      finalizeApprovalRequest(claimed.id, {
+        liveExecutionId: claimed.liveExecutionId as string,
+        outcome: "OUTCOME_UNKNOWN",
+        reason: "not started",
+      }),
+    ).rejects.toThrow(/OUTCOME_UNKNOWN requires execution to have started/);
+    await expect(
+      finalizeApprovalRequest(claimed.id, {
+        liveExecutionId: "00000000-0000-4000-8000-000000000099",
+        outcome: "FAILED",
+        reason: "wrong id",
+      }),
+    ).rejects.toThrow(/liveExecutionId/);
+
+    const finalized = await finalizeApprovalRequest(claimed.id, {
+      liveExecutionId: claimed.liveExecutionId as string,
+      outcome: "FAILED",
+      reason: "known failure",
+    });
+    expect(
+      await finalizeApprovalRequest(claimed.id, {
+        liveExecutionId: claimed.liveExecutionId as string,
+        outcome: "FAILED",
+        reason: "known failure",
+      }),
+    ).toEqual(finalized);
+    await expect(
+      finalizeApprovalRequest(claimed.id, {
+        liveExecutionId: claimed.liveExecutionId as string,
+        outcome: "FULFILLED",
+        outputEvidence: "nope",
+      }),
+    ).rejects.toThrow(/conflicting terminal/);
+    await expect(claimApprovalRequest(claimed.id, matching)).rejects.toThrow(/not APPROVED/);
+    await expect(
+      revokeApprovalRequest(claimed.id, { revokedBy: "human-1", reason: "reopen" }),
+    ).rejects.toThrow(/cannot be revoked/);
+  });
+
+  it("propagates repository unavailability fail-closed", async () => {
+    configureLiveApprovalStore(
+      new LiveApprovalRequestRepository({
+        rpc: async () => {
+          throw new Error("connection refused");
+        },
+      }),
+    );
+    await expect(claimApprovalRequest("00000000-0000-4000-8000-000000000001", matching)).rejects.toThrow(
+      /connection refused|unavailable/i,
+    );
+    await expect(
+      markApprovalExecutionStarted(
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+      ),
+    ).rejects.toThrow(/connection refused|unavailable/i);
+    await expect(
+      finalizeApprovalRequest("00000000-0000-4000-8000-000000000001", {
+        liveExecutionId: "00000000-0000-4000-8000-000000000002",
+        outcome: "FAILED",
+        reason: "down",
+      }),
+    ).rejects.toThrow(/connection refused|unavailable/i);
   });
 });
