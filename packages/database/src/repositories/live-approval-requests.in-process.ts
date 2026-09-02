@@ -37,6 +37,12 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
         return revoke(args);
       case "consume_live_approval_request":
         return consume(args);
+      case "claim_live_approval_request":
+        return claim(args);
+      case "mark_live_approval_execution_started":
+        return markStarted(args);
+      case "finalize_live_approval_request":
+        return finalize(args);
       default:
         throw new Error(`Unknown live approval RPC ${fn}`);
     }
@@ -63,6 +69,16 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
       decidedBy: null,
       decidedAt: null,
       decisionReason: null,
+      liveExecutionId: null,
+      claimedAt: null,
+      claimedBy: null,
+      requestId: null,
+      executionStartedAt: null,
+      finalizedAt: null,
+      finalOutcome: null,
+      finalizeReason: null,
+      runtimeExecutionId: null,
+      outputEvidence: null,
     });
     rows.set(request.id, request);
     return request;
@@ -107,6 +123,16 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
     if (existing.status === "CONSUMED") {
       throw new Error(
         `Approval request ${id} has already been CONSUMED and cannot be revoked — the execution it authorized already happened`,
+      );
+    }
+    if (
+      existing.status === "CLAIMED" ||
+      existing.status === "FULFILLED" ||
+      existing.status === "FAILED" ||
+      existing.status === "OUTCOME_UNKNOWN"
+    ) {
+      throw new Error(
+        `Approval request ${id} cannot be revoked (status=${existing.status}); claimed or finalized approvals cannot be revoked`,
       );
     }
     if (existing.status !== "PENDING" && existing.status !== "APPROVED") {
@@ -176,6 +202,167 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
       }
     }
     const updated = approvalRequestSchema.parse({ ...existing, status: "CONSUMED" });
+    rows.set(id, updated);
+    return updated;
+  }
+
+  function asText(value: unknown): string | null {
+    if (value == null) return null;
+    const text = String(value);
+    return text.length === 0 ? null : text;
+  }
+
+  function claim(args: Record<string, unknown>): ApprovalRequest {
+    const id = String(args["p_id"]);
+    const entityType = asText(args["p_entity_type"]);
+    const action = asText(args["p_action"]);
+    const executorId = asText(args["p_executor_id"]);
+    if (!entityType || !action || !executorId) {
+      throw new Error("claim requires entityType, action, and executorId");
+    }
+    const existing = rows.get(id);
+    if (!existing) throw new Error(`Approval request ${id} not found`);
+    if (existing.status === "REVOKED") {
+      throw new Error(
+        `Approval request ${id} was REVOKED by ${existing.revokedBy ?? "unknown"} at ${existing.revokedAt ?? "unknown time"} and can never authorize an action`,
+      );
+    }
+    if (existing.status !== "APPROVED") {
+      throw new Error(
+        `Approval request ${id} is not APPROVED (status=${existing.status}) and cannot be claimed`,
+      );
+    }
+    if (existing.expiresAt !== null && Date.parse(existing.expiresAt) <= Date.now()) {
+      throw new Error(
+        `Approval request ${id} expired at ${existing.expiresAt} and can no longer authorize an action`,
+      );
+    }
+    if (entityType !== existing.entityType) {
+      throw new Error(
+        `Approval request ${id} authorizes entityType ${existing.entityType}, not ${entityType}`,
+      );
+    }
+    if (action !== existing.action) {
+      throw new Error(
+        `Approval request ${id} authorizes action ${existing.action}, not ${action}`,
+      );
+    }
+    if (executorId !== existing.requestedBy) {
+      throw new Error(
+        `Approval request ${id} was requested by ${existing.requestedBy} and cannot be claimed by ${executorId}`,
+      );
+    }
+    let artifactHash = existing.artifactHash;
+    const presentedHash = asText(args["p_artifact_hash"]);
+    if (artifactHash) {
+      if (!presentedHash) {
+        throw new Error(
+          `Approval request ${id} is bound to a specific artifact; claiming it requires presenting that artifact's hash`,
+        );
+      }
+      if (presentedHash !== artifactHash) {
+        throw new Error(
+          `Approval request ${id} authorizes artifact ${artifactHash}, not ${presentedHash} — the approved artifact changed after sign-off`,
+        );
+      }
+    } else if (presentedHash) {
+      artifactHash = presentedHash;
+    }
+    const updated = approvalRequestSchema.parse({
+      ...existing,
+      status: "CLAIMED",
+      artifactHash,
+      liveExecutionId: crypto.randomUUID(),
+      claimedAt: toIso(new Date()),
+      claimedBy: executorId,
+      requestId: asText(args["p_request_id"]),
+    });
+    rows.set(id, updated);
+    return updated;
+  }
+
+  function markStarted(args: Record<string, unknown>): ApprovalRequest {
+    const id = String(args["p_id"]);
+    const liveExecutionId = asText(args["p_live_execution_id"]);
+    const existing = rows.get(id);
+    if (!existing) throw new Error(`Approval request ${id} not found`);
+    if (existing.status !== "CLAIMED") {
+      throw new Error(
+        `Approval request ${id} is not CLAIMED (status=${existing.status}) and cannot mark execution started`,
+      );
+    }
+    if (existing.liveExecutionId !== liveExecutionId) {
+      throw new Error("liveExecutionId does not match");
+    }
+    if (existing.executionStartedAt !== null) {
+      return existing;
+    }
+    const updated = approvalRequestSchema.parse({
+      ...existing,
+      executionStartedAt: toIso(new Date()),
+    });
+    rows.set(id, updated);
+    return updated;
+  }
+
+  function finalize(args: Record<string, unknown>): ApprovalRequest {
+    const id = String(args["p_id"]);
+    const liveExecutionId = asText(args["p_live_execution_id"]);
+    const outcome = asText(args["p_outcome"]);
+    if (outcome !== "FULFILLED" && outcome !== "FAILED" && outcome !== "OUTCOME_UNKNOWN") {
+      throw new Error("invalid terminal outcome");
+    }
+    const existing = rows.get(id);
+    if (!existing) throw new Error(`Approval request ${id} not found`);
+    if (
+      existing.status === "FULFILLED" ||
+      existing.status === "FAILED" ||
+      existing.status === "OUTCOME_UNKNOWN"
+    ) {
+      if (existing.liveExecutionId !== liveExecutionId) {
+        throw new Error("liveExecutionId does not match");
+      }
+      if (existing.finalOutcome === outcome) {
+        return existing;
+      }
+      throw new Error("conflicting terminal outcome");
+    }
+    if (existing.status !== "CLAIMED") {
+      throw new Error(
+        `Approval request ${id} is not CLAIMED (status=${existing.status}) and cannot be finalized`,
+      );
+    }
+    if (existing.liveExecutionId !== liveExecutionId) {
+      throw new Error("liveExecutionId does not match");
+    }
+    const reason = asText(args["p_reason"]);
+    const runtimeExecutionId = asText(args["p_runtime_execution_id"]);
+    const outputEvidence = asText(args["p_output_evidence"]);
+    if (outcome === "FULFILLED") {
+      if (!runtimeExecutionId && !outputEvidence) {
+        throw new Error("FULFILLED requires execution evidence");
+      }
+    } else if (outcome === "FAILED") {
+      if (!reason) {
+        throw new Error("FAILED requires a reason");
+      }
+    } else {
+      if (existing.executionStartedAt === null) {
+        throw new Error("OUTCOME_UNKNOWN requires execution to have started");
+      }
+      if (!reason) {
+        throw new Error("OUTCOME_UNKNOWN requires a reason");
+      }
+    }
+    const updated = approvalRequestSchema.parse({
+      ...existing,
+      status: outcome,
+      finalizedAt: toIso(new Date()),
+      finalOutcome: outcome,
+      finalizeReason: reason,
+      runtimeExecutionId,
+      outputEvidence,
+    });
     rows.set(id, updated);
     return updated;
   }

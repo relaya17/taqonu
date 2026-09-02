@@ -10,14 +10,26 @@ import { isoDateTimeSchema, uuidSchema } from "./common.schema.js";
  * into `approved: true` for a specific, single downstream execution.
  *
  * Lifecycle: PENDING -> APPROVED | REJECTED | REVOKED;
- * APPROVED -> CONSUMED (one execution) or REVOKED.
+ * APPROVED -> CONSUMED | CLAIMED | REVOKED;
+ * CLAIMED -> FULFILLED | FAILED | OUTCOME_UNKNOWN.
+ * CONSUMED remains until callers migrate off consume (CP6).
  */
 export const approvalRequestStatusSchema = z.enum([
   "PENDING",
   "APPROVED",
   "REJECTED",
   "CONSUMED",
+  "CLAIMED",
+  "FULFILLED",
+  "FAILED",
+  "OUTCOME_UNKNOWN",
   "REVOKED",
+]);
+
+export const liveApprovalFinalOutcomeSchema = z.enum([
+  "FULFILLED",
+  "FAILED",
+  "OUTCOME_UNKNOWN",
 ]);
 
 export const approvalRequestSchema = z.object({
@@ -34,9 +46,9 @@ export const approvalRequestSchema = z.object({
   reason: z.string().min(1).max(2000),
   /** Free-form details about what's being approved (e.g. which endpoint/request). */
   context: z.record(z.string(), z.unknown()).default({}),
-  /** When set, consume only authorizes this exact artifact hash. */
+  /** When set, consume/claim only authorizes this exact artifact hash. */
   artifactHash: z.string().min(1).max(128).nullable().default(null),
-  /** After this instant the approval cannot be consumed. */
+  /** After this instant the approval cannot be consumed or claimed. */
   expiresAt: isoDateTimeSchema.nullable().default(null),
   /** Observations that must appear in tool output for VERIFIED. Locked at approval time. */
   expectedObservations: z.array(z.string().min(1).max(500)).max(32).default([]),
@@ -48,8 +60,22 @@ export const approvalRequestSchema = z.object({
   decidedBy: z.string().min(1).max(200).nullable(),
   decidedAt: isoDateTimeSchema.nullable(),
   decisionReason: z.string().min(1).max(2000).nullable(),
+  /** Server-minted claim id. Null until CLAIMED. Callers cannot supply this. */
+  liveExecutionId: uuidSchema.nullable().default(null),
+  claimedAt: isoDateTimeSchema.nullable().default(null),
+  claimedBy: z.string().min(1).max(200).nullable().default(null),
+  /** HTTP/request boundary recorded at claim time. Not authority. */
+  requestId: z.string().min(1).max(200).nullable().default(null),
+  executionStartedAt: isoDateTimeSchema.nullable().default(null),
+  finalizedAt: isoDateTimeSchema.nullable().default(null),
+  finalOutcome: liveApprovalFinalOutcomeSchema.nullable().default(null),
+  finalizeReason: z.string().min(1).max(2000).nullable().default(null),
+  /** Tool-runtime execution id, copied at finalize as evidence only. */
+  runtimeExecutionId: z.string().min(1).max(128).nullable().default(null),
+  outputEvidence: z.string().min(1).max(4000).nullable().default(null),
 });
 
 export type ApprovalRequestStatus = z.infer<typeof approvalRequestStatusSchema>;
+export type LiveApprovalFinalOutcome = z.infer<typeof liveApprovalFinalOutcomeSchema>;
 export type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 export type ApprovalRequestInput = z.input<typeof approvalRequestSchema>;

@@ -38,6 +38,24 @@ export type PresentedLiveExecution = {
   readonly agentId?: string;
 };
 
+export type ClaimLiveApprovalInput = {
+  readonly entityType: string;
+  readonly action: string;
+  readonly executorId: string;
+  readonly artifactHash?: string;
+  readonly requestId?: string;
+};
+
+export type FinalizeLiveApprovalOutcome = "FULFILLED" | "FAILED" | "OUTCOME_UNKNOWN";
+
+export type FinalizeLiveApprovalInput = {
+  readonly liveExecutionId: string;
+  readonly outcome: FinalizeLiveApprovalOutcome;
+  readonly reason?: string;
+  readonly runtimeExecutionId?: string;
+  readonly outputEvidence?: string;
+};
+
 export class LiveApprovalPersistenceError extends Error {
   constructor(
     readonly kind: "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE",
@@ -59,7 +77,7 @@ function mapRpcError(error: { message: string }): never {
     throw new LiveApprovalPersistenceError("NOT_FOUND", message);
   }
   if (
-    /already been decided|not APPROVED|REVOKED|expired at|authorizes |cannot be revoked|cannot be redeemed|requires presenting that artifact/i.test(
+    /already been decided|not APPROVED|not CLAIMED|REVOKED|expired at|authorizes |cannot be revoked|cannot be redeemed|cannot be claimed|requires presenting that artifact|claim requires|liveExecutionId|FULFILLED requires|FAILED requires|OUTCOME_UNKNOWN requires|already been finalized|conflicting terminal|invalid terminal|cannot be replaced/i.test(
       message,
     )
   ) {
@@ -157,6 +175,38 @@ export class LiveApprovalRequestRepository {
       p_entity_type: presented?.entityType ?? null,
       p_action: presented?.action ?? null,
       p_agent_id: presented?.agentId ?? null,
+    });
+    return parseRecord(data);
+  }
+
+  async claim(id: string, presented: ClaimLiveApprovalInput): Promise<ApprovalRequest> {
+    const data = await callRpc(this.client, "claim_live_approval_request", {
+      p_id: id,
+      p_entity_type: presented.entityType,
+      p_action: presented.action,
+      p_executor_id: presented.executorId,
+      p_artifact_hash: presented.artifactHash ?? null,
+      p_request_id: presented.requestId ?? null,
+    });
+    return parseRecord(data);
+  }
+
+  async markExecutionStarted(id: string, liveExecutionId: string): Promise<ApprovalRequest> {
+    const data = await callRpc(this.client, "mark_live_approval_execution_started", {
+      p_id: id,
+      p_live_execution_id: liveExecutionId,
+    });
+    return parseRecord(data);
+  }
+
+  async finalize(id: string, input: FinalizeLiveApprovalInput): Promise<ApprovalRequest> {
+    const data = await callRpc(this.client, "finalize_live_approval_request", {
+      p_id: id,
+      p_live_execution_id: input.liveExecutionId,
+      p_outcome: input.outcome,
+      p_reason: input.reason ?? null,
+      p_runtime_execution_id: input.runtimeExecutionId ?? null,
+      p_output_evidence: input.outputEvidence ?? null,
     });
     return parseRecord(data);
   }
