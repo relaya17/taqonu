@@ -929,7 +929,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 setNavOpen(true);
               }}
               aria-label={t("a11y.openMenu")}
-              aria-expanded={navOpen || !navCollapsed}
+              aria-expanded={navOpen}
               aria-controls={navId}
               sx={{
                 display: {

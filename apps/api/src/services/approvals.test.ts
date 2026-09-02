@@ -134,7 +134,7 @@ describe("approvals service", () => {
 
     const consumed = await consumeApprovalRequest(request.id);
     expect(consumed.status).toBe("CONSUMED");
-    expect(await getApprovalRequest(request.id)?.status).toBe("CONSUMED");
+    expect((await getApprovalRequest(request.id))?.status).toBe("CONSUMED");
   });
 
   it("consumeApprovalRequest throws when the request is not APPROVED", async () => {
@@ -145,7 +145,7 @@ describe("approvals service", () => {
       reason: "run checks",
     });
 
-    await expect(consumeApprovalRequest(request.id)).toThrow(/not APPROVED/i);
+    await expect(consumeApprovalRequest(request.id)).rejects.toThrow(/not APPROVED/i);
   });
 
   it("consumeApprovalRequest throws the second time it is called on the same request", async () => {
@@ -246,12 +246,14 @@ describe("approval attack suite — substitution must always DENY", () => {
   it("ALLOWS the exact approved execution", async () => {
     const id = await approved({ artifactHash: "sha256:abc" });
     expect(
-      await consumeApprovalRequest(id, {
-        artifactHash: "sha256:abc",
-        entityType: "RECORD",
-        action: "UPDATE",
-        agentId: "agent-alpha",
-      }).status,
+      (
+        await consumeApprovalRequest(id, {
+          artifactHash: "sha256:abc",
+          entityType: "RECORD",
+          action: "UPDATE",
+          agentId: "agent-alpha",
+        })
+      ).status,
     ).toBe("CONSUMED");
   });
 
@@ -377,7 +379,7 @@ describe("approval revocation — revocation beats approval", () => {
         agentId: "agent-alpha",
       }),
     ).rejects.toThrow(/REVOKED/);
-    expect(await getApprovalRequest(id)?.status).toBe("REVOKED");
+    expect((await getApprovalRequest(id))?.status).toBe("REVOKED");
   });
 
   it("checks revocation BEFORE expiry (a revoked approval never reports as merely expired)", async () => {
@@ -442,7 +444,7 @@ describe("approval revocation — revocation beats approval", () => {
       revokeApprovalRequest(id, { revokedBy: "human-2", reason: "second thoughts" }),
     ).rejects.toThrow(/already been CONSUMED and cannot be revoked/);
     // The record still tells the truth about what happened.
-    expect(await getApprovalRequest(id)?.status).toBe("CONSUMED");
+    expect((await getApprovalRequest(id))?.status).toBe("CONSUMED");
   });
 
   it("REFUSES to revoke an already-REVOKED approval", async () => {
@@ -451,7 +453,7 @@ describe("approval revocation — revocation beats approval", () => {
     await expect(
       revokeApprovalRequest(id, { revokedBy: "human-3", reason: "second" }),
     ).rejects.toThrow(/cannot be revoked/);
-    expect(await getApprovalRequest(id)?.revokedBy).toBe("human-2");
+    expect((await getApprovalRequest(id))?.revokedBy).toBe("human-2");
   });
 
   it("revokeApprovalRequest throws NOT_FOUND for an unknown id", async () => {
@@ -718,7 +720,7 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
   });
 
   it("get returns CLAIMED and terminal records with persisted claim metadata", async () => {
-    const claimed = await claimApprovalRequest(await approve(), matching);
+    const claimed = await claimApprovalRequest((await approve()).id, matching);
     expect((await getApprovalRequest(claimed.id))?.liveExecutionId).toBe(claimed.liveExecutionId);
     await markApprovalExecutionStarted(claimed.id, claimed.liveExecutionId as string);
     const finalized = await finalizeApprovalRequest(claimed.id, {
@@ -734,7 +736,7 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
   });
 
   it("marks execution started idempotently for the same liveExecutionId", async () => {
-    const claimed = await claimApprovalRequest(await approve(), matching);
+    const claimed = await claimApprovalRequest((await approve()).id, matching);
     const started = await markApprovalExecutionStarted(
       claimed.id,
       claimed.liveExecutionId as string,
@@ -760,7 +762,7 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
   });
 
   it("finalizes CLAIMED to FULFILLED, FAILED, and OUTCOME_UNKNOWN", async () => {
-    const fulfilledClaim = await claimApprovalRequest(await approve({ reason: "ok" }), matching);
+    const fulfilledClaim = await claimApprovalRequest((await approve({ reason: "ok" })).id, matching);
     await markApprovalExecutionStarted(
       fulfilledClaim.id,
       fulfilledClaim.liveExecutionId as string,
@@ -776,7 +778,7 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
       ).status,
     ).toBe("FULFILLED");
 
-    const failedClaim = await claimApprovalRequest(await approve({ reason: "fail" }), matching);
+    const failedClaim = await claimApprovalRequest((await approve({ reason: "fail" })).id, matching);
     expect(
       (
         await finalizeApprovalRequest(failedClaim.id, {
@@ -788,7 +790,7 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
     ).toBe("FAILED");
 
     const unknownClaim = await claimApprovalRequest(
-      await approve({ reason: "unknown" }),
+      (await approve({ reason: "unknown" })).id,
       matching,
     );
     await markApprovalExecutionStarted(
@@ -807,7 +809,7 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
   });
 
   it("rejects illegal finalize and does not reopen or reclaim", async () => {
-    const claimed = await claimApprovalRequest(await approve(), matching);
+    const claimed = await claimApprovalRequest((await approve()).id, matching);
     await expect(
       finalizeApprovalRequest(claimed.id, {
         liveExecutionId: claimed.liveExecutionId as string,

@@ -102,6 +102,9 @@ vi.mock("../services/security-sentinel-dispatch.js", async (importOriginal) => {
 const { registerAgentFabricRoutes } = await import("./agent-fabric.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
+const { resetApprovalsForTests } = await import(
+  "../services/approvals-test-store.js"
+);
 
 let app: FastifyInstance;
 
@@ -166,6 +169,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  resetApprovalsForTests();
   getRequestUser.mockReset();
   // Signed in as Owner A by default — individual tests override this to
   // simulate an unauthenticated caller (mockReturnValue(null)) or a

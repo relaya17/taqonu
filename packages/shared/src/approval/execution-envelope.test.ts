@@ -11,6 +11,7 @@ import {
   hashArtifactManifest,
   hashCanonicalJson,
   matchExecutionCandidate,
+  validateExecutionApprovalEnvelope,
   type ExecutionCandidate,
 } from "../node.js";
 
@@ -73,7 +74,7 @@ describe("atlas-c14n-json/v1", () => {
     expect(() => canonicalizeJson(Number.NaN)).toThrow(/finite/);
     expect(() => canonicalizeJson(Number.POSITIVE_INFINITY)).toThrow(/finite/);
     expect(() => canonicalizeJson(-0)).toThrow(/not -0/);
-    expect(() => canonicalizeJson("\ud800")).toThrow(/unpaired surrogates/);
+    expect(() => canonicalizeJson(String.fromCharCode(0xd800))).toThrow(/unpaired surrogates/);
     const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
     expect(() => canonicalizeJson(cyclic)).toThrow(/cyclic/);
@@ -130,7 +131,12 @@ describe("ExecutionApprovalEnvelopeV1", () => {
 
   it("rejects version, hash, required-field, and nullable-artifact semantic failures", () => {
     const envelope = createExecutionApprovalEnvelope(candidate());
-    expect(() => createExecutionApprovalEnvelope(candidate({ canonicalizationVersion: "atlas-c14n-json/v0" as "atlas-c14n-json/v1" }))).toThrow();
+    expect(() =>
+      validateExecutionApprovalEnvelope({
+        ...envelope,
+        canonicalizationVersion: "atlas-c14n-json/v0",
+      }),
+    ).toThrow();
     expect(() => createExecutionApprovalEnvelope(candidate({ schemaVersion: "atlas.execution-approval-envelope/v0" as "atlas.execution-approval-envelope/v1" }))).toThrow();
     expect(() => createExecutionApprovalEnvelope(candidate({ requester: { principalId: "", principalType: "USER", tenantId: "tenant-1" } }))).toThrow();
     expect(() => createExecutionApprovalEnvelope(candidate({ artifact: { artifactId: "artifact-1", artifactHash: null, hashAlgorithm: null, canonicalizationVersion: null } }))).toThrow();

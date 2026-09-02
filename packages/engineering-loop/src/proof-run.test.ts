@@ -110,7 +110,7 @@ describe("Atlas 1.1 Proof golden", () => {
     it("absolute path to non-existent system path fails gracefully", () => {
       // Explicitly pass an absolute path to a system location
       const resolved = resolveGoldenWorkspace({
-        explicitRoot: "/etc/passwd", // absolute path to likely non-existent location (security check)
+        explicitRoot: "/nonexistent-atlas-proof-root-9f3c2a1b/passwd",
         envRoot: null,
         cwd: REPO,
       });

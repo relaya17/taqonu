@@ -393,7 +393,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
 
   it("marks execution started once, idempotently for the same liveExecutionId", async () => {
     const { repository } = repositoryFromClient();
-    const claimed = await repository.claim(await approve(repository), matching);
+    const claimed = await repository.claim((await approve(repository)).id, matching);
     const started = await repository.markExecutionStarted(
       claimed.id,
       claimed.liveExecutionId as string,
@@ -420,7 +420,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
 
   it("finalizes CLAIMED to FULFILLED, FAILED, and OUTCOME_UNKNOWN", async () => {
     const { repository } = repositoryFromClient();
-    const fulfilledClaim = await repository.claim(await approve(repository, { reason: "ok" }), matching);
+    const fulfilledClaim = await repository.claim((await approve(repository, { reason: "ok" })).id, matching);
     await repository.markExecutionStarted(
       fulfilledClaim.id,
       fulfilledClaim.liveExecutionId as string,
@@ -437,7 +437,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
     expect(fulfilled.outputEvidence).toBe("ok");
 
     const failedClaim = await repository.claim(
-      await approve(repository, { reason: "fail" }),
+      (await approve(repository, { reason: "fail" })).id,
       matching,
     );
     const failed = await repository.finalize(failedClaim.id, {
@@ -449,7 +449,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
     expect(failed.finalizeReason).toBe("tool exploded");
 
     const unknownClaim = await repository.claim(
-      await approve(repository, { reason: "unknown" }),
+      (await approve(repository, { reason: "unknown" })).id,
       matching,
     );
     await repository.markExecutionStarted(
@@ -466,7 +466,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
 
   it("rejects illegal finalize and does not reopen or reclaim", async () => {
     const { repository } = repositoryFromClient();
-    const claimed = await repository.claim(await approve(repository), matching);
+    const claimed = await repository.claim((await approve(repository)).id, matching);
     await expect(
       repository.finalize(claimed.id, {
         liveExecutionId: claimed.liveExecutionId as string,
@@ -521,7 +521,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
   it("persists claim occupancy across repository instances sharing a client", async () => {
     const client = createInProcessLiveApprovalClient();
     const first = new LiveApprovalRequestRepository(client);
-    const claimed = await first.claim(await approve(first), matching);
+    const claimed = await first.claim((await approve(first)).id, matching);
     const second = new LiveApprovalRequestRepository(client);
     const reloaded = await second.get(claimed.id);
     expect(reloaded?.status).toBe("CLAIMED");
