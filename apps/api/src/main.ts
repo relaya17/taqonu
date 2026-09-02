@@ -86,7 +86,8 @@ async function main(): Promise<void> {
   const server = createServer((req, res) => handle(req, res));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "0.0.0.0", () => resolve());
+    // Dual-stack (:: + IPv4) so Windows Chrome `localhost` (::1) works, not only 127.0.0.1.
+    server.listen({ port, ipv6Only: false }, () => resolve());
   });
   console.error(
     JSON.stringify({

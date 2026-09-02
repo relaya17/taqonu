@@ -171,7 +171,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const locale = useLocale();
   const pathname = usePathname();
   const { mode, toggleMode } = useColorMode();
-  const isRtl = locale === "he" || locale === "ar";
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Small screens: closed by default; hamburger opens overlay drawer. */
@@ -186,7 +185,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       ),
   );
   const navId = useId();
-  const anchor = isRtl ? "right" : "left";
+  /**
+   * Always physical "left". MUI `theme.direction` + stylis-plugin-rtl already
+   * map that to inline-start. Flipping again (`isRtl ? "right"`) parks the
+   * paper on the opposite side of the reserved slot, so the nav overlays
+   * the page and cannot be dismissed.
+   */
+  const anchor = "left" as const;
+  /** Desktop permanent nav can be hidden; mobile still uses the overlay drawer. */
+  const [navCollapsed, setNavCollapsed] = useState(false);
 
   useEffect(() => {
     setNavOpen(false);
@@ -336,10 +343,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <>
         <Stack spacing={0.75} sx={{ px: 1.5, mb: 3 }}>
-          {brandMark("/", {
-            ...(opts.mobile ? { onClick: () => setNavOpen(false) } : {}),
-            tone: opts.tone ?? "dark",
-          })}
+          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={0.5}>
+            {brandMark("/", {
+              ...(opts.mobile ? { onClick: () => setNavOpen(false) } : {}),
+              tone: opts.tone ?? "dark",
+            })}
+            {opts.mobile ? null : (
+              <IconButton
+                size="small"
+                aria-label={t("a11y.closeMenu")}
+                onClick={() => setNavCollapsed(true)}
+                sx={{ color: tone.textMuted, mt: -0.5, me: -0.5 }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Stack>
           <Typography
             variant="caption"
             sx={{ opacity: 0.7, textAlign: "start", color: tone.textMuted }}
@@ -783,7 +802,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         width: "100%",
         maxWidth: "100%",
         overflowX: "clip",
-        flexDirection: isRtl ? "row-reverse" : "row",
       }}
     >
       <a href="#main-content" className="skip-link" onClick={focusMain}>
@@ -818,13 +836,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         {nav({ mobile: true, tone: appMobileToneKey })}
       </Drawer>
 
-      {/* Desktop: permanent sidebar */}
+      {/* Desktop: docked sidebar — closable; hidden when collapsed */}
       <Drawer
         variant="permanent"
         anchor={anchor}
         open
         sx={{
-          display: { xs: "none", md: "block" },
+          display: {
+            xs: "none",
+            md: navCollapsed ? "none" : "block",
+          },
           width: DRAWER_WIDTH,
           flexShrink: 0,
           [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
@@ -845,7 +866,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           minWidth: 0,
           width: {
             xs: "100%",
-            md: `calc(100% - ${DRAWER_WIDTH}px)`,
+            md: navCollapsed ? "100%" : `calc(100% - ${DRAWER_WIDTH}px)`,
           },
           maxWidth: "100%",
           overflowX: "clip",
@@ -900,11 +921,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             <IconButton
               ref={menuButtonRef}
               edge="end"
-              onClick={() => setNavOpen(true)}
+              onClick={() => {
+                if (navCollapsed) {
+                  setNavCollapsed(false);
+                  return;
+                }
+                setNavOpen(true);
+              }}
               aria-label={t("a11y.openMenu")}
-              aria-expanded={navOpen}
+              aria-expanded={navOpen || !navCollapsed}
               aria-controls={navId}
-              sx={{ display: { xs: "inline-flex", md: "none" } }}
+              sx={{
+                display: {
+                  xs: "inline-flex",
+                  md: navCollapsed ? "inline-flex" : "none",
+                },
+              }}
             >
               <MenuIcon />
             </IconButton>
