@@ -268,3 +268,199 @@ describe("GET /api/v1/intelligence/hypotheses (regression: read path untouched b
     expect(Array.isArray(res.json())).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unit 6 — Golden Projects: control-plane CONFIGURATION writes (admin-gated).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ADMIN_ID = "55555555-5555-4555-8555-555555555555";
+
+function adminUser(partial: Partial<AuthUser> = {}): AuthUser {
+  return { ...regularUser(), id: ADMIN_ID, email: "admin@example.com", role: "admin", ...partial };
+}
+
+function validGoldenProjectBody(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "Reference API",
+    description: "A golden reference project",
+    rootPath: "fixtures/golden-brokeros",
+    goldenReason: "Exemplifies clean API design and error handling.",
+    domains: ["API_DESIGN"],
+    ...overrides,
+  };
+}
+
+describe("POST /api/v1/intelligence/golden-projects (CONFIGURATION.CREATE, admin only)", () => {
+  it("401s when no user is signed in", async () => {
+    getRequestUser.mockReturnValue(undefined);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/intelligence/golden-projects",
+      payload: validGoldenProjectBody(),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("403s for an authenticated non-admin user", async () => {
+    getRequestUser.mockReturnValue(regularUser());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/intelligence/golden-projects",
+      payload: validGoldenProjectBody(),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("registers a golden project for an admin and audits CONFIGURATION.CREATE", async () => {
+    getRequestUser.mockReturnValue(adminUser());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/intelligence/golden-projects",
+      payload: validGoldenProjectBody(),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().name).toBe("Reference API");
+
+    const entry = listUnifiedAuditEntries().find(
+      (e) => e.type === "intelligence.goldenProjects.register",
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.actorId).toBe(ADMIN_ID);
+    expect(entry?.policy).toBe("CONFIGURATION.CREATE");
+    expect(entry?.result).toBe("SUCCESS");
+  });
+});
+
+describe("PATCH /api/v1/intelligence/golden-projects/:id/status (CONFIGURATION.UPDATE, admin only)", () => {
+  const validId = "00000000-0000-4000-8000-000000000000";
+
+  it("401s when no user is signed in", async () => {
+    getRequestUser.mockReturnValue(undefined);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/intelligence/golden-projects/${validId}/status`,
+      payload: { status: "VERIFIED" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("403s for an authenticated non-admin user", async () => {
+    getRequestUser.mockReturnValue(regularUser());
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/intelligence/golden-projects/${validId}/status`,
+      payload: { status: "VERIFIED" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("400s for a malformed golden-project id (admin) without reaching the mutation service", async () => {
+    getRequestUser.mockReturnValue(adminUser());
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/intelligence/golden-projects/not-a-uuid/status",
+      payload: { status: "VERIFIED" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("updates status for an admin and audits CONFIGURATION.UPDATE", async () => {
+    getRequestUser.mockReturnValue(adminUser());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/intelligence/golden-projects",
+      payload: validGoldenProjectBody(),
+    });
+    const projectId = createRes.json().id as string;
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/intelligence/golden-projects/${projectId}/status`,
+      payload: { status: "VERIFIED" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("VERIFIED");
+
+    const entry = listUnifiedAuditEntries().find(
+      (e) => e.type === "intelligence.goldenProjects.updateStatus",
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.actorId).toBe(ADMIN_ID);
+    expect(entry?.policy).toBe("CONFIGURATION.UPDATE");
+    expect(entry?.result).toBe("SUCCESS");
+  });
+});
+
+describe("PATCH /api/v1/intelligence/golden-projects/:id/scores (CONFIGURATION.UPDATE, admin only)", () => {
+  const validId = "00000000-0000-4000-8000-000000000000";
+
+  it("401s when no user is signed in", async () => {
+    getRequestUser.mockReturnValue(undefined);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/intelligence/golden-projects/${validId}/scores`,
+      payload: { codeQuality: 0.9 },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("403s for an authenticated non-admin user", async () => {
+    getRequestUser.mockReturnValue(regularUser());
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/intelligence/golden-projects/${validId}/scores`,
+      payload: { codeQuality: 0.9 },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("400s for a malformed golden-project id (admin) without reaching the mutation service", async () => {
+    getRequestUser.mockReturnValue(adminUser());
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/intelligence/golden-projects/not-a-uuid/scores",
+      payload: { codeQuality: 0.9 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("updates scores for an admin and audits CONFIGURATION.UPDATE", async () => {
+    getRequestUser.mockReturnValue(adminUser());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/intelligence/golden-projects",
+      payload: validGoldenProjectBody(),
+    });
+    const projectId = createRes.json().id as string;
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/intelligence/golden-projects/${projectId}/scores`,
+      payload: { codeQuality: 0.95, security: 0.9 },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const entry = listUnifiedAuditEntries().find(
+      (e) => e.type === "intelligence.goldenProjects.updateScores",
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.actorId).toBe(ADMIN_ID);
+    expect(entry?.policy).toBe("CONFIGURATION.UPDATE");
+    expect(entry?.result).toBe("SUCCESS");
+  });
+});
+
+describe("Unit 6 read regression: public GET routes remain readable and unauthenticated", () => {
+  it("GET /golden-projects does not require a signed-in user", async () => {
+    getRequestUser.mockReturnValue(undefined);
+    const res = await app.inject({ method: "GET", url: "/api/v1/intelligence/golden-projects" });
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.json())).toBe(true);
+  });
+
+  it("GET /marketplace does not require a signed-in user", async () => {
+    getRequestUser.mockReturnValue(undefined);
+    const res = await app.inject({ method: "GET", url: "/api/v1/intelligence/marketplace" });
+    expect(res.statusCode).toBe(200);
+  });
+});

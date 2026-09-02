@@ -6,6 +6,8 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { requireUser, requireAdmin } from "../middleware/auth-guards.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
 import {
   createHypothesis,
   listHypotheses,
@@ -83,11 +85,15 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.post("/api/v1/intelligence/hypotheses", async (request, reply) => {
-    const user = (request as { user?: { id: string } }).user;
-    if (!user?.id) {
-      return reply.status(401).send({ error: "Authentication required" });
-    }
+    const user = await requireUser(app, request);
     const body = hypothesisCreateSchema.parse(request.body);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "intelligence.hypotheses.create",
+      actorId: user.id,
+      input: { statement: body.statement, domain: body.domain },
+    });
     const hypothesis = createHypothesis({
       projectId: body.projectId ?? null,
       statement: body.statement,
@@ -101,8 +107,16 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.patch("/api/v1/intelligence/hypotheses/:id/status", async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const user = await requireUser(app, request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { status } = z.object({ status: hypothesisStatusSchema }).parse(request.body);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "UPDATE",
+      routeLabel: "intelligence.hypotheses.updateStatus",
+      actorId: user.id,
+      input: { hypothesisId: id, status },
+    });
     const updated = updateHypothesisStatus(id, status);
     if (!updated) {
       return reply.status(404).send({ error: "Hypothesis not found" });
@@ -111,8 +125,16 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.post("/api/v1/intelligence/hypotheses/:id/evidence/supporting", async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const user = await requireUser(app, request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { evidenceId } = z.object({ evidenceId: z.string().uuid() }).parse(request.body);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "UPDATE",
+      routeLabel: "intelligence.hypotheses.addSupportingEvidence",
+      actorId: user.id,
+      input: { hypothesisId: id, evidenceId },
+    });
     const updated = addSupportingEvidence(id, evidenceId);
     if (!updated) {
       return reply.status(404).send({ error: "Hypothesis not found" });
@@ -121,8 +143,16 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.post("/api/v1/intelligence/hypotheses/:id/evidence/contradicting", async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const user = await requireUser(app, request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { evidenceId } = z.object({ evidenceId: z.string().uuid() }).parse(request.body);
+    enforceEntityWrite({
+      entityType: "RECORD",
+      action: "UPDATE",
+      routeLabel: "intelligence.hypotheses.addContradictingEvidence",
+      actorId: user.id,
+      input: { hypothesisId: id, evidenceId },
+    });
     const updated = addContradictingEvidence(id, evidenceId);
     if (!updated) {
       return reply.status(404).send({ error: "Hypothesis not found" });
@@ -143,7 +173,15 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.post("/api/v1/intelligence/golden-projects", async (request, reply) => {
+    const user = await requireAdmin(app, request);
     const body = goldenProjectCreateSchema.parse(request.body);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "CREATE",
+      routeLabel: "intelligence.goldenProjects.register",
+      actorId: user.id,
+      input: { name: body.name, domains: body.domains },
+    });
     const project = registerGoldenProject({
       name: body.name,
       description: body.description ?? "",
@@ -155,8 +193,16 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.patch("/api/v1/intelligence/golden-projects/:id/status", async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const user = await requireAdmin(app, request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { status } = z.object({ status: goldenProjectStatusSchema }).parse(request.body);
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "intelligence.goldenProjects.updateStatus",
+      actorId: user.id,
+      input: { goldenProjectId: id, status },
+    });
     const updated = updateGoldenProjectStatus(id, status);
     if (!updated) {
       return reply.status(404).send({ error: "Golden project not found" });
@@ -165,7 +211,8 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   });
 
   app.patch("/api/v1/intelligence/golden-projects/:id/scores", async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const user = await requireAdmin(app, request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = z.object({
       codeQuality: z.number().min(0).max(1).optional(),
       testCoverage: z.number().min(0).max(1).optional(),
@@ -186,7 +233,14 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
     if (body.documentation !== undefined) scores.documentation = body.documentation;
     if (body.security !== undefined) scores.security = body.security;
     if (body.maintainability !== undefined) scores.maintainability = body.maintainability;
-    
+
+    enforceEntityWrite({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      routeLabel: "intelligence.goldenProjects.updateScores",
+      actorId: user.id,
+      input: { goldenProjectId: id },
+    });
     const updated = updateGoldenProjectScores(id, scores);
     if (!updated) {
       return reply.status(404).send({ error: "Golden project not found" });
