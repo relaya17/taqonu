@@ -258,6 +258,31 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.artifactHash).toBe(computeArtifactHash(ARTIFACT));
   });
 
+  it("does not re-require approval at Stage 4 after a matching RECORD.CREATE consume", async () => {
+    const approved = createApprovalRequest({
+      entityType: "RECORD",
+      action: "CREATE",
+      requestedBy: "RESEARCHER",
+      reason: "phase-3e governed re-check",
+      artifactHash: computeArtifactHash(ARTIFACT),
+    });
+    decideApprovalRequest(approved.id, {
+      decidedBy: OWNER_A,
+      approve: true,
+      decisionReason: "ok",
+    });
+    const result = await executeGovernedAction(
+      baseRequest({
+        approvalRequestId: approved.id,
+        entityType: "RECORD",
+        action: "CREATE",
+      }),
+    );
+    expect(result.status).not.toBe("APPROVAL_REQUIRED");
+    expect(result.stage).toBe("EXECUTION");
+    expect(result.status).toBe("EXECUTED");
+  });
+
   it("persists an executed GovernanceDecision with authoritative context and risk", async () => {
     const result = await executeGovernedAction(
       baseRequest({

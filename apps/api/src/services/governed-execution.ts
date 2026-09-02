@@ -406,6 +406,7 @@ export async function executeGovernedAction(
     ...(request.delegationHopCount !== undefined
       ? { delegationHopCount: request.delegationHopCount }
       : {}),
+    ...(approval !== undefined ? { consumedApproval: approval } : {}),
   });
 
   if (gate.decision !== "ALLOWED") {

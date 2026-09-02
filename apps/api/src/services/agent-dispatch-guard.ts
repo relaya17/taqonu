@@ -10,6 +10,7 @@ import {
 import {
   agentMayExecute,
   type AgentRuntimeControl,
+  type ApprovalRequest,
   type UnifiedAuditEntryInput,
 } from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
@@ -32,12 +33,13 @@ import { createApprovalRequest } from "./approvals.js";
  *    — a signed-in human calling a write endpoint directly IS the approval
  *    ("self-approved write"). It throws on anything but ALLOWED, because for
  *    that call shape APPROVAL_REQUIRED/DENIED are both exceptional.
- *  - `dispatchAgentAction` calls `authorizeEntityAction` with `approved:false`
- *    — an agent or automation is never its own approval. APPROVAL_REQUIRED is
- *    an ordinary, expected outcome here (most write-tier entity actions land
- *    there per `authorizeEntityAction`'s gating rules — see step 1 below), so
- *    this function returns a discriminated `DispatchAgentActionResult` for
- *    callers to branch on instead of throwing.
+ *  - `dispatchAgentAction` never takes a caller boolean as approval authority.
+ *    `approved` for `authorizeEntityAction` is re-derived from a consumed
+ *    `ApprovalRequest` (entity/action/artifact/`requestedBy` vs executor),
+ *    matching `consumeApprovalRequest`. No record → same as today (`false`).
+ *    A presented record that does not match fails closed (DENIED).
+ *    APPROVAL_REQUIRED is an ordinary outcome when nothing matches. HUMAN_ONLY
+ *    is never satisfied by a consumed record.
  *
  * On top of the Policy Engine + Risk Engine + Audit Log combination
  * `enforceEntityWrite` already established, this module adds two risk
@@ -112,6 +114,11 @@ export interface DispatchAgentActionOptions {
     | "UNKNOWN";
   /** Agent A → B hops. Each hop floors to approval; never inherits unlimited authority. */
   readonly delegationHopCount?: number;
+  /**
+   * Consumed Stage-3 `ApprovalRequest` record. Re-derived here — not a boolean.
+   * Absent → current behavior. Present but mismatched → DENIED (fail closed).
+   */
+  readonly consumedApproval?: ApprovalRequest;
 }
 
 export interface DispatchGovernanceEvaluation {
@@ -251,6 +258,38 @@ function floorBucketForAutomationActor(
   return stricterBucket(bucket, "APPROVAL");
 }
 
+/**
+ * Same binding `consumeApprovalRequest` enforces: entity, action, executor
+ * vs `requestedBy`, and artifact when the record is artifact-bound.
+ * Status must already be CONSUMED — Stage 3 is the only producer.
+ */
+function consumedApprovalMatchesGovernedAction(
+  record: ApprovalRequest,
+  current: {
+    readonly entityType: string;
+    readonly action: string;
+    readonly executorId: string;
+    readonly artifactHash?: string;
+  },
+): boolean {
+  if (record.status !== "CONSUMED") return false;
+  if (record.entityType !== current.entityType) return false;
+  if (record.action !== current.action) return false;
+  if (current.executorId !== record.requestedBy) return false;
+  if (record.artifactHash) {
+    if (current.artifactHash === undefined) return false;
+    if (current.artifactHash !== record.artifactHash) return false;
+  }
+  return true;
+}
+
+function presentedArtifactHash(
+  input: Record<string, unknown> | undefined,
+): string | undefined {
+  const value = input?.["artifactHash"];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 export function dispatchAgentAction(
   options: DispatchAgentActionOptions,
 ): DispatchAgentActionResult {
@@ -289,14 +328,52 @@ export function dispatchAgentAction(
     };
   }
 
-  // Step 1: agent/automation actions are never self-approved (unlike
-  // `enforceEntityWrite`'s `approved:true` human-write pattern) — only a
-  // real approval-request decision, or an AUTO/AUTO_LOG risk bucket computed
-  // below, lets an action proceed without one.
+  // Step 1: never a caller boolean. A consumed record is re-checked against
+  // this exact entity/action/executor/artifact. No record → approved false
+  // (today). A presented mismatch fails closed and does not open the write gate.
+  const artifactHash = presentedArtifactHash(options.input);
+  const approvalSatisfied = options.consumedApproval
+    ? consumedApprovalMatchesGovernedAction(options.consumedApproval, {
+        entityType,
+        action,
+        executorId: actor.agentId,
+        ...(artifactHash !== undefined ? { artifactHash } : {}),
+      })
+    : false;
+
+  if (options.consumedApproval !== undefined && !approvalSatisfied) {
+    const reason = "Consumed approval does not match this governed action";
+    appendUnifiedAuditEntry({
+      type: routeLabel,
+      actorId: actor.agentId,
+      actorKind: "AGENT",
+      agentId: actor.agentId,
+      reason,
+      input: options.input ?? {},
+      output: {},
+      policy: policyLabel,
+      risk: "CRITICAL",
+      approval: "REJECTED",
+      result: "FAILURE",
+      decision: "DENY",
+      entityType,
+      action,
+      projectId: options.projectId ?? null,
+      ownerId: actor.onBehalfOfUserId,
+      delegationHopCount: options.delegationHopCount ?? null,
+      blockedAt: "APPROVAL",
+    });
+    return {
+      decision: "DENIED",
+      reason,
+      evaluation: unevaluatedGovernanceEvaluation("DENIED", reason),
+    };
+  }
+
   const entityAuthz = authorizeEntityAction(entityType, action, {
     mode: "WRITE",
     writeGateOpen: true,
-    approved: false,
+    approved: approvalSatisfied,
   });
 
   if (entityAuthz.decision === "DENIED") {
@@ -386,8 +463,8 @@ export function dispatchAgentAction(
 
   const needsApproval =
     bucket === "HUMAN_ONLY" ||
-    bucket === "APPROVAL" ||
-    entityAuthz.decision === "APPROVAL_REQUIRED";
+    (!approvalSatisfied &&
+      (bucket === "APPROVAL" || entityAuthz.decision === "APPROVAL_REQUIRED"));
 
   if (needsApproval) {
     // requestedBy must be a real, non-fabricated identity: when there's a
