@@ -8,6 +8,7 @@ export * from "./graph.schema.js";
 export * from "./portfolio.schema.js";
 export * from "./domain-event.schema.js";
 export * from "./unified-audit-entry.schema.js";
+export * from "./governance-decision.schema.js";
 export * from "./evaluation.schema.js";
 export * from "./agent-run.schema.js";
 export * from "./tool-policy.schema.js";

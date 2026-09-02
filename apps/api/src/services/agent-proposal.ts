@@ -1,8 +1,13 @@
-import type { BusinessEntityType, EntityAction } from "@atlas/agent-core";
+import {
+  verifyProposal,
+  type BusinessEntityType,
+  type EntityAction,
+  type ProposalVerificationResult,
+} from "@atlas/agent-core";
 import { agentProposalSchema, type AgentProposal } from "@atlas/shared";
-import { verifyProposal, type ProposalVerificationResult } from "@atlas/agent-core";
 import {
   dispatchAgentAction,
+  unevaluatedGovernanceEvaluation,
   type DispatchActorKind,
   type DispatchAgentActionResult,
   type DispatchSourceContext,
@@ -147,6 +152,10 @@ export function submitAgentProposal(
     return {
       decision: "DENIED",
       reason: `Proposal verification failed — ${verification.rationale}`,
+      evaluation: unevaluatedGovernanceEvaluation(
+        "NOT_EVALUATED",
+        "Proposal verification failed before policy and risk evaluation",
+      ),
       proposal: proposalSummary,
       verification,
     };

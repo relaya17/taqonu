@@ -129,6 +129,8 @@ export async function fulfillGatewayHandoff(
     projectRoot: handoff.projectRoot,
     routeLabel: `gateway.fulfill.${handoff.operation}`,
     requestId: handoff.requestId,
+    applicationId: handoff.applicationId,
+    operation: handoff.operation,
     ...(handoff.approvalRequestId
       ? { approvalRequestId: handoff.approvalRequestId }
       : {}),

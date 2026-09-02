@@ -7,8 +7,11 @@ import {
   type EntityAction,
   type RiskBucket,
 } from "@atlas/agent-core";
-import { agentMayExecute, type AgentRuntimeControl } from "@atlas/shared";
-import type { UnifiedAuditEntryInput } from "@atlas/shared";
+import {
+  agentMayExecute,
+  type AgentRuntimeControl,
+  type UnifiedAuditEntryInput,
+} from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
 import { createApprovalRequest } from "./approvals.js";
 
@@ -111,20 +114,73 @@ export interface DispatchAgentActionOptions {
   readonly delegationHopCount?: number;
 }
 
+export interface DispatchGovernanceEvaluation {
+  readonly policy: {
+    readonly result: "NOT_EVALUATED" | "ALLOWED" | "DENIED" | "APPROVAL_REQUIRED";
+    readonly reason: string | null;
+    readonly riskTier: "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "DESTRUCTIVE" | null;
+    readonly requiresApproval: boolean | null;
+  };
+  readonly risk: {
+    readonly status: "NOT_EVALUATED" | "EVALUATED";
+    readonly score: number | null;
+    readonly rawBucket: RiskBucket | null;
+    readonly effectiveBucket: RiskBucket | null;
+    readonly factors: readonly string[];
+    readonly floors: {
+      readonly untrustedSource: boolean;
+      readonly automationActor: boolean;
+      readonly delegation: boolean;
+    };
+  };
+}
+
 export type DispatchAgentActionResult =
   | {
       readonly decision: "ALLOWED";
       readonly score: number;
       readonly bucket: RiskBucket;
       readonly auditId: string | null;
+      readonly evaluation: DispatchGovernanceEvaluation;
     }
-  | { readonly decision: "DENIED"; readonly reason: string }
+  | {
+      readonly decision: "DENIED";
+      readonly reason: string;
+      readonly evaluation: DispatchGovernanceEvaluation;
+    }
   | {
       readonly decision: "APPROVAL_REQUIRED";
       readonly approvalRequestId: string;
       readonly score: number;
       readonly bucket: RiskBucket;
+      readonly evaluation: DispatchGovernanceEvaluation;
     };
+
+export function unevaluatedGovernanceEvaluation(
+  policyResult: "NOT_EVALUATED" | "DENIED",
+  policyReason: string,
+): DispatchGovernanceEvaluation {
+  return {
+    policy: {
+      result: policyResult,
+      reason: policyReason,
+      riskTier: null,
+      requiresApproval: null,
+    },
+    risk: {
+      status: "NOT_EVALUATED",
+      score: null,
+      rawBucket: null,
+      effectiveBucket: null,
+      factors: [],
+      floors: {
+        untrustedSource: false,
+        automationActor: false,
+        delegation: false,
+      },
+    },
+  };
+}
 
 const BUCKET_TO_AUDIT_RISK: Record<RiskBucket, UnifiedAuditEntryInput["risk"]> = {
   AUTO: "LOW",
@@ -226,6 +282,10 @@ export function dispatchAgentAction(
     return {
       decision: "DENIED",
       reason: `Agent ${actor.agentId} is ${options.agentRuntimeStatus} and cannot execute`,
+      evaluation: unevaluatedGovernanceEvaluation(
+        "NOT_EVALUATED",
+        `Agent runtime control ${options.agentRuntimeStatus} blocks policy evaluation`,
+      ),
     };
   }
 
@@ -260,7 +320,11 @@ export function dispatchAgentAction(
       delegationHopCount: options.delegationHopCount ?? null,
       blockedAt: "POLICY",
     });
-    return { decision: "DENIED", reason: entityAuthz.reason };
+    return {
+      decision: "DENIED",
+      reason: entityAuthz.reason,
+      evaluation: unevaluatedGovernanceEvaluation("DENIED", entityAuthz.reason),
+    };
   }
 
   // ALLOWED or APPROVAL_REQUIRED both carry `.policy` (EntityPolicy), which
@@ -298,6 +362,27 @@ export function dispatchAgentAction(
     delegationFloored,
   );
   const riskLevel = BUCKET_TO_AUDIT_RISK[bucket];
+  const evaluation: DispatchGovernanceEvaluation = {
+    policy: {
+      result: entityAuthz.decision,
+      reason: null,
+      riskTier: policy.risk,
+      requiresApproval: policy.requiresApproval,
+    },
+    risk: {
+      status: "EVALUATED",
+      score,
+      rawBucket,
+      effectiveBucket: bucket,
+      factors: explanation.factors,
+      floors: {
+        untrustedSource: sourceContext.trustLevel === "untrusted",
+        automationActor:
+          actor.kind === "AUTOMATION" && AUTOMATION_FLOORED_ACTIONS.has(action),
+        delegation: (options.delegationHopCount ?? 0) > 0,
+      },
+    },
+  };
 
   const needsApproval =
     bucket === "HUMAN_ONLY" ||
@@ -361,6 +446,7 @@ export function dispatchAgentAction(
       approvalRequestId: approvalRequest.id,
       score,
       bucket,
+      evaluation,
     };
   }
 
@@ -388,5 +474,5 @@ export function dispatchAgentAction(
     delegationHopCount: options.delegationHopCount ?? null,
   });
 
-  return { decision: "ALLOWED", score, bucket, auditId: record.id };
+  return { decision: "ALLOWED", score, bucket, auditId: record.id, evaluation };
 }

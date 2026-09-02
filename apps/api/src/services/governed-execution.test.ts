@@ -22,6 +22,7 @@ import {
   executeGovernedAction,
   resetGovernedIdempotencyForTests,
 } from "./governed-execution.js";
+import { listGovernanceDecisions } from "./governance-decision.js";
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
@@ -236,6 +237,138 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
     expect(result.output).toContain("answer = 42");
     expect(result.artifactHash).toBe(computeArtifactHash(ARTIFACT));
+  });
+
+  it("persists an executed GovernanceDecision with authoritative context and risk", async () => {
+    const result = await executeGovernedAction(
+      baseRequest({
+        applicationId: "atlas-control",
+        operation: "knowledge.lookup",
+        requestId: "req_governance_success",
+      }),
+    );
+    expect(result.status).toBe("EXECUTED");
+
+    const [decision] = listGovernanceDecisions();
+    expect(decision).toMatchObject({
+      recordType: "governance.decision",
+      decision: "ALLOW",
+      stage: "EXECUTION",
+      status: "EXECUTED",
+      actor: {
+        principalId: OWNER_A,
+        ownerId: OWNER_A,
+        projectId: PROJECT_A,
+        applicationId: "atlas-control",
+        agentId: "RESEARCHER",
+      },
+      operation: "knowledge.lookup",
+      policy: {
+        authority: "DEFAULT_ENTITY_POLICIES",
+        version: null,
+        result: "ALLOWED",
+        riskTier: "READ_ONLY",
+        requiresApproval: false,
+      },
+      risk: {
+        status: "EVALUATED",
+        score: 30,
+        rawBucket: "AUTO_LOG",
+        effectiveBucket: "AUTO_LOG",
+      },
+      correlation: { requestId: "req_governance_success" },
+      provenance: {
+        sourceOrigin: "user_message",
+        sourceTrustLevel: "trusted",
+      },
+      execution: { status: "EXECUTED", result: "SUCCESS", reason: null },
+    });
+    expect(decision?.risk.factors.length).toBeGreaterThan(0);
+  });
+
+  it("persists a denied GovernanceDecision without inventing policy or risk", async () => {
+    const result = await executeGovernedAction(
+      baseRequest({ identity: identity({ agentId: "JUDGE" }), toolName: "apply_patch" }),
+    );
+    expect(result.status).toBe("DENIED");
+
+    const [decision] = listGovernanceDecisions();
+    expect(decision).toMatchObject({
+      decision: "DENY",
+      stage: "AUTHORIZATION",
+      status: "DENIED",
+      policy: {
+        version: null,
+        result: "NOT_EVALUATED",
+        riskTier: null,
+        requiresApproval: null,
+      },
+      risk: {
+        status: "NOT_EVALUATED",
+        score: null,
+        rawBucket: null,
+        effectiveBucket: null,
+        factors: [],
+      },
+      execution: { status: "NOT_RUN", result: "NOT_RUN" },
+    });
+  });
+
+  it("persists an approval-required GovernanceDecision with the real approval reference", async () => {
+    const result = await executeGovernedAction(
+      baseRequest({ entityType: "DOCUMENT", action: "UPDATE" }),
+    );
+    expect(result.status).toBe("APPROVAL_REQUIRED");
+
+    const [decision] = listGovernanceDecisions();
+    expect(decision).toMatchObject({
+      decision: "REQUIRE_APPROVAL",
+      stage: "POLICY",
+      status: "APPROVAL_REQUIRED",
+      policy: {
+        version: null,
+        result: "APPROVAL_REQUIRED",
+        riskTier: "HIGH_RISK_WRITE",
+        requiresApproval: true,
+      },
+      risk: {
+        status: "EVALUATED",
+        score: 80,
+        rawBucket: "HUMAN_ONLY",
+        effectiveBucket: "HUMAN_ONLY",
+      },
+      approval: { required: true, status: "REQUIRED" },
+      execution: { status: "NOT_RUN", result: "NOT_RUN" },
+    });
+    expect(decision?.approval.requestId).toBe(result.status === "APPROVAL_REQUIRED" ? result.reason.match(/[0-9a-f-]{36}/)?.[0] : null);
+  });
+
+  it("persists execution failure after an allowed policy and risk evaluation", async () => {
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => "AWS=AKIAIOSFODNN7EXAMPLE",
+    });
+    const result = await executeGovernedAction(baseRequest());
+    expect(result.status).toBe("FAILED");
+
+    const [decision] = listGovernanceDecisions();
+    expect(decision).toMatchObject({
+      decision: "ALLOW",
+      stage: "EXECUTION",
+      status: "FAILED",
+      policy: { result: "ALLOWED", version: null },
+      risk: { status: "EVALUATED", score: 30, effectiveBucket: "AUTO_LOG" },
+      execution: { status: "FAILED", result: "FAILURE" },
+    });
+  });
+
+  it("does not report an allowed execution when GovernanceDecision persistence fails", async () => {
+    process.env.ATLAS_SKIP_AUDIT_LOG = "1";
+    await expect(executeGovernedAction(baseRequest())).rejects.toThrow(
+      "GovernanceDecision persistence is disabled",
+    );
+    delete process.env.ATLAS_SKIP_AUDIT_LOG;
   });
 
   it("replays the same idempotency key instead of executing twice", async () => {

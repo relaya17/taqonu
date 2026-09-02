@@ -1,8 +1,17 @@
-import { createHash } from "node:crypto";
-import { executeTool, type ToolExecutionOutcome } from "@atlas/agent-core";
-import type { BusinessEntityType, EntityAction } from "@atlas/agent-core";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  executeTool,
+  type BusinessEntityType,
+  type EntityAction,
+  type ToolExecutionOutcome,
+} from "@atlas/agent-core";
+import type {
+  ApprovalRequest,
+  GovernanceDecision,
+  GovernanceDecisionInput,
+} from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
-import { consumeApprovalRequest } from "./approvals.js";
+import { consumeApprovalRequest, getApprovalRequest } from "./approvals.js";
 import {
   enforceAgentToolAuthorization,
   type AuthenticatedAgentIdentity,
@@ -10,8 +19,10 @@ import {
 } from "./agent-runtime-authz.js";
 import {
   dispatchAgentAction,
+  type DispatchAgentActionResult,
   type DispatchSourceContext,
 } from "./agent-dispatch-guard.js";
+import { persistGovernanceDecision } from "./governance-decision.js";
 
 /**
  * P0.7 — the single transactional execution gate.
@@ -86,6 +97,8 @@ export interface GovernedExecutionRequest {
   readonly sourceContext: DispatchSourceContext;
   readonly projectRoot: string;
   readonly routeLabel: string;
+  readonly applicationId?: string;
+  readonly operation?: string;
   /**
    * The HTTP request boundary this execution belongs to — Fastify's
    * `request.id`. Supplied by the route rather than minted here: an id
@@ -148,11 +161,134 @@ export function resetGovernedIdempotencyForTests(): void {
   governedIdempotency.clear();
 }
 
+interface GovernanceAuditContext {
+  readonly gate: DispatchAgentActionResult | undefined;
+  readonly approval: ApprovalRequest | undefined;
+}
+
+const EMPTY_GOVERNANCE_AUDIT_CONTEXT: GovernanceAuditContext = {
+  gate: undefined,
+  approval: undefined,
+};
+
+function resolveApprovalStatus(
+  outcome: GovernedExecutionOutcome,
+  generatedApprovalId: string | null,
+  approval: ApprovalRequest | undefined,
+): GovernanceDecision["approval"]["status"] {
+  if (outcome.stage === "APPROVAL" && outcome.status === "DENIED") return "REJECTED";
+  if (generatedApprovalId) return "REQUIRED";
+  if (approval?.status === "CONSUMED") return "CONSUMED";
+  return "NOT_REQUIRED";
+}
+
+function resolveDecision(
+  outcome: GovernedExecutionOutcome,
+): GovernanceDecision["decision"] {
+  if (outcome.status === "APPROVAL_REQUIRED") return "REQUIRE_APPROVAL";
+  if (outcome.status === "DENIED") return "DENY";
+  return "ALLOW";
+}
+
+function resolveExecution(
+  outcome: GovernedExecutionOutcome,
+): GovernanceDecision["execution"] {
+  if (outcome.status === "EXECUTED") {
+    return { status: "EXECUTED", result: "SUCCESS", reason: null };
+  }
+  if (outcome.stage === "EXECUTION") {
+    return { status: "FAILED", result: "FAILURE", reason: outcome.reason };
+  }
+  return {
+    status: "NOT_RUN",
+    result: "NOT_RUN",
+    reason: "reason" in outcome ? outcome.reason : null,
+  };
+}
+
+function buildGovernanceDecision(
+  request: GovernedExecutionRequest,
+  artifactHash: string,
+  outcome: GovernedExecutionOutcome,
+  context: GovernanceAuditContext,
+): GovernanceDecisionInput {
+  const gateEvaluation = context.gate?.evaluation;
+  const generatedApprovalId =
+    context.gate?.decision === "APPROVAL_REQUIRED"
+      ? context.gate.approvalRequestId
+      : null;
+  const approvalRequestId = generatedApprovalId ?? request.approvalRequestId ?? null;
+  let policyReason = gateEvaluation?.policy.reason ?? null;
+  if (!policyReason && (outcome.stage === "AUTHORIZATION" || outcome.stage === "APPROVAL")) {
+    policyReason = "Request stopped before canonical policy evaluation";
+  }
+
+  return {
+    schemaVersion: "1.0.0",
+    recordType: "governance.decision",
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    expiresAt: context.approval?.expiresAt ?? null,
+    decision: resolveDecision(outcome),
+    stage: outcome.stage,
+    status: outcome.status,
+    actor: {
+      principalId: request.identity.ownerId,
+      kind: "AGENT",
+      ownerId: request.identity.ownerId,
+      projectId: request.identity.projectId,
+      applicationId: request.applicationId ?? null,
+      agentId: request.identity.agentId,
+    },
+    operation: request.operation ?? request.routeLabel,
+    resource: {
+      entityType: request.entityType,
+      action: request.action,
+      artifactHash,
+    },
+    policy: {
+      authority: "DEFAULT_ENTITY_POLICIES",
+      version: null,
+      result: gateEvaluation?.policy.result ?? "NOT_EVALUATED",
+      reason: policyReason,
+      riskTier: gateEvaluation?.policy.riskTier ?? null,
+      requiresApproval: gateEvaluation?.policy.requiresApproval ?? null,
+    },
+    risk: {
+      status: gateEvaluation?.risk.status ?? "NOT_EVALUATED",
+      score: gateEvaluation?.risk.score ?? null,
+      rawBucket: gateEvaluation?.risk.rawBucket ?? null,
+      effectiveBucket: gateEvaluation?.risk.effectiveBucket ?? null,
+      factors: [...(gateEvaluation?.risk.factors ?? [])],
+      floors: gateEvaluation?.risk.floors ?? {
+        untrustedSource: false,
+        automationActor: false,
+        delegation: false,
+      },
+    },
+    approval: {
+      required: approvalRequestId !== null || outcome.status === "APPROVAL_REQUIRED",
+      requestId: approvalRequestId,
+      status: resolveApprovalStatus(outcome, generatedApprovalId, context.approval),
+    },
+    correlation: { requestId: request.requestId },
+    provenance: {
+      sourceOrigin: request.sourceContext.origin,
+      sourceTrustLevel: request.sourceContext.trustLevel,
+      authorityScope: request.identity.authorityScope ?? null,
+      agentTrustLevel: request.identity.trustLevel ?? null,
+      delegationHopCount: request.delegationHopCount ?? 0,
+    },
+    execution: resolveExecution(outcome),
+  };
+}
+
 /** Single audit helper so no refusal path can silently skip the trail. */
 function auditOutcome(
   request: GovernedExecutionRequest,
   artifactHash: string,
   outcome: GovernedExecutionOutcome,
+  context: GovernanceAuditContext = EMPTY_GOVERNANCE_AUDIT_CONTEXT,
 ): void {
   appendUnifiedAuditEntry({
     type: request.routeLabel,
@@ -178,6 +314,8 @@ function auditOutcome(
     ownerId: request.identity.ownerId,
     projectId: request.identity.projectId,
   });
+
+  persistGovernanceDecision(buildGovernanceDecision(request, artifactHash, outcome, context));
 }
 
 /**
@@ -226,9 +364,11 @@ export async function executeGovernedAction(
   }
 
   // ── 2/3. Approval, bound to THIS artifact (P0.3) ────────────────────
+  let approval: ApprovalRequest | undefined;
   if (request.approvalRequestId !== undefined) {
+    approval = getApprovalRequest(request.approvalRequestId);
     try {
-      consumeApprovalRequest(request.approvalRequestId, {
+      approval = consumeApprovalRequest(request.approvalRequestId, {
         artifactHash,
         entityType: request.entityType,
         action: request.action,
@@ -240,7 +380,7 @@ export async function executeGovernedAction(
         status: "DENIED",
         reason: err instanceof Error ? err.message : String(err),
       };
-      auditOutcome(request, artifactHash, outcome);
+      auditOutcome(request, artifactHash, outcome, { gate: undefined, approval });
       return outcome;
     }
   }
@@ -277,7 +417,7 @@ export async function executeGovernedAction(
           ? gate.reason
           : `approval ${gate.approvalRequestId} required before execution`,
     };
-    auditOutcome(request, artifactHash, outcome);
+    auditOutcome(request, artifactHash, outcome, { gate, approval });
     return outcome;
   }
 
@@ -314,7 +454,7 @@ export async function executeGovernedAction(
       status: "FAILED",
       reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
     };
-    auditOutcome(request, artifactHash, outcome);
+    auditOutcome(request, artifactHash, outcome, { gate, approval });
     return outcome;
   }
 
@@ -335,7 +475,7 @@ export async function executeGovernedAction(
       status: "FAILED",
       reason: sanitizeErrorMessage(rawReason),
     };
-    auditOutcome(request, artifactHash, outcome);
+    auditOutcome(request, artifactHash, outcome, { gate, approval });
     return outcome;
   }
 
@@ -345,7 +485,7 @@ export async function executeGovernedAction(
     artifactHash,
     output: toolResult.output,
   };
-  auditOutcome(request, artifactHash, outcome);
+  auditOutcome(request, artifactHash, outcome, { gate, approval });
   if (request.idempotencyKey) {
     governedIdempotency.set(request.idempotencyKey, { artifactHash, outcome });
   }
