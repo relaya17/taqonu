@@ -298,3 +298,43 @@ New increment (owner-approved sequence). **Stop after each phase. Wait for Owner
 
 **Later (do not start without Owner approval):** 11.5 persistence … 11.10 tests.
 
+## OPERATIONAL LIFECYCLE (Decision → Evidence)
+
+Distinct from Portfolio Governance 11.x. Reuses `executeGovernedAction`, live
+approvals, and `verification.ts`. Does not replace those engines.
+
+**Implemented:** `apps/api/src/services/governed-lifecycle.ts`
+`runGovernedLifecycle` — DENY stops; ALLOW executes only with a validated
+authoritative intent via `executeGovernedAction`; REQUIRE_APPROVAL mints the
+existing live approval bound to the Phase 9 decision identity.
+Control Plane `cp:service` hands the decision to
+`POST /api/v1/governance/lifecycle/handoff` after `evaluateSupervisedEvent`.
+
+**Remaining limitation:** Civio observe events (`DOCUMENT.READ`) do not carry
+an authoritative tool/target/artifact. Therefore **ALLOW ≠ EXECUTED** on the
+Civio path until an execution intent exists. Do not invent
+`knowledge_search(query = eventId)`.
+
+**Not claimed:** `/agents/tool-execute` and `/gateway/fulfill` still call
+`executeGovernedAction` directly (separate architectural decision).
+
+## PERSONAL SUPERVISING AGENT
+
+**Implemented:** Distinct agent class `PERSONAL_SUPERVISING_AGENT` (not a
+Fabric catalog id, not `ORCHESTRATOR`). Stable id `psa:<ownerId>` is a
+label only. Authorization is explicit owner / tenant / project /
+application scope. Observes existing Control Plane applications, processes,
+events, and decisions; pending live approvals; explains from those records;
+recommendations/escalations do not execute; user requests enter
+`submitAgentProposal`; specialists via `planAgentWork`. Memory uses
+`buildMemoryContext`. Disabled/paused PSA cannot dispatch.
+
+Persistence uses `public.personal_supervising_agents` in the existing
+database (repository in `@atlas/database`) when Supabase is live, and the
+existing local `osStore` (`.atlas/store.json`) otherwise. One PSA per
+authorized owner; HTTP sessions only authenticate the owner.
+
+**Not claimed:** Knowledge Fabric (Phase 12). Atlas self-governance
+(Phase 13). Per-user ACL inside the Control Plane process list (PSA
+filters declared scope).
+

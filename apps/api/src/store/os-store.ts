@@ -21,8 +21,9 @@ import type {
   RegressionReport,
   ProductionReadinessCertificate,
   ExemplarRecord,
+  PersonalSupervisingAgentRecord,
 } from "@atlas/shared";
-import { parseEvidenceRecord } from "@atlas/shared";
+import { parseEvidenceRecord, personalSupervisingAgentRecordSchema } from "@atlas/shared";
 import type { ConnectorObservation } from "@atlas/state";
 import type { GitHubRepoObservation } from "@atlas/integrations-github";
 import {
@@ -145,6 +146,8 @@ interface PersistedShape {
   hypotheses?: Record<string, StoredHypothesis>;
   /** Stage 19: Golden projects registry. Keyed by project id. */
   goldenProjects?: Record<string, StoredGoldenProject>;
+  /** Phase 11: persistent Personal Supervising Agent rows, keyed by ownerId. */
+  personalSupervisingAgents?: Record<string, PersonalSupervisingAgentRecord>;
 }
 
 /** Stage 19: Stored hypothesis record. */
@@ -302,6 +305,7 @@ function emptyShape(): PersistedShape {
     exemplars: [],
     hypotheses: {},
     goldenProjects: {},
+    personalSupervisingAgents: {},
   };
 }
 
@@ -347,6 +351,7 @@ class OsStore {
   private exemplars: ExemplarRecord[] = [];
   private hypotheses = new Map<string, StoredHypothesis>();
   private goldenProjects = new Map<string, StoredGoldenProject>();
+  private personalSupervisingAgents = new Map<string, PersonalSupervisingAgentRecord>();
   private loaded = false;
 
   ensureLoaded(): void {
@@ -451,6 +456,13 @@ class OsStore {
     this.byoCloudBindings = new Map(Object.entries(raw.byoCloudBindings ?? {}));
     this.hypotheses = new Map(Object.entries(raw.hypotheses ?? {}));
     this.goldenProjects = new Map(Object.entries(raw.goldenProjects ?? {}));
+    this.personalSupervisingAgents.clear();
+    for (const [ownerId, value] of Object.entries(raw.personalSupervisingAgents ?? {})) {
+      const parsed = personalSupervisingAgentRecordSchema.safeParse(value);
+      if (parsed.success) {
+        this.personalSupervisingAgents.set(ownerId, parsed.data);
+      }
+    }
   }
 
   persist(): void {
@@ -499,6 +511,7 @@ class OsStore {
       byoCloudBindings: Object.fromEntries(this.byoCloudBindings),
       hypotheses: Object.fromEntries(this.hypotheses),
       goldenProjects: Object.fromEntries(this.goldenProjects),
+      personalSupervisingAgents: Object.fromEntries(this.personalSupervisingAgents),
     };
     atomicWriteStoreFile(path, JSON.stringify(shape, null, 2));
   }
@@ -663,6 +676,7 @@ class OsStore {
     this.exemplars = [];
     this.meta = {};
     this.workspaceRoots = {};
+    this.personalSupervisingAgents.clear();
     this.loaded = false;
   }
 
@@ -761,6 +775,17 @@ class OsStore {
     const projectId = memory.projectId ?? "global";
     const existing = this.memories.get(projectId) ?? [];
     this.memories.set(projectId, [...existing, memory]);
+    this.persist();
+  }
+
+  getPersonalSupervisingAgent(ownerId: string): PersonalSupervisingAgentRecord | null {
+    this.ensureLoaded();
+    return this.personalSupervisingAgents.get(ownerId) ?? null;
+  }
+
+  putPersonalSupervisingAgent(record: PersonalSupervisingAgentRecord): void {
+    this.ensureLoaded();
+    this.personalSupervisingAgents.set(record.scope.ownerId, record);
     this.persist();
   }
 
