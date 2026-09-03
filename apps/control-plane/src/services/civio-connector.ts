@@ -47,6 +47,7 @@ import {
   evaluateSupervisedEvent,
   resetSupervisedGovernanceForTests,
 } from "./supervised-governance.js";
+import { handoffGovernedDecisionToApi } from "./lifecycle-handoff.js";
 
 export interface CivioConnectorBinding {
   readonly secret: string;
@@ -95,7 +96,13 @@ export interface CivioIngestResult {
   };
   readonly process?: { readonly processId: string } | null;
   readonly audit?: { readonly type: string; readonly inMemory: true };
-  readonly execution: "NOT_IMPLEMENTED";
+  readonly execution: "NOT_IMPLEMENTED" | "HANDED_OFF" | "HANDOFF_FAILED";
+  readonly lifecycle?: {
+    readonly status: string;
+    readonly executed: boolean;
+    readonly approvalRequestId?: string | null;
+    readonly reason: string;
+  };
 }
 
 export function loadCivioConnectorBinding():
@@ -253,12 +260,12 @@ export function buildCivioConnectorContract(): CivioConnectorContract {
   };
 }
 
-export function ingestCivioConnectorEvent(input: {
+export async function ingestCivioConnectorEvent(input: {
   readonly rawBody: string;
   readonly timestamp: string | null;
   readonly nonce: string | null;
   readonly signature: string | null;
-}): { readonly status: number; readonly body: CivioIngestResult } {
+}): Promise<{ readonly status: number; readonly body: CivioIngestResult }> {
   const loaded = loadCivioConnectorBinding();
   if (!loaded.ok) {
     return {
@@ -510,6 +517,25 @@ export function ingestCivioConnectorEvent(input: {
     risk: governance.decision === "DENY" ? "HIGH" : governance.decision === "REQUIRE_APPROVAL" ? "APPROVAL" : "LOW",
   });
 
+  const handoff = await handoffGovernedDecisionToApi(governance);
+  if (handoff.status === "HANDOFF_FAILED") {
+    writeAudit({
+      event,
+      type: "civio.lifecycle.handoff.failed",
+      result: "FAILURE",
+      reason: handoff.reason,
+      policy: "civio.connector.observe",
+      risk: "HIGH",
+    });
+  }
+
+  const execution =
+    handoff.status === "HANDED_OFF"
+      ? "HANDED_OFF"
+      : handoff.status === "HANDOFF_FAILED"
+        ? "HANDOFF_FAILED"
+        : "NOT_IMPLEMENTED";
+
   const body: CivioIngestResult = {
     accepted: true,
     disposition: "ACCEPTED",
@@ -533,7 +559,13 @@ export function ingestCivioConnectorEvent(input: {
     },
     process: observed.process ? { processId: observed.process.processId } : null,
     audit: { type: auditType, inMemory: true },
-    execution: "NOT_IMPLEMENTED",
+    execution,
+    lifecycle: {
+      status: handoff.status,
+      executed: false,
+      approvalRequestId: handoff.approvalRequestId ?? null,
+      reason: handoff.reason,
+    },
   };
   const duplicate = {
     fingerprint,

@@ -70,6 +70,7 @@ describe("Application → Process supervision", () => {
     process.env["ATLAS_CIVIO_TENANT_ID"] = TENANT;
     process.env["ATLAS_CIVIO_PROJECT_ID"] = PROJECT;
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = CP_TOKEN;
+    delete process.env["ATLAS_API_URL"];
     resetCivioConnectorForTests();
     resetApplicationRegistryForTests();
     resetGovernanceStateForTests();

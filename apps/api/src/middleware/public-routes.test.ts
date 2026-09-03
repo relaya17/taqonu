@@ -9,6 +9,9 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     expect(isPublicAtlasRoute("POST", "/api/v1/github/webhooks")).toBe(true);
     expect(isPublicAtlasRoute("GET", "/api/v1/knowledge/refresh")).toBe(true);
     expect(isPublicAtlasRoute("POST", "/api/v1/knowledge/refresh")).toBe(true);
+    expect(isPublicAtlasRoute("POST", "/api/v1/governance/lifecycle/handoff")).toBe(
+      true,
+    );
   });
 
   it("denies tenant and studio reads", () => {

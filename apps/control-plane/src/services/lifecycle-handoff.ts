@@ -1,0 +1,124 @@
+/**
+ * Control Plane → tenant API: hand a Phase 9 decision to runGovernedLifecycle.
+ * Does not run tools locally. Does not convert failure into ALLOW.
+ */
+
+import {
+  GOVERNED_LIFECYCLE_HANDOFF_PATH,
+  GOVERNED_LIFECYCLE_HANDOFF_SCHEMA,
+  type GovernedHandoffDecision,
+  type GovernedIdentity,
+} from "@atlas/shared";
+import type { SupervisedGovernanceDecision } from "./supervised-governance.js";
+
+export type LifecycleHandoffStatus =
+  | "NOT_ATTEMPTED"
+  | "HANDED_OFF"
+  | "HANDOFF_FAILED";
+
+export interface LifecycleHandoffResult {
+  readonly status: LifecycleHandoffStatus;
+  readonly reason: string;
+  readonly lifecycleStatus?: string;
+  readonly executed?: boolean;
+  readonly approvalRequestId?: string | null;
+}
+
+function apiBaseUrl(): string | null {
+  const raw = process.env["ATLAS_API_URL"]?.trim();
+  return raw && raw.length > 0 ? raw.replace(/\/$/, "") : null;
+}
+
+function serviceToken(): string | null {
+  const raw = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
+  return raw && raw.length > 0 ? raw : null;
+}
+
+export function decisionToHandoff(decision: SupervisedGovernanceDecision): {
+  readonly identity: GovernedIdentity;
+  readonly decision: GovernedHandoffDecision;
+} {
+  const identity: GovernedIdentity = {
+    tenantId: decision.tenantId,
+    projectId: decision.projectId,
+    applicationId: decision.applicationId,
+    processId: decision.processId,
+    eventId: decision.eventId,
+  };
+  return {
+    identity,
+    decision: {
+      ...identity,
+      decision: decision.decision,
+      reason: decision.reason,
+      eventType: decision.eventType,
+      correlationId: decision.correlationId,
+      requestId: decision.requestId,
+      policy: {
+        entityType: decision.policy.entityType,
+        action: decision.policy.action,
+        riskTier: decision.policy.riskTier,
+      },
+    },
+  };
+}
+
+export async function handoffGovernedDecisionToApi(
+  decision: SupervisedGovernanceDecision,
+): Promise<LifecycleHandoffResult> {
+  const base = apiBaseUrl();
+  const token = serviceToken();
+  if (!base || !token) {
+    return {
+      status: "NOT_ATTEMPTED",
+      reason: "ATLAS_API_URL or ATLAS_CONTROL_PLANE_TOKEN is not set; execution handoff skipped",
+    };
+  }
+
+  const payload = {
+    schemaVersion: GOVERNED_LIFECYCLE_HANDOFF_SCHEMA,
+    ...decisionToHandoff(decision),
+    idempotencyKey: `lifecycle:${decision.tenantId}:${decision.applicationId}:${decision.eventId}`,
+  };
+
+  try {
+    const response = await fetch(`${base}${GOVERNED_LIFECYCLE_HANDOFF_PATH}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        "x-idempotency-key": payload.idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8_000),
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      readonly status?: string;
+      readonly executed?: boolean;
+      readonly reason?: string;
+      readonly approvalRequestId?: string | null;
+      readonly error?: { readonly message?: string };
+    };
+    if (!response.ok) {
+      return {
+        status: "HANDOFF_FAILED",
+        reason:
+          body.error?.message ??
+          body.reason ??
+          `API handoff returned ${response.status}`,
+      };
+    }
+    return {
+      status: "HANDED_OFF",
+      reason: body.reason ?? "handed off",
+      executed: body.executed === true,
+      approvalRequestId: body.approvalRequestId ?? null,
+      ...(typeof body.status === "string" ? { lifecycleStatus: body.status } : {}),
+    };
+  } catch (error) {
+    return {
+      status: "HANDOFF_FAILED",
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}

@@ -276,7 +276,7 @@ export function createApiRouter(): Router {
       );
       return;
     }
-    const result = ingestCivioConnectorEvent({
+    const result = await ingestCivioConnectorEvent({
       rawBody,
       timestamp: headerString(req.headers, CIVIO_TIMESTAMP_HEADER),
       nonce: headerString(req.headers, CIVIO_NONCE_HEADER),

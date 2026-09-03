@@ -29,6 +29,8 @@ const PUBLIC_EXACT = new Set([
   // Cron may present CRON_SECRET instead of a user session (handler still authenticates).
   "GET /api/v1/knowledge/refresh",
   "POST /api/v1/knowledge/refresh",
+  // Control Plane SERVICE bearer — handler authenticates as cp:service.
+  "POST /api/v1/governance/lifecycle/handoff",
 ]);
 
 const PUBLIC_PREFIXES: ReadonlyArray<{ method: string; prefix: string }> = [
