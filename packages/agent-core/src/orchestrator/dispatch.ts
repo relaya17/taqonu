@@ -7,17 +7,22 @@ import {
   type FabricAgentId,
   type KnowledgeSearchResult,
 } from "@atlas/shared";
-import { buildEvidencePackageForAgent } from "@atlas/knowledge";
+import { buildEvidencePackageForAgent, type KnowledgeRetrievalScope } from "@atlas/knowledge";
 import { getFabricAgent } from "../registry/catalog.js";
 import { planAgentWork } from "./plan.js";
 import { evaluateJudge } from "../judge/evaluate.js";
 
-function loadKnowledge(request: string, agentIds: FabricAgentId[]): KnowledgeSearchResult {
+function loadKnowledge(
+  request: string,
+  agentIds: FabricAgentId[],
+  scope?: KnowledgeRetrievalScope | null,
+): KnowledgeSearchResult {
   return buildEvidencePackageForAgent({
     query: request,
     agentSpecialtyHints: agentIds.map((id) => getFabricAgent(id).specialty),
     agentIds,
     maxItems: 12,
+    ...(scope ? { scope } : {}),
   });
 }
 
@@ -95,6 +100,7 @@ export async function dispatchAgentPlan(input: {
     agentId: FabricAgentId,
     request: string,
   ) => AgentRunResult | null | undefined | Promise<AgentRunResult | null | undefined>;
+  retrievalScope?: KnowledgeRetrievalScope | null;
 }): Promise<AgentDispatchResult> {
   const plan =
     input.plan ??
@@ -110,6 +116,7 @@ export async function dispatchAgentPlan(input: {
   const knowledge = loadKnowledge(
     input.request,
     selected.map((s) => s.agentId),
+    input.retrievalScope,
   );
 
   const byGroup = new Map<number, typeof selected>();
@@ -123,7 +130,11 @@ export async function dispatchAgentPlan(input: {
   for (const g of [...byGroup.keys()].sort((a, b) => a - b)) {
     for (const s of byGroup.get(g) ?? []) {
       if (s.agentId === "JUDGE") continue;
-      const specialistKnowledge = loadKnowledge(input.request, [s.agentId]);
+      const specialistKnowledge = loadKnowledge(
+        input.request,
+        [s.agentId],
+        input.retrievalScope,
+      );
       const override = await input.specialistOverride?.(s.agentId, input.request);
       runs.push(override ?? runSpecialistStub(s.agentId, input.request, specialistKnowledge));
     }

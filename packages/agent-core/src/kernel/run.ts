@@ -4,7 +4,7 @@ import {
   type KernelRunResult,
   type TaskPlan,
 } from "@atlas/shared";
-import { buildEvidencePackageForAgent } from "@atlas/knowledge";
+import { buildEvidencePackageForAgent, type KnowledgeRetrievalScope } from "@atlas/knowledge";
 import { EvidenceBus } from "./evidence-bus.js";
 import { matchLessonsForRequest } from "./memory.js";
 import { runSimulation } from "./simulation.js";
@@ -140,6 +140,7 @@ export function runIntelligenceKernel(input: {
   runSimulation?: boolean;
   runJudge?: boolean;
   securityObservation?: { claims: string[]; evidenceRefs: string[] } | null;
+  retrievalScope?: KnowledgeRetrievalScope | null;
 }): KernelRunResult {
   const plan = createTaskPlan({
     request: input.request,
@@ -167,6 +168,7 @@ export function runIntelligenceKernel(input: {
         ),
         agentIds: plan.requiredAgents,
         maxItems: 8,
+        ...(input.retrievalScope ? { scope: input.retrievalScope } : {}),
       });
 
   for (const hit of knowledge.hits) {

@@ -116,10 +116,15 @@ export const judgeEvaluateRequestSchema = z.object({
 
 export const knowledgeSearchRequestSchema = z.object({
   query: z.string().min(1).max(2000),
-  projectId: uuidSchema.nullable().optional(),
+  tenantId: z.string().trim().min(1).max(200),
+  projectId: uuidSchema,
+  applicationId: z.string().trim().min(1).max(200),
+  requestingAgentId: fabricAgentIdSchema,
   maxResults: z.number().int().min(1).max(50).default(20),
   minAuthority: z.number().min(0).max(1).default(0.4),
   allowStale: z.boolean().default(false),
+  pinnedSourceId: z.string().trim().min(1).max(200).optional(),
+  pinnedSourceVersion: z.string().trim().min(1).max(200).optional(),
 });
 
 export const knowledgeHitSchema = z.object({
@@ -134,6 +139,9 @@ export const knowledgeHitSchema = z.object({
   excerpt: z.string(),
   contentHash: z.string(),
   epistemicState: epistemicStateSchema,
+  sourceId: z.string().min(1).max(200).optional(),
+  sourceVersion: z.string().min(1).max(200).optional(),
+  documentId: z.string().min(1).max(200).optional(),
 });
 
 export const knowledgeSearchResultSchema = z.object({

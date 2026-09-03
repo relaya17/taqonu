@@ -78,7 +78,9 @@ export function collectEvidenceRefs(
     push({
       id: hit.id,
       kind: "knowledge",
-      reference: hit.title,
+      reference: hit.sourceId
+        ? `source:${hit.sourceId}${hit.sourceVersion ? `@${hit.sourceVersion}` : ""}`
+        : hit.url ?? hit.title,
       excerpt: hit.excerpt.slice(0, 240),
       epistemicState: hit.epistemicState,
     });

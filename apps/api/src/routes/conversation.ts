@@ -29,7 +29,7 @@ import {
   resolveTier,
 } from "../services/plan-quota.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
-import { searchKnowledgeClosedLoop } from "../services/hybrid-rag.js";
+import { searchEligibleKnowledge } from "../services/governed-knowledge-retrieval.js";
 import {
   collectEvidenceRefs,
   insufficientEvidenceAnswer,
@@ -168,11 +168,13 @@ export async function registerConversationRoutes(
     const { memories, ...memoryContext } = memoryContextResult;
     const evidenceRecords = projectId ? osStore.getEvidence(projectId) : [];
 
-    let knowledge: Awaited<ReturnType<typeof searchKnowledgeClosedLoop>> | null =
+    let knowledge: Awaited<ReturnType<typeof searchEligibleKnowledge>> | null =
       null;
     try {
-      knowledge = await searchKnowledgeClosedLoop(app.atlasEnv, {
+      knowledge = await searchEligibleKnowledge({
+        env: app.atlasEnv,
         query: body.message,
+        scope: null,
         maxResults: 8,
       });
     } catch {

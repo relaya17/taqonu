@@ -91,6 +91,13 @@ describe("dispatchAgentPlan", () => {
       request: "תעודת זכאות לדיור ציבורי",
       agentIds: ["LEGAL_MEDIA_COMMS", "SECURITY"],
       runJudge: false,
+      retrievalScope: {
+        ownerId: "11111111-1111-4111-8111-111111111111",
+        tenantId: "tenant-test",
+        projectId: "22222222-2222-4222-8222-222222222222",
+        applicationId: "app-test",
+        requestingAgentId: "LEGAL_MEDIA_COMMS",
+      },
     });
     const legal = result.runs.find((run) => run.agentId === "LEGAL_MEDIA_COMMS");
     const security = result.runs.find((run) => run.agentId === "SECURITY");

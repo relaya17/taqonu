@@ -69,6 +69,7 @@ import { registerEventRules } from "./services/event-rules.js";
 import { registerControlPlaneBridge } from "./services/control-plane-bridge.js";
 import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
 import { ensureDevLocalUser } from "./services/auth-store.js";
+import { registerKnowledgeSearchTool } from "./services/knowledge-search-tool.js";
 import {
   KNOWLEDGE_REFRESH_INTERVAL_MS,
   maybeRefreshVerifiedKnowledge,
@@ -101,6 +102,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   app.setErrorHandler(errorHandler);
   app.decorate("atlasEnv", env);
   app.decorate("atlasLogger", logger);
+  registerKnowledgeSearchTool(env);
 
   app.addHook("onRequest", async (request) => {
     if (isPublicAtlasRoute(request.method, request.url)) return;

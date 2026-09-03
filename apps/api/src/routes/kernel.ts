@@ -33,8 +33,11 @@ import {
 } from "@atlas/knowledge";
 import {
   ingestKnowledgeClosedLoop,
-  searchKnowledgeClosedLoop,
 } from "../services/hybrid-rag.js";
+import {
+  retrieveGovernedKnowledge,
+  requireKnowledgeSearchScope,
+} from "../services/governed-knowledge-retrieval.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
@@ -187,16 +190,39 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(result);
   });
 
-  /** P4 Knowledge Fabric — closed-loop hybrid RAG (pgvector when live, else local). */
+  /** P4 Knowledge Fabric — closed-loop hybrid RAG through governed eligibility. */
   app.post("/api/v1/kernel/knowledge/search", async (request) => {
     hydrateKnowledgeCorpus({ enablePersist: true });
     const body = knowledgeSearchRequestSchema.parse(request.body);
-    return searchKnowledgeClosedLoop(app.atlasEnv, {
+    const user = await requireSignedInForWrite(app, request);
+    const pin =
+      body.pinnedSourceId || body.pinnedSourceVersion
+        ? {
+            ...(body.pinnedSourceId ? { sourceId: body.pinnedSourceId } : {}),
+            ...(body.pinnedSourceVersion
+              ? { sourceVersion: body.pinnedSourceVersion }
+              : {}),
+          }
+        : undefined;
+    const retrieval = await retrieveGovernedKnowledge({
+      env: app.atlasEnv,
+      sessionOwnerId: user.id,
+      scope: {
+        ownerId: user.id,
+        tenantId: body.tenantId,
+        projectId: body.projectId,
+        applicationId: body.applicationId,
+        requestingAgentId: body.requestingAgentId,
+      },
       query: body.query,
+      requestId: request.id,
+      routeLabel: "kernel.knowledge.search",
       maxResults: body.maxResults,
       minAuthority: body.minAuthority,
       allowStale: body.allowStale,
+      ...(pin ? { pin } : {}),
     });
+    return requireKnowledgeSearchScope(retrieval);
   });
 
   app.post("/api/v1/kernel/knowledge/ingest", async (request, reply) => {

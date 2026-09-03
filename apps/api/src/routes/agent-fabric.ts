@@ -47,8 +47,11 @@ import {
 } from "../services/memory-pipeline.js";
 import {
   ingestKnowledgeClosedLoop,
-  searchKnowledgeClosedLoop,
 } from "../services/hybrid-rag.js";
+import {
+  retrieveGovernedKnowledge,
+  requireKnowledgeSearchScope,
+} from "../services/governed-knowledge-retrieval.js";
 import { atlasMetrics } from "./metrics.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { runLegalMediaSpecialistViaReview } from "../services/legal-media-dispatch.js";
@@ -578,12 +581,35 @@ export async function registerAgentFabricRoutes(
   app.post("/api/v1/knowledge/search", async (request) => {
     ensureKnowledgeCorpusHydrated();
     const body = knowledgeSearchRequestSchema.parse(request.body);
-    const result = await searchKnowledgeClosedLoop(app.atlasEnv, {
+    const user = await requireSignedInForWrite(app, request);
+    const pin =
+      body.pinnedSourceId || body.pinnedSourceVersion
+        ? {
+            ...(body.pinnedSourceId ? { sourceId: body.pinnedSourceId } : {}),
+            ...(body.pinnedSourceVersion
+              ? { sourceVersion: body.pinnedSourceVersion }
+              : {}),
+          }
+        : undefined;
+    const retrieval = await retrieveGovernedKnowledge({
+      env: app.atlasEnv,
+      sessionOwnerId: user.id,
+      scope: {
+        ownerId: user.id,
+        tenantId: body.tenantId,
+        projectId: body.projectId,
+        applicationId: body.applicationId,
+        requestingAgentId: body.requestingAgentId,
+      },
       query: body.query,
+      requestId: request.id,
+      routeLabel: "knowledge.search",
       maxResults: body.maxResults,
       minAuthority: body.minAuthority,
       allowStale: body.allowStale,
+      ...(pin ? { pin } : {}),
     });
+    const result = requireKnowledgeSearchScope(retrieval);
     atlasMetrics.record(
       "retrieval_hit_rate",
       result.hits.length > 0 ? 1 : 0,

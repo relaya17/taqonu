@@ -16,6 +16,14 @@ const liveEnv = {
   SUPABASE_SERVICE_ROLE_KEY: "service-role-key-longer-than-twenty",
 };
 
+const SCOPE = {
+  ownerId: "11111111-1111-4111-8111-111111111111",
+  tenantId: "tenant-test",
+  projectId: "22222222-2222-4222-8222-222222222222",
+  applicationId: "app-test",
+  requestingAgentId: "RESEARCHER" as const,
+};
+
 describe("hybrid-rag closed loop", () => {
   afterEach(() => {
     resetKnowledgeCorpusToSeed();
@@ -27,6 +35,7 @@ describe("hybrid-rag closed loop", () => {
     const { searchKnowledgeClosedLoop } = await import("./hybrid-rag.js");
     const result = await searchKnowledgeClosedLoop(offlineEnv, {
       query: "zzzz-no-such-topic-xyz",
+      scope: SCOPE,
       minAuthority: 0.99,
     });
     expect(result.hits).toHaveLength(0);
@@ -61,6 +70,7 @@ describe("hybrid-rag closed loop", () => {
     const { searchKnowledgeClosedLoop } = await import("./hybrid-rag.js");
     const result = await searchKnowledgeClosedLoop(liveEnv, {
       query: "webhook idempotency",
+      scope: SCOPE,
     });
     expect(result.hits).toHaveLength(0);
     expect(result.retrievalBackend).toBe("pgvector");
@@ -105,6 +115,7 @@ describe("hybrid-rag closed loop", () => {
     const result = await searchKnowledgeClosedLoop(liveEnv, {
       query: "webhook idempotency",
       minAuthority: 0.3,
+      scope: SCOPE,
     });
     expect(result.retrievalBackend).toBe("pgvector");
     expect(result.hits.some((h) => h.id === "kf_pg")).toBe(true);

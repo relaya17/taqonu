@@ -17,6 +17,13 @@ import {
 
 describe("durable knowledge corpus", () => {
   const dirs: string[] = [];
+  const SCOPE = {
+    ownerId: "11111111-1111-4111-8111-111111111111",
+    tenantId: "tenant-test",
+    projectId: "22222222-2222-4222-8222-222222222222",
+    applicationId: "app-test",
+    requestingAgentId: "RESEARCHER",
+  } as const;
 
   afterEach(() => {
     resetKnowledgeCorpusToSeed();
@@ -44,10 +51,12 @@ describe("durable knowledge corpus", () => {
     const query = "תעודת זכאות לדיור ציבורי";
     const legal = searchKnowledgeFabric({
       query,
+      scope: { ...SCOPE, requestingAgentId: "LEGAL_MEDIA_COMMS" },
       requestingAgentIds: ["LEGAL_MEDIA_COMMS"],
     });
     const security = searchKnowledgeFabric({
       query,
+      scope: { ...SCOPE, requestingAgentId: "SECURITY" },
       requestingAgentIds: ["SECURITY"],
     });
 
@@ -103,6 +112,7 @@ describe("durable knowledge corpus", () => {
 
     const search = searchKnowledgeFabric({
       query: "webhook idempotency",
+      scope: SCOPE,
       minAuthority: 0.3,
       vectorScores: { kf_custom: 0.9 },
       retrievalBackend: "local",
@@ -115,6 +125,7 @@ describe("durable knowledge corpus", () => {
     resetKnowledgeCorpusToSeed();
     const search = searchKnowledgeFabric({
       query: "zzzz-no-such-topic-xyz",
+      scope: SCOPE,
       minAuthority: 0.99,
       allowStale: false,
       retrievalBackend: "local",
@@ -133,24 +144,29 @@ describe("durable knowledge corpus", () => {
     });
 
     expect(
-      searchKnowledgeFabric({ query: "public housing rights" }).hits
-        .some((hit) => hit.title === "Civio verified rights"),
+      searchKnowledgeFabric({
+        query: "public housing rights",
+        scope: { ...SCOPE, requestingAgentId: "DEBUGGER" },
+      }).hits.some((hit) => hit.title === "Civio verified rights"),
     ).toBe(false);
     expect(
       searchKnowledgeFabric({
         query: "public housing rights",
+        scope: { ...SCOPE, requestingAgentId: "SECURITY" },
         requestingAgentIds: ["SECURITY"],
       }).hits.some((hit) => hit.title === "Civio verified rights"),
     ).toBe(false);
     expect(
       searchKnowledgeFabric({
         query: "public housing rights",
+        scope: SCOPE,
         requestingAgentIds: ["RESEARCHER"],
       }).hits.some((hit) => hit.title === "Civio verified rights"),
     ).toBe(true);
     expect(
       searchKnowledgeFabric({
         query: "public housing rights",
+        scope: SCOPE,
         requestingAgentIds: ["RESEARCHER", "SECURITY"],
       }).hits.some((hit) => hit.title === "Civio verified rights"),
     ).toBe(false);

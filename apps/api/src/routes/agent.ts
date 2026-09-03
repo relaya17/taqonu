@@ -37,7 +37,7 @@ import {
   patchArtifactSchema,
   type EngineeringAgentMode,
 } from "@atlas/shared";
-import { searchKnowledgeClosedLoop } from "../services/hybrid-rag.js";
+import { searchEligibleKnowledge } from "../services/governed-knowledge-retrieval.js";
 import {
   collectEvidenceRefs,
   insufficientEvidenceAnswer,
@@ -186,11 +186,13 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     const { memories, ...memoryContext } = memoryContextResult;
     const evidence = projectId ? osStore.getEvidence(projectId) : [];
 
-    let knowledge: Awaited<ReturnType<typeof searchKnowledgeClosedLoop>> | null =
+    let knowledge: Awaited<ReturnType<typeof searchEligibleKnowledge>> | null =
       null;
     try {
-      knowledge = await searchKnowledgeClosedLoop(app.atlasEnv, {
+      knowledge = await searchEligibleKnowledge({
+        env: app.atlasEnv,
         query: body.userRequest,
+        scope: null,
         maxResults: 8,
       });
     } catch {

@@ -11,6 +11,8 @@ import {
   searchKnowledgeFabric,
   upsertKnowledgeDocument,
   type CorpusDoc,
+  type KnowledgePin,
+  type KnowledgeRetrievalScope,
 } from "@atlas/knowledge";
 import {
   isLiveKnowledgeStore,
@@ -20,6 +22,21 @@ import {
 } from "@atlas/database";
 
 export type HybridRagEnv = KnowledgeStoreEnv;
+
+function metadataString(meta: Record<string, unknown>, key: string): string | null {
+  const value = meta[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function metadataStringArray(
+  meta: Record<string, unknown>,
+  key: string,
+): string[] | null {
+  const value = meta[key];
+  if (!Array.isArray(value)) return null;
+  const items = value.filter((entry): entry is string => typeof entry === "string");
+  return items.length > 0 ? items : null;
+}
 
 function chunkToCorpusDoc(row: {
   id: string;
@@ -31,7 +48,10 @@ function chunkToCorpusDoc(row: {
   projectScoped: boolean;
   contentHash: string;
   embedding: number[] | null;
+  metadata?: Record<string, unknown>;
 }): CorpusDoc {
+  const metadata = row.metadata ?? {};
+  const allowedAgentIds = metadataStringArray(metadata, "allowed_agent_ids");
   return {
     id: row.id,
     title: row.title,
@@ -42,6 +62,37 @@ function chunkToCorpusDoc(row: {
     projectScoped: row.projectScoped,
     contentHash: row.contentHash,
     ...(row.embedding?.length ? { embedding: [...row.embedding] } : {}),
+    ...(metadataString(metadata, "source_id")
+      ? { sourceId: metadataString(metadata, "source_id") }
+      : {}),
+    ...(metadataString(metadata, "source_version")
+      ? { sourceVersion: metadataString(metadata, "source_version") }
+      : {}),
+    ...(metadataString(metadata, "owner_id")
+      ? { ownerId: metadataString(metadata, "owner_id") }
+      : {}),
+    ...(metadataString(metadata, "tenant_id")
+      ? { tenantId: metadataString(metadata, "tenant_id") }
+      : {}),
+    ...(metadataString(metadata, "project_id")
+      ? { projectId: metadataString(metadata, "project_id") }
+      : {}),
+    ...(metadataString(metadata, "application_id")
+      ? { applicationId: metadataString(metadata, "application_id") }
+      : {}),
+    ...(allowedAgentIds ? { allowedAgentIds } : {}),
+  };
+}
+
+function chunkMetadataFromDoc(doc: CorpusDoc): Record<string, unknown> {
+  return {
+    ...(doc.sourceId ? { source_id: doc.sourceId } : {}),
+    ...(doc.sourceVersion ? { source_version: doc.sourceVersion } : {}),
+    ...(doc.ownerId ? { owner_id: doc.ownerId } : {}),
+    ...(doc.tenantId ? { tenant_id: doc.tenantId } : {}),
+    ...(doc.projectId ? { project_id: doc.projectId } : {}),
+    ...(doc.applicationId ? { application_id: doc.applicationId } : {}),
+    ...(doc.allowedAgentIds ? { allowed_agent_ids: [...doc.allowedAgentIds] } : {}),
   };
 }
 
@@ -56,6 +107,11 @@ export async function ingestKnowledgeClosedLoop(
     url?: string | null;
     sourceUpdatedAt?: string | null;
     projectScoped?: boolean;
+    ownerId?: string | null;
+    tenantId?: string | null;
+    projectId?: string | null;
+    applicationId?: string | null;
+    allowedAgentIds?: string[] | null;
   },
 ): Promise<{
   document: CorpusDoc;
@@ -77,6 +133,13 @@ export async function ingestKnowledgeClosedLoop(
     ...(input.projectScoped != null
       ? { projectScoped: input.projectScoped }
       : {}),
+    ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+    ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {}),
+    ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+    ...(input.applicationId !== undefined
+      ? { applicationId: input.applicationId }
+      : {}),
+    ...(input.allowedAgentIds ? { allowedAgentIds: [...input.allowedAgentIds] } : {}),
     ...(embedding ? { embedding: [...embedding] } : {}),
   };
   const doc = input.id
@@ -94,6 +157,7 @@ export async function ingestKnowledgeClosedLoop(
     contentHash: doc.contentHash,
     embedding: doc.embedding ?? embedding ?? null,
     embeddingProvider: provider.name,
+    metadata: chunkMetadataFromDoc(doc),
   });
 
   return {
@@ -105,9 +169,12 @@ export async function ingestKnowledgeClosedLoop(
 
 async function localHybridSearch(input: {
   query: string;
+  scope?: KnowledgeRetrievalScope | null;
   maxResults?: number;
   minAuthority?: number;
   allowStale?: boolean;
+  pin?: KnowledgePin;
+  requestingAgentIds?: readonly string[];
 }): Promise<KnowledgeSearchResult> {
   const corpus = listKnowledgeCorpus();
   const provider = getDefaultEmbeddingProvider();
@@ -123,11 +190,16 @@ async function localHybridSearch(input: {
   });
   return searchKnowledgeFabric({
     query: input.query,
+    ...(input.scope ? { scope: input.scope } : {}),
     ...(input.maxResults !== undefined ? { maxResults: input.maxResults } : {}),
     ...(input.minAuthority !== undefined
       ? { minAuthority: input.minAuthority }
       : {}),
     ...(input.allowStale !== undefined ? { allowStale: input.allowStale } : {}),
+    ...(input.pin ? { pin: input.pin } : {}),
+    ...(input.requestingAgentIds
+      ? { requestingAgentIds: input.requestingAgentIds }
+      : {}),
     vectorScores,
     retrievalBackend: "local",
   });
@@ -136,14 +208,18 @@ async function localHybridSearch(input: {
 /**
  * Closed-loop hybrid search: prefer pgvector when live; else local embeddings + file corpus.
  * Empty hits → INSUFFICIENT_EVIDENCE (never invent packages).
+ * Eligibility/scoping is enforced inside `searchKnowledgeFabric`.
  */
 export async function searchKnowledgeClosedLoop(
   env: HybridRagEnv,
   input: {
     query: string;
+    scope?: KnowledgeRetrievalScope | null;
     maxResults?: number;
     minAuthority?: number;
     allowStale?: boolean;
+    pin?: KnowledgePin;
+    requestingAgentIds?: readonly string[];
   },
 ): Promise<KnowledgeSearchResult> {
   const provider = getDefaultEmbeddingProvider();
@@ -167,8 +243,6 @@ export async function searchKnowledgeClosedLoop(
   const corpus = matches.map(chunkToCorpusDoc);
   const vectorScores: Record<string, number> = {};
   for (const m of matches) {
-    // Align with match_knowledge_chunks SQL (0.7 cosine + 0.3 keyword); floor
-    // keeps FTS-only hits above fabric's 0.35 vector gate.
     const kw = Math.min(1, Math.max(0, m.keywordRank));
     const merged = m.similarity * 0.7 + kw * 0.3;
     const keywordFloor = m.keywordRank > 0 ? 0.4 : 0;
@@ -177,11 +251,16 @@ export async function searchKnowledgeClosedLoop(
 
   return searchKnowledgeFabric({
     query: input.query,
+    ...(input.scope ? { scope: input.scope } : {}),
     ...(input.maxResults !== undefined ? { maxResults: input.maxResults } : {}),
     ...(input.minAuthority !== undefined
       ? { minAuthority: input.minAuthority }
       : {}),
     ...(input.allowStale !== undefined ? { allowStale: input.allowStale } : {}),
+    ...(input.pin ? { pin: input.pin } : {}),
+    ...(input.requestingAgentIds
+      ? { requestingAgentIds: input.requestingAgentIds }
+      : {}),
     corpus,
     vectorScores,
     retrievalBackend: "pgvector",

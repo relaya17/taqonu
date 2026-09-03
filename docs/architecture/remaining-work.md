@@ -334,7 +334,28 @@ database (repository in `@atlas/database`) when Supabase is live, and the
 existing local `osStore` (`.atlas/store.json`) otherwise. One PSA per
 authorized owner; HTTP sessions only authenticate the owner.
 
-**Not claimed:** Knowledge Fabric (Phase 12). Atlas self-governance
-(Phase 13). Per-user ACL inside the Control Plane process list (PSA
-filters declared scope).
+**Not claimed:** Atlas self-governance (Phase 13). Per-user ACL inside
+the Control Plane process list (PSA filters declared scope).
+
+## KNOWLEDGE FABRIC GOVERNANCE
+
+**Implemented:** Retrieval converges on `evaluateKnowledgeEligibility`
+(owner/tenant/project/application/agent fail-closed). Canonical `source_id`
+is bound from the existing allow-list / `knowledge_sources` model, not a
+second registry. Unknown authority is ineligible (no `TECHNICAL_ARTICLE`
+default). Stale hits require explicit `allowStale`. Source/version pins use
+`source_id` + content hash. Live retrieval runs `detectConflict` and returns
+`INSUFFICIENT_EVIDENCE` on material conflict. HTTP/kernel search goes
+through `executeGovernedAction` (`knowledge_search` / `DOCUMENT.READ`).
+Conversation/agent retrieval uses the same eligibility function. Provenance
+fields (`sourceId`, `sourceVersion`, `documentId`) attach to hits;
+`collectEvidenceRefs` cites them. Unified audit records `knowledge.retrieved`.
+
+**Remaining limitation:** Conversation and agent-run bodies do not yet
+carry tenant/application/agent scope, so those paths fail closed to empty
+knowledge rather than inferring identity. `match_knowledge_chunks` still
+returns candidates without SQL-level tenant filters; eligibility filters
+after retrieve.
+
+**Not claimed:** Atlas self-governance (Phase 13). Unrestricted web crawl.
 

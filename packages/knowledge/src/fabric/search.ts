@@ -1,5 +1,4 @@
 import {
-  EXTERNAL_SOURCE_CONFIDENCE,
   knowledgeSearchResultSchema,
   verifiedTechSourcesAsCorpusSeed,
   type KnowledgeSearchResult,
@@ -11,6 +10,16 @@ import {
   savePersistedCorpus,
 } from "./persisted-store.js";
 import { CIVIO_RIGHTS_SNAPSHOT } from "./civio-rights.snapshot.js";
+import {
+  evaluateKnowledgeEligibility,
+  insufficientKnowledgeResult,
+  isCompleteKnowledgeScope,
+  missingKnowledgeScopeReason,
+  type KnowledgePin,
+  type KnowledgeRetrievalScope,
+} from "./eligibility.js";
+import { resolveCanonicalKnowledgeSource } from "./source-registry.js";
+import { eligibleHitsAreMateriallyConflicting } from "./retrieval-conflict.js";
 
 export interface CorpusDoc {
   id: string;
@@ -21,6 +30,14 @@ export interface CorpusDoc {
   sourceUpdatedAt: string | null;
   projectScoped: boolean;
   contentHash: string;
+  /** Canonical `knowledge_sources` identity (allow-list id or repository class). */
+  sourceId?: string | null;
+  /** Pinned source version — content hash of the retrieved document/chunk. */
+  sourceVersion?: string | null;
+  ownerId?: string | null;
+  tenantId?: string | null;
+  projectId?: string | null;
+  applicationId?: string | null;
   /** Omit for shared documents; scoped documents require an allowed agent identity. */
   allowedAgentIds?: string[] | null;
   /** Optional cached local-hash (or other) embedding for durable hybrid search. */
@@ -34,27 +51,31 @@ function hashDoc(title: string, excerpt: string): string {
     .slice(0, 16);
 }
 
-const TECH_SEED: CorpusDoc[] = verifiedTechSourcesAsCorpusSeed().map((s) => ({
-  id: s.id,
-  title: s.title,
-  sourceClass: s.sourceClass,
-  url: s.url,
-  excerpt: s.excerpt,
-  sourceUpdatedAt: "2026-08-12T00:00:00.000Z",
-  projectScoped: false,
-  contentHash: hashDoc(s.title, s.excerpt),
-}));
+const TECH_SEED: CorpusDoc[] = verifiedTechSourcesAsCorpusSeed().map((s) =>
+  bindSourceFields({
+    id: s.id,
+    title: s.title,
+    sourceClass: s.sourceClass,
+    url: s.url,
+    excerpt: s.excerpt,
+    sourceUpdatedAt: "2026-08-12T00:00:00.000Z",
+    projectScoped: false,
+    contentHash: hashDoc(s.title, s.excerpt),
+  }),
+);
 
-const CIVIO_SEED: CorpusDoc[] = CIVIO_RIGHTS_SNAPSHOT.map((doc) => ({
-  ...doc,
-  allowedAgentIds: [...doc.allowedAgentIds],
-}));
+const CIVIO_SEED: CorpusDoc[] = CIVIO_RIGHTS_SNAPSHOT.map((doc) =>
+  bindSourceFields({
+    ...doc,
+    allowedAgentIds: [...doc.allowedAgentIds],
+  }),
+);
 
 /** Seed fabric corpus — verified tech allow-list + a few operational lessons. */
 const SEED_CORPUS: CorpusDoc[] = [
   ...TECH_SEED,
   ...CIVIO_SEED,
-  {
+  bindSourceFields({
     id: "kf_github_rest",
     title: "GitHub REST API overview",
     sourceClass: "OFFICIAL_VENDOR_DOCS",
@@ -63,8 +84,8 @@ const SEED_CORPUS: CorpusDoc[] = [
     sourceUpdatedAt: "2026-08-01T00:00:00.000Z",
     projectScoped: false,
     contentHash: hashDoc("GitHub REST API overview", "Official GitHub REST API documentation."),
-  },
-  {
+  }),
+  bindSourceFields({
     id: "kf_forum_stale",
     title: "Old forum thread on webhooks",
     sourceClass: "FORUM_DISCUSSION",
@@ -73,8 +94,8 @@ const SEED_CORPUS: CorpusDoc[] = [
     sourceUpdatedAt: "2019-05-01T00:00:00.000Z",
     projectScoped: false,
     contentHash: hashDoc("Old forum thread on webhooks", "Anecdotal discussion from 2019 — likely stale."),
-  },
-  {
+  }),
+  bindSourceFields({
     id: "kf_webhook_lesson",
     title: "Lesson: webhook idempotency",
     sourceClass: "REPOSITORY_SOURCE",
@@ -87,8 +108,8 @@ const SEED_CORPUS: CorpusDoc[] = [
       "Lesson: webhook idempotency",
       "Pattern WEBHOOK_IDEMPOTENCY — external webhooks need idempotency key + unique constraint. Validated in lab projects.",
     ),
-  },
-  {
+  }),
+  bindSourceFields({
     id: "kf_auth_pattern",
     title: "Lesson: authz defense in depth",
     sourceClass: "REPOSITORY_SOURCE",
@@ -101,7 +122,7 @@ const SEED_CORPUS: CorpusDoc[] = [
       "Lesson: authz defense in depth",
       "Pattern AUTHZ_DEFENSE — API authZ checks + RLS + audit event.",
     ),
-  },
+  }),
 ];
 
 /** Mutable active corpus — seed by default; prefer persisted file when hydrated. */
@@ -187,14 +208,17 @@ export function hydrateKnowledgeCorpus(opts?: {
   return { source: corpusSource, path, count: CORPUS.length };
 }
 
-function freshness(
-  updatedAt: string | null,
-): "CURRENT" | "STALE" | "UNKNOWN" {
-  if (!updatedAt) return "UNKNOWN";
-  const ageDays =
-    (Date.now() - new Date(updatedAt).getTime()) / (1000 * 60 * 60 * 24);
-  if (ageDays > 365) return "STALE";
-  return "CURRENT";
+function bindSourceFields(doc: CorpusDoc): CorpusDoc {
+  const source = resolveCanonicalKnowledgeSource({
+    url: doc.url,
+    sourceClass: doc.sourceClass,
+    title: doc.title,
+  });
+  return {
+    ...doc,
+    sourceId: doc.sourceId ?? source.sourceId,
+    sourceVersion: doc.sourceVersion ?? doc.contentHash,
+  } satisfies CorpusDoc;
 }
 
 export function ingestKnowledgeDocument(input: {
@@ -206,6 +230,10 @@ export function ingestKnowledgeDocument(input: {
   projectScoped?: boolean;
   allowedAgentIds?: string[] | null;
   embedding?: number[] | null;
+  ownerId?: string | null;
+  tenantId?: string | null;
+  projectId?: string | null;
+  applicationId?: string | null;
 }): CorpusDoc {
   const contentHash = hashDoc(input.title, input.excerpt);
   const existing = CORPUS.find((d) => d.contentHash === contentHash);
@@ -216,7 +244,7 @@ export function ingestKnowledgeDocument(input: {
     }
     return existing;
   }
-  const doc: CorpusDoc = {
+  const doc = bindSourceFields({
     id: `kf_${contentHash}`,
     title: input.title,
     sourceClass: input.sourceClass,
@@ -225,9 +253,15 @@ export function ingestKnowledgeDocument(input: {
     sourceUpdatedAt: input.sourceUpdatedAt ?? new Date().toISOString(),
     projectScoped: input.projectScoped ?? false,
     contentHash,
+    ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+    ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {}),
+    ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+    ...(input.applicationId !== undefined
+      ? { applicationId: input.applicationId }
+      : {}),
     ...(input.allowedAgentIds ? { allowedAgentIds: [...input.allowedAgentIds] } : {}),
     ...(input.embedding ? { embedding: [...input.embedding] } : {}),
-  };
+  });
   CORPUS.push(doc);
   persistIfConfigured();
   return doc;
@@ -244,6 +278,10 @@ export function upsertKnowledgeDocument(input: {
   projectScoped?: boolean;
   allowedAgentIds?: string[] | null;
   embedding?: number[] | null;
+  ownerId?: string | null;
+  tenantId?: string | null;
+  projectId?: string | null;
+  applicationId?: string | null;
 }): CorpusDoc {
   const contentHash = hashDoc(input.title, input.excerpt);
   const existing =
@@ -262,12 +300,21 @@ export function upsertKnowledgeDocument(input: {
         ? [...input.allowedAgentIds]
         : input.allowedAgentIds;
     }
+    if (input.ownerId !== undefined) existing.ownerId = input.ownerId;
+    if (input.tenantId !== undefined) existing.tenantId = input.tenantId;
+    if (input.projectId !== undefined) existing.projectId = input.projectId;
+    if (input.applicationId !== undefined) {
+      existing.applicationId = input.applicationId;
+    }
     if (input.embedding) existing.embedding = [...input.embedding];
+    const bound = bindSourceFields(existing);
+    existing.sourceId = bound.sourceId ?? null;
+    existing.sourceVersion = bound.sourceVersion ?? existing.contentHash;
     persistIfConfigured();
     return existing;
   }
   if (input.id) {
-    const doc: CorpusDoc = {
+    const doc = bindSourceFields({
       id: input.id,
       title: input.title,
       sourceClass: input.sourceClass,
@@ -276,9 +323,15 @@ export function upsertKnowledgeDocument(input: {
       sourceUpdatedAt: input.sourceUpdatedAt ?? new Date().toISOString(),
       projectScoped: input.projectScoped ?? false,
       contentHash,
+      ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+      ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {}),
+      ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+      ...(input.applicationId !== undefined
+        ? { applicationId: input.applicationId }
+        : {}),
       ...(input.allowedAgentIds ? { allowedAgentIds: [...input.allowedAgentIds] } : {}),
       ...(input.embedding ? { embedding: [...input.embedding] } : {}),
-    };
+    });
     CORPUS.push(doc);
     persistIfConfigured();
     return doc;
@@ -290,13 +343,15 @@ export function listKnowledgeCorpus(): readonly CorpusDoc[] {
   return CORPUS;
 }
 
-/** Need-based retrieval → hybrid keyword+vector filter → rank → evidence package. */
+/** Need-based retrieval → eligibility → hybrid keyword+vector filter → rank → evidence package. */
 export function searchKnowledgeFabric(input: {
   query: string;
+  scope?: KnowledgeRetrievalScope | null;
   maxResults?: number;
   minAuthority?: number;
   allowStale?: boolean;
   requestingAgentIds?: readonly string[];
+  pin?: KnowledgePin;
   /** Optional vector similarities keyed by doc id (from embeddings / pgvector). */
   vectorScores?: Readonly<Record<string, number>>;
   /** Override active corpus (e.g. pgvector candidate set). */
@@ -304,51 +359,73 @@ export function searchKnowledgeFabric(input: {
   /** Which store produced candidates — surfaced in result + INSUFFICIENT_EVIDENCE copy. */
   retrievalBackend?: "pgvector" | "local";
 }): KnowledgeSearchResult {
+  const backend = input.retrievalBackend ?? "local";
+  const docs = input.corpus ?? CORPUS;
+  const requestedScope = input.scope ?? null;
+  if (!requestedScope || !isCompleteKnowledgeScope(requestedScope)) {
+    return insufficientKnowledgeResult({
+      query: input.query,
+      reason: missingKnowledgeScopeReason(requestedScope),
+      retrievalBackend: backend,
+      filteredOut: docs.length,
+    });
+  }
+
+  const scope: KnowledgeRetrievalScope = input.requestingAgentIds?.length
+    ? { ...requestedScope, requestingAgentIds: input.requestingAgentIds }
+    : requestedScope;
+
   const maxResults = input.maxResults ?? 20;
   const minAuthority = input.minAuthority ?? 0.4;
   const allowStale = input.allowStale ?? false;
-  const docs = input.corpus ?? CORPUS;
   const q = input.query.toLowerCase();
-  const now = new Date().toISOString();
-  const visibleDocs = docs.filter((doc) => {
-    const allowed = doc.allowedAgentIds;
-    if (!allowed || allowed.length === 0) return true;
-    const requesting = input.requestingAgentIds;
-    return Boolean(
-      requesting &&
-      requesting.length > 0 &&
-      requesting.every((agentId) => allowed.includes(agentId)),
-    );
-  });
-  let filteredOut = docs.length - visibleDocs.length;
+  const now = new Date();
+  const retrievedAt = now.toISOString();
 
-  const scored = visibleDocs.map((doc) => {
-    const authority =
-      EXTERNAL_SOURCE_CONFIDENCE[doc.sourceClass] ??
-      EXTERNAL_SOURCE_CONFIDENCE.TECHNICAL_ARTICLE ??
-      0.5;
+  let filteredOut = 0;
+  const eligibleDocs: Array<{
+    doc: CorpusDoc;
+    authority: number;
+    freshness: "CURRENT" | "STALE" | "UNKNOWN";
+    sourceId: string;
+    sourceVersion: string;
+  }> = [];
+
+  for (const doc of docs) {
+    const decision = evaluateKnowledgeEligibility({
+      doc,
+      scope,
+      minAuthority,
+      allowStale,
+      now,
+      ...(input.pin ? { pin: input.pin } : {}),
+    });
+    if (!decision.eligible || decision.authority == null) {
+      filteredOut += 1;
+      continue;
+    }
+    eligibleDocs.push({
+      doc,
+      authority: decision.authority,
+      freshness: decision.freshness,
+      sourceId: decision.source.sourceId,
+      sourceVersion: decision.sourceVersion,
+    });
+  }
+
+  const scored = eligibleDocs.map((row) => {
     const tokens = q.split(/\s+/).filter(Boolean);
     const relevance = tokens.filter(
       (t) =>
-        doc.title.toLowerCase().includes(t) ||
-        doc.excerpt.toLowerCase().includes(t),
+        row.doc.title.toLowerCase().includes(t) ||
+        row.doc.excerpt.toLowerCase().includes(t),
     ).length;
-    const vector = input.vectorScores?.[doc.id] ?? 0;
-    const fresh = freshness(doc.sourceUpdatedAt);
-    return { doc, authority, relevance, vector, fresh };
+    const vector = input.vectorScores?.[row.doc.id] ?? 0;
+    return { ...row, relevance, vector };
   });
 
   const kept = scored.filter((row) => {
-    if (row.authority < minAuthority) {
-      filteredOut += 1;
-      return false;
-    }
-    if (!allowStale && row.fresh === "STALE") {
-      filteredOut += 1;
-      return false;
-    }
     const hybridHit = row.relevance > 0 || row.vector >= 0.35;
-    // Need-based retrieval: never return packages that neither keyword nor vector matched.
     if (!hybridHit && q.length > 2) {
       filteredOut += 1;
       return false;
@@ -363,24 +440,41 @@ export function searchKnowledgeFabric(input: {
       a.doc.title.localeCompare(b.doc.title),
   );
 
-  const hits = kept.slice(0, maxResults).map((row) => ({
+  const ranked = kept.slice(0, maxResults);
+  if (eligibleHitsAreMateriallyConflicting(ranked.map((row) => ({
+    id: row.doc.id,
+    excerpt: row.doc.excerpt,
+    authority: row.authority,
+    sourceUpdatedAt: row.doc.sourceUpdatedAt,
+  })))) {
+    return insufficientKnowledgeResult({
+      query: input.query,
+      reason: `INSUFFICIENT_EVIDENCE — eligible sources conflict; refusing to invent a resolution (filtered ${filteredOut}).`,
+      retrievalBackend: backend,
+      filteredOut: filteredOut + ranked.length,
+    });
+  }
+
+  const hits = ranked.map((row) => ({
     id: row.doc.id,
     title: row.doc.title,
     sourceClass: row.doc.sourceClass,
     authority: row.authority,
     url: row.doc.url,
-    retrievedAt: now,
+    retrievedAt,
     sourceUpdatedAt: row.doc.sourceUpdatedAt,
-    freshness: row.fresh,
+    freshness: row.freshness,
     excerpt: row.doc.excerpt,
     contentHash: row.doc.contentHash,
+    sourceId: row.sourceId,
+    sourceVersion: row.sourceVersion,
+    documentId: row.doc.id,
     epistemicState:
-      row.fresh === "CURRENT" && row.authority >= 0.9
+      row.freshness === "CURRENT" && row.authority >= 0.9
         ? ("OBSERVED" as const)
         : ("INFERRED" as const),
   }));
 
-  const backend = input.retrievalBackend ?? "local";
   const plainLanguage =
     hits.length === 0
       ? `INSUFFICIENT_EVIDENCE — hybrid retrieve (${backend}) returned 0 packages (filtered ${filteredOut}). No invented results.`
@@ -400,10 +494,12 @@ export function buildEvidencePackageForAgent(input: {
   agentSpecialtyHints: string[];
   agentIds: readonly string[];
   maxItems?: number;
+  scope?: KnowledgeRetrievalScope | null;
 }): KnowledgeSearchResult {
   const q = [input.query, ...input.agentSpecialtyHints].join(" ");
   return searchKnowledgeFabric({
     query: q,
+    ...(input.scope ? { scope: input.scope } : {}),
     maxResults: input.maxItems ?? 8,
     minAuthority: 0.4,
     allowStale: false,

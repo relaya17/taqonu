@@ -98,23 +98,40 @@ describe("judgeEvaluateRequestSchema", () => {
 });
 
 describe("knowledgeSearchRequestSchema", () => {
+  const requiredScope = {
+    query: "auth",
+    tenantId: "tenant-test",
+    projectId: "22222222-2222-4222-8222-222222222222",
+    applicationId: "app-test",
+    requestingAgentId: "RESEARCHER" as const,
+  };
+
   it("defaults maxResults=20, minAuthority=0.4, allowStale=false", () => {
-    const parsed = knowledgeSearchRequestSchema.parse({ query: "auth" });
+    const parsed = knowledgeSearchRequestSchema.parse(requiredScope);
     expect(parsed.maxResults).toBe(20);
     expect(parsed.minAuthority).toBe(0.4);
     expect(parsed.allowStale).toBe(false);
   });
 
   it("rejects an empty query and a query over 2000 chars", () => {
-    expect(() => knowledgeSearchRequestSchema.parse({ query: "" })).toThrow();
     expect(() =>
-      knowledgeSearchRequestSchema.parse({ query: "x".repeat(2001) }),
+      knowledgeSearchRequestSchema.parse({ ...requiredScope, query: "" }),
+    ).toThrow();
+    expect(() =>
+      knowledgeSearchRequestSchema.parse({
+        ...requiredScope,
+        query: "x".repeat(2001),
+      }),
     ).toThrow();
   });
 
   it("rejects maxResults over 50", () => {
     expect(() =>
-      knowledgeSearchRequestSchema.parse({ query: "auth", maxResults: 51 }),
+      knowledgeSearchRequestSchema.parse({ ...requiredScope, maxResults: 51 }),
     ).toThrow();
+  });
+
+  it("fails closed when required retrieval scope is missing", () => {
+    expect(() => knowledgeSearchRequestSchema.parse({ query: "auth" })).toThrow();
   });
 });

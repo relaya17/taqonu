@@ -61,6 +61,8 @@ describe("conversation evidence discipline", () => {
             freshness: "CURRENT",
             excerpt: "23 domains",
             contentHash: "abc",
+            sourceId: "mdn-js",
+            sourceVersion: "abc",
             epistemicState: "OBSERVED",
           },
         ],
@@ -69,6 +71,7 @@ describe("conversation evidence discipline", () => {
     });
     expect(refs).toHaveLength(1);
     expect(refs[0]?.kind).toBe("knowledge");
+    expect(refs[0]?.reference).toBe("source:mdn-js@abc");
     expect(resolveConversationEpistemic(refs)).toBe("PROPOSED");
   });
 });
