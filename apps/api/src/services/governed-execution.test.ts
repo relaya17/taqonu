@@ -223,8 +223,8 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(runs).toBe(1);
   });
 
-  // ── ATTACK 7: escalated action under a narrower approval ──────────────
-  it("BLOCKS an approval for READ being redeemed for DELETE", async () => {
+  // ── ATTACK 7: caller cannot pick a different ToolPolicy cell ─────────
+  it("BLOCKS a mismatched operation assertion before claim (DELETE vs canonical READ)", async () => {
     const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
@@ -241,8 +241,13 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     const result = await executeGovernedAction(
       baseRequest({ approvalRequestId: approved.id, action: "DELETE" }),
     );
-    expect(result.stage).toBe("APPROVAL");
+    expect(result.stage).toBe("AUTHORIZATION");
     expect(result.status).toBe("DENIED");
+    if (result.status !== "DENIED") throw new Error("expected DENIED");
+    expect(result.reason).toMatch(/DOCUMENT\.READ/);
+    expect(result.reason).toMatch(/DOCUMENT\.DELETE/);
+    const still = await getApprovalRequest(approved.id);
+    expect(still?.status).toBe("APPROVED");
   });
 
   // ── ATTACK 8: catalog does not grant tools outside the agent's allowedTools ──
@@ -276,12 +281,16 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
     expect(result.output).toContain("answer = 42");
     expect(result.artifactHash).toBe(knowledgeBindingHash());
+    const entries = listUnifiedAuditEntries().filter(
+      (e) => e.type === "test.governed.execute" && e.result === "SUCCESS",
+    );
+    expect(entries.at(-1)?.policy).toBe("DOCUMENT.READ");
   });
 
-  it("does not re-require approval at Stage 4 after a matching RECORD.CREATE claim", async () => {
+  it("does not re-require approval at Stage 4 after a matching canonical DOCUMENT.READ claim", async () => {
     const approved = await createApprovalRequest({
-      entityType: "RECORD",
-      action: "CREATE",
+      entityType: "DOCUMENT",
+      action: "READ",
       requestedBy: "RESEARCHER",
       reason: "phase-3e governed re-check",
       artifactHash: knowledgeBindingHash(),
@@ -294,8 +303,8 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     const result = await executeGovernedAction(
       baseRequest({
         approvalRequestId: approved.id,
-        entityType: "RECORD",
-        action: "CREATE",
+        entityType: "DOCUMENT",
+        action: "READ",
       }),
     );
     expect(result.status).not.toBe("APPROVAL_REQUIRED");
@@ -378,33 +387,99 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     });
   });
 
-  it("persists an approval-required GovernanceDecision with the real approval reference", async () => {
+  it("DENIES knowledge_search + DOCUMENT.UPDATE as AUTHORIZATION before execute and claim", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        return "observation: answer = 42";
+      },
+    });
+    const approved = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "READ",
+      requestedBy: "RESEARCHER",
+      reason: "must not be claimed on mismatch",
+      artifactHash: knowledgeBindingHash(),
+    });
+    await decideApprovalRequest(approved.id, {
+      decidedBy: OWNER_A,
+      approve: true,
+      decisionReason: "ok",
+    });
+
     const result = await executeGovernedAction(
-      baseRequest({ entityType: "DOCUMENT", action: "UPDATE" }),
+      baseRequest({
+        approvalRequestId: approved.id,
+        entityType: "DOCUMENT",
+        action: "UPDATE",
+      }),
     );
-    expect(result.status).toBe("APPROVAL_REQUIRED");
+    expect(result.stage).toBe("AUTHORIZATION");
+    expect(result.status).toBe("DENIED");
+    if (result.status !== "DENIED") throw new Error("expected DENIED");
+    expect(result.reason).toMatch(/DOCUMENT\.READ/);
+    expect(result.reason).toMatch(/DOCUMENT\.UPDATE/);
+    expect(runs).toBe(0);
+    const still = await getApprovalRequest(approved.id);
+    expect(still?.status).toBe("APPROVED");
 
     const [decision] = listGovernanceDecisions();
     expect(decision).toMatchObject({
-      decision: "REQUIRE_APPROVAL",
-      stage: "POLICY",
-      status: "APPROVAL_REQUIRED",
+      decision: "DENY",
+      stage: "AUTHORIZATION",
+      status: "DENIED",
       policy: {
         version: null,
-        result: "APPROVAL_REQUIRED",
-        riskTier: "HIGH_RISK_WRITE",
-        requiresApproval: true,
+        result: "NOT_EVALUATED",
+        riskTier: null,
+        requiresApproval: null,
       },
       risk: {
-        status: "EVALUATED",
-        score: 80,
-        rawBucket: "HUMAN_ONLY",
-        effectiveBucket: "HUMAN_ONLY",
+        status: "NOT_EVALUATED",
+        score: null,
+        rawBucket: null,
+        effectiveBucket: null,
+        factors: [],
       },
-      approval: { required: true, status: "REQUIRED" },
       execution: { status: "NOT_RUN", result: "NOT_RUN" },
     });
-    expect(decision?.approval.requestId).toBe(result.status === "APPROVAL_REQUIRED" ? result.reason.match(/[0-9a-f-]{36}/)?.[0] : null);
+  });
+
+  it("EXECUTES knowledge_search when the caller omits entityType/action, using canonical DOCUMENT.READ", async () => {
+    const { entityType: _e, action: _a, ...withoutPair } = baseRequest();
+    const result = await executeGovernedAction(withoutPair);
+    expect(result.stage).toBe("EXECUTION");
+    expect(result.status).toBe("EXECUTED");
+    if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
+    expect(result.artifactHash).toBe(knowledgeBindingHash());
+    const entries = listUnifiedAuditEntries().filter(
+      (e) => e.type === "test.governed.execute" && e.result === "SUCCESS",
+    );
+    expect(entries.at(-1)?.policy).toBe("DOCUMENT.READ");
+    expect(entries.at(-1)?.input).toMatchObject({
+      entityType: "DOCUMENT",
+      action: "READ",
+    });
+  });
+
+  it("DENIES when only one of entityType/action is supplied", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        return "observation: answer = 42";
+      },
+    });
+    const { action: _a, ...entityOnly } = baseRequest();
+    const result = await executeGovernedAction(entityOnly);
+    expect(result.stage).toBe("AUTHORIZATION");
+    expect(result.status).toBe("DENIED");
+    expect(runs).toBe(0);
   });
 
   it("persists execution failure after an allowed policy and risk evaluation", async () => {

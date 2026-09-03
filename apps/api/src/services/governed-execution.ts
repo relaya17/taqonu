@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   executeTool,
   extractGovernedTarget,
+  resolveCanonicalToolOperationForRequest,
   type BusinessEntityType,
   type CanonicalTarget,
   type EntityAction,
@@ -44,14 +45,17 @@ import { runGovernedClaimedExecution } from "./governed-claimed-execution.js";
  * The stages run cheapest-and-most-fundamental first, so an unauthorized
  * request is rejected before it can cost anything or touch any state:
  *
- *   1. Tool authorization   — may this agent use this tool at all?
- *   2. Target extraction    — bind the instance the tool will execute against
- *   3. Binding hash         — pin canonical target + caller artifact
- *   4. Idempotency          — same key + same binding hash replays
- *   5. Claim or resume      — durable CLAIMED occupancy for THIS binding
- *   6. Phase 3E + Policy/Risk
- *   7. Mark started + execute once + finalize
- *   8. Audit                — always, including on every refusal above.
+ *   1. Catalog authorization — may this agent use this tool at all?
+ *   2. Resolve canonical ToolPolicy operation from toolName
+ *   3. Validate asserted entityType/action (match or omit; never rewrite)
+ *   4. Extract canonical target — bind the instance the tool will execute against
+ *   5. Compute governed binding hash — pin canonical target + caller artifact
+ *   6. Idempotency — same key + same binding hash replays
+ *   7. Claim or resume — durable CLAIMED occupancy for THIS binding
+ *   8. Policy/Risk dispatch
+ *   9. Execute tool
+ *  10. Finalize
+ *  11. Audit — always, including on every refusal above.
  *
  * Every stage that cannot reach a positive answer — UNAUTHORIZED, MISSING,
  * STALE, MISMATCH, EXPIRED, UNKNOWN — halts the pipeline. There is no
@@ -99,8 +103,14 @@ export interface GovernedExecutionRequest {
    * legitimately need none; the Policy/Risk gate still applies.
    */
   readonly approvalRequestId?: string;
-  readonly entityType: BusinessEntityType;
-  readonly action: EntityAction;
+  /**
+   * Assertion of the tool's ToolPolicy operation. Omit both to use the
+   * canonical pair. Supplying only one field is rejected. Mismatch is
+   * rejected — never rewritten. Downstream claim/policy always use the
+   * canonical pair.
+   */
+  readonly entityType?: BusinessEntityType;
+  readonly action?: EntityAction;
   readonly sourceContext: DispatchSourceContext;
   readonly projectRoot: string;
   readonly routeLabel: string;
@@ -268,8 +278,8 @@ function buildGovernanceDecision(
     },
     operation: request.operation ?? request.routeLabel,
     resource: {
-      entityType: request.entityType,
-      action: request.action,
+      entityType: request.entityType ?? "DOCUMENT",
+      action: request.action ?? "READ",
       artifactHash,
     },
     policy: {
@@ -335,7 +345,7 @@ function auditOutcome(
       status: outcome.status,
       reason: "reason" in outcome ? outcome.reason : "ok",
     },
-    policy: `${request.entityType}.${request.action}`,
+    policy: `${request.entityType ?? "UNRESOLVED"}.${request.action ?? "UNRESOLVED"}`,
     risk: outcome.status === "EXECUTED" ? "LOW" : "HIGH",
     approval: request.approvalRequestId ? "APPROVED" : "NOT_REQUIRED",
     result: outcome.status === "EXECUTED" ? "SUCCESS" : "FAILURE",
@@ -373,11 +383,45 @@ export async function executeGovernedAction(
     return outcome;
   }
 
-  // ── 2. Canonical target (instance) ──────────────────────────────────
-  const extracted = extractGovernedTarget(
+  // ── 2–3. Canonical ToolPolicy operation + assertion ─────────────────
+  if ((request.entityType === undefined) !== (request.action === undefined)) {
+    const outcome: GovernedExecutionOutcome = {
+      stage: "AUTHORIZATION",
+      status: "DENIED",
+      reason:
+        "entityType and action must both be omitted or both be supplied as a matching assertion of the tool's canonical operation",
+    };
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    return outcome;
+  }
+  const assertedPair =
+    request.entityType !== undefined && request.action !== undefined
+      ? { entityType: request.entityType, action: request.action }
+      : undefined;
+  const canonical = resolveCanonicalToolOperationForRequest(
     request.toolName,
-    request.toolArgs,
-    request.projectRoot,
+    assertedPair,
+  );
+  if (!canonical.ok) {
+    const outcome: GovernedExecutionOutcome = {
+      stage: "AUTHORIZATION",
+      status: "DENIED",
+      reason: canonical.reason,
+    };
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    return outcome;
+  }
+  const governedRequest: GovernedExecutionRequest = {
+    ...request,
+    entityType: canonical.entityType,
+    action: canonical.action,
+  };
+
+  // ── 4. Canonical target (instance) ──────────────────────────────────
+  const extracted = extractGovernedTarget(
+    governedRequest.toolName,
+    governedRequest.toolArgs,
+    governedRequest.projectRoot,
   );
   if (!extracted.ok) {
     const noExtractor = extracted.reason.startsWith("No governed target extractor");
@@ -392,27 +436,27 @@ export async function executeGovernedAction(
           status: "FAILED",
           reason: sanitizeErrorMessage(extracted.reason),
         };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    auditOutcome(governedRequest, computeArtifactHash(governedRequest.artifact), outcome);
     return outcome;
   }
 
-  // ── 3. Binding hash (target + artifact) ─────────────────────────────
+  // ── 5. Binding hash (target + artifact) ─────────────────────────────
   let artifactHash: string;
   try {
-    artifactHash = computeGovernedBindingHash(extracted.target, request.artifact);
+    artifactHash = computeGovernedBindingHash(extracted.target, governedRequest.artifact);
   } catch (err) {
     const outcome: GovernedExecutionOutcome = {
       stage: "EXECUTION",
       status: "FAILED",
       reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
     };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    auditOutcome(governedRequest, computeArtifactHash(governedRequest.artifact), outcome);
     return outcome;
   }
 
-  // ── 4. Idempotency (binding hash) ───────────────────────────────────
-  if (request.idempotencyKey) {
-    const prior = governedIdempotency.get(request.idempotencyKey);
+  // ── 6. Idempotency (binding hash) ───────────────────────────────────
+  if (governedRequest.idempotencyKey) {
+    const prior = governedIdempotency.get(governedRequest.idempotencyKey);
     if (prior) {
       if (prior.artifactHash !== artifactHash) {
         const outcome: GovernedExecutionOutcome = {
@@ -420,7 +464,13 @@ export async function executeGovernedAction(
           status: "FAILED",
           reason: "idempotency key reused with a different artifact",
         };
-        auditOutcome(request, artifactHash, outcome, EMPTY_GOVERNANCE_AUDIT_CONTEXT, extracted.target);
+        auditOutcome(
+          governedRequest,
+          artifactHash,
+          outcome,
+          EMPTY_GOVERNANCE_AUDIT_CONTEXT,
+          extracted.target,
+        );
         return outcome;
       }
       return prior.outcome;
@@ -428,41 +478,41 @@ export async function executeGovernedAction(
   }
 
   const helper = await runGovernedClaimedExecution({
-    executorId: request.identity.agentId,
+    executorId: governedRequest.identity.agentId,
     actor: {
       kind: "AGENT",
-      agentId: request.identity.agentId,
-      onBehalfOfUserId: request.identity.ownerId,
+      agentId: governedRequest.identity.agentId,
+      onBehalfOfUserId: governedRequest.identity.ownerId,
     },
-    entityType: request.entityType,
-    action: request.action,
+    entityType: canonical.entityType,
+    action: canonical.action,
     artifactHash,
-    ...(request.approvalRequestId !== undefined
-      ? { approvalRequestId: request.approvalRequestId }
+    ...(governedRequest.approvalRequestId !== undefined
+      ? { approvalRequestId: governedRequest.approvalRequestId }
       : {}),
-    requestId: request.requestId,
-    sourceContext: request.sourceContext,
-    projectId: request.identity.projectId,
-    routeLabel: `${request.routeLabel}.gate`,
-    ...(request.agentRuntimeStatus !== undefined
-      ? { agentRuntimeStatus: request.agentRuntimeStatus }
+    requestId: governedRequest.requestId,
+    sourceContext: governedRequest.sourceContext,
+    projectId: governedRequest.identity.projectId,
+    routeLabel: `${governedRequest.routeLabel}.gate`,
+    ...(governedRequest.agentRuntimeStatus !== undefined
+      ? { agentRuntimeStatus: governedRequest.agentRuntimeStatus }
       : {}),
-    ...(request.delegationHopCount !== undefined
-      ? { delegationHopCount: request.delegationHopCount }
+    ...(governedRequest.delegationHopCount !== undefined
+      ? { delegationHopCount: governedRequest.delegationHopCount }
       : {}),
-    dispatchInput: { toolName: request.toolName, artifactHash },
+    dispatchInput: { toolName: governedRequest.toolName, artifactHash },
     executeOnce: async ({ gate }) => {
       let toolResult: ToolExecutionOutcome;
       try {
-        toolResult = await executeTool(request.toolName, request.toolArgs, {
-          projectRoot: request.projectRoot,
-          projectId: request.identity.projectId,
+        toolResult = await executeTool(governedRequest.toolName, governedRequest.toolArgs, {
+          projectRoot: governedRequest.projectRoot,
+          projectId: governedRequest.identity.projectId,
           correlation: {
-            requestId: request.requestId,
-            agentId: request.identity.agentId,
+            requestId: governedRequest.requestId,
+            agentId: governedRequest.identity.agentId,
             proposalId: null,
             governanceDecisionId: gate.decision === "ALLOWED" ? gate.auditId : null,
-            authorizationId: request.approvalRequestId ?? null,
+            authorizationId: governedRequest.approvalRequestId ?? null,
             executionId: "",
             toolCallId: "",
           },
@@ -478,7 +528,7 @@ export async function executeGovernedAction(
           toolResult.status === "DENIED"
             ? toolResult.reason
             : toolResult.status === "APPROVAL_REQUIRED"
-              ? `tool "${request.toolName}" requires approval`
+              ? `tool "${governedRequest.toolName}" requires approval`
               : toolResult.status === "TIMEOUT"
                 ? `tool timed out after ${toolResult.timeoutMs}ms`
                 : toolResult.reason;
@@ -522,9 +572,9 @@ export async function executeGovernedAction(
     };
   }
 
-  auditOutcome(request, artifactHash, outcome, { gate, approval }, extracted.target);
-  if (request.idempotencyKey && outcome.status === "EXECUTED") {
-    governedIdempotency.set(request.idempotencyKey, { artifactHash, outcome });
+  auditOutcome(governedRequest, artifactHash, outcome, { gate, approval }, extracted.target);
+  if (governedRequest.idempotencyKey && outcome.status === "EXECUTED") {
+    governedIdempotency.set(governedRequest.idempotencyKey, { artifactHash, outcome });
   }
   return outcome;
 }
