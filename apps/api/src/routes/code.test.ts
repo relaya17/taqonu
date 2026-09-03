@@ -470,7 +470,10 @@ describe("POST /api/v1/code/patches/:id/rollback/decide-and-execute (CP7.2 live-
       url: `/api/v1/code/patches/${patch.id}/rollback/decide-and-execute`,
       payload: { approvalId, decisionReason: "trying again", workspaceRoot },
     });
-    expect(replay.statusCode).toBe(403);
+    // Patch is already ROLLED_BACK, so the route rejects before occupancy
+    // replay. Either way the second attempt must not succeed or mutate again.
+    expect(replay.statusCode).toBe(400);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
   });
 
   it("self-approval is rejected for rollback too", async () => {

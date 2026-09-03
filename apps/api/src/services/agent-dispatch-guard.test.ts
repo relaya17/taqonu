@@ -454,9 +454,9 @@ describe("dispatchAgentAction", () => {
         input: { artifactHash: ARTIFACT_HASH },
         claimedApproval: claimed,
       });
-      expect(result.decision).toBe("APPROVAL_REQUIRED");
-      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
-      expect(result.bucket).toBe("HUMAN_ONLY");
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/does not match this governed action/);
     });
 
     it("a HUMAN actor presenting a forged claim missing decidedBy is denied (defense in depth, not trusting the DB alone)", async () => {
@@ -470,9 +470,9 @@ describe("dispatchAgentAction", () => {
         input: { artifactHash: ARTIFACT_HASH },
         claimedApproval: { ...claimed, decidedBy: null },
       });
-      expect(result.decision).toBe("APPROVAL_REQUIRED");
-      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
-      expect(result.bucket).toBe("HUMAN_ONLY");
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/does not match this governed action/);
     });
 
     it("a HUMAN actor presenting a forged claim where decidedBy !== claimedBy is denied", async () => {
@@ -486,9 +486,9 @@ describe("dispatchAgentAction", () => {
         input: { artifactHash: ARTIFACT_HASH },
         claimedApproval: { ...claimed, decidedBy: "someone-else" },
       });
-      expect(result.decision).toBe("APPROVAL_REQUIRED");
-      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
-      expect(result.bucket).toBe("HUMAN_ONLY");
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/does not match this governed action/);
     });
 
     it("a HUMAN actor presenting a forged claim where decidedBy === requestedBy (self-approval) is denied even if the DB check were somehow bypassed", async () => {
@@ -502,9 +502,9 @@ describe("dispatchAgentAction", () => {
         input: { artifactHash: ARTIFACT_HASH },
         claimedApproval: { ...claimed, decidedBy: claimed.requestedBy, claimedBy: claimed.requestedBy },
       });
-      expect(result.decision).toBe("APPROVAL_REQUIRED");
-      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
-      expect(result.bucket).toBe("HUMAN_ONLY");
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/does not match this governed action/);
     });
 
     it("a HUMAN actor cannot satisfy HUMAN_ONLY via an ordinary approval-token claim (decidedBy is null on that path)", async () => {
@@ -527,7 +527,7 @@ describe("dispatchAgentAction", () => {
         artifactHash: ARTIFACT_HASH,
       });
       const result = await dispatchAgentAction({
-        actor: { kind: "HUMAN", agentId: created.requestedBy, onBehalfOfUserId: created.requestedBy },
+        actor: { kind: "HUMAN", agentId: created.requestedBy, onBehalfOfUserId: USER_ID },
         entityType: "RECORD",
         action: "DELETE",
         routeLabel: "test.human.recheck.ordinary-token-not-authority",
@@ -535,9 +535,9 @@ describe("dispatchAgentAction", () => {
         input: { artifactHash: ARTIFACT_HASH },
         claimedApproval: claimed,
       });
-      expect(result.decision).toBe("APPROVAL_REQUIRED");
-      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
-      expect(result.bucket).toBe("HUMAN_ONLY");
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/does not match this governed action/);
     });
   });
 
