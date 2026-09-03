@@ -46,6 +46,23 @@ export type ClaimLiveApprovalInput = {
   readonly requestId?: string;
 };
 
+/**
+ * Input for `claim_live_approval_request_as_live_human` -- the sole,
+ * atomic PENDING -> CLAIMED transition for the HUMAN_ONLY live-decision
+ * path (CP7.2). Deliberately has no `executorId` field: the claiming
+ * identity IS `decidedBy`, not a separately-presented executor -- see the
+ * migration's comment for why this departs from `ClaimLiveApprovalInput`'s
+ * executor-must-equal-requester contract.
+ */
+export type ClaimAsLiveHumanInput = {
+  readonly entityType: string;
+  readonly action: string;
+  readonly decidedBy: string;
+  readonly decisionReason: string;
+  readonly artifactHash?: string;
+  readonly requestId?: string;
+};
+
 export type FinalizeLiveApprovalOutcome = "FULFILLED" | "FAILED" | "OUTCOME_UNKNOWN";
 
 export type FinalizeLiveApprovalInput = {
@@ -77,7 +94,7 @@ function mapRpcError(error: { message: string }): never {
     throw new LiveApprovalPersistenceError("NOT_FOUND", message);
   }
   if (
-    /already been decided|not APPROVED|not CLAIMED|REVOKED|expired at|authorizes |cannot be revoked|cannot be redeemed|cannot be claimed|requires presenting that artifact|claim requires|liveExecutionId|FULFILLED requires|FAILED requires|OUTCOME_UNKNOWN requires|already been finalized|conflicting terminal|invalid terminal|cannot be replaced/i.test(
+    /already been decided|not APPROVED|not CLAIMED|not PENDING|REVOKED|expired at|authorizes |cannot be revoked|cannot be redeemed|cannot be claimed|requires presenting that artifact|claim requires|separation of duties|liveExecutionId|FULFILLED requires|FAILED requires|OUTCOME_UNKNOWN requires|already been finalized|conflicting terminal|invalid terminal|cannot be replaced/i.test(
       message,
     )
   ) {
@@ -185,6 +202,23 @@ export class LiveApprovalRequestRepository {
       p_entity_type: presented.entityType,
       p_action: presented.action,
       p_executor_id: presented.executorId,
+      p_artifact_hash: presented.artifactHash ?? null,
+      p_request_id: presented.requestId ?? null,
+    });
+    return parseRecord(data);
+  }
+
+  /**
+   * Live-human path only (CP7.2) -- see `claim_live_approval_request_as_live_human`.
+   * Atomic PENDING -> CLAIMED; never produces an intermediate APPROVED row.
+   */
+  async claimAsLiveHuman(id: string, presented: ClaimAsLiveHumanInput): Promise<ApprovalRequest> {
+    const data = await callRpc(this.client, "claim_live_approval_request_as_live_human", {
+      p_id: id,
+      p_entity_type: presented.entityType,
+      p_action: presented.action,
+      p_decided_by: presented.decidedBy,
+      p_decision_reason: presented.decisionReason,
       p_artifact_hash: presented.artifactHash ?? null,
       p_request_id: presented.requestId ?? null,
     });

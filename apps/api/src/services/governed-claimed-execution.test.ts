@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   claimApprovalRequest,
+  claimApprovalRequestAsLiveHuman,
   createApprovalRequest,
   decideApprovalRequest,
   getApprovalRequest,
@@ -506,6 +507,204 @@ describe("runGovernedClaimedExecution", () => {
     });
     expect(result.status).toBe("FINALIZE_INCOMPLETE");
     expect(result.status === "FINALIZE_INCOMPLETE" && result.intendedOutcome).toBe("FULFILLED");
+  });
+
+  describe("liveHumanDecision (HUMAN_ONLY live-human path, CP7.2)", () => {
+    const DECIDER = "44444444-4444-4444-8444-444444444444";
+    const humanActor = {
+      kind: "HUMAN" as const,
+      agentId: DECIDER,
+      onBehalfOfUserId: DECIDER,
+    };
+
+    async function pendingHumanOnly(overrides: { requestedBy?: string } = {}) {
+      return createApprovalRequest({
+        entityType: "RECORD",
+        action: "DELETE",
+        requestedBy: overrides.requestedBy ?? AGENT,
+        reason: "human-only live decision",
+        artifactHash: ARTIFACT,
+      });
+    }
+
+    it("PENDING -> CLAIMED directly: no intermediate APPROVED row, claimedBy/decidedBy are the live decider (never requestedBy), and it executes to FULFILLED", async () => {
+      const created = await pendingHumanOnly();
+      let runs = 0;
+      const result = await runGovernedClaimedExecution({
+        executorId: DECIDER,
+        actor: humanActor,
+        entityType: "RECORD",
+        action: "DELETE",
+        artifactHash: ARTIFACT,
+        approvalRequestId: created.id,
+        requestId: "req-human-1",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        routeLabel: "test.helper.human.first-claim",
+        liveHumanDecision: { decidedBy: DECIDER, decisionReason: "verified live, approved" },
+        executeOnce: async () => {
+          runs += 1;
+          return { kind: "SUCCESS", value: "ok", outputEvidence: "ok" };
+        },
+      });
+      expect(result.status).toBe("EXECUTED");
+      expect(runs).toBe(1);
+      if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
+      // No risk downgrade: the gate still evaluated (and passed) the real
+      // HUMAN_ONLY-tier bucket -- the live-human path never lowers risk,
+      // it satisfies it.
+      expect(result.gate?.bucket).toBe("HUMAN_ONLY");
+      expect(result.gate?.decision).toBe("ALLOWED");
+      const stored = await getApprovalRequest(created.id);
+      expect(stored?.status).toBe("FULFILLED");
+      expect(stored?.claimedBy).toBe(DECIDER);
+      expect(stored?.decidedBy).toBe(DECIDER);
+      expect(stored?.requestedBy).toBe(AGENT);
+      expect(stored?.claimedBy).not.toBe(stored?.requestedBy);
+    });
+
+    it("self-approval is rejected: decidedBy === requestedBy is denied without mutating or executing", async () => {
+      const created = await pendingHumanOnly({ requestedBy: DECIDER });
+      let runs = 0;
+      const result = await runGovernedClaimedExecution({
+        executorId: DECIDER,
+        actor: humanActor,
+        entityType: "RECORD",
+        action: "DELETE",
+        artifactHash: ARTIFACT,
+        approvalRequestId: created.id,
+        requestId: "req-human-self",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        routeLabel: "test.helper.human.self-approval",
+        liveHumanDecision: { decidedBy: DECIDER, decisionReason: "self sign-off attempt" },
+        executeOnce: async () => {
+          runs += 1;
+          return { kind: "SUCCESS", value: "ok" };
+        },
+      });
+      expect(result.status).toBe("DENIED");
+      expect(runs).toBe(0);
+      if (result.status !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/separation of duties/i);
+      const stored = await getApprovalRequest(created.id);
+      expect(stored?.status).toBe("PENDING");
+      expect(stored?.decidedBy).toBeNull();
+      expect(stored?.claimedBy).toBeNull();
+    });
+
+    it("a record already decided down the ordinary APPROVED path cannot accept a live-human decision (no fallback to token replay)", async () => {
+      const created = await pendingHumanOnly();
+      await decideApprovalRequest(created.id, {
+        decidedBy: USER,
+        approve: true,
+        decisionReason: "ordinary decide",
+      });
+      let runs = 0;
+      const result = await runGovernedClaimedExecution({
+        executorId: DECIDER,
+        actor: humanActor,
+        entityType: "RECORD",
+        action: "DELETE",
+        artifactHash: ARTIFACT,
+        approvalRequestId: created.id,
+        requestId: "req-human-not-pending",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        routeLabel: "test.helper.human.not-pending",
+        liveHumanDecision: { decidedBy: DECIDER, decisionReason: "too late" },
+        executeOnce: async () => {
+          runs += 1;
+          return { kind: "SUCCESS", value: "ok" };
+        },
+      });
+      expect(result.status).toBe("DENIED");
+      expect(runs).toBe(0);
+      if (result.status !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/not PENDING/i);
+      const stored = await getApprovalRequest(created.id);
+      expect(stored?.status).toBe("APPROVED");
+    });
+
+    it("crash recovery: a record already CLAIMED by a prior live-human decision is resumed, not re-claimed, and executes exactly once", async () => {
+      const created = await pendingHumanOnly();
+      const claimed = await claimApprovalRequestAsLiveHuman(created.id, {
+        entityType: "RECORD",
+        action: "DELETE",
+        decidedBy: DECIDER,
+        decisionReason: "decided, then the process crashed before executeOnce ran",
+        artifactHash: ARTIFACT,
+        requestId: "req-human-resume",
+      });
+      expect(claimed.status).toBe("CLAIMED");
+      let runs = 0;
+      const result = await runGovernedClaimedExecution({
+        executorId: DECIDER,
+        actor: humanActor,
+        entityType: "RECORD",
+        action: "DELETE",
+        artifactHash: ARTIFACT,
+        approvalRequestId: created.id,
+        requestId: "req-human-resume",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        routeLabel: "test.helper.human.resume",
+        liveHumanDecision: { decidedBy: DECIDER, decisionReason: "resumed after crash" },
+        executeOnce: async () => {
+          runs += 1;
+          return { kind: "SUCCESS", value: "ok", outputEvidence: "ok" };
+        },
+      });
+      expect(result.status).toBe("EXECUTED");
+      expect(runs).toBe(1);
+      const stored = await getApprovalRequest(created.id);
+      expect(stored?.status).toBe("FULFILLED");
+      expect(stored?.claimedBy).toBe(DECIDER);
+    });
+
+    it("two concurrent live-human decision attempts on the same PENDING record claim and execute at most once", async () => {
+      const created = await pendingHumanOnly();
+      let runs = 0;
+      const start = () =>
+        runGovernedClaimedExecution({
+          executorId: DECIDER,
+          actor: humanActor,
+          entityType: "RECORD",
+          action: "DELETE",
+          artifactHash: ARTIFACT,
+          approvalRequestId: created.id,
+          requestId: "req-human-race",
+          sourceContext: { origin: "user_message", trustLevel: "trusted" },
+          routeLabel: "test.helper.human.race",
+          liveHumanDecision: { decidedBy: DECIDER, decisionReason: "race" },
+          executeOnce: async () => {
+            runs += 1;
+            return { kind: "SUCCESS", value: "ok", outputEvidence: "ok" };
+          },
+        });
+      const [a, b] = await Promise.all([start(), start()]);
+      expect(runs).toBeLessThanOrEqual(1);
+      const statuses = [a.status, b.status].sort();
+      expect(statuses).toContain("EXECUTED");
+    });
+
+    it("callback failure on the live-human path still finalizes FAILED (shared crash-safe machinery, not a special case)", async () => {
+      const created = await pendingHumanOnly();
+      const result = await runGovernedClaimedExecution({
+        executorId: DECIDER,
+        actor: humanActor,
+        entityType: "RECORD",
+        action: "DELETE",
+        artifactHash: ARTIFACT,
+        approvalRequestId: created.id,
+        requestId: "req-human-throw",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        routeLabel: "test.helper.human.throw",
+        liveHumanDecision: { decidedBy: DECIDER, decisionReason: "will fail" },
+        executeOnce: async () => {
+          throw new Error("tool exploded on live-human path");
+        },
+      });
+      expect(result.status).toBe("FAILED");
+      const stored = await getApprovalRequest(created.id);
+      expect(stored?.status).toBe("FAILED");
+    });
   });
 
   it("two concurrent attempts execute the same liveExecutionId at most once", async () => {

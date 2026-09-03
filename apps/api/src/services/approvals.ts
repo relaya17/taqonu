@@ -7,6 +7,7 @@ import {
   LiveApprovalRequestRepository,
   createDatabaseClients,
   isLiveSupabase,
+  type ClaimAsLiveHumanInput,
   type ClaimLiveApprovalInput,
   type CreateLiveApprovalInput,
   type DecideLiveApprovalInput,
@@ -29,6 +30,7 @@ export type DecideApprovalRequestInput = DecideLiveApprovalInput;
 export type RevokeApprovalRequestInput = RevokeLiveApprovalInput;
 export type PresentedExecution = PresentedLiveExecution;
 export type ClaimApprovalRequestInput = ClaimLiveApprovalInput;
+export type ClaimAsLiveHumanApprovalInput = ClaimAsLiveHumanInput;
 export type FinalizeApprovalRequestInput = FinalizeLiveApprovalInput;
 
 export function configureLiveApprovalStore(
@@ -295,6 +297,48 @@ export async function claimApprovalRequest(
   } catch (error) {
     rethrowStoreError(error);
   }
+}
+
+/**
+ * HUMAN_ONLY live-decision path only (CP7.2). Atomically decides AND
+ * claims a PENDING approval in one durable database transition -- there is
+ * no intermediate APPROVED state for this call, unlike
+ * `decideApprovalRequest` + `claimApprovalRequest`. `claimedBy` in the
+ * resulting record is `presented.decidedBy`: the real, live-authenticated
+ * human, not the original requester. Separation of duties
+ * (`decidedBy !== requestedBy`) is enforced by the database itself, not
+ * merely by this function -- see `claim_live_approval_request_as_live_human`.
+ */
+export async function claimApprovalRequestAsLiveHuman(
+  id: string,
+  presented: ClaimAsLiveHumanApprovalInput,
+): Promise<ApprovalRequest> {
+  let claimed: ApprovalRequest;
+  try {
+    claimed = await requireStore().claimAsLiveHuman(id, presented);
+  } catch (error) {
+    rethrowStoreError(error);
+  }
+
+  appendUnifiedAuditEntry({
+    type: "approval.live-human-claimed",
+    actorId: presented.decidedBy,
+    actorKind: "USER",
+    reason: presented.decisionReason,
+    input: {
+      approvalId: id,
+      entityType: claimed.entityType,
+      action: claimed.action,
+      requestedBy: claimed.requestedBy,
+    },
+    output: { status: claimed.status, liveExecutionId: claimed.liveExecutionId },
+    policy: `${claimed.entityType}.${claimed.action}`,
+    risk: inferRisk(claimed.entityType, claimed.action),
+    approval: "APPROVED",
+    result: "SUCCESS",
+  });
+
+  return claimed;
 }
 
 /**

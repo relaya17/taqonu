@@ -75,7 +75,13 @@ describe("POST /api/v1/admin/automation/run-checks", () => {
     expect(body.message).toMatch(/approve/i);
   });
 
-  it("200s and runs the watchdog once the approval has been decided APPROVED, then consumes it", async () => {
+  it("CONFIGURATION.EXECUTE is HUMAN_ONLY: even after an ordinary /decide APPROVED, the ?approvalId= retry can never execute -- it stays 202 APPROVAL_REQUIRED and burns the claim (approval-token replay is exactly what HUMAN_ONLY forbids)", async () => {
+    // This replaces a stale pre-CP7.2 assertion that expected this retry to
+    // 200 and execute. That behavior was a bug the CP7.2 migration fixes:
+    // CONFIGURATION.EXECUTE is DESTRUCTIVE-tier -> HUMAN_ONLY, and
+    // `dispatchAgentAction` never lets a claimed AGENT-actor token satisfy
+    // HUMAN_ONLY. The only path that can execute this action now is
+    // POST .../run-checks/decide-and-execute (see the describe block below).
     const requested = await app.inject({
       method: "POST",
       url: "/api/v1/admin/automation/run-checks",
@@ -92,13 +98,12 @@ describe("POST /api/v1/admin/automation/run-checks", () => {
       method: "POST",
       url: `/api/v1/admin/automation/run-checks?approvalId=${approvalId}`,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     const body = res.json();
-    expect(body.ok).toBe(true);
-    expect(body.report).toBeDefined();
+    expect(body.status).toBe("APPROVAL_REQUIRED");
 
-    // The approval was consumed by the successful run — replaying the same
-    // approvalId must not authorize a second execution.
+    // The claimed-but-not-satisfied token is burned FAILED by the Stage 4
+    // re-check, not left dangling APPROVED for a later replay attempt.
     const replay = await app.inject({
       method: "POST",
       url: `/api/v1/admin/automation/run-checks?approvalId=${approvalId}`,
@@ -129,6 +134,88 @@ describe("POST /api/v1/admin/automation/run-checks", () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("POST /api/v1/admin/automation/run-checks/decide-and-execute (CP7.2 live-human path)", () => {
+  const REQUESTER = adminUser({ id: "66666666-6666-4666-8666-666666666666", email: "requester@example.com" });
+  const DECIDER = adminUser({ id: "77777777-7777-4777-8777-777777777777", email: "decider@example.com" });
+
+  async function requestApproval() {
+    getRequestUser.mockReturnValue(REQUESTER);
+    const requested = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/automation/run-checks",
+    });
+    const { approvalId } = requested.json();
+    return approvalId as string;
+  }
+
+  it("a different, live-authenticated operator can decide-and-execute in one atomic step: 200s, runs the watchdog exactly once, and the underlying approval is CLAIMED directly (never a bare APPROVED replay token)", async () => {
+    const approvalId = await requestApproval();
+
+    getRequestUser.mockReturnValue(DECIDER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/automation/run-checks/decide-and-execute",
+      payload: { approvalId, decisionReason: "verified live, approved" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.report).toBeDefined();
+
+    // Finalized -- replaying is a terminal-status replay, not a second
+    // execution, and must not run the watchdog again.
+    const replay = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/automation/run-checks/decide-and-execute",
+      payload: { approvalId, decisionReason: "trying again" },
+    });
+    expect(replay.statusCode).toBe(403);
+  });
+
+  it("self-approval is rejected: the requesting operator cannot also be the live decider for their own request", async () => {
+    const approvalId = await requestApproval();
+
+    getRequestUser.mockReturnValue(REQUESTER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/automation/run-checks/decide-and-execute",
+      payload: { approvalId, decisionReason: "self sign-off attempt" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("FORBIDDEN");
+  });
+
+  it("a still-PENDING approvalId that does not exist 4xxs and never runs the watchdog", async () => {
+    getRequestUser.mockReturnValue(DECIDER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/automation/run-checks/decide-and-execute",
+      payload: {
+        approvalId: "00000000-0000-4000-8000-000000000000",
+        decisionReason: "no such request",
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
+  });
+
+  it("the old approval-token retry route cannot be used to bypass the live-human requirement even after a decide-and-execute FULFILLED the request", async () => {
+    const approvalId = await requestApproval();
+    getRequestUser.mockReturnValue(DECIDER);
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/automation/run-checks/decide-and-execute",
+      payload: { approvalId, decisionReason: "verified live, approved" },
+    });
+
+    const oldPathRetry = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/automation/run-checks?approvalId=${approvalId}`,
+    });
+    expect(oldPathRetry.statusCode).toBe(403);
   });
 });
 

@@ -39,7 +39,14 @@ import { createApprovalRequest } from "./approvals.js";
  *    executor). No record → same as today (`false`).
  *    A presented record that does not match fails closed (DENIED).
  *    APPROVAL_REQUIRED is an ordinary outcome when nothing matches. HUMAN_ONLY
- *    is never satisfied by a claimed record.
+ *    is never satisfied by a claimed AGENT/AUTOMATION record (approval-token
+ *    replay). The sole, narrow exception is a `HUMAN`-kind actor whose claim
+ *    traces to a live, separation-of-duties-checked decision recorded on the
+ *    approval itself (`decidedBy !== requestedBy`, atomically bound to the
+ *    claim by `claim_live_approval_request_as_live_human` -- see
+ *    `claimedApprovalMatchesGovernedAction` and `live-human-execution.ts`).
+ *    `HUMAN` is set only by that dedicated decide-and-execute path; no other
+ *    caller may construct it.
  *
  * On top of the Policy Engine + Risk Engine + Audit Log combination
  * `enforceEntityWrite` already established, this module adds two risk
@@ -55,7 +62,7 @@ import { createApprovalRequest } from "./approvals.js";
  */
 
 /** Who is initiating the action being gated. */
-export type DispatchActorKind = "AGENT" | "AUTOMATION";
+export type DispatchActorKind = "AGENT" | "AUTOMATION" | "HUMAN";
 
 export interface DispatchActor {
   readonly kind: DispatchActorKind;
@@ -269,13 +276,34 @@ function claimedApprovalMatchesGovernedAction(
     readonly action: string;
     readonly executorId: string;
     readonly artifactHash?: string;
+    readonly actorKind: DispatchActorKind;
   },
 ): boolean {
   if (record.status !== "CLAIMED") return false;
   if (record.entityType !== current.entityType) return false;
   if (record.action !== current.action) return false;
-  if (current.executorId !== record.requestedBy) return false;
   if (record.claimedBy !== current.executorId) return false;
+
+  if (current.actorKind === "HUMAN") {
+    // Live-human proof, re-derived entirely from the durable record --
+    // never from a caller-supplied flag. `claim_live_approval_request_as_
+    // live_human` (the ONLY function that can put a record in this state
+    // for a HUMAN actor) atomically set `claimedBy = decidedBy` and
+    // enforced `decidedBy !== requestedBy` at the database layer itself.
+    // Re-checking both here is defense in depth, not reliance on the
+    // database having done it correctly: a record that doesn't carry a
+    // matching, separation-of-duties-respecting decision fails closed,
+    // exactly like every other mismatch this function checks.
+    if (!record.decidedBy) return false;
+    if (record.decidedBy !== record.claimedBy) return false;
+    if (record.decidedBy === record.requestedBy) return false;
+  } else {
+    // AGENT/AUTOMATION: unchanged, existing approval-token-replay contract
+    // -- the claiming executor must be the identity that originally
+    // requested the approval.
+    if (current.executorId !== record.requestedBy) return false;
+  }
+
   if (record.artifactHash) {
     if (current.artifactHash === undefined) return false;
     if (current.artifactHash !== record.artifactHash) return false;
@@ -303,7 +331,7 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: "AGENT",
+      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason: `Agent runtime control ${options.agentRuntimeStatus} blocks execution`,
       input: options.input ?? {},
@@ -337,6 +365,7 @@ export async function dispatchAgentAction(
         entityType,
         action,
         executorId: actor.agentId,
+        actorKind: actor.kind,
         ...(artifactHash !== undefined ? { artifactHash } : {}),
       })
     : false;
@@ -346,7 +375,7 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: "AGENT",
+      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason,
       input: options.input ?? {},
@@ -380,7 +409,7 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: "AGENT",
+      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason: entityAuthz.reason,
       input: options.input ?? {},
@@ -461,8 +490,16 @@ export async function dispatchAgentAction(
     },
   };
 
+  // Narrow, explicit carve-out: HUMAN_ONLY is satisfied ONLY when the actor
+  // is HUMAN (a kind exclusively set by `runLiveHumanDecisionExecution`,
+  // never by AGENT/AUTOMATION callers) AND the claimed record passed
+  // `claimedApprovalMatchesGovernedAction`'s HUMAN branch above (durable
+  // decidedBy proof + separation of duties). This does not touch the score
+  // or the bucket computation -- both stay honest -- and it leaves the
+  // AGENT/AUTOMATION path's unconditional HUMAN_ONLY block fully intact.
+  const humanLiveDecisionSatisfied = actor.kind === "HUMAN" && approvalSatisfied;
   const needsApproval =
-    bucket === "HUMAN_ONLY" ||
+    (bucket === "HUMAN_ONLY" && !humanLiveDecisionSatisfied) ||
     (!approvalSatisfied &&
       (bucket === "APPROVAL" || entityAuthz.decision === "APPROVAL_REQUIRED"));
 
@@ -494,7 +531,7 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: "AGENT",
+      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason: explanation.factors.join("; "),
       input: options.input ?? {},
@@ -534,7 +571,7 @@ export async function dispatchAgentAction(
   const record = appendUnifiedAuditEntry({
     type: routeLabel,
     actorId: actor.agentId,
-    actorKind: "AGENT",
+    actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
     agentId: actor.agentId,
     reason: explanation.factors.join("; "),
     input: options.input ?? {},

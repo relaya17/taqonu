@@ -57,6 +57,7 @@ import {
   runGovernedClaimedExecution,
   type HelperResult,
 } from "../services/governed-claimed-execution.js";
+import { runLiveHumanDecisionExecution } from "../services/live-human-execution.js";
 import { computeArtifactHash } from "../services/governed-execution.js";
 
 async function assertPatchWrite(
@@ -219,6 +220,66 @@ async function runPatchClaimedExecution<T>(input: {
     },
   });
 }
+
+/**
+ * CP7.1/CP7.2 HUMAN_ONLY live-human path -- mirrors `runPatchClaimedExecution`
+ * exactly, except the claim is established by a live, separately-
+ * authenticated human decision (`claim_live_approval_request_as_live_human`,
+ * no intermediate APPROVED token) rather than by presenting a previously-
+ * decided approval id. `DOCUMENT.EXECUTE` is HIGH_RISK_WRITE tier, which
+ * (with the conservative default confidence/evidence this route supplies
+ * none of) lands at exactly the HUMAN_ONLY threshold -- so a HIGH/CRITICAL
+ * patch's approval can be granted via `/decide` but can never be consumed
+ * by the ordinary `?approvalId=` retry (see `agent-dispatch-guard.ts`'s
+ * unconditional HUMAN_ONLY block for AGENT-kind actors). This is that
+ * action's only executable path.
+ */
+async function runPatchLiveHumanClaimedExecution<T>(input: {
+  readonly patch: PatchArtifact;
+  readonly deciderId: string;
+  readonly decisionReason: string;
+  readonly approvalId: string;
+  readonly requestId: string;
+  readonly routeLabel: string;
+  readonly action: EntityAction;
+  readonly execute: () => T;
+  readonly evidence: (value: T) => string;
+}): Promise<HelperResult<T>> {
+  return runLiveHumanDecisionExecution({
+    approvalId: input.approvalId,
+    deciderId: input.deciderId,
+    decisionReason: input.decisionReason,
+    entityType: "DOCUMENT",
+    action: input.action,
+    artifactHash: patchArtifactHash(input.patch),
+    requestId: input.requestId,
+    sourceContext: { origin: "user_message", trustLevel: "trusted" },
+    ...(input.patch.projectId ? { projectId: input.patch.projectId } : {}),
+    routeLabel: input.routeLabel,
+    dispatchInput: { patchId: input.patch.id, route: input.routeLabel },
+    executeOnce: async () => {
+      try {
+        const value = input.execute();
+        return {
+          kind: "SUCCESS",
+          value,
+          outputEvidence: input.evidence(value),
+        };
+      } catch (error) {
+        return {
+          kind: "FAILURE",
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  });
+}
+
+const decideAndExecuteBody = z.object({
+  approvalId: z.string().uuid(),
+  decisionReason: z.string().min(1).max(2000),
+  workspaceRoot: z.string().min(1).max(1000),
+});
 
 async function sendPatchHelperResult<T>(
   reply: FastifyReply,
@@ -753,6 +814,72 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     return result;
   });
 
+  app.post(
+    "/api/v1/code/patches/:id/apply/decide-and-execute",
+    async (request, reply) => {
+      const id = (request.params as { id: string }).id;
+      const body = decideAndExecuteBody.parse(request.body ?? {});
+      const existing = osStore.getPatch(id);
+      if (!existing) {
+        return reply.status(404).send({ error: { message: "Patch not found" } });
+      }
+      const user = await assertPatchWrite(app, request, existing);
+      assertPatchApprovedForApply(existing);
+
+      const { entityAuthz, explanation } = evaluatePatchActionRisk({
+        patch: existing,
+        entityApproved: true,
+      });
+      if (entityAuthz.decision === "DENIED") {
+        throw new AtlasError("FORBIDDEN", entityAuthz.reason, {
+          statusCode: 403,
+        });
+      }
+
+      const helper = await runPatchLiveHumanClaimedExecution({
+        patch: existing,
+        deciderId: user.id,
+        decisionReason: body.decisionReason,
+        approvalId: body.approvalId,
+        requestId: request.id,
+        routeLabel: "code.patch.apply.live-human",
+        action: "EXECUTE",
+        execute: () =>
+          applyApprovedPatch({
+            existing,
+            user,
+            bodyWorkspaceRoot: body.workspaceRoot,
+          }),
+        evidence: (value) =>
+          JSON.stringify({ status: value.patch.status, applied: value.apply.applied }),
+      });
+      const result = await sendPatchHelperResult(reply, helper);
+      if (helper.status !== "EXECUTED") {
+        return result;
+      }
+
+      appendUnifiedAuditEntry({
+        type: "code.patch.applied",
+        actorId: user.id,
+        actorKind: "USER",
+        reason: `live-human decision (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
+        input: {
+          patchId: existing.id,
+          patchRisk: existing.risk,
+          applyWorkspaceRoot: body.workspaceRoot,
+        },
+        output: { status: result.patch.status, applied: result.apply.applied },
+        policy: "DOCUMENT.EXECUTE",
+        risk: existing.risk,
+        approval: "APPROVED",
+        result: "SUCCESS",
+        projectId: existing.projectId,
+      });
+
+      return result;
+    },
+  );
+
   app.post("/api/v1/code/patches/:id/rollback", async (request, reply) => {
     await requireSignedInForWrite(app, request);
     const id = (request.params as { id: string }).id;
@@ -857,6 +984,90 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
 
     return { patch, restored };
   });
+
+  app.post(
+    "/api/v1/code/patches/:id/rollback/decide-and-execute",
+    async (request, reply) => {
+      const id = (request.params as { id: string }).id;
+      const body = decideAndExecuteBody.parse(request.body ?? {});
+      const existing = osStore.getPatch(id);
+      if (!existing) {
+        return reply.status(404).send({ error: { message: "Patch not found" } });
+      }
+      const user = await assertPatchWrite(app, request, existing);
+      if (existing.status !== "APPLIED" && existing.status !== "VERIFIED") {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "Only APPLIED or VERIFIED patches can roll back",
+        );
+      }
+
+      const { entityAuthz, explanation } = evaluatePatchActionRisk({
+        patch: existing,
+        entityApproved: false,
+      });
+      if (entityAuthz.decision === "DENIED") {
+        throw new AtlasError("FORBIDDEN", entityAuthz.reason, {
+          statusCode: 403,
+        });
+      }
+
+      const helper = await runPatchLiveHumanClaimedExecution({
+        patch: existing,
+        deciderId: user.id,
+        decisionReason: body.decisionReason,
+        approvalId: body.approvalId,
+        requestId: request.id,
+        routeLabel: "code.patch.rollback.live-human",
+        action: "EXECUTE",
+        execute: () => {
+          const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);
+          const now = new Date().toISOString();
+          const patch = patchArtifactSchema.parse({
+            ...existing,
+            status: "ROLLED_BACK",
+            updatedAt: now,
+            evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} file(s).`,
+          });
+          osStore.upsertPatch(patch);
+          osStore.appendAudit({
+            type: "code.patch.rolled_back",
+            patchId: id,
+            at: now,
+            by: user.id,
+          });
+          return { patch, restored };
+        },
+        evidence: (value) =>
+          JSON.stringify({ status: value.patch.status, restored: value.restored }),
+      });
+      const executed = await sendPatchHelperResult(reply, helper);
+      if (helper.status !== "EXECUTED") {
+        return executed;
+      }
+      const { patch, restored } = executed;
+
+      appendUnifiedAuditEntry({
+        type: "code.patch.rolled_back",
+        actorId: user.id,
+        actorKind: "USER",
+        reason: `live-human decision (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
+        input: {
+          patchId: existing.id,
+          patchRisk: existing.risk,
+          rollbackWorkspaceRoot: body.workspaceRoot,
+        },
+        output: { status: patch.status, restored },
+        policy: "DOCUMENT.EXECUTE",
+        risk: existing.risk,
+        approval: "APPROVED",
+        result: "SUCCESS",
+        projectId: existing.projectId,
+      });
+
+      return { patch, restored };
+    },
+  );
 
   app.post("/api/v1/code/refactor", async (request, reply) => {
     const body = proposeBody.parse({

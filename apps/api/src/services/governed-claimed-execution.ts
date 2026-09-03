@@ -2,6 +2,7 @@ import type { BusinessEntityType, EntityAction } from "@atlas/agent-core";
 import type { ApprovalRequest } from "@atlas/shared";
 import {
   claimApprovalRequest,
+  claimApprovalRequestAsLiveHuman,
   finalizeApprovalRequest,
   getApprovalRequest,
   markApprovalExecutionStarted,
@@ -100,6 +101,18 @@ export interface RunGovernedClaimedExecutionInput<T> {
     | "UNKNOWN";
   readonly delegationHopCount?: number;
   readonly dispatchInput?: Record<string, unknown>;
+  /**
+   * HUMAN_ONLY live-decision path only (CP7.2). When present, `claimOrResume`
+   * atomically decides-and-claims via `claim_live_approval_request_as_live_human`
+   * instead of the ordinary decide-then-claim-a-token flow -- the approval
+   * must be PENDING (never APPROVED) when this call is made. `actor.kind`
+   * must be `"HUMAN"` whenever this is set; `live-human-execution.ts` is
+   * the only caller that sets both.
+   */
+  readonly liveHumanDecision?: {
+    readonly decidedBy: string;
+    readonly decisionReason: string;
+  };
   readonly executeOnce: (
     context: GovernedExecuteOnceContext,
   ) => Promise<GovernedExecuteOnceResult<T>>;
@@ -191,6 +204,38 @@ async function claimOrResume(
       return { kind: "started", record: existing };
     }
     return { kind: "claimed", record: existing };
+  }
+
+  if (input.liveHumanDecision !== undefined) {
+    // HUMAN_ONLY live-decision path: the row must still be PENDING -- if a
+    // decide-then-claim gap ever left it at APPROVED (it should not, since
+    // this call skips that state entirely), this branch does NOT fall
+    // through to the ordinary APPROVED check below, because an
+    // APPROVED-but-not-live-claimed row is not a valid live-human
+    // authority; it is a token, and this path never consumes tokens.
+    if (existing.status !== "PENDING") {
+      return {
+        kind: "denied",
+        reason: `Approval request ${existing.id} is not PENDING (status=${existing.status}) and cannot accept a live-human decision`,
+        record: existing,
+      };
+    }
+    try {
+      const claimed = await claimApprovalRequestAsLiveHuman(existing.id, {
+        entityType: input.entityType,
+        action: input.action,
+        decidedBy: input.liveHumanDecision.decidedBy,
+        decisionReason: input.liveHumanDecision.decisionReason,
+        ...(input.artifactHash !== undefined ? { artifactHash: input.artifactHash } : {}),
+        requestId: input.requestId,
+      });
+      return { kind: "claimed", record: claimed };
+    } catch (error) {
+      return {
+        kind: "denied",
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   if (existing.status !== "APPROVED") {

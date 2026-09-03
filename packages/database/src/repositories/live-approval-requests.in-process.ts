@@ -37,6 +37,8 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
         return revoke(args);
       case "consume_live_approval_request":
         return consume(args);
+      case "claim_live_approval_request_as_live_human":
+        return claimAsLiveHuman(args);
       case "claim_live_approval_request":
         return claim(args);
       case "mark_live_approval_execution_started":
@@ -210,6 +212,79 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
     if (value == null) return null;
     const text = String(value);
     return text.length === 0 ? null : text;
+  }
+
+  function claimAsLiveHuman(args: Record<string, unknown>): ApprovalRequest {
+    const id = String(args["p_id"]);
+    const entityType = asText(args["p_entity_type"]);
+    const action = asText(args["p_action"]);
+    const decidedBy = asText(args["p_decided_by"]);
+    if (!entityType || !action || !decidedBy) {
+      throw new Error("live-human claim requires entityType, action, and decidedBy");
+    }
+    const existing = rows.get(id);
+    if (!existing) throw new Error(`Approval request ${id} not found`);
+    if (existing.status === "REVOKED") {
+      throw new Error(
+        `Approval request ${id} was REVOKED by ${existing.revokedBy ?? "unknown"} at ${existing.revokedAt ?? "unknown time"} and can never authorize an action`,
+      );
+    }
+    if (existing.status !== "PENDING") {
+      throw new Error(
+        `Approval request ${id} is not PENDING (status=${existing.status}) and cannot be claimed by a live human decision -- a live-human decision is only valid against a fresh, undecided request, never a previously-decided, already-claimed, or replayed one`,
+      );
+    }
+    if (existing.expiresAt !== null && Date.parse(existing.expiresAt) <= Date.now()) {
+      throw new Error(
+        `Approval request ${id} expired at ${existing.expiresAt} and can no longer authorize an action`,
+      );
+    }
+    if (entityType !== existing.entityType) {
+      throw new Error(
+        `Approval request ${id} authorizes entityType ${existing.entityType}, not ${entityType}`,
+      );
+    }
+    if (action !== existing.action) {
+      throw new Error(
+        `Approval request ${id} authorizes action ${existing.action}, not ${action}`,
+      );
+    }
+    if (decidedBy === existing.requestedBy) {
+      throw new Error(
+        `Approval request ${id} was requested by ${existing.requestedBy} -- separation of duties forbids the same identity from also being the live human who decides and claims it`,
+      );
+    }
+    let artifactHash = existing.artifactHash;
+    const presentedHash = asText(args["p_artifact_hash"]);
+    if (artifactHash) {
+      if (!presentedHash) {
+        throw new Error(
+          `Approval request ${id} is bound to a specific artifact; a live-human claim requires presenting that artifact's hash`,
+        );
+      }
+      if (presentedHash !== artifactHash) {
+        throw new Error(
+          `Approval request ${id} authorizes artifact ${artifactHash}, not ${presentedHash} — the approved artifact changed after sign-off`,
+        );
+      }
+    } else if (presentedHash) {
+      artifactHash = presentedHash;
+    }
+    const decisionReason = asText(args["p_decision_reason"]);
+    const updated = approvalRequestSchema.parse({
+      ...existing,
+      status: "CLAIMED",
+      decidedBy,
+      decidedAt: toIso(new Date()),
+      decisionReason,
+      artifactHash,
+      liveExecutionId: crypto.randomUUID(),
+      claimedAt: toIso(new Date()),
+      claimedBy: decidedBy,
+      requestId: asText(args["p_request_id"]),
+    });
+    rows.set(id, updated);
+    return updated;
   }
 
   function claim(args: Record<string, unknown>): ApprovalRequest {

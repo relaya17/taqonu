@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { setAuditLogPathForTests, listUnifiedAuditEntries } from "./audit-log.js";
 import {
   claimApprovalRequest,
+  claimApprovalRequestAsLiveHuman,
   createApprovalRequest,
   decideApprovalRequest,
   getApprovalRequest,
@@ -400,6 +401,144 @@ describe("dispatchAgentAction", () => {
     expect(result.bucket).toBe("HUMAN_ONLY");
     expect(result.evaluation.risk.status).toBe("EVALUATED");
     expect(result.score).toBeGreaterThanOrEqual(80);
+  });
+
+  describe("HUMAN_ONLY live-human decision recheck (CP7.2)", () => {
+    const DECIDER_ID = "55555555-5555-4555-8555-555555555555";
+
+    async function liveHumanClaimed(overrides: {
+      requestedBy?: string;
+      action?: string;
+    } = {}) {
+      const created = await createApprovalRequest({
+        entityType: "RECORD",
+        action: overrides.action ?? "DELETE",
+        requestedBy: overrides.requestedBy ?? AGENT_ID,
+        reason: "human-only live decision recheck",
+        artifactHash: ARTIFACT_HASH,
+      });
+      return claimApprovalRequestAsLiveHuman(created.id, {
+        entityType: created.entityType,
+        action: created.action,
+        decidedBy: DECIDER_ID,
+        decisionReason: "verified live",
+        artifactHash: ARTIFACT_HASH,
+        requestId: "req-human-recheck",
+      });
+    }
+
+    it("a genuine live-human claim satisfies HUMAN_ONLY for a HUMAN actor, and the bucket is still reported as HUMAN_ONLY (no downgrade)", async () => {
+      const claimed = await liveHumanClaimed();
+      const result = await dispatchAgentAction({
+        actor: { kind: "HUMAN", agentId: DECIDER_ID, onBehalfOfUserId: DECIDER_ID },
+        entityType: "RECORD",
+        action: "DELETE",
+        routeLabel: "test.human.recheck.match",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        input: { artifactHash: ARTIFACT_HASH },
+        claimedApproval: claimed,
+      });
+      expect(result.decision).toBe("ALLOWED");
+      if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+      expect(result.bucket).toBe("HUMAN_ONLY");
+    });
+
+    it("the same live-human-claimed record does NOT satisfy HUMAN_ONLY for an AGENT/AUTOMATION actor -- the carve-out is keyed on actor.kind, not the claim's shape", async () => {
+      const claimed = await liveHumanClaimed();
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: DECIDER_ID, onBehalfOfUserId: DECIDER_ID },
+        entityType: "RECORD",
+        action: "DELETE",
+        routeLabel: "test.human.recheck.wrong-actor-kind",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        input: { artifactHash: ARTIFACT_HASH },
+        claimedApproval: claimed,
+      });
+      expect(result.decision).toBe("APPROVAL_REQUIRED");
+      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+      expect(result.bucket).toBe("HUMAN_ONLY");
+    });
+
+    it("a HUMAN actor presenting a forged claim missing decidedBy is denied (defense in depth, not trusting the DB alone)", async () => {
+      const claimed = await liveHumanClaimed();
+      const result = await dispatchAgentAction({
+        actor: { kind: "HUMAN", agentId: DECIDER_ID, onBehalfOfUserId: DECIDER_ID },
+        entityType: "RECORD",
+        action: "DELETE",
+        routeLabel: "test.human.recheck.forged-no-decided-by",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        input: { artifactHash: ARTIFACT_HASH },
+        claimedApproval: { ...claimed, decidedBy: null },
+      });
+      expect(result.decision).toBe("APPROVAL_REQUIRED");
+      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+      expect(result.bucket).toBe("HUMAN_ONLY");
+    });
+
+    it("a HUMAN actor presenting a forged claim where decidedBy !== claimedBy is denied", async () => {
+      const claimed = await liveHumanClaimed();
+      const result = await dispatchAgentAction({
+        actor: { kind: "HUMAN", agentId: DECIDER_ID, onBehalfOfUserId: DECIDER_ID },
+        entityType: "RECORD",
+        action: "DELETE",
+        routeLabel: "test.human.recheck.forged-mismatch",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        input: { artifactHash: ARTIFACT_HASH },
+        claimedApproval: { ...claimed, decidedBy: "someone-else" },
+      });
+      expect(result.decision).toBe("APPROVAL_REQUIRED");
+      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+      expect(result.bucket).toBe("HUMAN_ONLY");
+    });
+
+    it("a HUMAN actor presenting a forged claim where decidedBy === requestedBy (self-approval) is denied even if the DB check were somehow bypassed", async () => {
+      const claimed = await liveHumanClaimed();
+      const result = await dispatchAgentAction({
+        actor: { kind: "HUMAN", agentId: DECIDER_ID, onBehalfOfUserId: DECIDER_ID },
+        entityType: "RECORD",
+        action: "DELETE",
+        routeLabel: "test.human.recheck.forged-self-approval",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        input: { artifactHash: ARTIFACT_HASH },
+        claimedApproval: { ...claimed, decidedBy: claimed.requestedBy, claimedBy: claimed.requestedBy },
+      });
+      expect(result.decision).toBe("APPROVAL_REQUIRED");
+      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+      expect(result.bucket).toBe("HUMAN_ONLY");
+    });
+
+    it("a HUMAN actor cannot satisfy HUMAN_ONLY via an ordinary approval-token claim (decidedBy is null on that path)", async () => {
+      const created = await createApprovalRequest({
+        entityType: "RECORD",
+        action: "DELETE",
+        requestedBy: AGENT_ID,
+        reason: "ordinary token claim, not a live-human decision",
+        artifactHash: ARTIFACT_HASH,
+      });
+      await decideApprovalRequest(created.id, {
+        decidedBy: USER_ID,
+        approve: true,
+        decisionReason: "ok",
+      });
+      const claimed = await claimApprovalRequest(created.id, {
+        entityType: created.entityType,
+        action: created.action,
+        executorId: created.requestedBy,
+        artifactHash: ARTIFACT_HASH,
+      });
+      const result = await dispatchAgentAction({
+        actor: { kind: "HUMAN", agentId: created.requestedBy, onBehalfOfUserId: created.requestedBy },
+        entityType: "RECORD",
+        action: "DELETE",
+        routeLabel: "test.human.recheck.ordinary-token-not-authority",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        input: { artifactHash: ARTIFACT_HASH },
+        claimedApproval: claimed,
+      });
+      expect(result.decision).toBe("APPROVAL_REQUIRED");
+      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+      expect(result.bucket).toBe("HUMAN_ONLY");
+    });
   });
 
   it("8. an approved boolean is not authority and is ignored", async () => {

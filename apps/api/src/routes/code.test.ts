@@ -243,6 +243,109 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
   });
 });
 
+describe("POST /api/v1/code/patches/:id/apply/decide-and-execute (CP7.2 live-human path)", () => {
+  const REQUESTER = testUser({ id: "22222222-2222-4222-8222-222222222222", email: "requester@example.com" });
+  const DECIDER = testUser({ id: "33333333-3333-4333-8333-333333333333", email: "decider@example.com" });
+
+  function highRiskPatch() {
+    return makePatch({
+      risk: "HIGH",
+      confidence: 0.9,
+      evidenceIds: [someUuid(11), someUuid(12), someUuid(13)],
+    });
+  }
+
+  async function requestApproval(patch: PatchArtifact) {
+    getRequestUser.mockReturnValue(REQUESTER);
+    const requested = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(requested.statusCode).toBe(202);
+    return requested.json().approvalId as string;
+  }
+
+  it("a different, live-authenticated decider can decide-and-execute in one atomic step: 200s, applies exactly once, and the file actually changes", async () => {
+    const patch = highRiskPatch();
+    osStore.upsertPatch(patch);
+    const approvalId = await requestApproval(patch);
+
+    getRequestUser.mockReturnValue(DECIDER);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply/decide-and-execute`,
+      payload: { approvalId, decisionReason: "verified live, approved", workspaceRoot },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().patch.status).toBe("APPLIED");
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("modified content");
+
+    const entry = lastAuditEntry("code.patch.applied");
+    expect(entry?.payload.reason).toMatch(/live-human decision/);
+    expect(entry?.payload.approval).toBe("APPROVED");
+
+    // Terminal replay -- must not apply a second time.
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply/decide-and-execute`,
+      payload: { approvalId, decisionReason: "trying again", workspaceRoot },
+    });
+    expect(replay.statusCode).toBe(403);
+  });
+
+  it("self-approval is rejected: the requesting engineer cannot also be the live decider for their own patch", async () => {
+    const patch = highRiskPatch();
+    osStore.upsertPatch(patch);
+    const approvalId = await requestApproval(patch);
+
+    getRequestUser.mockReturnValue(REQUESTER);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply/decide-and-execute`,
+      payload: { approvalId, decisionReason: "self sign-off attempt", workspaceRoot },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
+  });
+
+  it("an unknown approvalId 404s and never touches the file", async () => {
+    const patch = highRiskPatch();
+    osStore.upsertPatch(patch);
+
+    getRequestUser.mockReturnValue(DECIDER);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply/decide-and-execute`,
+      payload: {
+        approvalId: "00000000-0000-4000-8000-000000000000",
+        decisionReason: "no such request",
+        workspaceRoot,
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
+  });
+
+  it("two concurrent decide-and-execute attempts by the same decider apply the patch at most once", async () => {
+    const patch = highRiskPatch();
+    osStore.upsertPatch(patch);
+    const approvalId = await requestApproval(patch);
+    getRequestUser.mockReturnValue(DECIDER);
+
+    const attempt = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/code/patches/${patch.id}/apply/decide-and-execute`,
+        payload: { approvalId, decisionReason: "race", workspaceRoot },
+      });
+    const [a, b] = await Promise.all([attempt(), attempt()]);
+    const statuses = [a.statusCode, b.statusCode].sort();
+    expect(statuses).toContain(200);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("modified content");
+  });
+});
+
 describe("POST /api/v1/code/patches/:id/rollback", async () => {
   it("blocks rollback with 202, then holds HUMAN_ONLY after claim instead of consuming", async () => {
     writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
@@ -318,5 +421,71 @@ describe("POST /api/v1/code/patches/:id/rollback", async () => {
       payload: { workspaceRoot },
     });
     expect(stillPending.statusCode).toBe(403);
+  });
+});
+
+
+describe("POST /api/v1/code/patches/:id/rollback/decide-and-execute (CP7.2 live-human path)", () => {
+  const REQUESTER = testUser({ id: "44444444-4444-4444-8444-444444444444", email: "requester2@example.com" });
+  const DECIDER = testUser({ id: "55555555-5555-4555-8555-555555555555", email: "decider2@example.com" });
+
+  function appliedHighRiskPatch() {
+    return makePatch({
+      risk: "HIGH",
+      status: "APPLIED",
+      appliedAt: new Date().toISOString(),
+      confidence: 0.9,
+      evidenceIds: [someUuid(21), someUuid(22), someUuid(23)],
+    });
+  }
+
+  async function requestApproval(patch: PatchArtifact) {
+    getRequestUser.mockReturnValue(REQUESTER);
+    const requested = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback`,
+      payload: { workspaceRoot },
+    });
+    expect(requested.statusCode).toBe(202);
+    return requested.json().approvalId as string;
+  }
+
+  it("a different, live-authenticated decider can decide-and-execute a rollback in one atomic step: 200s, rolls back exactly once", async () => {
+    writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
+    const patch = appliedHighRiskPatch();
+    osStore.upsertPatch(patch);
+    const approvalId = await requestApproval(patch);
+
+    getRequestUser.mockReturnValue(DECIDER);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback/decide-and-execute`,
+      payload: { approvalId, decisionReason: "verified live, approved", workspaceRoot },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback/decide-and-execute`,
+      payload: { approvalId, decisionReason: "trying again", workspaceRoot },
+    });
+    expect(replay.statusCode).toBe(403);
+  });
+
+  it("self-approval is rejected for rollback too", async () => {
+    writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
+    const patch = appliedHighRiskPatch();
+    osStore.upsertPatch(patch);
+    const approvalId = await requestApproval(patch);
+
+    getRequestUser.mockReturnValue(REQUESTER);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback/decide-and-execute`,
+      payload: { approvalId, decisionReason: "self sign-off attempt", workspaceRoot },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("modified content");
   });
 });

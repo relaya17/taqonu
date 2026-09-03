@@ -541,3 +541,237 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
     expect((await first.get(claimed.id))?.finalOutcome).toBe("FULFILLED");
   });
 });
+
+describe("LiveApprovalRequestRepository claimAsLiveHuman (CP7.2 live-human path)", () => {
+  async function pending(
+    repository: LiveApprovalRequestRepository,
+    input: {
+      entityType?: string;
+      action?: string;
+      requestedBy?: string;
+      reason?: string;
+      artifactHash?: string | null;
+      expiresAt?: string | null;
+    } = {},
+  ) {
+    return repository.create({
+      entityType: input.entityType ?? "RECORD",
+      action: input.action ?? "DELETE",
+      requestedBy: input.requestedBy ?? "agent-1",
+      reason: input.reason ?? "live-human-path",
+      ...(input.artifactHash !== undefined ? { artifactHash: input.artifactHash } : {}),
+      ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
+    });
+  }
+
+  const matching = {
+    entityType: "RECORD",
+    action: "DELETE",
+    decidedBy: "human-decider-1",
+    decisionReason: "verified live",
+  } as const;
+
+  it("claims PENDING -> CLAIMED directly with no intermediate APPROVED status, claimedBy=decidedBy, and a fresh liveExecutionId", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await pending(repository);
+    expect(created.status).toBe("PENDING");
+
+    const claimed = await repository.claimAsLiveHuman(created.id, {
+      ...matching,
+      requestId: "req-live-1",
+    });
+    expect(claimed.status).toBe("CLAIMED");
+    expect(claimed.decidedBy).toBe("human-decider-1");
+    expect(claimed.claimedBy).toBe("human-decider-1");
+    expect(claimed.requestedBy).toBe("agent-1");
+    expect(claimed.claimedBy).not.toBe(claimed.requestedBy);
+    expect(claimed.decidedAt).toEqual(expect.any(String));
+    expect(claimed.liveExecutionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(claimed.executionStartedAt).toBeNull();
+    expect(claimed.finalOutcome).toBeNull();
+    expect(claimed.requestId).toBe("req-live-1");
+    // Never observably APPROVED at any point -- the transition is a single
+    // atomic RPC call, not decide() followed by claim().
+    expect(await repository.get(created.id)).toEqual(claimed);
+  });
+
+  it("rejects self-approval: decidedBy === requestedBy is a CONFLICT, and the row is left untouched at PENDING", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await pending(repository, { requestedBy: "human-decider-1" });
+    await expect(
+      repository.claimAsLiveHuman(created.id, { ...matching, requestId: "req-self" }),
+    ).rejects.toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/separation of duties/i),
+    });
+    expect((await repository.get(created.id))?.status).toBe("PENDING");
+    expect((await repository.get(created.id))?.decidedBy).toBeNull();
+  });
+
+  it("enforces entity, action, and artifact-hash bindings at the RPC boundary", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await pending(repository, {
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      artifactHash: "sha256:abc",
+    });
+    await expect(
+      repository.claimAsLiveHuman(created.id, {
+        entityType: "RECORD",
+        action: "EXECUTE",
+        decidedBy: "human-decider-1",
+        decisionReason: "wrong entity",
+        artifactHash: "sha256:abc",
+      }),
+    ).rejects.toThrow(/authorizes entityType/);
+    await expect(
+      repository.claimAsLiveHuman(created.id, {
+        entityType: "DOCUMENT",
+        action: "DELETE",
+        decidedBy: "human-decider-1",
+        decisionReason: "wrong action",
+        artifactHash: "sha256:abc",
+      }),
+    ).rejects.toThrow(/authorizes action/);
+    await expect(
+      repository.claimAsLiveHuman(created.id, {
+        entityType: "DOCUMENT",
+        action: "EXECUTE",
+        decidedBy: "human-decider-1",
+        decisionReason: "no hash presented",
+      }),
+    ).rejects.toThrow(/requires presenting that artifact's hash/);
+    await expect(
+      repository.claimAsLiveHuman(created.id, {
+        entityType: "DOCUMENT",
+        action: "EXECUTE",
+        decidedBy: "human-decider-1",
+        decisionReason: "wrong hash",
+        artifactHash: "sha256:evil",
+      }),
+    ).rejects.toThrow(/authorizes artifact/);
+    const claimed = await repository.claimAsLiveHuman(created.id, {
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      decidedBy: "human-decider-1",
+      decisionReason: "correct hash",
+      artifactHash: "sha256:abc",
+    });
+    expect(claimed.status).toBe("CLAIMED");
+  });
+
+  it("rejects an expired approval at the RPC boundary", async () => {
+    const { repository } = repositoryFromClient();
+    const expired = await pending(repository, {
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    await expect(
+      repository.claimAsLiveHuman(expired.id, matching),
+    ).rejects.toThrow(/expired at/);
+    expect((await repository.get(expired.id))?.status).toBe("PENDING");
+  });
+
+  it("rejects a REVOKED approval and a not-found id", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await pending(repository);
+    await repository.revoke(created.id, { revokedBy: "human-1", reason: "withdrawn" });
+    await expect(
+      repository.claimAsLiveHuman(created.id, matching),
+    ).rejects.toThrow(/REVOKED/);
+    await expect(
+      repository.claimAsLiveHuman("00000000-0000-4000-8000-000000000001", matching),
+    ).rejects.toMatchObject({ kind: "NOT_FOUND" });
+  });
+
+  it("rejects a non-PENDING row (already APPROVED via the ordinary decide path, or already CLAIMED) -- no fallback to a token-replay-style claim", async () => {
+    const { repository } = repositoryFromClient();
+    const approved = await pending(repository);
+    await repository.decide(approved.id, {
+      decidedBy: "some-admin",
+      approve: true,
+      decisionReason: "ordinary decide",
+    });
+    await expect(
+      repository.claimAsLiveHuman(approved.id, matching),
+    ).rejects.toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/not PENDING/i),
+    });
+
+    const alreadyClaimed = await pending(repository, { reason: "already-claimed" });
+    const firstClaim = await repository.claimAsLiveHuman(alreadyClaimed.id, {
+      ...matching,
+      requestId: "req-first",
+    });
+    expect(firstClaim.status).toBe("CLAIMED");
+    await expect(
+      repository.claimAsLiveHuman(alreadyClaimed.id, { ...matching, requestId: "req-second" }),
+    ).rejects.toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/not PENDING/i),
+    });
+  });
+
+  it("preserves a presented requestId on the claimed record, including across a duplicate/retried requestId on a fresh PENDING row", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await repository.create({
+      entityType: "RECORD",
+      action: "DELETE",
+      requestedBy: "agent-1",
+      reason: "duplicate requestId",
+    });
+    const claimed = await repository.claimAsLiveHuman(created.id, {
+      ...matching,
+      requestId: "req-duplicate-9",
+    });
+    expect(claimed.requestId).toBe("req-duplicate-9");
+
+    // A second, independent PENDING row presented with the *same* requestId
+    // string is a distinct approval record (requestId is caller-supplied
+    // idempotency metadata, not a uniqueness key at this layer) -- it must
+    // claim on its own merits, not be silently treated as the same claim.
+    const secondCreated = await repository.create({
+      entityType: "RECORD",
+      action: "DELETE",
+      requestedBy: "agent-2",
+      reason: "duplicate requestId, different row",
+    });
+    const secondClaimed = await repository.claimAsLiveHuman(secondCreated.id, {
+      ...matching,
+      requestId: "req-duplicate-9",
+    });
+    expect(secondClaimed.id).not.toBe(claimed.id);
+    expect(secondClaimed.requestId).toBe("req-duplicate-9");
+    expect(secondClaimed.status).toBe("CLAIMED");
+  });
+
+  it("exactly-once claim: concurrent duplicate live-human decisions on the same PENDING row -- exactly one CLAIMED, the other fails closed, never two live executions", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await pending(repository, { reason: "race" });
+    const [first, second] = await Promise.allSettled([
+      repository.claimAsLiveHuman(created.id, { ...matching, requestId: "req-race" }),
+      repository.claimAsLiveHuman(created.id, { ...matching, requestId: "req-race" }),
+    ]);
+    const fulfilled = [first, second].filter(
+      (
+        result,
+      ): result is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof repository.claimAsLiveHuman>>
+      > => result.status === "fulfilled",
+    );
+    const rejected = [first, second].filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(fulfilled[0]?.value.status).toBe("CLAIMED");
+    expect(rejected[0]?.reason).toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/not PENDING/i),
+    });
+    const stored = await repository.get(created.id);
+    expect(stored?.liveExecutionId).toBe(fulfilled[0]?.value.liveExecutionId);
+  });
+});
