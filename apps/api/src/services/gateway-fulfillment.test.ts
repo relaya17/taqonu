@@ -15,6 +15,7 @@ const {
 } = await import("./audit-log.js");
 const { osStore } = await import("../store/os-store.js");
 const { fulfillGatewayHandoff } = await import("./gateway-fulfillment.js");
+const { computeGovernedBindingHash } = await import("./governed-execution.js");
 const {
   createApprovalRequest,
   decideApprovalRequest,
@@ -111,6 +112,15 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     expect(result.observation).toMatchObject({
       output: "observation: 3 TypeScript files",
     });
+    const defaultArtifact = JSON.stringify({
+      applicationId: "def-000",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      toolName: "analyze_repo",
+    });
+    expect(result.observation?.["artifactHash"]).toBe(
+      computeGovernedBindingHash({ kind: "workspace", value: "." }, defaultArtifact),
+    );
 
     const memory = osStore
       .listDomainEvents()

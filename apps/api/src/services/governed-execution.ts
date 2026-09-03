@@ -1,14 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   executeTool,
+  extractGovernedTarget,
   type BusinessEntityType,
+  type CanonicalTarget,
   type EntityAction,
   type ToolExecutionOutcome,
 } from "@atlas/agent-core";
-import type {
-  ApprovalRequest,
-  GovernanceDecision,
-  GovernanceDecisionInput,
+import {
+  canonicalizeJson,
+  type ApprovalRequest,
+  type GovernanceDecision,
+  type GovernanceDecisionInput,
 } from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
 import {
@@ -42,11 +45,13 @@ import { runGovernedClaimedExecution } from "./governed-claimed-execution.js";
  * request is rejected before it can cost anything or touch any state:
  *
  *   1. Tool authorization   — may this agent use this tool at all?
- *   2. Artifact hashing     — pin exactly what is about to run.
- *   3. Claim or resume      — durable CLAIMED occupancy for THIS artifact
- *   4. Phase 3E + Policy/Risk
- *   5. Mark started + execute once + finalize
- *   6. Audit                — always, including on every refusal above.
+ *   2. Target extraction    — bind the instance the tool will execute against
+ *   3. Binding hash         — pin canonical target + caller artifact
+ *   4. Idempotency          — same key + same binding hash replays
+ *   5. Claim or resume      — durable CLAIMED occupancy for THIS binding
+ *   6. Phase 3E + Policy/Risk
+ *   7. Mark started + execute once + finalize
+ *   8. Audit                — always, including on every refusal above.
  *
  * Every stage that cannot reach a positive answer — UNAUTHORIZED, MISSING,
  * STALE, MISMATCH, EXPIRED, UNKNOWN — halts the pipeline. There is no
@@ -84,7 +89,10 @@ export interface GovernedExecutionRequest {
   readonly toolArgs: Readonly<Record<string, unknown>>;
   /** Payload whose target* fields must not contradict `identity`. */
   readonly payload?: ToolExecutionPayload;
-  /** The exact content about to be acted on — what the artifact hash is taken over. */
+  /**
+   * Caller-declared content pin. Combined with the extracted canonical target
+   * into `artifactHash` via `computeGovernedBindingHash`. Not a filesystem path.
+   */
   readonly artifact: string;
   /**
    * Approval to redeem, when this action required one. Omit for actions that
@@ -134,6 +142,25 @@ export interface GovernedExecutionRequest {
 
 export function computeArtifactHash(artifact: string): string {
   return createHash("sha256").update(artifact, "utf8").digest("hex");
+}
+
+/**
+ * Occupancy / audit / idempotency pin for governed *tool* execution.
+ * Preimage is `canonicalizeJson` of `{ schemaVersion, target, artifact }`.
+ * `projectRoot`, `toolName`, `toolArgs`, and entity/action class are not hashed.
+ * Patch occupancy continues to use `computeArtifactHash` on its own payload.
+ */
+export function computeGovernedBindingHash(
+  target: CanonicalTarget,
+  artifact: string,
+): string {
+  return computeArtifactHash(
+    canonicalizeJson({
+      schemaVersion: "atlas.governed-binding/v1",
+      target: { kind: target.kind, value: target.value },
+      artifact,
+    }),
+  );
 }
 
 /**
@@ -288,6 +315,7 @@ function auditOutcome(
   artifactHash: string,
   outcome: GovernedExecutionOutcome,
   context: GovernanceAuditContext = EMPTY_GOVERNANCE_AUDIT_CONTEXT,
+  canonicalTarget?: CanonicalTarget,
 ): void {
   appendUnifiedAuditEntry({
     type: request.routeLabel,
@@ -300,6 +328,7 @@ function auditOutcome(
       approvalRequestId: request.approvalRequestId ?? null,
       entityType: request.entityType,
       action: request.action,
+      ...(canonicalTarget !== undefined ? { canonicalTarget } : {}),
     },
     output: {
       stage: outcome.stage,
@@ -327,24 +356,6 @@ function auditOutcome(
 export async function executeGovernedAction(
   request: GovernedExecutionRequest,
 ): Promise<GovernedExecutionOutcome> {
-  const artifactHash = computeArtifactHash(request.artifact);
-
-  if (request.idempotencyKey) {
-    const prior = governedIdempotency.get(request.idempotencyKey);
-    if (prior) {
-      if (prior.artifactHash !== artifactHash) {
-        const outcome: GovernedExecutionOutcome = {
-          stage: "EXECUTION",
-          status: "FAILED",
-          reason: "idempotency key reused with a different artifact",
-        };
-        auditOutcome(request, artifactHash, outcome);
-        return outcome;
-      }
-      return prior.outcome;
-    }
-  }
-
   // ── 1. Tool authorization (P0.2) ────────────────────────────────────
   try {
     enforceAgentToolAuthorization({
@@ -358,8 +369,62 @@ export async function executeGovernedAction(
       status: "DENIED",
       reason: err instanceof Error ? err.message : String(err),
     };
-    auditOutcome(request, artifactHash, outcome);
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
+  }
+
+  // ── 2. Canonical target (instance) ──────────────────────────────────
+  const extracted = extractGovernedTarget(
+    request.toolName,
+    request.toolArgs,
+    request.projectRoot,
+  );
+  if (!extracted.ok) {
+    const noExtractor = extracted.reason.startsWith("No governed target extractor");
+    const outcome: GovernedExecutionOutcome = noExtractor
+      ? {
+          stage: "AUTHORIZATION",
+          status: "DENIED",
+          reason: extracted.reason,
+        }
+      : {
+          stage: "EXECUTION",
+          status: "FAILED",
+          reason: sanitizeErrorMessage(extracted.reason),
+        };
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    return outcome;
+  }
+
+  // ── 3. Binding hash (target + artifact) ─────────────────────────────
+  let artifactHash: string;
+  try {
+    artifactHash = computeGovernedBindingHash(extracted.target, request.artifact);
+  } catch (err) {
+    const outcome: GovernedExecutionOutcome = {
+      stage: "EXECUTION",
+      status: "FAILED",
+      reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
+    };
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    return outcome;
+  }
+
+  // ── 4. Idempotency (binding hash) ───────────────────────────────────
+  if (request.idempotencyKey) {
+    const prior = governedIdempotency.get(request.idempotencyKey);
+    if (prior) {
+      if (prior.artifactHash !== artifactHash) {
+        const outcome: GovernedExecutionOutcome = {
+          stage: "EXECUTION",
+          status: "FAILED",
+          reason: "idempotency key reused with a different artifact",
+        };
+        auditOutcome(request, artifactHash, outcome, EMPTY_GOVERNANCE_AUDIT_CONTEXT, extracted.target);
+        return outcome;
+      }
+      return prior.outcome;
+    }
   }
 
   const helper = await runGovernedClaimedExecution({
@@ -457,7 +522,7 @@ export async function executeGovernedAction(
     };
   }
 
-  auditOutcome(request, artifactHash, outcome, { gate, approval });
+  auditOutcome(request, artifactHash, outcome, { gate, approval }, extracted.target);
   if (request.idempotencyKey && outcome.status === "EXECUTED") {
     governedIdempotency.set(request.idempotencyKey, { artifactHash, outcome });
   }

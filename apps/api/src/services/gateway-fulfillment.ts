@@ -6,8 +6,10 @@
  * catalog authz → approval → dispatchAgentAction → executeTool → audit.
  */
 import { mapGatewayHandoff, memoryEpistemicAfterAction } from "@atlas/shared";
+import { extractGovernedTarget } from "@atlas/agent-core";
 import {
   computeArtifactHash,
+  computeGovernedBindingHash,
   executeGovernedAction,
   type GovernedExecutionOutcome,
 } from "./governed-execution.js";
@@ -109,8 +111,19 @@ export async function fulfillGatewayHandoff(
   const baselineObservations =
     approval?.baselineObservations ?? handoff.baselineObservations ?? [];
 
+  const expectedArtifactHash = (() => {
+    const extracted = extractGovernedTarget(
+      mapping.toolName,
+      handoff.toolArgs ?? {},
+      handoff.projectRoot,
+    );
+    return extracted.ok
+      ? computeGovernedBindingHash(extracted.target, artifact)
+      : computeArtifactHash(artifact);
+  })();
+
   const expected = captureExpectedState({
-    artifactHash: computeArtifactHash(artifact),
+    artifactHash: expectedArtifactHash,
     toolName: mapping.toolName,
     expectedObservations,
   });

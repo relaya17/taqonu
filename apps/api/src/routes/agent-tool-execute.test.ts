@@ -24,7 +24,9 @@ const projectRoot = join(tmpDir, "repo");
 mkdirSync(join(projectRoot, "src"), { recursive: true });
 
 const FIXTURE = "export const answer = 42;\n";
+const OTHER = "export const other = 1;\n";
 writeFileSync(join(projectRoot, "src", "index.ts"), FIXTURE, "utf8");
+writeFileSync(join(projectRoot, "src", "other.ts"), OTHER, "utf8");
 
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
@@ -55,6 +57,7 @@ const { setAuditLogPathForTests, listUnifiedAuditEntries, verifyAuditChain } =
 const { registerFilesystemTools, resetToolRegistryForTests } = await import(
   "@atlas/agent-core"
 );
+const { computeGovernedBindingHash } = await import("../services/governed-execution.js");
 
 let app: FastifyInstance;
 
@@ -133,7 +136,9 @@ describe("POST /api/v1/agents/tool-execute", () => {
     expect(json.status).toBe("EXECUTED");
     expect(json.agentId).toBe("RESEARCHER");
     expect(json.output).toContain("export const answer = 42;");
-    expect(typeof json.artifactHash).toBe("string");
+    expect(json.artifactHash).toBe(
+      computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, FIXTURE),
+    );
     expect(json.artifactHash).toHaveLength(64);
 
     // The gate audits on the way out, and the chain must still verify.
@@ -199,6 +204,22 @@ describe("POST /api/v1/agents/tool-execute", () => {
     expect(json.stage).toBe("EXECUTION");
     expect(json.status).toBe("FAILED");
     expect(json.error.message).toMatch(/escapes the project root/);
+  });
+
+  it("uses a different binding hash when the path differs and the artifact string is unchanged", async () => {
+    const sameArtifactOtherPath = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ toolArgs: { path: "src/other.ts" } }),
+    });
+    expect(sameArtifactOtherPath.statusCode).toBe(200);
+    const otherHash = sameArtifactOtherPath.json().artifactHash;
+    expect(otherHash).toBe(
+      computeGovernedBindingHash({ kind: "path", value: "src/other.ts" }, FIXTURE),
+    );
+    expect(otherHash).not.toBe(
+      computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, FIXTURE),
+    );
   });
 
   it("never leaks an absolute server path in a refusal message", async () => {

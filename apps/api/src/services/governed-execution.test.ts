@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  registerFilesystemTools,
   registerTool,
   resetToolRegistryForTests,
 } from "@atlas/agent-core";
@@ -14,11 +15,13 @@ import {
 import {
   createApprovalRequest,
   decideApprovalRequest,
+  getApprovalRequest,
 } from "./approvals.js";
 import { resetApprovalsForTests } from "./approvals-test-store.js";
 import { resolveAgentIdentity } from "./agent-runtime-authz.js";
 import {
   computeArtifactHash,
+  computeGovernedBindingHash,
   executeGovernedAction,
   resetGovernedIdempotencyForTests,
 } from "./governed-execution.js";
@@ -43,6 +46,11 @@ const PROJECT_A = "33333333-3333-4333-8333-333333333333";
 const PROJECT_B = "44444444-4444-4444-8444-444444444444";
 
 const ARTIFACT = "export const answer = 42;";
+const QUERY = "src/index.ts";
+
+function knowledgeBindingHash(artifact: string = ARTIFACT, query: string = QUERY): string {
+  return computeGovernedBindingHash({ kind: "query", value: query }, artifact);
+}
 
 beforeEach(() => {
   getProject.mockReset();
@@ -142,7 +150,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "reviewed read",
-      artifactHash: computeArtifactHash(ARTIFACT),
+      artifactHash: knowledgeBindingHash(),
     });
     await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
@@ -167,7 +175,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "stale sign-off",
-      artifactHash: computeArtifactHash(ARTIFACT),
+      artifactHash: knowledgeBindingHash(),
       expiresAt: new Date(Date.now() - 1_000).toISOString(),
     });
     await decideApprovalRequest(approved.id, {
@@ -199,7 +207,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "one-shot",
-      artifactHash: computeArtifactHash(ARTIFACT),
+      artifactHash: knowledgeBindingHash(),
     });
     await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
@@ -222,7 +230,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "read only",
-      artifactHash: computeArtifactHash(ARTIFACT),
+      artifactHash: knowledgeBindingHash(),
     });
     await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
@@ -267,7 +275,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.status).toBe("EXECUTED");
     if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
     expect(result.output).toContain("answer = 42");
-    expect(result.artifactHash).toBe(computeArtifactHash(ARTIFACT));
+    expect(result.artifactHash).toBe(knowledgeBindingHash());
   });
 
   it("does not re-require approval at Stage 4 after a matching RECORD.CREATE claim", async () => {
@@ -276,7 +284,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       action: "CREATE",
       requestedBy: "RESEARCHER",
       reason: "phase-3e governed re-check",
-      artifactHash: computeArtifactHash(ARTIFACT),
+      artifactHash: knowledgeBindingHash(),
     });
     await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
@@ -444,6 +452,91 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(runs).toBe(1);
   });
 
+  it("does not replay an idempotency key when the canonical target differs", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        return "observation: answer = 42";
+      },
+    });
+    const first = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-target" }));
+    const second = await executeGovernedAction(
+      baseRequest({
+        idempotencyKey: "gov-target",
+        toolArgs: { query: "other-query" },
+      }),
+    );
+    expect(first.status).toBe("EXECUTED");
+    expect(second.status).toBe("FAILED");
+    expect(second.stage).toBe("EXECUTION");
+    if (second.status !== "FAILED") throw new Error("expected FAILED");
+    expect(second.reason).toMatch(/idempotency key reused/);
+    expect(runs).toBe(1);
+  });
+
+  it("BLOCKS an approval minted against the old content-only hash", async () => {
+    const approved = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "READ",
+      requestedBy: "RESEARCHER",
+      reason: "stale preimage",
+      artifactHash: computeArtifactHash(ARTIFACT),
+    });
+    await decideApprovalRequest(approved.id, {
+      decidedBy: OWNER_A,
+      approve: true,
+      decisionReason: "ok",
+    });
+    const result = await executeGovernedAction(
+      baseRequest({ approvalRequestId: approved.id }),
+    );
+    expect(result.stage).toBe("APPROVAL");
+    expect(result.status).toBe("DENIED");
+  });
+
+  it("refuses an escaping path before claiming occupancy", async () => {
+    const approved = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "READ",
+      requestedBy: "RESEARCHER",
+      reason: "read",
+      artifactHash: computeGovernedBindingHash(
+        { kind: "path", value: "src/index.ts" },
+        ARTIFACT,
+      ),
+    });
+    await decideApprovalRequest(approved.id, {
+      decidedBy: OWNER_A,
+      approve: true,
+      decisionReason: "ok",
+    });
+    const result = await executeGovernedAction(
+      baseRequest({
+        toolName: "fs.read_file",
+        toolArgs: { path: "../../escape" },
+        approvalRequestId: approved.id,
+      }),
+    );
+    expect(result.stage).toBe("EXECUTION");
+    expect(result.status).toBe("FAILED");
+    const still = await getApprovalRequest(approved.id);
+    expect(still?.status).toBe("APPROVED");
+  });
+
+  it("records canonicalTarget on AUTO read audit entries", async () => {
+    const result = await executeGovernedAction(baseRequest());
+    expect(result.status).toBe("EXECUTED");
+    const entries = listUnifiedAuditEntries().filter(
+      (e) => e.type === "test.governed.execute" && e.result === "SUCCESS",
+    );
+    expect(entries.at(-1)?.input).toMatchObject({
+      canonicalTarget: { kind: "query", value: QUERY },
+    });
+  });
+
   // ── EVERY refusal must be audited, and the chain must stay intact ─────
   it("AUDITS every blocked attempt — a silent refusal is not a control", async () => {
     await executeGovernedAction(
@@ -467,5 +560,60 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(verification.intact).toBe(true);
     expect(verification.firstInvalidEventId).toBeNull();
     expect(verification.entriesChecked).toBeGreaterThan(0);
+  });
+
+  it("EXECUTES fs.read_file under the path-kind binding hash (AUTO, no occupancy)", async () => {
+    registerFilesystemTools();
+    const result = await executeGovernedAction(
+      baseRequest({
+        toolName: "fs.read_file",
+        toolArgs: { path: "src/index.ts" },
+      }),
+    );
+    expect(result.status).toBe("EXECUTED");
+    if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
+    expect(result.artifactHash).toBe(
+      computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, ARTIFACT),
+    );
+    expect(result.artifactHash).not.toBe(knowledgeBindingHash());
+  });
+});
+
+describe("computeGovernedBindingHash preimage", () => {
+  it("matches the approved newline fixture", () => {
+    expect(
+      computeGovernedBindingHash(
+        { kind: "path", value: "src/index.ts" },
+        "export const answer = 42;\n",
+      ),
+    ).toBe("aef7f3fbba45ba735884c23acca80550dace7fd4ccf7ea57dea2603f9ae2b0cd");
+  });
+
+  it("matches the approved no-newline path fixture", () => {
+    expect(
+      computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, ARTIFACT),
+    ).toBe("cc061ce3080403a433042b2deb7a1f3bc79663714aa6c30ecfb2e569c48b88db");
+  });
+
+  it("changes when the path changes with the same artifact", () => {
+    const a = computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, ARTIFACT);
+    const b = computeGovernedBindingHash({ kind: "path", value: "src/other.ts" }, ARTIFACT);
+    expect(a).not.toBe(b);
+  });
+
+  it("changes when the artifact changes with the same path", () => {
+    const a = computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, ARTIFACT);
+    const b = computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, ARTIFACT + "x");
+    expect(a).not.toBe(b);
+  });
+
+  it("treats path and query with the same value as different targets", () => {
+    const pathHash = computeGovernedBindingHash({ kind: "path", value: QUERY }, ARTIFACT);
+    const queryHash = computeGovernedBindingHash({ kind: "query", value: QUERY }, ARTIFACT);
+    expect(pathHash).not.toBe(queryHash);
+  });
+
+  it("is not the SHA-256 of the raw artifact string", () => {
+    expect(knowledgeBindingHash()).not.toBe(computeArtifactHash(ARTIFACT));
   });
 });
