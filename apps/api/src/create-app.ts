@@ -52,6 +52,7 @@ import { registerMetricsRoutes } from "./routes/metrics.js";
 import { registerLegalMediaRoutes } from "./routes/legal-media.js";
 import { registerGatewayFulfillRoutes } from "./routes/gateway-fulfill.js";
 import { registerGovernedLifecycleHandoffRoutes } from "./routes/governed-lifecycle-handoff.js";
+import { registerPersonalSupervisingAgentRoutes } from "./routes/personal-supervising-agent.js";
 import { registerSecuritySarifRoutes } from "./routes/security-sarif.js";
 import { registerEvalCiGateRoutes } from "./routes/eval-ci-gate.js";
 import { registerObserverRoutes } from "./routes/observer.js";
@@ -194,6 +195,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerLegalMediaRoutes(app);
   await registerGatewayFulfillRoutes(app);
   await registerGovernedLifecycleHandoffRoutes(app);
+  await registerPersonalSupervisingAgentRoutes(app);
   await registerObserverRoutes(app);
   await registerSentinelRoutes(app);
   await registerPerformanceRoutes(app);
