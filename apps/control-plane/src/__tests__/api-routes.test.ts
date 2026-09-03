@@ -145,7 +145,7 @@ describe("Control Plane — API Routes", () => {
       expect(body.lifecycle).toContain("AUDIT");
       expect(body.registeredApplicationIds).toEqual(["def-000"]);
       expect(body.domains.find((d) => d.domain === "processes")?.status).toBe(
-        "MISSING",
+        "PARTIAL",
       );
       expect(body.domains.every((d) => d.live === false)).toBe(true);
     });

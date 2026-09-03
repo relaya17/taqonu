@@ -142,11 +142,12 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
     },
     {
       domain: "processes",
-      status: "MISSING",
+      status: "PARTIAL",
       live: false,
       route: "GET /api/v1/processes",
       notes: [
-        "Process records appear only when an accepted Civio event includes processId.",
+        "Control process registry is application-scoped. Civio registers via civio.process.started.",
+        "Later events attach only to an existing process for that application/tenant/project.",
         "/process-audit is a local QA file scan, not process supervision.",
       ],
     },

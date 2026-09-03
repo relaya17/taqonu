@@ -177,10 +177,27 @@ describe("Civio → Atlas Control connector", () => {
   });
 
   it("7–9. reaches Control processing, evaluates policy/risk, and preserves audit", async () => {
+    const started = await emitCivioEventToControl({
+      controlBaseUrl: control.baseUrl,
+      secret: SECRET,
+      event: event({
+        eventType: "civio.process.started",
+        processId: "civio-proc-1",
+        eventId: "evt-start-1",
+        idempotencyKey: "idem-start-1",
+      }),
+    });
+    expect(started.status).toBe(202);
+    expect(started.body.process).toEqual({ processId: "civio-proc-1" });
+
     const result = await emitCivioEventToControl({
       controlBaseUrl: control.baseUrl,
       secret: SECRET,
-      event: event({ processId: "civio-proc-1" }),
+      event: event({
+        processId: "civio-proc-1",
+        eventId: "evt-civio-attach",
+        idempotencyKey: "idem-attach-1",
+      }),
     });
     expect(result.body.accepted).toBe(true);
     expect(result.body.evaluation).toBeDefined();
@@ -213,7 +230,12 @@ describe("Civio → Atlas Control connector", () => {
     await emitCivioEventToControl({
       controlBaseUrl: control.baseUrl,
       secret: SECRET,
-      event: event({ processId: "proc-alpha", eventId: "evt-alpha", idempotencyKey: "idem-alpha" }),
+      event: event({
+        eventType: "civio.process.started",
+        processId: "proc-alpha",
+        eventId: "evt-alpha",
+        idempotencyKey: "idem-alpha",
+      }),
     });
     await emitCivioEventToControl({
       controlBaseUrl: control.baseUrl,

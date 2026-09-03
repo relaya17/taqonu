@@ -103,7 +103,7 @@ import {
  * Platform supervision (consumed by Atlas Admin — not a dashboard clone):
  *   GET /api/v1/supervision
  *   GET /api/v1/operational-foundation
- *   GET /api/v1/processes          — observed Civio processes only (no invented ids)
+ *   GET /api/v1/processes          — supervised processes (application-scoped)
  *   GET /api/v1/connectors/civio   — Civio connector contract (operator)
  *   POST /api/v1/connectors/civio/events — HMAC Civio ingress
  */

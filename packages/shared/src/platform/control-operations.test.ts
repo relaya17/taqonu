@@ -34,12 +34,12 @@ describe("Control operational contracts", () => {
     expect(OPERATING_CYCLE_TO_CONTROL_LIFECYCLE.VERIFY).toBe("VERIFICATION");
   });
 
-  it("does not claim live sibling connectors or a process store", () => {
+  it("does not claim live sibling connectors; process supervision is in-memory Control state", () => {
     const domains = controlOperationalDomainContracts();
     expect(domains.map((d) => d.domain)).toEqual([...CONTROL_OPERATIONAL_DOMAINS]);
     expect(domains.every((d) => d.live === false)).toBe(true);
     const processes = domains.find((d) => d.domain === "processes");
-    expect(processes?.status).toBe("MISSING");
+    expect(processes?.status).toBe("PARTIAL");
     expect(processes?.notes.some((note) => note.includes("process-audit"))).toBe(
       true,
     );

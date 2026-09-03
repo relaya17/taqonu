@@ -19,12 +19,14 @@ import {
   CIVIO_SUPPORTED_ACTIONS,
   civioConnectorFoundationStatus,
   civioEventEnvelopeSchema,
-  civioProcessStateFromEvent,
   civioProcessTypeFromEvent,
+  mapCivioEventToSupervisedState,
   type CivioAuthenticationState,
   type CivioConnectorContract,
   type CivioEventEnvelope,
+  type CivioProcessState,
   type CivioSupervisedProcess,
+  type SupervisedProcess,
 } from "@atlas/shared";
 import {
   CIVIO_CONNECTOR_SECRET_MIN_LENGTH,
@@ -36,6 +38,11 @@ import {
   recordApplicationEvent,
 } from "./application-registry.js";
 import { appendAuditEntry } from "./governance-state.js";
+import {
+  listSupervisedProcesses,
+  observeConnectorProcessEvent,
+  resetProcessRegistryForTests,
+} from "./process-registry.js";
 
 export interface CivioConnectorBinding {
   readonly secret: string;
@@ -50,7 +57,6 @@ const idempotentResponses = new Map<
   string,
   { readonly fingerprint: string; readonly status: number; readonly body: CivioIngestResult }
 >();
-const observedProcesses = new Map<string, CivioSupervisedProcess>();
 const acceptedEventKeys = new Set<string>();
 
 let lastAuthenticatedAt: string | null = null;
@@ -121,29 +127,44 @@ function fingerprintOf(event: CivioEventEnvelope): string {
   return `${event.eventId}\n${event.idempotencyKey}\n${event.eventType}\n${event.occurredAt}`;
 }
 
-function processKey(tenantId: string, projectId: string, processId: string): string {
-  return `${tenantId}\0${projectId}\0${processId}`;
+function requestIdOf(event: CivioEventEnvelope): string {
+  const declared =
+    typeof event.payload["requestId"] === "string"
+      ? event.payload["requestId"].trim()
+      : "";
+  return declared.length > 0 ? declared : event.correlationId;
 }
 
-function rememberProcess(event: CivioEventEnvelope): CivioSupervisedProcess | null {
-  if (!event.processId) return null;
-  const key = processKey(event.tenantId, event.projectId, event.processId);
-  const existing = observedProcesses.get(key);
-  const now = event.occurredAt;
-  const next: CivioSupervisedProcess = {
-    processId: event.processId,
-    applicationId: CIVIO_APPLICATION_ID,
-    tenantId: event.tenantId,
-    projectId: event.projectId,
-    processType: civioProcessTypeFromEvent(event.eventType, event.payload),
-    state: civioProcessStateFromEvent(event.eventType),
-    startedAt: existing?.startedAt ?? now,
-    updatedAt: now,
-    currentEvent: event.eventType,
-    correlationId: event.correlationId,
+function actorBinding(event: CivioEventEnvelope): {
+  readonly agentId: string | null;
+  readonly workerId: string | null;
+} {
+  return {
+    agentId: event.actor.kind === "AGENT" ? event.actor.id : null,
+    workerId: event.actor.kind === "SYSTEM" ? event.actor.id : null,
   };
-  observedProcesses.set(key, next);
-  return next;
+}
+
+function toCivioProcessState(state: SupervisedProcess["state"]): CivioProcessState {
+  if (state === "CREATED") return "STARTED";
+  if (state === "RUNNING") return "ACTIVE";
+  if (state === "COMPLETED") return "COMPLETED";
+  return "FAILED";
+}
+
+function toCivioSupervisedProcess(process: SupervisedProcess): CivioSupervisedProcess {
+  return {
+    processId: process.processId,
+    applicationId: CIVIO_APPLICATION_ID,
+    tenantId: process.tenantId,
+    projectId: process.projectId,
+    processType: process.processType,
+    state: toCivioProcessState(process.state),
+    startedAt: process.startedAt,
+    updatedAt: process.updatedAt,
+    currentEvent: process.currentEvent,
+    correlationId: process.correlationId,
+  };
 }
 
 function writeAudit(input: {
@@ -174,7 +195,9 @@ function writeAudit(input: {
 }
 
 export function listObservedCivioProcesses(): readonly CivioSupervisedProcess[] {
-  return [...observedProcesses.values()];
+  return listSupervisedProcesses({ applicationId: CIVIO_APPLICATION_ID }).map(
+    toCivioSupervisedProcess,
+  );
 }
 
 export function civioAcceptedEventCount(): number {
@@ -410,9 +433,43 @@ export function ingestCivioConnectorEvent(input: {
     tenantId: event.tenantId,
     projectId: event.projectId,
   });
+
+  const observed = observeConnectorProcessEvent({
+    processId: event.processId,
+    applicationId: CIVIO_APPLICATION_ID,
+    tenantId: event.tenantId,
+    projectId: event.projectId,
+    processType: civioProcessTypeFromEvent(event.eventType, event.payload),
+    connectorId: CIVIO_CONNECTOR_ID,
+    occurredAt: event.occurredAt,
+    eventId: event.eventId,
+    eventType: event.eventType,
+    correlationId: event.correlationId,
+    requestId: requestIdOf(event),
+    ...actorBinding(event),
+    proposedState: mapCivioEventToSupervisedState(event.eventType),
+    registration: event.eventType === "civio.process.started",
+    governance: {
+      decision: evaluation.decision,
+      reason: evaluation.reason,
+      evaluatedAt: new Date().toISOString(),
+    },
+  });
+  if (!observed.ok) {
+    return {
+      status: observed.status,
+      body: {
+        accepted: false,
+        disposition: "REJECTED",
+        reason: observed.reason,
+        eventId: event.eventId,
+        execution: "NOT_IMPLEMENTED",
+      },
+    };
+  }
+
   recordApplicationEvent(CIVIO_APPLICATION_ID, event.eventType);
 
-  const observed = rememberProcess(event);
   acceptedEventKeys.add(event.eventId);
 
   const auditType = "civio.connector.event.accepted";
@@ -437,7 +494,7 @@ export function ingestCivioConnectorEvent(input: {
       stagesPassed: evaluation.stagesPassed,
       executed: false,
     },
-    process: observed ? { processId: observed.processId } : null,
+    process: observed.process ? { processId: observed.process.processId } : null,
     audit: { type: auditType, inMemory: true },
     execution: "NOT_IMPLEMENTED",
   };
@@ -458,9 +515,9 @@ export function ingestCivioConnectorEvent(input: {
 export function resetCivioConnectorForTests(): void {
   usedNonces.clear();
   idempotentResponses.clear();
-  observedProcesses.clear();
   acceptedEventKeys.clear();
   lastAuthenticatedAt = null;
+  resetProcessRegistryForTests();
 }
 
 export { civioConnectorFoundationStatus };

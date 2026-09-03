@@ -22,6 +22,7 @@ import {
   civioAcceptedEventCount,
   listObservedCivioProcesses,
 } from "./civio-connector.js";
+import { listSupervisedProcesses } from "./process-registry.js";
 
 export function buildControlSupervisionSnapshot(
   origin = ATLAS_PLATFORM_HIERARCHY.CONTROL.defaultOrigin,
@@ -50,13 +51,14 @@ export function buildControlSupervisionSnapshot(
       auditEntries: getAuditEntryCount(),
       civioEventsAccepted: civioAcceptedEventCount(),
       civioProcessesObserved: listObservedCivioProcesses().length,
+      supervisedProcesses: listSupervisedProcesses().length,
     },
     notes: [
       "Operational supervision layer. Not Atlas Admin. Not Studio.",
       "registeredApplications is the Control registry, not a live sibling connector.",
       "oversightAgents is the legacy 9-label list. fabricProjectionAgents is FABRIC_AGENT_CATALOG (not executable from this snapshot).",
-      "Operational contracts: GET /api/v1/operational-foundation. Civio HMAC ingress: POST /api/v1/connectors/civio/events.",
-      "Civio runtime is not in this repository; process records appear only when a signed event includes processId.",
+      "Civio HMAC ingress: POST /api/v1/connectors/civio/events. Processes: GET /api/v1/processes.",
+      "A Civio process is registered by civio.process.started. Later events attach only to that application-scoped process.",
     ],
   };
 }

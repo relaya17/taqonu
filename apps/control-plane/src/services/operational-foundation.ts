@@ -1,6 +1,6 @@
 /**
  * Control operational foundation — contracts assembled from existing services.
- * Does not invent live sibling connections or process records.
+ * Does not invent live sibling connections.
  */
 
 import {
@@ -9,29 +9,27 @@ import {
   civioConnectorFoundationStatus,
   controlOperationalDomainContracts,
   type ControlOperationalFoundation,
-  type CivioSupervisedProcess,
+  type SupervisedProcess,
 } from "@atlas/shared";
 import { listRegisteredApplications } from "./application-registry.js";
-import {
-  civioAcceptedEventCount,
-  listObservedCivioProcesses,
-} from "./civio-connector.js";
+import { civioAcceptedEventCount } from "./civio-connector.js";
+import { listSupervisedProcesses as listProcessRecords } from "./process-registry.js";
 
 export interface ControlProcessList {
-  readonly items: readonly CivioSupervisedProcess[];
+  readonly items: readonly SupervisedProcess[];
   readonly live: boolean;
   readonly note: string;
 }
 
 export function listSupervisedProcesses(): ControlProcessList {
-  const items = listObservedCivioProcesses();
+  const items = listProcessRecords();
   return {
     items,
     live: items.length > 0,
     note:
       items.length > 0
-        ? "Process records observed from accepted Civio connector events. Not a Civio process poll. /process-audit remains a local QA file scan."
-        : "No observed processes. Atlas /process-audit is a local QA file scan, not Control process supervision. A Civio process appears only when a signed event includes processId.",
+        ? "Process records observed from accepted connector events. Application-scoped. /process-audit remains a local QA file scan."
+        : "No observed processes. Atlas /process-audit is a local QA file scan, not Control process supervision. Register a process with civio.process.started before attaching events.",
   };
 }
 
@@ -39,7 +37,7 @@ export function buildControlOperationalFoundation(): ControlOperationalFoundatio
   readonly registeredApplicationIds: readonly string[];
 } {
   const applications = listRegisteredApplications();
-  const observed = listObservedCivioProcesses();
+  const observed = listProcessRecords();
   const accepted = civioAcceptedEventCount();
   const domains = controlOperationalDomainContracts().map((domain) => {
     if (domain.domain === "processes" && observed.length > 0) {
@@ -48,8 +46,8 @@ export function buildControlOperationalFoundation(): ControlOperationalFoundatio
         status: "PARTIAL" as const,
         live: true,
         notes: [
-          "Civio process records observed from accepted connector events.",
-          "No invented process ids. /process-audit is still a local QA file scan.",
+          "Process records observed from accepted connector events.",
+          "Identity is application + tenant + project + process. /process-audit is still a local QA file scan.",
         ],
       };
     }
