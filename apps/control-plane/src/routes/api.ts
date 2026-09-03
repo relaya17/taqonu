@@ -37,6 +37,7 @@ import {
   headerString,
   ingestCivioConnectorEvent,
 } from "../services/civio-connector.js";
+import { listSupervisedGovernanceDecisions } from "../services/supervised-governance.js";
 import {
   CIVIO_NONCE_HEADER,
   CIVIO_SIGNATURE_HEADER,
@@ -104,6 +105,7 @@ import {
  *   GET /api/v1/supervision
  *   GET /api/v1/operational-foundation
  *   GET /api/v1/processes          — supervised processes (application-scoped)
+ *   GET /api/v1/governance/decisions — Event → Policy → Risk → Decision (no execute)
  *   GET /api/v1/connectors/civio   — Civio connector contract (operator)
  *   POST /api/v1/connectors/civio/events — HMAC Civio ingress
  */
@@ -232,6 +234,25 @@ export function createApiRouter(): Router {
 
   router.get("/api/v1/processes", (_req, res) => {
     json(res, listSupervisedProcesses());
+  });
+
+  router.get("/api/v1/governance/decisions", (req, res) => {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const applicationId = url.searchParams.get("applicationId") ?? undefined;
+    const tenantId = url.searchParams.get("tenantId") ?? undefined;
+    const processId = url.searchParams.get("processId") ?? undefined;
+    const eventId = url.searchParams.get("eventId") ?? undefined;
+    json(
+      res,
+      {
+        items: listSupervisedGovernanceDecisions({
+          ...(applicationId ? { applicationId } : {}),
+          ...(tenantId ? { tenantId } : {}),
+          ...(processId ? { processId } : {}),
+          ...(eventId ? { eventId } : {}),
+        }),
+      },
+    );
   });
 
   router.get("/api/v1/connectors/civio", (_req, res) => {

@@ -32,17 +32,21 @@ import {
   CIVIO_CONNECTOR_SECRET_MIN_LENGTH,
   verifyCivioConnectorSignature,
 } from "@atlas/integrations-civio";
-import { evaluateOperatingCycle } from "./operating-cycle.js";
 import {
   upsertRegisteredApplication,
   recordApplicationEvent,
 } from "./application-registry.js";
 import { appendAuditEntry } from "./governance-state.js";
 import {
+  bindProcessGovernance,
   listSupervisedProcesses,
   observeConnectorProcessEvent,
   resetProcessRegistryForTests,
 } from "./process-registry.js";
+import {
+  evaluateSupervisedEvent,
+  resetSupervisedGovernanceForTests,
+} from "./supervised-governance.js";
 
 export interface CivioConnectorBinding {
   readonly secret: string;
@@ -79,6 +83,15 @@ export interface CivioIngestResult {
     readonly reason: string;
     readonly stagesPassed: readonly string[];
     readonly executed: false;
+    readonly applicationId?: string;
+    readonly processId?: string | null;
+    readonly eventId?: string;
+    readonly policy?: {
+      readonly entityType: string;
+      readonly action: string;
+      readonly riskTier: string;
+    };
+    readonly risk?: { readonly status: "EVALUATED"; readonly tier: string };
   };
   readonly process?: { readonly processId: string } | null;
   readonly audit?: { readonly type: string; readonly inMemory: true };
@@ -416,14 +429,6 @@ export function ingestCivioConnectorEvent(input: {
 
   lastAuthenticatedAt = new Date().toISOString();
 
-  const evaluation = evaluateOperatingCycle({
-    actorId: event.actor.id,
-    actorKind: event.actor.kind,
-    applicationId: event.applicationId,
-    operation: `civio.ingest.${event.eventType}`,
-    readOnly: true,
-  });
-
   upsertRegisteredApplication({
     applicationId: CIVIO_APPLICATION_ID,
     name: CIVIO_APPLICATION_NAME,
@@ -449,11 +454,7 @@ export function ingestCivioConnectorEvent(input: {
     ...actorBinding(event),
     proposedState: mapCivioEventToSupervisedState(event.eventType),
     registration: event.eventType === "civio.process.started",
-    governance: {
-      decision: evaluation.decision,
-      reason: evaluation.reason,
-      evaluatedAt: new Date().toISOString(),
-    },
+    governance: null,
   });
   if (!observed.ok) {
     return {
@@ -468,6 +469,33 @@ export function ingestCivioConnectorEvent(input: {
     };
   }
 
+  const governance = evaluateSupervisedEvent({
+    tenantId: event.tenantId,
+    projectId: event.projectId,
+    applicationId: CIVIO_APPLICATION_ID,
+    processId: observed.process?.processId ?? null,
+    eventId: event.eventId,
+    eventType: event.eventType,
+    correlationId: event.correlationId,
+    requestId: requestIdOf(event),
+    connectorId: CIVIO_CONNECTOR_ID,
+    actorId: event.actor.id,
+    actorKind: event.actor.kind,
+  });
+  if (observed.process) {
+    bindProcessGovernance({
+      tenantId: event.tenantId,
+      projectId: event.projectId,
+      applicationId: CIVIO_APPLICATION_ID,
+      processId: observed.process.processId,
+      governance: {
+        decision: governance.decision,
+        reason: governance.reason,
+        evaluatedAt: governance.evaluatedAt,
+      },
+    });
+  }
+
   recordApplicationEvent(CIVIO_APPLICATION_ID, event.eventType);
 
   acceptedEventKeys.add(event.eventId);
@@ -477,22 +505,31 @@ export function ingestCivioConnectorEvent(input: {
     event,
     type: auditType,
     result: "SUCCESS",
-    reason: `Civio ${event.eventType} ${event.eventId} → ${evaluation.decision} (${evaluation.reason})`,
+    reason: `Civio ${event.eventType} ${event.eventId} → ${governance.decision} (${governance.reason})`,
     policy: "civio.connector.observe",
-    risk: evaluation.decision === "DENY" ? "HIGH" : "LOW",
+    risk: governance.decision === "DENY" ? "HIGH" : governance.decision === "REQUIRE_APPROVAL" ? "APPROVAL" : "LOW",
   });
 
   const body: CivioIngestResult = {
     accepted: true,
     disposition: "ACCEPTED",
-    reason: evaluation.reason,
+    reason: governance.reason,
     eventId: event.eventId,
     evaluation: {
-      decision: evaluation.decision,
-      blockedAt: evaluation.blockedAt,
-      reason: evaluation.reason,
-      stagesPassed: evaluation.stagesPassed,
+      decision: governance.decision,
+      blockedAt: governance.cycle.blockedAt,
+      reason: governance.reason,
+      stagesPassed: governance.cycle.stagesPassed,
       executed: false,
+      applicationId: CIVIO_APPLICATION_ID,
+      processId: observed.process?.processId ?? event.processId ?? null,
+      eventId: event.eventId,
+      policy: {
+        entityType: governance.policy.entityType,
+        action: governance.policy.action,
+        riskTier: governance.policy.riskTier,
+      },
+      risk: governance.risk,
     },
     process: observed.process ? { processId: observed.process.processId } : null,
     audit: { type: auditType, inMemory: true },
@@ -518,6 +555,7 @@ export function resetCivioConnectorForTests(): void {
   acceptedEventKeys.clear();
   lastAuthenticatedAt = null;
   resetProcessRegistryForTests();
+  resetSupervisedGovernanceForTests();
 }
 
 export { civioConnectorFoundationStatus };

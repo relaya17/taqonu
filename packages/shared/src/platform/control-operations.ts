@@ -166,7 +166,7 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
       status: "PARTIAL",
       live: false,
       route: "GET /api/v1/policies",
-      notes: ["In-memory Control policy catalog for entity/action pairs."],
+      notes: ["In-memory Control policy catalog for entity/action pairs.", "Connector events select a catalog cell then evaluateOperatingCycle."],
     },
     {
       domain: "risk",

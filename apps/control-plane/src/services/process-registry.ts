@@ -313,6 +313,29 @@ export function observeConnectorProcessEvent(
   return { ok: true, process: next };
 }
 
+export function bindProcessGovernance(input: {
+  readonly tenantId: string;
+  readonly projectId: string;
+  readonly applicationId: string;
+  readonly processId: string;
+  readonly governance: SupervisedProcess["governance"];
+}): SupervisedProcess | undefined {
+  const key = supervisedProcessKey(
+    input.tenantId,
+    input.projectId,
+    input.applicationId,
+    input.processId,
+  );
+  const existing = processes.get(key);
+  if (!existing) return undefined;
+  const next: SupervisedProcess = {
+    ...existing,
+    governance: input.governance,
+  };
+  processes.set(key, next);
+  return next;
+}
+
 export function resetProcessRegistryForTests(): void {
   processes.clear();
 }

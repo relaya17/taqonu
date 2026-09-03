@@ -23,6 +23,7 @@ import {
   listObservedCivioProcesses,
 } from "./civio-connector.js";
 import { listSupervisedProcesses } from "./process-registry.js";
+import { listSupervisedGovernanceDecisions } from "./supervised-governance.js";
 
 export function buildControlSupervisionSnapshot(
   origin = ATLAS_PLATFORM_HIERARCHY.CONTROL.defaultOrigin,
@@ -52,6 +53,7 @@ export function buildControlSupervisionSnapshot(
       civioEventsAccepted: civioAcceptedEventCount(),
       civioProcessesObserved: listObservedCivioProcesses().length,
       supervisedProcesses: listSupervisedProcesses().length,
+      supervisedGovernanceDecisions: listSupervisedGovernanceDecisions().length,
     },
     notes: [
       "Operational supervision layer. Not Atlas Admin. Not Studio.",
