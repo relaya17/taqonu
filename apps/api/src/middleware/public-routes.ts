@@ -31,6 +31,8 @@ const PUBLIC_EXACT = new Set([
   "POST /api/v1/knowledge/refresh",
   // Control Plane SERVICE bearer — handler authenticates as cp:service.
   "POST /api/v1/governance/lifecycle/handoff",
+  "POST /api/v1/approvals/verify-atlas-self",
+  "POST /api/v1/approvals/atlas-self/control-request",
 ]);
 
 const PUBLIC_PREFIXES: ReadonlyArray<{ method: string; prefix: string }> = [

@@ -28,5 +28,6 @@ export * from "./principals.js";
 export * from "./data-classification.js";
 export * from "./egress-policy.js";
 export * from "./atlas-gateway.js";
+export * from "./atlas-self.js";
 export * from "./operating-cycle.js";
 export * from "./evidence-sufficiency.js";

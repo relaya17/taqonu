@@ -11,6 +11,8 @@ import {
   FABRIC_AGENT_IDS,
   isAuthorizedOfficialKnowledgeUrl,
   AtlasError,
+  ATLAS_SELF_APPLICATION_ID,
+  atlasSelfArtifactHash,
   type FabricAgentId,
 } from "@atlas/shared";
 import {
@@ -42,7 +44,14 @@ import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { z } from "zod";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireOperator, requireSignedInForWrite } from "../middleware/auth-guards.js";
+import {
+  atlasSelfExecutedEvidence,
+  auditAtlasSelfDecision,
+  executeAtlasSelfLiveHuman,
+  mintAtlasSelfApproval,
+  respondAtlasSelfHelper,
+} from "../services/atlas-self-governance.js";
 
 export async function registerKernelRoutes(app: FastifyInstance): Promise<void> {
   hydrateKnowledgeCorpus({ enablePersist: true });
@@ -326,36 +335,100 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(201).send(lesson);
   });
 
-  /** P10 Self-improvement */
+  /** P10 Self-improvement — Atlas-self CONFIGURATION.EXECUTE, never self-approved. */
   app.post("/api/v1/kernel/improve", async (request, reply) => {
-    // Self-improvement mutates the agent's own improvement-rule set from
-    // scanned lessons — an irreversible, agent-triggered control-plane
-    // change, so it gets the same two-axis (role + entity) gating as
-    // kernel/run above rather than staying open to any caller.
-    await requireSignedInForWrite(app, request);
-    const entityAuthz = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
-      mode: "WRITE",
-      writeGateOpen: true,
-      approved: true,
+    const user = await requireOperator(app, request);
+    const body = z
+      .object({
+        approvalId: z.string().uuid().optional(),
+        decisionReason: z.string().trim().min(1).max(2000).optional(),
+      })
+      .parse(request.body ?? {});
+    const artifactHash = atlasSelfArtifactHash({
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+      operation: "kernel.improve",
     });
-    if (entityAuthz.decision !== "ALLOWED") {
-      const reason =
-        entityAuthz.decision === "DENIED"
-          ? entityAuthz.reason
-          : "kernel.improve (CONFIGURATION.EXECUTE) was not ALLOWED.";
-      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+
+    if (body.approvalId) {
+      if (!body.decisionReason) {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "decisionReason is required for an Atlas-self live-human decision",
+        );
+      }
+      const helper = await executeAtlasSelfLiveHuman({
+        approvalId: body.approvalId,
+        deciderId: user.id,
+        decisionReason: body.decisionReason,
+        entityType: "CONFIGURATION",
+        action: "EXECUTE",
+        artifactHash,
+        requestId: request.id,
+        routeLabel: "kernel.improve",
+        executeOnce: async () => {
+          const result = runSelfImprovement();
+          osStore.recordEvent({
+            type: "kernel.improve",
+            created: result.created.length,
+            scanned: result.scannedLessons,
+            at: new Date().toISOString(),
+          });
+          return atlasSelfExecutedEvidence(
+            {
+              ...result,
+              rules: listImprovementRules().map((r) =>
+                improvementRuleSchema.parse(r),
+              ),
+              executed: true,
+              verified: false,
+              applicationId: ATLAS_SELF_APPLICATION_ID,
+            },
+            { created: result.created.length },
+          );
+        },
+      });
+      if (helper.status === "EXECUTED") {
+        auditAtlasSelfDecision({
+          type: "kernel.improve",
+          actorId: user.id,
+          routeLabel: "kernel.improve",
+          decision: "ALLOW",
+          reason: "Independent live-human approval executed Atlas self-improvement",
+          approvalId: body.approvalId,
+          approvalStatus: helper.approvalRecord?.status ?? "CLAIMED",
+          executed: true,
+          verificationVerdict: "INCONCLUSIVE",
+        });
+      }
+      return respondAtlasSelfHelper(reply, helper);
     }
 
-    const result = runSelfImprovement();
-    osStore.recordEvent({
-      type: "kernel.improve",
-      created: result.created.length,
-      scanned: result.scannedLessons,
-      at: new Date().toISOString(),
+    const approval = await mintAtlasSelfApproval({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: user.id,
+      reason: "run kernel self-improvement",
+      route: "kernel.improve",
+      artifactHash,
     });
-    return reply.status(201).send({
-      ...result,
-      rules: listImprovementRules().map((r) => improvementRuleSchema.parse(r)),
+    auditAtlasSelfDecision({
+      type: "kernel.improve",
+      actorId: user.id,
+      routeLabel: "kernel.improve",
+      decision: "REQUIRE_APPROVAL",
+      reason: "Atlas self-improvement cannot self-approve CONFIGURATION.EXECUTE",
+      approvalId: approval.id,
+      approvalStatus: approval.status,
+      executed: false,
+    });
+    return reply.status(202).send({
+      status: "APPROVAL_REQUIRED" as const,
+      approvalId: approval.id,
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+      executed: false,
+      verified: false,
+      message:
+        "Independent live-human decision required. Retry with approvalId and decisionReason from a different authenticated identity.",
     });
   });
 

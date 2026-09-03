@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadSoftwareKnowledgeGraph } from "@atlas/observer";
-import { projectSchema, type ManagedSystemFacetState } from "@atlas/shared";
+import { projectSchema, type ManagedSystemFacetState, ATLAS_SELF_PROJECT_ID } from "@atlas/shared";
 import type { FacetSignals } from "@atlas/system-model";
 import { osStore } from "../store/os-store.js";
 import { findRepoRoot } from "./repo-root.js";
 
 export const ATLAS_SELF_SLUGS = new Set(["atlas", "arletos", "atlas-core"]);
-export const ATLAS_SELF_PROJECT_ID = "00000000-0000-4000-8000-def000000001";
+export { ATLAS_SELF_PROJECT_ID } from "@atlas/shared";
 
 export type FacetObservation = {
   signals: FacetSignals;

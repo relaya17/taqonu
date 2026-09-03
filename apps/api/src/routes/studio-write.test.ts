@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -24,6 +24,15 @@ const { registerCodeRoutes } = await import("./code.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
 const { bindProjectOwner } = await import("../services/project-access.js");
+const { resetApprovalsForTests } = await import(
+  "../services/approvals-test-store.js"
+);
+const { resetGovernedClaimStartsForTests } = await import(
+  "../services/governed-claimed-execution.js"
+);
+const { ATLAS_SELF_APPLICATION_ID, ATLAS_SELF_PROJECT_ID } = await import(
+  "@atlas/shared"
+);
 
 let app: FastifyInstance;
 let workspaceRoot: string;
@@ -60,6 +69,23 @@ function seedOwnedProject(actor: AuthUser, root: string): string {
   return projectId;
 }
 
+function seedAtlasSelfProject(actor: AuthUser, root: string): string {
+  const now = new Date().toISOString();
+  osStore.upsertProject({
+    id: ATLAS_SELF_PROJECT_ID,
+    slug: "atlas-core",
+    name: "Atlas Core",
+    description: null,
+    status: "ACTIVE",
+    techStack: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  osStore.setWorkspaceRoot(ATLAS_SELF_PROJECT_ID, root);
+  bindProjectOwner(ATLAS_SELF_PROJECT_ID, actor.id, "bound_on_create");
+  return ATLAS_SELF_PROJECT_ID;
+}
+
 describe("PUT /api/v1/studio/file", () => {
   beforeAll(async () => {
     app = await buildRouteTestApp(registerCodeRoutes);
@@ -75,6 +101,8 @@ describe("PUT /api/v1/studio/file", () => {
   beforeEach(() => {
     osStore.unloadForTests();
     osStore.ensureLoaded();
+    resetApprovalsForTests();
+    resetGovernedClaimStartsForTests();
     getRequestUser.mockReset();
     workspaceRoot = mkdtempSync(join(tmpdir(), "atlas-studio-ws-"));
     dirs.push(workspaceRoot);
@@ -207,5 +235,473 @@ describe("PUT /api/v1/studio/file", () => {
       url: `/api/v1/studio/tree?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("requires independent approval before writing the Atlas-self workspace", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "approved write\n",
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json() as {
+      status: string;
+      approvalId: string;
+      applicationId: string;
+      executed: boolean;
+    };
+    expect(body.status).toBe("APPROVAL_REQUIRED");
+    expect(body.applicationId).toBe(ATLAS_SELF_APPLICATION_ID);
+    expect(body.executed).toBe(false);
+    expect(typeof body.approvalId).toBe("string");
+    expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe(
+      "# original\n",
+    );
+  });
+
+  it("rejects self-approval of an Atlas-self Studio write", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+    const requested = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "self signed\n",
+      },
+    });
+    const { approvalId } = requested.json() as { approvalId: string };
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "self signed\n",
+        approvalId,
+        decisionReason: "self sign-off",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe(
+      "# original\n",
+    );
+  });
+
+  it("writes only after an independent live-human decision", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    const decider = testUser({
+      id: "77777777-7777-4777-8777-777777777777",
+      email: "decider@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+    const requested = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "independent write\n",
+      },
+    });
+    expect(requested.statusCode).toBe(202);
+    getRequestUser.mockResolvedValue(decider);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "independent write\n",
+        approvalId: requested.json().approvalId,
+        decisionReason: "independent review",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      path: string;
+      executed: boolean;
+      verified: boolean;
+      applicationId: string;
+    };
+    expect(body.path).toBe("readme.md");
+    expect(body.executed).toBe(true);
+    expect(body.verified).toBe(false);
+    expect(body.applicationId).toBe(ATLAS_SELF_APPLICATION_ID);
+    expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe(
+      "independent write\n",
+    );
+  });
+
+  it("rejects path or content substitution against the bound Atlas-self artifact", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    const decider = testUser({
+      id: "77777777-7777-4777-8777-777777777777",
+      email: "decider@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+    const requested = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "approved content\n",
+      },
+    });
+    const { approvalId } = requested.json() as { approvalId: string };
+    getRequestUser.mockResolvedValue(decider);
+    const swappedContent = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "readme.md",
+        content: "stolen content\n",
+        approvalId,
+        decisionReason: "independent review",
+      },
+    });
+    expect(swappedContent.statusCode).toBe(403);
+    const swappedPath = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: "src/hello.ts",
+        content: "approved content\n",
+        approvalId,
+        decisionReason: "independent review",
+      },
+    });
+    expect(swappedPath.statusCode).toBe(403);
+    expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe(
+      "# original\n",
+    );
+  });
+
+  it("treats a second project bound to the Atlas-self workspace as Atlas-self", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+    const decoyId = seedOwnedProject(requester, workspaceRoot);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: decoyId,
+        path: "readme.md",
+        content: "via decoy project\n",
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json().applicationId).toBe(ATLAS_SELF_APPLICATION_ID);
+    expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe(
+      "# original\n",
+    );
+  });
+
+  it("403s Atlas-self Studio writes to apps/api/dist/** and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = "apps/api/dist/main.js";
+    const targetOnDisk = join(workspaceRoot, "apps", "api", "dist", "main.js");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "// hacked by atlas-self\n",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to apps/control-plane/dist/** and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = "apps/control-plane/dist/server.js";
+    const targetOnDisk = join(workspaceRoot, "apps", "control-plane", "dist", "server.js");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "// hacked by atlas-self\n",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to governance-critical source paths (apps/**/src/**) and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = "apps/api/src/services/governed-execution.ts";
+    const targetOnDisk = join(
+      workspaceRoot,
+      "apps",
+      "api",
+      "src",
+      "services",
+      "governed-execution.ts",
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "// hacked by atlas-self\n",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to supabase/migrations/** and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath =
+      "supabase/migrations/20260903170000_atlas_self_approval_separation.sql";
+    const targetOnDisk = join(
+      workspaceRoot,
+      "supabase",
+      "migrations",
+      "20260903170000_atlas_self_approval_separation.sql",
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "-- hacked by atlas-self\n",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to .atlas/** and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = ".atlas/store.json";
+    const targetOnDisk = join(workspaceRoot, ".atlas", "store.json");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: '{"tampered":true}',
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to .atlas/users.json and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = ".atlas/users.json";
+    const targetOnDisk = join(workspaceRoot, ".atlas", "users.json");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: '{"users":[]}',
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to .atlas/sessions.json and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = ".atlas/sessions.json";
+    const targetOnDisk = join(workspaceRoot, ".atlas", "sessions.json");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: '{"sessions":[]}',
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to node_modules/** and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = "node_modules/@atlas/shared/evil.js";
+    const targetOnDisk = join(
+      workspaceRoot,
+      "node_modules",
+      "@atlas",
+      "shared",
+      "evil.js",
+    );
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "// injected via node_modules\n",
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to apps/api/tsconfig*.json build config and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = "apps/api/tsconfig.build.json";
+    const targetOnDisk = join(workspaceRoot, "apps", "api", "tsconfig.build.json");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "// hacked build config\n",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s Atlas-self Studio writes to .env runtime configuration and does not mutate filesystem", async () => {
+    const requester = testUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+      role: "admin",
+    });
+    getRequestUser.mockResolvedValue(requester);
+    seedAtlasSelfProject(requester, workspaceRoot);
+
+    const deniedPath = ".env";
+    const targetOnDisk = join(workspaceRoot, ".env");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: {
+        projectId: ATLAS_SELF_PROJECT_ID,
+        path: deniedPath,
+        content: "API_PORT=9999\n",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(existsSync(targetOnDisk)).toBe(false);
   });
 });

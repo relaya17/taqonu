@@ -6,6 +6,7 @@ import {
   patchArtifactSchema,
   studioWriteFileBodySchema,
   AtlasError,
+  ATLAS_SELF_APPLICATION_ID,
   ENGINEERING_AGENT_MODES,
   isControlPlaneRole,
   memorySchema,
@@ -38,6 +39,16 @@ import { osStore } from "../store/os-store.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  atlasSelfExecutedEvidence,
+  auditAtlasSelfDecision,
+  executeAtlasSelfLiveHuman,
+  hashAtlasSelfFileArtifact,
+  isAtlasSelfStudioProject,
+  atlasSelfStudioWriteDeniedReason,
+  mintAtlasSelfApproval,
+  respondAtlasSelfHelper,
+} from "../services/atlas-self-governance.js";
 import { getRequestUser } from "../services/resolve-identity.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import {
@@ -450,8 +461,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     );
   });
 
-  app.put("/api/v1/studio/file", async (request) => {
-    const body = studioWriteFileBodySchema.parse(request.body);
+  app.put("/api/v1/studio/file", async (request, reply) => {
+    const body = studioWriteFileBodySchema
+      .extend({
+        approvalId: z.string().uuid().optional(),
+        decisionReason: z.string().trim().min(1).max(2000).optional(),
+      })
+      .parse(request.body);
     const user = await assertProjectWriteAccess(app, request, body.projectId);
     const root = osStore.getWorkspaceRoot(body.projectId);
     if (!root || !existsSync(root)) {
@@ -461,7 +477,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         { statusCode: 400 },
       );
     }
-    try {
+
+    const persistStudioWrite = () => {
       const written = writeWorkspaceFile(root, body.path, body.content);
       const now = new Date().toISOString();
       osStore.appendAudit({
@@ -471,6 +488,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         bytes: written.bytes,
         by: user.id,
         at: now,
+        applicationId: isAtlasSelfStudioProject(body.projectId)
+          ? ATLAS_SELF_APPLICATION_ID
+          : undefined,
       });
       const memory = memorySchema.parse({
         id: crypto.randomUUID(),
@@ -503,6 +523,125 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         ...written,
         note: "Saved to disk. Personal agent recorded PROJECT_STATE in memory.",
       };
+    };
+
+    if (isAtlasSelfStudioProject(body.projectId)) {
+      const deniedReason = atlasSelfStudioWriteDeniedReason(body.path);
+      if (deniedReason) {
+        auditAtlasSelfDecision({
+          type: "studio.file.write",
+          actorId: user.id,
+          routeLabel: "studio.file.write",
+          decision: "DENY",
+          reason: `Atlas-self Studio write blocked: ${deniedReason}`,
+          executed: false,
+          verificationVerdict: "BLOCKED",
+          extra: { path: body.path, projectId: body.projectId },
+        });
+        throw new AtlasError(
+          "FORBIDDEN",
+          "Atlas-self Studio write blocked by self-modification boundary",
+          { statusCode: 403 },
+        );
+      }
+
+      const artifactHash = hashAtlasSelfFileArtifact({
+        projectId: body.projectId,
+        path: body.path,
+        content: body.content,
+      });
+      if (body.approvalId) {
+        if (!body.decisionReason) {
+          throw new AtlasError(
+            "VALIDATION_ERROR",
+            "decisionReason is required for an Atlas-self live-human decision",
+          );
+        }
+        const helper = await executeAtlasSelfLiveHuman({
+          approvalId: body.approvalId,
+          deciderId: user.id,
+          decisionReason: body.decisionReason,
+          entityType: "CONFIGURATION",
+          action: "UPDATE",
+          artifactHash,
+          requestId: request.id,
+          routeLabel: "studio.file.write",
+          projectId: body.projectId,
+          dispatchInput: {
+            applicationId: ATLAS_SELF_APPLICATION_ID,
+            projectId: body.projectId,
+            path: body.path,
+          },
+          executeOnce: async () => {
+            try {
+              const written = persistStudioWrite();
+              return atlasSelfExecutedEvidence(
+                {
+                  ...written,
+                  executed: true,
+                  verified: false,
+                  applicationId: ATLAS_SELF_APPLICATION_ID,
+                },
+                { path: written.path, bytes: written.bytes },
+              );
+            } catch (error) {
+              return {
+                kind: "FAILURE" as const,
+                reason: error instanceof Error ? error.message : "Failed to save file",
+              };
+            }
+          },
+        });
+        if (helper.status === "EXECUTED") {
+          auditAtlasSelfDecision({
+            type: "studio.file.written",
+            actorId: user.id,
+            routeLabel: "studio.file.write",
+            decision: "ALLOW",
+            reason: "Independent live-human approval wrote Atlas-self workspace file",
+            approvalId: body.approvalId,
+            approvalStatus: helper.approvalRecord?.status ?? "CLAIMED",
+            executed: true,
+            verificationVerdict: "INCONCLUSIVE",
+            extra: { path: body.path, projectId: body.projectId },
+          });
+        }
+        return respondAtlasSelfHelper(reply, helper);
+      }
+
+      const approval = await mintAtlasSelfApproval({
+        entityType: "CONFIGURATION",
+        action: "UPDATE",
+        requestedBy: user.id,
+        reason: `Studio write ${body.path} on Atlas-self project`,
+        route: "studio.file.write",
+        artifactHash,
+        extraContext: { path: body.path, projectId: body.projectId },
+      });
+      auditAtlasSelfDecision({
+        type: "studio.file.write",
+        actorId: user.id,
+        routeLabel: "studio.file.write",
+        decision: "REQUIRE_APPROVAL",
+        reason: "Atlas-self Studio write requires independent approval",
+        approvalId: approval.id,
+        approvalStatus: approval.status,
+        executed: false,
+        extra: { path: body.path, projectId: body.projectId },
+      });
+      return reply.status(202).send({
+        status: "APPROVAL_REQUIRED" as const,
+        approvalId: approval.id,
+        applicationId: ATLAS_SELF_APPLICATION_ID,
+        executed: false,
+        verified: false,
+        message:
+          "Atlas-self workspace write requires an independent live-human decision. Retry with approvalId and decisionReason from a different authenticated identity.",
+      });
+    }
+
+    try {
+      return persistStudioWrite();
     } catch (error) {
       throw new AtlasError(
         "VALIDATION_ERROR",

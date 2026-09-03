@@ -34,6 +34,49 @@ function serviceToken(): string | null {
   return raw && raw.length > 0 ? raw : null;
 }
 
+export type AtlasApiCallResult =
+  | { readonly ok: true; readonly status: number; readonly body: unknown }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Existing CP → API SERVICE hop (same token as lifecycle handoff).
+ * Transport/auth failures are never rewritten into a successful body.
+ */
+export async function callAtlasApi(
+  path: string,
+  init: { readonly method: string; readonly body?: unknown },
+): Promise<AtlasApiCallResult> {
+  const base = apiBaseUrl();
+  const token = serviceToken();
+  if (!base || !token) {
+    return {
+      ok: false,
+      reason: "ATLAS_API_URL or ATLAS_CONTROL_PLANE_TOKEN is not set",
+    };
+  }
+  try {
+    const response = await fetch(`${base}${path}`, {
+      method: init.method,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      signal: AbortSignal.timeout(8_000),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { ok: false, reason: `API returned ${response.status}` };
+    }
+    return { ok: true, status: response.status, body };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export function decisionToHandoff(decision: SupervisedGovernanceDecision): {
   readonly identity: GovernedIdentity;
   readonly decision: GovernedHandoffDecision;

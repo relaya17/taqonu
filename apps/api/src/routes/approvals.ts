@@ -1,5 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { AtlasError, approvalRequestStatusSchema } from "@atlas/shared";
+import {
+  ATLAS_SELF_APPLICATION_ID,
+  ATLAS_SELF_CONTROL_REQUEST_PATH,
+  ATLAS_SELF_CONTROL_VERIFY_PATH,
+  AtlasError,
+  approvalRequestStatusSchema,
+} from "@atlas/shared";
 import { z } from "zod";
 import { requireAdmin } from "../middleware/auth-guards.js";
 import {
@@ -7,6 +13,11 @@ import {
   getApprovalRequest,
   listApprovalRequests,
 } from "../services/approvals.js";
+import {
+  mintAtlasSelfControlApproval,
+  verifyAtlasSelfControlApproval,
+} from "../services/atlas-self-governance.js";
+import { requireControlPlaneService } from "../services/governed-lifecycle-handoff.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
 
 const listQuerySchema = z.object({
@@ -16,6 +27,23 @@ const listQuerySchema = z.object({
 const decideBodySchema = z.object({
   approve: z.boolean(),
   reason: z.string().trim().min(1, "reason is required"),
+});
+
+const atlasSelfControlActionSchema = z.enum([
+  "pause",
+  "resume",
+  "disable",
+  "quarantine",
+  "revoke",
+]);
+
+const atlasSelfControlBindSchema = z.object({
+  agentId: z.string().trim().min(1).max(80),
+  action: atlasSelfControlActionSchema,
+});
+
+const verifyAtlasSelfBodySchema = atlasSelfControlBindSchema.extend({
+  approvalId: z.string().uuid(),
 });
 
 export async function registerApprovalRoutes(app: FastifyInstance): Promise<void> {
@@ -61,5 +89,36 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
       decisionReason: body.reason,
     });
     return updated;
+  });
+
+  /** CP SERVICE → mint a bound Atlas-self control approval. Not a second store. */
+  app.post(ATLAS_SELF_CONTROL_REQUEST_PATH, async (request, reply) => {
+    requireControlPlaneService(request.headers.authorization);
+    const body = atlasSelfControlBindSchema.parse(request.body ?? {});
+    const approval = await mintAtlasSelfControlApproval({
+      agentId: body.agentId,
+      action: body.action,
+      reason: `Atlas-self agent control ${body.action} ${body.agentId}`,
+    });
+    return reply.status(201).send({
+      approvalId: approval.id,
+      status: approval.status,
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+      executed: false,
+      verified: false,
+    });
+  });
+
+  /**
+   * CP SERVICE → is this exact approvalId currently APPROVED for this binding?
+   * Auth failure / store errors never become verified: true.
+   */
+  app.post(ATLAS_SELF_CONTROL_VERIFY_PATH, async (request) => {
+    requireControlPlaneService(request.headers.authorization);
+    const body = verifyAtlasSelfBodySchema.parse(request.body ?? {});
+    return verifyAtlasSelfControlApproval(body.approvalId, {
+      agentId: body.agentId,
+      action: body.action,
+    });
   });
 }

@@ -1,11 +1,17 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiRouter } from "../routes/api.js";
 import {
   appendAuditEntry,
+  listAuditEntries,
   resetGovernanceStateForTests,
   type AuditEntry,
 } from "../services/governance-state.js";
-import { resetAgentRuntimeForTests } from "../services/agent-registry.js";
+import {
+  getRegisteredAgent,
+  resetAgentRuntimeForTests,
+} from "../services/agent-registry.js";
+import { setAtlasSelfControlApprovalVerifier } from "../services/atlas-self-agent-control.js";
+import { issueReauthTicket } from "../control-plane-auth.js";
 import { resetApplicationRegistryForTests } from "../services/application-registry.js";
 import { resetCivioConnectorForTests } from "../services/civio-connector.js";
 import { Readable } from "node:stream";
@@ -102,6 +108,7 @@ describe("Control Plane — API Routes", () => {
     resetApplicationRegistryForTests();
     resetAgentRuntimeForTests();
     resetCivioConnectorForTests();
+    setAtlasSelfControlApprovalVerifier(null);
   });
 
   // ── Status ─────────────────────────────────────────────────────────
@@ -489,6 +496,197 @@ describe("Control Plane — API Routes", () => {
         res,
       );
       expect(res._mock.statusCode).toBe(403);
+    });
+
+    it("does not treat body approved:true as Atlas-self write authorization", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/ops", {
+          body: {
+            operation: "request_agent_run",
+            applicationId: "def-000",
+            agentId: "CODE_ENGINEER",
+            approved: true,
+            verificationPlanPresent: true,
+          },
+          headers: {
+            "x-atlas-reason": "self authorize atlas",
+            "x-atlas-reauth": "forged",
+          },
+        }),
+        res,
+      );
+      // Missing/invalid reauth still DENY; even with a ticket, approved:true
+      // cannot become independent approval (see atlas-gateway tests).
+      expect(res._mock.statusCode).toBe(403);
+      const body = JSON.parse(res._mock.body) as { executed?: boolean };
+      expect(body.executed).not.toBe(true);
+    });
+  });
+
+  describe("POST /api/v1/agents/:id/control", () => {
+    it("does not mutate Atlas-self agent overlay without independent approval", async () => {
+      const ticket = issueReauthTicket();
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/agents/CODE_ENGINEER/control", {
+          body: { action: "pause", approved: true },
+          headers: {
+            "x-atlas-reason": "pause fabric agent now",
+            "x-atlas-reauth": ticket.ticket,
+          },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(202);
+      const body = JSON.parse(res._mock.body) as {
+        decision: string;
+        executed: boolean;
+        applicationId: string;
+      };
+      expect(body.decision).toBe("REQUIRE_APPROVAL");
+      expect(body.executed).toBe(false);
+      expect(body.applicationId).toBe("def-000");
+      expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("ACTIVE");
+    });
+
+    it("denies control without re-authentication", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/agents/CODE_ENGINEER/control", {
+          body: { action: "pause" },
+          headers: { "x-atlas-reason": "pause fabric agent now" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(401);
+      expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("ACTIVE");
+    });
+
+    it("applies overlay after an independently verified approval", async () => {
+      setAtlasSelfControlApprovalVerifier(
+        (input) =>
+          input.approvalId === "22222222-2222-4222-8222-222222222222" &&
+          input.agentId === "CODE_ENGINEER" &&
+          input.action === "pause",
+      );
+      const ticket = issueReauthTicket();
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/agents/CODE_ENGINEER/control", {
+          body: {
+            action: "pause",
+            approvalId: "22222222-2222-4222-8222-222222222222",
+          },
+          headers: {
+            "x-atlas-reason": "pause after independent approval",
+            "x-atlas-reauth": ticket.ticket,
+          },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(200);
+      const body = JSON.parse(res._mock.body) as {
+        executed: boolean;
+        verified: boolean;
+        applicationId: string;
+      };
+      expect(body.executed).toBe(true);
+      expect(body.verified).toBe(false);
+      expect(body.applicationId).toBe("def-000");
+      expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("PAUSED");
+    });
+
+    afterEach(() => {
+      delete process.env["ATLAS_API_URL"];
+      delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+      vi.unstubAllGlobals();
+    });
+
+    it("production verifier fail-closes when the API is down; overlay unchanged", async () => {
+      process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+      process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new Error("API unavailable");
+        }),
+      );
+      const ticket = issueReauthTicket();
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/agents/CODE_ENGINEER/control", {
+          body: {
+            action: "pause",
+            approvalId: "11111111-1111-4111-8111-111111111111",
+          },
+          headers: {
+            "x-atlas-reason": "pause after network failure",
+            "x-atlas-reauth": ticket.ticket,
+          },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(202);
+      expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("ACTIVE");
+    });
+
+    it("production verifier applies overlay only after API verified:true and records approvalId", async () => {
+      process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+      process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+      const approvalId = "33333333-3333-4333-8333-333333333333";
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        expect(String(url)).toContain("/api/v1/approvals/verify-atlas-self");
+        const body = JSON.parse(String(init?.body)) as {
+          approvalId: string;
+          agentId: string;
+          action: string;
+        };
+        expect(body.approvalId).toBe(approvalId);
+        expect(body.agentId).toBe("CODE_ENGINEER");
+        expect(body.action).toBe("pause");
+        const headers = init?.headers as Record<string, string>;
+        expect(headers.authorization).toBe("Bearer cp-token");
+        return new Response(
+          JSON.stringify({
+            verified: true,
+            reason: "independent Atlas-self approval verified",
+            approvalId,
+          }),
+          { status: 200 },
+        );
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const ticket = issueReauthTicket();
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/agents/CODE_ENGINEER/control", {
+          body: { action: "pause", approvalId },
+          headers: {
+            "x-atlas-reason": "pause after live API verify",
+            "x-atlas-reauth": ticket.ticket,
+          },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(200);
+      expect(fetchMock).toHaveBeenCalled();
+      const body = JSON.parse(res._mock.body) as {
+        executed: boolean;
+        verified: boolean;
+        approvalId: string;
+      };
+      expect(body.executed).toBe(true);
+      expect(body.verified).toBe(false);
+      expect(body.approvalId).toBe(approvalId);
+      expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("PAUSED");
+      expect(
+        listAuditEntries().some(
+          (entry) =>
+            entry.type === "atlas-self.agent.control" &&
+            entry.reason.includes(approvalId),
+        ),
+      ).toBe(true);
     });
   });
 

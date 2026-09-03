@@ -1,4 +1,8 @@
-import { approvalRequestSchema, type ApprovalRequest } from "@atlas/shared";
+import {
+  approvalRequestSchema,
+  isAtlasSelfApprovalContext,
+  type ApprovalRequest,
+} from "@atlas/shared";
 import type { LiveApprovalRpcClient } from "./live-approval-requests.js";
 
 /**
@@ -105,6 +109,15 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
     if (existing.status !== "PENDING") {
       throw new Error(
         `Approval request ${id} has already been decided (status=${existing.status})`,
+      );
+    }
+    const decidedBy = String(args["p_decided_by"] ?? "");
+    if (
+      isAtlasSelfApprovalContext(existing.context) &&
+      decidedBy === existing.requestedBy
+    ) {
+      throw new Error(
+        `Approval request ${id} was requested by ${existing.requestedBy} -- separation of duties forbids the same identity from also deciding an Atlas-self approval`,
       );
     }
     const updated = approvalRequestSchema.parse({

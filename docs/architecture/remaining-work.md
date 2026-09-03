@@ -334,8 +334,8 @@ database (repository in `@atlas/database`) when Supabase is live, and the
 existing local `osStore` (`.atlas/store.json`) otherwise. One PSA per
 authorized owner; HTTP sessions only authenticate the owner.
 
-**Not claimed:** Atlas self-governance (Phase 13). Per-user ACL inside
-the Control Plane process list (PSA filters declared scope).
+**Not claimed:** Per-user ACL inside the Control Plane process list
+(PSA filters declared scope).
 
 ## KNOWLEDGE FABRIC GOVERNANCE
 
@@ -357,5 +357,42 @@ knowledge rather than inferring identity. `match_knowledge_chunks` still
 returns candidates without SQL-level tenant filters; eligibility filters
 after retrieve.
 
-**Not claimed:** Atlas self-governance (Phase 13). Unrestricted web crawl.
+**Not claimed:** Unrestricted web crawl.
+
+## ATLAS SELF-GOVERNANCE
+
+Atlas itself is Managed System `DEF-000`. Mutations that change Atlas
+posture reuse the existing identity / policy / risk / live-approval /
+live-human / audit path. No second IAM, policy, approval, or audit engine.
+
+**Implemented (code + tests):**
+- Canonical identity: `applicationId=def-000`, project
+  `00000000-0000-4000-8000-def000000001`, tenant `atlas`, slugs
+  `atlas|arletos|atlas-core`. CP actor remains `cp:service`.
+- Atlas-self `decide()` enforces separation of duties
+  (`decidedBy !== requestedBy`). Ordinary non-self HTTP decide is unchanged.
+- Agent enable/disable, kernel `POST /kernel/improve`, and Studio writes to
+  the Atlas-self project (id, slug, or same workspaceRoot) mint a live
+  approval and execute only via independent live-human
+  `{ approvalId, decisionReason }`. Token `?approvalId=` replay cannot
+  execute `CONFIGURATION.UPDATE` / `EXECUTE` (HUMAN_ONLY).
+- Control Plane `POST /agents/:id/control` no longer calls
+  `setAgentRuntimeStatus` directly. Body `approved: true` is ignored for
+  `def-000`. Overlay apply requires independently verified approval.
+- Gateway `approved: true` in the body is ignored for `def-000`.
+- Canonical audit records `input.applicationId=def-000`. After execute,
+  `executed: true` does not imply `verified: true`.
+- Self-audit remains detect → propose only (`autoApply: false`).
+
+**Remaining limitation:** Control Plane HTTP verifies `approvalId` against
+the live API store (`POST /api/v1/approvals/verify-atlas-self`) using the
+existing `ATLAS_CONTROL_PLANE_TOKEN` hop. Overlay apply still happens on
+the Control Plane agent registry (`setAgentRuntimeStatus`); CP does not
+execute tools. Production verifier is fail-closed when the API is unset,
+unreachable, or returns anything other than `verified: true`.
+
+**Still deferred:** generic non-Atlas-self HTTP `decide()` SoD.
+
+**Not claimed:** A new policy/approval product; Studio/Admin redesign;
+requester self-approval on ordinary (non-Atlas-self) HTTP decide.
 

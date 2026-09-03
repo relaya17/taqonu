@@ -95,7 +95,7 @@ describe("Atlas Gateway", () => {
     expect(result.reason).toMatch(/QUARANTINED/);
   });
 
-  it("does not treat approval without a verification plan as a completed repair", () => {
+  it("does not treat body approved:true as independent Atlas-self approval", () => {
     const result = evaluateGatewayRequest({
       actorId: "owner",
       applicationId: "def-000",
@@ -103,9 +103,25 @@ describe("Atlas Gateway", () => {
       agentId: "CODE_ENGINEER",
       reason: "apply fix",
       approved: true,
+      verificationPlanPresent: true,
+    });
+    expect(result.decision).toBe("REQUIRE_APPROVAL");
+    expect(result.executed).toBe(false);
+    expect(result.blockedAt).toBe("APPROVAL");
+  });
+
+  it("does not treat independent Atlas-self approval without a verification plan as a completed repair", () => {
+    const result = evaluateGatewayRequest({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "request_remediation",
+      agentId: "CODE_ENGINEER",
+      reason: "apply fix",
+      independentApprovalVerified: true,
     });
     expect(result.decision).toBe("DENY");
     expect(result.blockedAt).toBe("VERIFY");
+    expect(result.executed).toBe(false);
   });
 
   it("observes registered application state on inspect without running tools", () => {
@@ -140,7 +156,7 @@ describe("Atlas Gateway", () => {
       operation: "request_agent_run",
       agentId: "CODE_ENGINEER",
       reason: "approved diagnostic",
-      approved: true,
+      independentApprovalVerified: true,
       verificationPlanPresent: true,
     });
     expect(result.decision).toBe("ALLOW");
@@ -180,7 +196,7 @@ describe("Atlas Gateway", () => {
       operation: "request_agent_run",
       agentId: "CODE_ENGINEER",
       reason: "apply fix",
-      approved: true,
+      independentApprovalVerified: true,
       verificationPlanPresent: true,
       evidenceCount: 2,
       evidenceConflicting: true,
@@ -197,7 +213,7 @@ describe("Atlas Gateway", () => {
       operation: "request_agent_run",
       agentId: "CODE_ENGINEER",
       reason: "apply fix",
-      approved: true,
+      independentApprovalVerified: true,
       verificationPlanPresent: true,
       conflictingClaimIds: ["claim-a"],
     });

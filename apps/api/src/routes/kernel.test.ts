@@ -17,6 +17,12 @@ vi.mock("../services/resolve-identity.js", () => ({
 
 const { registerKernelRoutes } = await import("./kernel.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
+const { resetApprovalsForTests } = await import(
+  "../services/approvals-test-store.js"
+);
+const { resetGovernedClaimStartsForTests } = await import(
+  "../services/governed-claimed-execution.js"
+);
 
 function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
   return {
@@ -44,6 +50,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   getRequestUser.mockReturnValue(signedInUser());
+  resetApprovalsForTests();
+  resetGovernedClaimStartsForTests();
 });
 
 describe("GET /api/v1/kernel/status", () => {
@@ -190,5 +198,89 @@ describe("GET/POST /api/v1/kernel/memory/lessons", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().pattern).toBe("TEST_ROUTE_PATTERN");
+  });
+});
+
+describe("POST /api/v1/kernel/improve", () => {
+  const REQUESTER = signedInUser({
+    id: "66666666-6666-4666-8666-666666666666",
+    email: "operator-requester@example.com",
+    role: "operator",
+  });
+  const DECIDER = signedInUser({
+    id: "77777777-7777-4777-8777-777777777777",
+    email: "operator-decider@example.com",
+    role: "operator",
+  });
+
+  it("403s for a customer user", async () => {
+    getRequestUser.mockReturnValue(signedInUser({ role: "user" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("403s for a customer admin", async () => {
+    getRequestUser.mockReturnValue(signedInUser({ role: "admin" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("requires independent approval and does not run self-improvement yet", async () => {
+    getRequestUser.mockReturnValue(REQUESTER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json();
+    expect(body.status).toBe("APPROVAL_REQUIRED");
+    expect(body.applicationId).toBe("def-000");
+    expect(body.executed).toBe(false);
+    expect(body.verified).toBe(false);
+    expect(typeof body.approvalId).toBe("string");
+  });
+
+  it("rejects self-approval of Atlas self-improvement", async () => {
+    getRequestUser.mockReturnValue(REQUESTER);
+    const requested = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+    });
+    const { approvalId } = requested.json();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+      payload: { approvalId, decisionReason: "self sign-off" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("an independent operator can decide-and-execute; executed remains unverified", async () => {
+    getRequestUser.mockReturnValue(REQUESTER);
+    const requested = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+    });
+    getRequestUser.mockReturnValue(DECIDER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/improve",
+      payload: {
+        approvalId: requested.json().approvalId,
+        decisionReason: "independent review",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.executed).toBe(true);
+    expect(body.verified).toBe(false);
+    expect(body.applicationId).toBe("def-000");
+    expect(Array.isArray(body.created)).toBe(true);
   });
 });

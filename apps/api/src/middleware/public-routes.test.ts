@@ -12,6 +12,12 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     expect(isPublicAtlasRoute("POST", "/api/v1/governance/lifecycle/handoff")).toBe(
       true,
     );
+    expect(isPublicAtlasRoute("POST", "/api/v1/approvals/verify-atlas-self")).toBe(
+      true,
+    );
+    expect(
+      isPublicAtlasRoute("POST", "/api/v1/approvals/atlas-self/control-request"),
+    ).toBe(true);
   });
 
   it("denies tenant and studio reads", () => {
@@ -23,5 +29,7 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
       false,
     );
     expect(isPublicAtlasRoute("GET", "/api/v1/graph/nodes")).toBe(false);
+    expect(isPublicAtlasRoute("GET", "/api/v1/approvals")).toBe(false);
+    expect(isPublicAtlasRoute("POST", "/api/v1/approvals/x/decide")).toBe(false);
   });
 });

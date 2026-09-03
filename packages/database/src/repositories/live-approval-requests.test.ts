@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  ATLAS_SELF_APPLICATION_ID,
+  atlasSelfApprovalContext,
+  atlasSelfArtifactHash,
+} from "@atlas/shared";
 import { createInProcessLiveApprovalClient } from "./live-approval-requests.in-process.js";
 import {
   LiveApprovalPersistenceError,
@@ -608,6 +613,128 @@ describe("LiveApprovalRequestRepository claimAsLiveHuman (CP7.2 live-human path)
     });
     expect((await repository.get(created.id))?.status).toBe("PENDING");
     expect((await repository.get(created.id))?.decidedBy).toBeNull();
+  });
+
+  it("Phase 13: requester cannot decide their own Atlas-self approval; an independent human can", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await repository.create({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      requestedBy: "atlas-requester",
+      reason: "pause fabric agent",
+      context: atlasSelfApprovalContext({
+        route: "agents.control",
+        agentId: "QA",
+        controlAction: "pause",
+      }),
+      artifactHash: atlasSelfArtifactHash({
+        applicationId: ATLAS_SELF_APPLICATION_ID,
+        agentId: "QA",
+        controlAction: "pause",
+      }),
+    });
+    await expect(
+      repository.decide(created.id, {
+        decidedBy: "atlas-requester",
+        approve: true,
+        decisionReason: "self sign-off",
+      }),
+    ).rejects.toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/separation of duties/i),
+    });
+    expect((await repository.get(created.id))?.status).toBe("PENDING");
+
+    const decided = await repository.decide(created.id, {
+      decidedBy: "atlas-decider",
+      approve: true,
+      decisionReason: "independent review",
+    });
+    expect(decided.status).toBe("APPROVED");
+    expect(decided.decidedBy).toBe("atlas-decider");
+    expect(decided.requestedBy).toBe("atlas-requester");
+    expect(decided.entityType).toBe("CONFIGURATION");
+    expect(decided.action).toBe("UPDATE");
+    expect(decided.context["applicationId"]).toBe("def-000");
+    expect(decided.artifactHash).toBe(
+      atlasSelfArtifactHash({
+        applicationId: ATLAS_SELF_APPLICATION_ID,
+        agentId: "QA",
+        controlAction: "pause",
+      }),
+    );
+  });
+
+  it("Phase 13: rejected Atlas-self approval cannot be claimed, and substitution fails at claim", async () => {
+    const { repository } = repositoryFromClient();
+    const hash = atlasSelfArtifactHash({
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+      agentId: "QA",
+      controlAction: "pause",
+    });
+    const rejected = await repository.create({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      requestedBy: "atlas-requester",
+      reason: "pause fabric agent",
+      context: atlasSelfApprovalContext({ agentId: "QA" }),
+      artifactHash: hash,
+    });
+    await repository.decide(rejected.id, {
+      decidedBy: "atlas-decider",
+      approve: false,
+      decisionReason: "no",
+    });
+    await expect(
+      repository.claim(rejected.id, {
+        entityType: "CONFIGURATION",
+        action: "UPDATE",
+        executorId: "atlas-requester",
+        artifactHash: hash,
+      }),
+    ).rejects.toMatchObject({ kind: "CONFLICT" });
+
+    const approved = await repository.create({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      requestedBy: "atlas-requester",
+      reason: "pause fabric agent",
+      context: atlasSelfApprovalContext({ agentId: "QA" }),
+      artifactHash: hash,
+    });
+    await repository.decide(approved.id, {
+      decidedBy: "atlas-decider",
+      approve: true,
+      decisionReason: "ok",
+    });
+    await expect(
+      repository.claim(approved.id, {
+        entityType: "DOCUMENT",
+        action: "UPDATE",
+        executorId: "atlas-requester",
+        artifactHash: hash,
+      }),
+    ).rejects.toThrow(/authorizes entityType/);
+    await expect(
+      repository.claim(approved.id, {
+        entityType: "CONFIGURATION",
+        action: "EXECUTE",
+        executorId: "atlas-requester",
+        artifactHash: hash,
+      }),
+    ).rejects.toThrow(/authorizes action/);
+    await expect(
+      repository.claim(approved.id, {
+        entityType: "CONFIGURATION",
+        action: "UPDATE",
+        executorId: "atlas-requester",
+        artifactHash: atlasSelfArtifactHash({
+          applicationId: ATLAS_SELF_APPLICATION_ID,
+          agentId: "ORCHESTRATOR",
+          controlAction: "revoke",
+        }),
+      }),
+    ).rejects.toThrow(/artifact/);
   });
 
   it("enforces entity, action, and artifact-hash bindings at the RPC boundary", async () => {

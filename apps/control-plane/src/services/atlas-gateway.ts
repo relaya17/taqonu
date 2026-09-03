@@ -7,6 +7,7 @@
  * Atlas never auto-executes forbidden self-mutations.
  */
 
+import { ATLAS_SELF_APPLICATION_ID } from "@atlas/shared";
 import {
   appendAuditEntry,
   type AuditEntry,
@@ -55,6 +56,11 @@ export interface GatewayRequest {
   readonly agentId?: string;
   readonly reason: string;
   readonly approved?: boolean;
+  /**
+   * Set only after an independent live-approval record is verified.
+   * Never copied from an HTTP `approved: true` body on Atlas-self ops.
+   */
+  readonly independentApprovalVerified?: boolean;
   readonly reauthenticated?: boolean;
   readonly requiresReauth?: boolean;
   readonly delegationHopCount?: number;
@@ -130,6 +136,13 @@ const AGENT_OPS = new Set<GatewayOperation>([
   "request_verify",
   "request_remediation",
 ]);
+
+function effectiveApproved(input: GatewayRequest): boolean {
+  if (input.applicationId === ATLAS_SELF_APPLICATION_ID) {
+    return input.independentApprovalVerified === true;
+  }
+  return input.approved === true;
+}
 
 function isReadLike(operation: string): boolean {
   return (
@@ -350,7 +363,7 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
           agentStatus: agent.status,
         }
       : {}),
-    ...(input.approved !== undefined ? { approved: input.approved } : {}),
+    ...(effectiveApproved(input) ? { approved: true } : {}),
     ...(input.reauthenticated !== undefined
       ? { reauthenticated: input.reauthenticated }
       : {}),

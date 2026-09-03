@@ -4,8 +4,13 @@ import {
   listRegisteredAgents,
   getRegisteredAgent,
   getRegistryStats,
-  setAgentRuntimeStatus,
 } from "../services/agent-registry.js";
+import {
+  applyAtlasSelfAgentControl,
+  isAgentControlAction,
+  mintAtlasSelfControlApprovalViaApi,
+  verifyIndependentAtlasSelfControlApproval,
+} from "../services/atlas-self-agent-control.js";
 import { getFabricProjection } from "../services/fabric-projection.js";
 import { getControlPlanePortfolioView } from "../services/portfolio-governance-view.js";
 import {
@@ -409,7 +414,9 @@ export function createApiRouter(): Router {
       requiresReauth: needsReauth,
       reauthenticated,
       ...(typeof record["agentId"] === "string" ? { agentId: record["agentId"] } : {}),
-      ...(record["approved"] === true ? { approved: true } : {}),
+      ...(record["approved"] === true && applicationId !== "def-000"
+        ? { approved: true }
+        : {}),
       ...(record["verificationPlanPresent"] === true
         ? { verificationPlanPresent: true }
         : {}),
@@ -463,26 +470,55 @@ export function createApiRouter(): Router {
       );
       return;
     }
-    const rawAction = (body as Record<string, unknown>)["action"];
+    const record = body as Record<string, unknown>;
+    const rawAction = record["action"];
     const action = typeof rawAction === "string" ? rawAction : "";
-    const statusMap: Record<string, "PAUSED" | "ACTIVE" | "DISABLED" | "QUARANTINED" | "REVOKED"> = {
-      pause: "PAUSED",
-      resume: "ACTIVE",
-      disable: "DISABLED",
-      quarantine: "QUARANTINED",
-      revoke: "REVOKED",
-    };
-    const next = statusMap[action];
-    if (!next) {
+    if (!isAgentControlAction(action)) {
       json(res, { error: "action must be pause|resume|disable|quarantine|revoke" }, 400);
       return;
     }
-    const agent = setAgentRuntimeStatus(id, next);
-    if (!agent) {
-      json(res, { error: `Agent "${id}" not found` }, 404);
+    const principal = resolveControlPlanePrincipal();
+    const presentedApprovalId =
+      typeof record["approvalId"] === "string" ? record["approvalId"].trim() : "";
+    const independentlyVerified =
+      presentedApprovalId.length > 0 &&
+      (await verifyIndependentAtlasSelfControlApproval({
+        approvalId: presentedApprovalId,
+        agentId: id,
+        action,
+      }));
+    let mintedApprovalId: string | null = null;
+    if (!presentedApprovalId) {
+      mintedApprovalId = await mintAtlasSelfControlApprovalViaApi({
+        agentId: id,
+        action,
+      });
+    }
+    const approvalId = presentedApprovalId || mintedApprovalId || "";
+    const result = applyAtlasSelfAgentControl({
+      actorId: principal.id,
+      agentId: id,
+      action,
+      reason,
+      reauthenticated: true,
+      independentApprovalVerified: independentlyVerified,
+      ...(approvalId ? { approvalId } : {}),
+    });
+    if (!result.agent && result.decision === "DENY" && /not found/i.test(result.reason)) {
+      json(res, { error: result.reason, applicationId: result.applicationId }, 404);
       return;
     }
-    json(res, { agent, reason });
+    const status =
+      result.decision === "DENY" ? 403 : result.decision === "REQUIRE_APPROVAL" ? 202 : 200;
+    json(
+      res,
+      {
+        ...result,
+        ...(approvalId ? { approvalId } : {}),
+        reasonHeader: reason,
+      },
+      status,
+    );
   });
 
   return router;

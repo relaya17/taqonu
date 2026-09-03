@@ -26,15 +26,31 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 });
 
 const { registerApprovalRoutes } = await import("./approvals.js");
-const { createApprovalRequest } = await import("../services/approvals.js");
+const { createApprovalRequest, decideApprovalRequest } = await import(
+  "../services/approvals.js"
+);
 const { resetApprovalsForTests } = await import(
   "../services/approvals-test-store.js"
 );
+const {
+  ATLAS_SELF_CONTROL_REQUEST_PATH,
+  ATLAS_SELF_CONTROL_VERIFY_PATH,
+  atlasSelfApprovalContext,
+} = await import("@atlas/shared");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 
 let app: FastifyInstance;
 
 function adminUser(partial: Partial<AuthUser> = {}): AuthUser {
+  // AuthUser expects `emailVerified` to be present; `Partial<AuthUser>`
+  // would otherwise make it optional when spreading.
+  const {
+    emailVerified = true,
+    disabled = false,
+    hasPassword = false,
+    mfaEnabled = false,
+    ...rest
+  } = partial;
   return {
     id: "22222222-2222-4222-8222-222222222222",
     email: "admin@example.com",
@@ -43,7 +59,11 @@ function adminUser(partial: Partial<AuthUser> = {}): AuthUser {
     locale: "en",
     provider: "local",
     createdAt: "2026-01-01T00:00:00.000Z",
-    ...partial,
+    emailVerified,
+    disabled,
+    hasPassword,
+    mfaEnabled,
+    ...rest,
   };
 }
 
@@ -179,5 +199,167 @@ describe("POST /api/v1/approvals/:id/decide", async () => {
       payload: { approve: true, reason: "looks good" },
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("409s when the requester decides their own Atlas-self approval", async () => {
+    const requester = adminUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+    });
+    getRequestUser.mockReturnValue(requester);
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      requestedBy: requester.id,
+      reason: "pause Atlas-self agent",
+      context: atlasSelfApprovalContext({ route: "agents.disable" }),
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/approvals/${request.id}/decide`,
+      payload: { approve: true, reason: "self sign-off" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("CONFLICT");
+
+    const pending = await app.inject({
+      method: "GET",
+      url: `/api/v1/approvals/${request.id}`,
+    });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().status).toBe("PENDING");
+    expect(pending.json().decidedBy).toBeNull();
+  });
+
+  it("still allows an independent admin to decide an Atlas-self approval", async () => {
+    const requester = adminUser({
+      id: "66666666-6666-4666-8666-666666666666",
+      email: "requester@example.com",
+    });
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      requestedBy: requester.id,
+      reason: "pause Atlas-self agent",
+      context: atlasSelfApprovalContext({ route: "agents.disable" }),
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/approvals/${request.id}/decide`,
+      payload: { approve: true, reason: "independent review" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("APPROVED");
+    expect(res.json().decidedBy).toBe(adminUser().id);
+  });
+});
+
+describe("POST Atlas-self control verify (CP SERVICE)", () => {
+  const CP_TOKEN = "phase13-cp-verify-token";
+
+  beforeEach(() => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = CP_TOKEN;
+  });
+
+  function cpHeaders(token = CP_TOKEN): Record<string, string> {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  it("401s without a Control Plane service token", async () => {
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    const res = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      payload: {
+        approvalId: "00000000-0000-4000-8000-000000000000",
+        agentId: "CODE_ENGINEER",
+        action: "pause",
+      },
+    });
+    expect(res.statusCode).toBe(503);
+  });
+
+  it("401s with the wrong service token and never verifies", async () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = CP_TOKEN;
+    const res = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      headers: cpHeaders("wrong-token"),
+      payload: {
+        approvalId: "00000000-0000-4000-8000-000000000000",
+        agentId: "CODE_ENGINEER",
+        action: "pause",
+      },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().verified).not.toBe(true);
+  });
+
+  it("mints a PENDING Atlas-self control approval and fail-closes verify until independent decide", async () => {
+    const minted = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_REQUEST_PATH,
+      headers: cpHeaders(),
+      payload: { agentId: "CODE_ENGINEER", action: "pause" },
+    });
+    expect(minted.statusCode).toBe(201);
+    const approvalId = minted.json().approvalId as string;
+
+    const pending = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      headers: cpHeaders(),
+      payload: { approvalId, agentId: "CODE_ENGINEER", action: "pause" },
+    });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().verified).toBe(false);
+    expect(pending.json().reason).toBe("PENDING");
+
+    const missing = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      headers: cpHeaders(),
+      payload: {
+        approvalId: "00000000-0000-4000-8000-000000000000",
+        agentId: "CODE_ENGINEER",
+        action: "pause",
+      },
+    });
+    expect(missing.json().verified).toBe(false);
+    expect(missing.json().reason).toMatch(/missing/i);
+
+    await decideApprovalRequest(approvalId, {
+      decidedBy: "77777777-7777-4777-8777-777777777777",
+      approve: true,
+      decisionReason: "independent review",
+    });
+    const ok = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      headers: cpHeaders(),
+      payload: { approvalId, agentId: "CODE_ENGINEER", action: "pause" },
+    });
+    expect(ok.json().verified).toBe(true);
+    expect(ok.json().approvalId).toBe(approvalId);
+
+    const wrongTarget = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      headers: cpHeaders(),
+      payload: { approvalId, agentId: "QA", action: "pause" },
+    });
+    expect(wrongTarget.json().verified).toBe(false);
+    expect(wrongTarget.json().reason).toMatch(/target/i);
+
+    const wrongOp = await app.inject({
+      method: "POST",
+      url: ATLAS_SELF_CONTROL_VERIFY_PATH,
+      headers: cpHeaders(),
+      payload: { approvalId, agentId: "CODE_ENGINEER", action: "revoke" },
+    });
+    expect(wrongOp.json().verified).toBe(false);
+    expect(wrongOp.json().reason).toMatch(/operation/i);
   });
 });
