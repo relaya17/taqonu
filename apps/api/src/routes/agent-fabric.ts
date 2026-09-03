@@ -21,12 +21,12 @@ import {
   evaluateJudge,
   listFabricAgents,
   planAgentWork,
-  type BusinessEntityType,
-  type EntityAction,
+  resolveCanonicalToolOperationForRequest,
 } from "@atlas/agent-core";
 import { executeGovernedAction } from "../services/governed-execution.js";
 import {
   resolveAgentIdentity,
+  enforceAgentToolAuthorization,
   type ToolExecutionPayload,
 } from "../services/agent-runtime-authz.js";
 import { findRepoRoot } from "../services/repo-root.js";
@@ -435,8 +435,8 @@ export async function registerAgentFabricRoutes(
       toolName: z.string(),
       toolArgs: z.record(z.unknown()),
       artifact: z.string(),
-      entityType: z.string(),
-      action: z.string(),
+      entityType: z.string().min(1).max(200).optional(),
+      action: z.string().min(1).max(200).optional(),
       payload: toolExecutePayloadSchema,
       approvalRequestId: z.string().uuid().optional(),
       projectId: z.string().uuid().nullable().optional(),
@@ -459,7 +459,6 @@ export async function registerAgentFabricRoutes(
     // Project root comes from the server, never from the request.
     const projectRoot = findRepoRoot();
 
-    // Transform body.payload to ToolExecutionPayload if present
     const payload: ToolExecutionPayload | undefined = body.payload
       ? {
           ...(body.payload.targetOwnerId !== undefined
@@ -474,13 +473,61 @@ export async function registerAgentFabricRoutes(
         }
       : undefined;
 
+    // Catalog first: may this agent invoke this tool?
+    // executeGovernedAction repeats this check.
+    try {
+      enforceAgentToolAuthorization({
+        identity,
+        requestedTool: body.toolName,
+        ...(payload !== undefined ? { payload } : {}),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(403).send({
+        stage: "AUTHORIZATION",
+        status: "DENIED",
+        error: { message },
+      });
+    }
+
+    // toolName is authoritative for operation identity. Client entityType/action
+    // are assertions only — match or omit; never rewrite; never govern under
+    // a different valid table cell.
+    if (
+      (body.entityType === undefined) !== (body.action === undefined)
+    ) {
+      return reply.status(403).send({
+        stage: "AUTHORIZATION",
+        status: "DENIED",
+        error: {
+          message:
+            "entityType and action must both be omitted or both be supplied as a matching assertion of the tool's canonical operation",
+        },
+      });
+    }
+    const assertedPair =
+      body.entityType !== undefined && body.action !== undefined
+        ? { entityType: body.entityType, action: body.action }
+        : undefined;
+    const canonical = resolveCanonicalToolOperationForRequest(
+      body.toolName,
+      assertedPair,
+    );
+    if (!canonical.ok) {
+      return reply.status(403).send({
+        stage: "AUTHORIZATION",
+        status: "DENIED",
+        error: { message: canonical.reason },
+      });
+    }
+
     const outcome = await executeGovernedAction({
       identity,
       toolName: body.toolName,
       toolArgs: body.toolArgs,
       artifact: body.artifact,
-      entityType: body.entityType as BusinessEntityType,
-      action: body.action as EntityAction,
+      entityType: canonical.entityType,
+      action: canonical.action,
       ...(payload !== undefined ? { payload } : {}),
       ...(body.approvalRequestId !== undefined
         ? { approvalRequestId: body.approvalRequestId }

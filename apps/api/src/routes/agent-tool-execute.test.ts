@@ -214,4 +214,84 @@ describe("POST /api/v1/agents/tool-execute", () => {
     expect(message).not.toContain(tmpDir);
     expect(message).not.toContain("/");
   });
+
+  it("uses ToolPolicy DOCUMENT.READ for fs.read_file even when the client omits entityType/action", async () => {
+    const { entityType: _e, action: _a, ...withoutPair } = body();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: withoutPair,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("EXECUTED");
+    expect(res.json().output).toContain("export const answer = 42;");
+  });
+
+  it("accepts a client assertion that matches the ToolPolicy canonical pair", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ entityType: "DOCUMENT", action: "READ" }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("EXECUTED");
+  });
+
+  it("403s when the client asserts a different valid entity-policy cell than the tool's canonical pair", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({
+        entityType: "FINANCIAL_TRANSACTION",
+        action: "EXECUTE",
+      }),
+    });
+    expect(res.statusCode).toBe(403);
+    const json = res.json();
+    expect(json.stage).toBe("AUTHORIZATION");
+    expect(json.status).toBe("DENIED");
+    expect(json.error.message).toMatch(/DOCUMENT\.READ/);
+    expect(json.error.message).toMatch(/FINANCIAL_TRANSACTION\.EXECUTE/);
+  });
+
+  it("403s a catalog-forbidden tool even when that tool has a valid ToolPolicy pair", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({
+        toolName: "github.create_pr",
+        entityType: "RECORD",
+        action: "UPDATE",
+      }),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().stage).toBe("AUTHORIZATION");
+    expect(res.json().error.message).toMatch(/allowedTools/);
+  });
+
+  it("403s when the tool has no ToolPolicy", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({
+        fabricAgentId: "CODE_ENGINEER",
+        toolName: "impact",
+        entityType: "DOCUMENT",
+        action: "READ",
+      }),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/No ToolPolicy/);
+  });
+
+  it("does not switch tools when applying the canonical pair — fs.read_file still reads the file", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ entityType: "DOCUMENT", action: "READ" }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().agentId).toBe("RESEARCHER");
+    expect(res.json().output).toBe(FIXTURE);
+  });
 });
