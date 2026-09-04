@@ -163,28 +163,68 @@ a prior audit pass but not re-examined this cycle.
 
 ## 14. Reliability / Disaster Recovery
 
-Grep-depth check performed 2026-09-04: idempotency/retry-related code
-confirmed present in `apps/api/src/services/approvals.ts`,
-`governed-claimed-execution.ts`, `governed-lifecycle.ts`, and
-`automation-engine.ts` — reliability appears handled per-mechanism inside
-the governed-execution path rather than as a dedicated subsystem. This was
-a filename/grep pass only; none of these mechanisms were read in depth, and
-no DR runbook, backup/restore mechanism, or failover path was specifically
-inventoried or ruled out. **Status: PARTIAL — grep-level evidence only; a
-real read-through is still required (G-5, §24) before this can be called
-IMPLEMENTED or ABSENT.**
+Read-through performed 2026-09-04 (supersedes the grep-only pass):
+
+- **Durable job queue with crash recovery** (`apps/worker/src/queue-persistence.ts`,
+  197 lines, read in full): jobs are persisted to `.atlas/worker-queue.json`
+  via atomic temp-file + rename; `loadPendingJobs()` resets any job stuck
+  `RUNNING` back to `PENDING` on startup (crash recovery); `updateJobRetry`
+  implements retry with `nextAttemptAt` backoff; `cleanupOldJobs` bounds
+  file growth. `apps/worker/src/index.ts` calls `recoverPendingJobs()` on
+  startup and logs `queue_recovery`. **This is real, not aspirational** —
+  confirmed by reading the code, not just its name.
+- **Claim-based execution idempotency** (`apps/api/src/services/governed-claimed-execution.ts`,
+  `claimOrResume`, read in full): checks persisted approval-request status
+  (`FULFILLED`/`FAILED`/`OUTCOME_UNKNOWN` → do not redo; `CLAIMED` with a
+  persisted `executionStartedAt` → resume, do not restart) before doing any
+  work. An in-memory `startClaims` Set is only a same-process fast path; the
+  authoritative check is the persisted record, so this survives a process
+  restart correctly.
+- **Automation engine idempotency** (`apps/api/src/services/automation-engine.ts`,
+  read in full): `claimIdempotencyKey` is an **in-memory, process-local**
+  bounded FIFO (`firedIdempotencyKeys`, 1000-entry cap) — explicitly a
+  backstop over an already-idempotent underlying action per its own doc
+  comment, not a durable dedup store. **Caveat, not a defect**: this
+  specific backstop does not survive a process restart; the action it
+  guards is stated to be idempotent on its own.
+- **Store-level durability** (per `docs/strategy/living-request-tracker.md`,
+  2026-08-12 entry, itself citing exact code): `apps/api/src/store/store-io.ts`
+  does atomic temp→rename writes with a `.bak` file, optional
+  `ATLAS_STORE_BACKUP_INTERVAL_MS` heartbeat backups, dual-write to
+  Supabase for decisions/account_plans, and cloud-hydrate on startup when
+  local state is empty. Not independently re-verified by me this cycle;
+  cited as existing, code-referenced evidence from a prior audit trail.
+- **Explicitly NOT implemented**, per `docs/verification/ATLAS_VERIFICATION_REPORT_2026-08-28.md`
+  line 191: "Backup product / offsite replication — NOT IMPLEMENTED — NDJSON
+  restore check only." Multi-region HA is noted in the same tracker as an
+  accepted residual gap, not a claimed capability.
+
+**Status: IMPLEMENTED — UNVERIFIED** for durable job-queue crash recovery
+and claim-based execution idempotency (both read in full this cycle);
+**IMPLEMENTED — UNVERIFIED, process-local only** for automation-engine's
+backstop dedup; **MISSING**, honestly and pre-existingly documented as such,
+for offsite backup/replication and multi-region HA.
 
 ## 15. Supply Chain
 
 `scripts/generate-sbom.ts` exists (`pnpm sbom:generate` → `tsx
 scripts/generate-sbom.ts`, CycloneDX 1.5 output). Execution attempted
 2026-09-04: `node_modules/.bin/tsx scripts/generate-sbom.ts` fails with
-`Cannot find module 'esbuild'` — the same class of environment issue as
-§19 (a native/platform-specific dependency unresolvable through this
-bridge), not a code defect. **Status: IMPLEMENTED — UNVERIFIED,
-BLOCKED-ENVIRONMENT for execution** (script and its `package.json` wiring
-confirmed present; no SBOM content has ever been produced or reviewed in
-this environment).
+`Cannot find module 'esbuild'`.
+
+**Root cause confirmed, not just observed:** `node_modules/.pnpm/` on this
+repository contains only `@esbuild+win32-x64` platform packages — this
+repository's `node_modules` was installed by `pnpm` on your Windows
+machine, which correctly fetched the Windows-only native esbuild binary.
+This Linux VM bridge has no matching Linux binary and cannot substitute
+one. **This is purely a platform/environment mismatch, confirmed by direct
+inspection of the installed platform packages — not a code defect, and not
+something a code change could fix.** Resolves automatically the moment this
+command runs on your actual Windows machine (native execution, §19).
+
+**Status: IMPLEMENTED — UNVERIFIED, BLOCKED-ENVIRONMENT for execution**
+(script and its `package.json` wiring confirmed present; no SBOM content
+has ever been produced or reviewed in this environment).
 
 ## 16. Portfolio Governance 11.1–11.15
 
@@ -363,7 +403,7 @@ not attempted blind. See §25 for the decision and options.
 | G-2 | Phase 11.9 Admin UI | Absent (regressed); rendering logic recoverable, backend compatible, cross-service auth model incompatible (see §16, §23) | A decided auth model for admin→api server-to-server calls, then the route/rendering code itself | Deleted as collateral damage; auth architecture changed independently afterward | Owner decision on auth model (§25); current `platform-html.ts`/`requireOperator` architecture | Medium — wrong choice here creates a new cross-service trust boundary | **P1** | New/restored tests + native run, once auth model is chosen | Auth model decided → feature implemented → tests pass → native-verified → documented |
 | G-3 | Owner re-approval of 11.5–11.15 | Implemented, undocumented as approved | A recorded Owner decision superseding the `831410e` retraction | Documentation-only rollback never revisited | none | Low (code already shipped either way) | **P2** | none (decision, not code) | Owner decision recorded with the §16-of-directive metadata schema |
 | G-4 | SBOM script execution evidence | Script present; attempted 2026-09-04: `node_modules/.bin/tsx scripts/generate-sbom.ts` fails with `Cannot find module 'esbuild'` — same class of environment issue as G-1, not a code defect | Execution + output review | Native-binary (esbuild) resolution fails through this bridge | native environment | Low | **P3** | Run `pnpm sbom:generate` natively, review sbom.json/sbom.xml | Output reviewed, findings recorded |
-| G-5 | Reliability/DR documentation | Partially investigated 2026-09-04: idempotency/retry-related code confirmed present inside specific mechanisms (`apps/api/src/services/approvals.ts`, `governed-claimed-execution.ts`, `governed-lifecycle.ts`, `automation-engine.ts`) — reliability is handled per-mechanism, not as a separate subsystem. No dedicated backup/crash-recovery/failover subsystem was found or ruled out at this depth. | A real backup/failover/crash-recovery inventory (this cycle only found idempotency-adjacent code, did not evaluate it) | Out of scope of prior audits; this cycle's pass was a grep-depth check only | none | Unknown — cannot assess risk without a deeper pass | **P2** | Dedicated audit pass reading the mechanisms found | Section 14 upgraded from UNKNOWN to a real status with evidence per mechanism |
+| G-5 | Reliability/DR documentation | **Closed this cycle** — full read-through performed (not grep-only): durable job-queue crash recovery (`apps/worker/src/queue-persistence.ts`) and claim-based execution idempotency (`governed-claimed-execution.ts`) both confirmed real and durable; automation-engine dedup confirmed process-local only (documented caveat, not a defect); store-level atomic-write durability cited from a prior code-verified audit trail (`living-request-tracker.md`). Offsite backup/replication and multi-region HA confirmed MISSING by a prior, pre-existing, honestly-labeled audit (`ATLAS_VERIFICATION_REPORT_2026-08-28.md`) — not newly discovered here, not silently adopted as a new gap either. | Independent re-verification via actual test execution (still BLOCKED-ENVIRONMENT); a decision on whether offsite backup/replication is in scope for the current stage | None outstanding from this cycle's investigation depth | native test execution (for re-verification only) | Low — code read directly, not inferred | **P3** (was P2; downgraded now that real evidence closes most of the open question) | Native test execution of `apps/worker` once available | §14 now carries evidence-based status per mechanism instead of a grep-only placeholder |
 
 No other gap is asserted. Old-roadmap unchecked boxes that current code and
 tests already satisfy are **not** listed here (per directive §10, "do not
@@ -487,3 +527,149 @@ the REQUIRED FINAL STATUS FORMAT block from the 2026-09-04 reconciliation
 directive. Both are reproduced in full in the chat response accompanying
 this document's creation, and are not duplicated here to avoid drift
 between two copies of the same template.
+
+---
+
+## 32. G-8 — Remaining Stage Verification (2026-09-04)
+
+| Area | Status | Evidence |
+|---|---|---|
+| Execution Safety | IMPLEMENTED — UNVERIFIED | `realpathSync` two-stage path containment + `MAX_WALK_DEPTH`/`MAX_SCAN_FILES` bounds in `packages/agent-core/src/tools/runtime.ts`/`fs-tools.ts` (§9, confirmed in earlier audits, not re-read this cycle) |
+| Egress | IMPLEMENTED — UNVERIFIED | `apps/api/src/services/egress-gate.ts`: `assertLlmEgressAllowed` calls `decideEgress` (data-class + destination → ALLOW/DENY/REQUIRE_APPROVAL) and audit-logs every decision via `appendUnifiedAuditEntry`; used by `control-plane-bridge.ts`. Read directly this cycle. |
+| Agent Governance | IMPLEMENTED — UNVERIFIED | Unchanged from §12 — 16-agent `FABRIC_AGENT_CATALOG`, not re-investigated this cycle (no new evidence needed) |
+| Reliability | IMPLEMENTED — UNVERIFIED (with one process-local caveat) | See §14, full read-through this cycle |
+| DR | PARTIAL — durable job-queue recovery IMPLEMENTED; offsite backup/replication and multi-region HA confirmed MISSING by a prior, pre-existing audit (`ATLAS_VERIFICATION_REPORT_2026-08-28.md`) | See §14 |
+| Supply Chain | IMPLEMENTED — UNVERIFIED, BLOCKED-ENVIRONMENT (root cause now confirmed: Windows-only esbuild binary installed, no Linux equivalent available to this bridge) | See §15 |
+| Intelligence (RAG/knowledge layer) | IMPLEMENTED — UNVERIFIED | `packages/embeddings/src` (provider abstraction) and `packages/knowledge/src/{fabric,ranking,verification}` confirmed present by directory listing this cycle; contents not read in depth — no claim beyond "exists with that structure" |
+
+No area above was found MISSING outright except the specific, already-
+documented DR sub-items (offsite backup/replication, multi-region HA),
+which were already honestly marked as gaps by a prior audit rather than
+newly discovered here.
+
+## 33. Phase 11.9 — Authentication Options (detailed analysis, 2026-09-04)
+
+No code was written for any option below. This section exists so the Owner
+can choose one; implementation follows only after that choice.
+
+### Option A — Route through Control Plane (projection endpoint)
+
+Add a read-only `GET` route to `apps/control-plane` that serves the
+Portfolio Governance snapshot, reusing the trust relationship `apps/admin`
+already has with Control Plane (`ATLAS_CONTROL_PLANE_TOKEN`) — this is
+exactly the pattern the pre-deletion Admin UI used (it called `CONTROL_API`
+for this data, not the tenant API).
+
+- **Architecture:** New route in `apps/control-plane`; needs read access to
+  the same portfolio data `apps/api/src/services/portfolio-governance-store.ts`
+  currently owns exclusively.
+- **Security implications:** No new trust boundary — reuses the existing
+  admin↔control-plane static-token relationship. Portfolio Governance is
+  already defined (ADR-022) as an observability-only plane, which is a
+  natural fit for Control Plane's existing oversight role.
+- **Affected components:** `apps/control-plane` (new route), and a decision
+  about where the read path for portfolio data should live — either
+  extracted into a shared package both apps import, or served via a new
+  control-plane→api call (which would need its own credential design, see
+  the note below).
+- **Implementation complexity:** Medium. The real work is not the route —
+  it's deciding how Control Plane reads data currently owned by apps/api's
+  service layer without duplicating the storage/overlay logic.
+- **Migration impact:** Low — additive, no breaking change to any existing
+  route.
+- **Audit implications:** New route needs its own audit entries; current
+  `/api/v1/portfolio-governance` implicitly audits via the authenticated
+  operator identity, which a new route would need to replicate.
+- **Tenant implications:** None — Portfolio Governance data is global
+  (sibling-application inventory), not tenant-scoped.
+- **Compatibility with current Admin:** High — matches the original,
+  pre-deletion design intent exactly.
+- **Compatibility with current API:** Requires either extracting the
+  overlay-read path to a shared location, or a new (still-to-be-designed)
+  control-plane→api credential — this second path would just relocate
+  Option B's problem one hop over, so the shared-extraction approach is the
+  cleaner version of this option.
+- **Assessment:** Closest fit to original intent; the only open design
+  question is the persistence-layer boundary, which is worth resolving
+  cleanly rather than routing around.
+
+### Option B — Mint a scoped service credential (admin → api)
+
+A new static bearer (e.g. `ATLAS_ADMIN_SERVICE_TOKEN`) recognized by
+`apps/api`'s auth layer as a narrow, non-interactive service identity.
+
+- **Architecture:** Touches `apps/api/src/middleware/auth-guards.ts`
+  (`requireUser`/`requireOperator`) and `services/resolve-identity.ts` —
+  the same shared middleware every other protected route in `apps/api`
+  depends on.
+- **Security implications:** Introduces a genuinely new trust boundary and
+  a new credential class (long-lived static token) into a path that
+  currently only accepts fully-verified, short-lived Supabase JWTs. This is
+  the direction ADR-023 moved *away* from when it parked
+  `ApprovalExecutionRepository` specifically to avoid a second approval/
+  trust path. The Owner directive that opened this decision explicitly
+  said not to add a static-token exception to `requireUser` — this option
+  is exactly that, so it should be considered only if Options A and C are
+  both ruled out for concrete reasons, and even then scoped as its own
+  narrow middleware function, never a branch inside `requireUser` itself.
+- **Affected components:** shared API auth middleware (highest blast
+  radius of the three options), `apps/admin/src/server.ts`.
+- **Implementation complexity:** Medium-High, precisely because it must be
+  scoped tightly enough not to become a general auth bypass.
+- **Migration impact:** Medium — every future protected route in `apps/api`
+  now has to account for a second, non-JWT credential type existing.
+- **Audit implications:** Needs a distinct `actorKind: "SERVICE"` (or
+  equivalent) in audit entries so service-credential access is always
+  distinguishable from a real user's.
+- **Tenant implications:** None directly, but the credential must be scoped
+  so it cannot be reused to reach tenant-scoped data.
+- **Compatibility with current Admin:** High (simplest Admin-side change).
+- **Compatibility with current API:** Lowest of the three — the only option
+  that modifies shared, security-critical middleware.
+- **Assessment:** Not recommended as a first choice. Directive §2 of this
+  cycle explicitly rules out a static-token exception to `requireUser`;
+  this option is that change by definition.
+
+### Option C — Client-side fetch using the owner's own Studio/API session
+
+The rendered Admin page calls `/api/v1/portfolio-governance` directly from
+the owner's browser using their own existing tenant-API session, instead of
+a server-to-server call from `apps/admin` at all.
+
+- **Architecture:** Client-side JS in the Admin page; requires CORS to
+  allow the Admin origin to read the API response (Admin defaults to port
+  3200, tenant API to port 4000 — different origins today).
+- **Security implications:** Best least-privilege story of the three — no
+  new service credential is minted anywhere; access is governed by the
+  exact same per-user JWT check every other protected tenant-API route
+  already uses.
+- **Affected components:** `apps/admin/src/platform-html.ts` (or a new
+  portfolio-specific module) for the client script; CORS configuration in
+  `apps/api` if not already permissive enough for the Admin origin.
+- **Implementation complexity:** Medium — mostly front-end plus a CORS
+  allowlist entry; zero backend auth-model change.
+- **Migration impact:** Low on the backend. Real cost is on the Admin side:
+  today `apps/admin`'s login (`browser-session.ts`) issues its own separate
+  HMAC-signed cookie and is **not** the same session as a Studio/tenant-API
+  Supabase login — so the owner would need an active Studio session in the
+  same browser for this one section to render, or Admin's login flow would
+  need to be unified with Studio's login (a larger, separate change).
+- **Audit implications:** None new — identical to every other
+  Studio/API-authenticated action by that user.
+- **Tenant implications:** None — same tenant model as any other
+  operator-only view today.
+- **Compatibility with current Admin:** Medium — works today only if the
+  owner also has a live Studio session; otherwise needs the login-
+  unification work noted above.
+- **Compatibility with current API:** Highest — no backend change at all.
+- **Assessment:** Strong, conservative alternative to Option A. Its cost is
+  UX/session-unification, not security surface.
+
+### Recommendation (not a decision — the Owner decides)
+
+Option A first (closest to original intent, smallest new trust surface,
+one clean persistence-boundary question to resolve). Option C as a solid,
+more conservative fallback if extracting the portfolio-read path is judged
+too invasive right now. Option B only if both A and C are explicitly ruled
+out, and even then narrowly scoped — never as a change to `requireUser`
+itself.
