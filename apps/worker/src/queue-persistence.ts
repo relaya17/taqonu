@@ -6,7 +6,15 @@
  * On enqueue/complete/fail, updates the file atomically.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { WorkerJob } from "./jobs/processor.js";
 
@@ -67,9 +75,24 @@ function loadQueueFile(): QueueFile {
 
 function saveQueueFile(data: QueueFile): void {
   ensureDir(queuePath);
-  const tmpPath = `${queuePath}.tmp`;
+  const tmpPath = `${queuePath}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf8");
-  renameSync(tmpPath, queuePath);
+  try {
+    try {
+      renameSync(tmpPath, queuePath);
+    } catch {
+      // Windows cannot rename over an existing file — same fallback as store-io.
+      copyFileSync(tmpPath, queuePath);
+      unlinkSync(tmpPath);
+    }
+  } catch (error) {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // ignore leftover temp cleanup
+    }
+    throw error;
+  }
 }
 
 /**
