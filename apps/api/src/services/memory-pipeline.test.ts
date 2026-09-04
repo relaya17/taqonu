@@ -74,6 +74,7 @@ describe("retrieveMemories isolation", () => {
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
     osStore.addMemory(memory(PROJECT_A, "secret from tenant A"));
     osStore.addMemory(memory(PROJECT_B, "secret from tenant B"));
     osStore.addMemory(memory(null, "platform-only global note"));
@@ -106,6 +107,7 @@ describe("retrieveMemories ownerId scoping (P0 tenant-isolation fix)", () => {
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
     osStore.addMemory(memory(null, "owner A's global note", OWNER_A));
     osStore.addMemory(memory(null, "owner B's global note", OWNER_B));
   });
@@ -135,6 +137,7 @@ describe("approveMemory ownerId scoping (P0 tenant-isolation fix)", () => {
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
   });
 
   afterEach(() => {
@@ -234,6 +237,7 @@ describe("approveMemory requires non-empty evidence (evidence-required gate)", (
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
   });
 
   afterEach(() => {
@@ -298,7 +302,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
-    osStore.unloadForTests();
+    osStore.resetInMemoryForTests();
     osStore.addMemory(
       memory(null, "judge-only note", OWNER_A, ["JUDGE"]),
     );
@@ -355,6 +359,7 @@ describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
     process.env.ATLAS_SKIP_EVENT_DISPATCH = "1";
   });
 

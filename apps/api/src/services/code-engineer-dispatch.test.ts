@@ -142,7 +142,7 @@ describe("proposal-first fabric specialists (real gate + real audit log)", () =>
     expect(run?.durationMs).toBeGreaterThan(0);
   });
 
-  it("RESEARCHER: proposes the read-only DOCUMENT.READ pair and is ALLOWED by the real policy engine without approval", async () => {
+  it("RESEARCHER: proposes DOCUMENT.READ and the hop floor still requires approval", async () => {
     stubProviderReply(proposalJson("DOCUMENT", "READ"));
 
     const run = await runResearcherSpecialistViaLlm({
@@ -157,13 +157,14 @@ describe("proposal-first fabric specialists (real gate + real audit log)", () =>
     );
     expect(entries).toHaveLength(1);
     expect(entries[0]?.policy).toBe("DOCUMENT.READ");
-    // DOCUMENT.READ is READ_ONLY / requiresApproval:false per
-    // DEFAULT_ENTITY_POLICIES — the honest lowest-privilege tier for a
-    // read-oriented specialist, and the reason this one completes outright.
-    expect(entries[0]?.approval).toBe("NOT_REQUIRED");
-    expect(run?.status).toBe("COMPLETED");
+    // DOCUMENT.READ is READ_ONLY at the policy cell, but this path is
+    // orchestrator → specialist (trustLevel DELEGATED, hop 1). The hop floor
+    // requires approval; it does not inherit AUTO.
+    expect(entries[0]?.approval).toBe("PENDING");
+    expect(run?.status).toBe("SKIPPED");
     expect(run?.agentId).toBe("RESEARCHER");
-    expect(run?.epistemicState).toBe("PROPOSED");
+    expect(run?.epistemicState).toBe("UNKNOWN");
+    expect(run?.claims.some((c) => c.startsWith("approvalRequestId:"))).toBe(true);
   });
 
   it("a malformed model reply yields NEEDS_EVIDENCE and never reaches the dispatch gate at all", async () => {

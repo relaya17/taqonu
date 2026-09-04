@@ -680,6 +680,15 @@ class OsStore {
     this.loaded = false;
   }
 
+  /**
+   * Test-only: empty in-memory state without rehydrating store.json.
+   * Use when a test needs a blank store, not a simulated process restart.
+   */
+  resetInMemoryForTests(): void {
+    this.unloadForTests();
+    this.loaded = true;
+  }
+
   getCloudLink(projectId: string): CloudProjectLink | undefined {
     this.ensureLoaded();
     return this.cloudLinks.get(projectId);
