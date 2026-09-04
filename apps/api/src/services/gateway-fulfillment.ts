@@ -13,7 +13,7 @@ import {
   executeGovernedAction,
   type GovernedExecutionOutcome,
 } from "./governed-execution.js";
-import { resolveAgentIdentity } from "./agent-runtime-authz.js";
+import { resolveGovernedAgentIdentity } from "./agent-runtime-authz.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import type { DispatchSourceContext } from "./agent-dispatch-guard.js";
 import {
@@ -85,7 +85,7 @@ export async function fulfillGatewayHandoff(
     };
   }
 
-  const identity = resolveAgentIdentity({
+  const identity = await resolveGovernedAgentIdentity({
     fabricAgentId: handoff.agentId,
     sessionOwnerId: handoff.sessionOwnerId,
     projectId: handoff.projectId,

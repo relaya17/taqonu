@@ -356,6 +356,7 @@ async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation
 
   const api = await callAtlasApi("/api/v1/gateway/fulfill", {
     method: "POST",
+    requestId: ids.requestId,
     body: {
       applicationId: input.applicationId,
       agentId: input.agentId,

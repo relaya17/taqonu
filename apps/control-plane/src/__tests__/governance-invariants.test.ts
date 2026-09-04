@@ -36,5 +36,7 @@ describe("Control Plane governance invariants", () => {
     expect(report.findings.every((f) => f.autoApply === false)).toBe(true);
     expect(report.findings.some((f) => f.id === "audit-canonical-is-api")).toBe(true);
     expect(report.findings.some((f) => f.id === "cp-mfa-not-bound")).toBe(true);
+    expect(report.findings.some((f) => f.id === "cp-does-not-execute-tools")).toBe(true);
+    expect(report.findings.some((f) => f.id === "fabric-vs-oversight-registry")).toBe(true);
   });
 });

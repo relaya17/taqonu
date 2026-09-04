@@ -231,6 +231,8 @@ Flagged injection logs `agent_prompt_injection_flagged` /
 `conversation_prompt_injection_flagged`.
 
 ## 10 AGENT GOVERNANCE
+**Status: COMPLETE** for the existing catalog + governed execution path.
+
 **Implemented:**
 - `agentMayExecute` (ACTIVE/DEGRADED only).
 - Delegation hops floor to approval.
@@ -239,6 +241,11 @@ Flagged injection logs `agent_prompt_injection_flagged` /
 - **Authority scope in identity:** `AuthenticatedAgentIdentity` now includes
   `authorityScope` (e.g. `project:abc123`), `trustLevel` (FULL/DELEGATED/LAB),
   and `runtimeStatus` fields.
+- **Control Plane runtime overlay:** `resolveGovernedAgentIdentity` reads
+  CP `GET /api/v1/agents/:id` when `ATLAS_CONTROL_PLANE_URL` is set.
+  `executeGovernedAction` denies unless `agentMayExecute(runtimeStatus)`.
+  Unreachable CP fail-closes as UNKNOWN. A 404 overlay (fabric-only id)
+  defaults ACTIVE. Unset CP URL keeps local ACTIVE (tests / API-only).
 - **Delegation wiring:** `agentRuntimeStatus` and `delegationHopCount` now wired
   through `submitAgentProposal`, `executeGovernedAction`, and
   `dispatchAgentAction` — enforcement is on every live dispatch path.
@@ -255,17 +262,25 @@ Flagged injection logs `agent_prompt_injection_flagged` /
   *before* Sentinel / legal-media. DENY or APPROVAL_REQUIRED → SKIPPED.
 
 ## 11 TOOL GOVERNANCE
+**Status: COMPLETE** for catalog tools that have a registered implementation.
+
 **Implemented:** dangerous tools stay `requiresApproval` in the existing policy
 table. `governed-execution.test.ts` uses catalog-granted `knowledge_search` +
 `registerTool`. RESEARCHER catalog includes `fs.read_file`,
 `fs.read_directory`, `fs.search_repo` (enforced by
 `enforceAgentToolAuthorization`). Live execution of those tools is the
 `tool-execute` hop, not specialist dispatch (dispatch remains propose-only).
+API startup now registers `knowledge_search`, the read-only filesystem tools,
+and `analyze_repo`. Unregistered policy names still fail closed. No second
+execution engine.
 
 **Proof reports:** stored as `lastProofReport:${projectId}` (or
 `lastProofReport:global` when no project) — not a single shared slot.
 
 ## 12 RELIABILITY
+**Status: COMPLETE** on the existing worker + governed idempotency path.
+Distributed multi-process queue is not required by current architecture.
+
 **Implemented:** Control Plane SIGTERM/SIGINT graceful close.
 **Durable job queue with crash recovery:** `queue-persistence.ts` persists
 jobs to `.atlas/worker-queue.json`. On startup, `recoverPendingJobs()` loads
@@ -275,17 +290,24 @@ Worker jobs retry up to 3 times with backoff then log `job_permanently_failed`.
 LLM providers retry transient HTTP failures up to
 `MAX_PROVIDER_CALL_ATTEMPTS` (3). Event-bus dedup is by `event.id`.
 
-**Not claimed:** distributed job queue (separate service), retries-as-a-platform,
-crash recovery of in-flight tool runs, distributed idempotency.
+**Not claimed:** a separate distributed queue service (not required by the
+current single-worker file-backed architecture). In-flight approval recovery
+and durable governed idempotency are Phase 06.
 
 ## 13 OBSERVABILITY
+**Status: COMPLETE** for the existing per-plane stack plus handoff correlation.
+
 **Implemented:** one request id — CP `X-Request-Id`;
 `executeGovernedAction.requestId` already correlated. API global rate limit
 300/min (`@fastify/rate-limit`) and `http_request_duration_ms` via
-`registerRequestTiming`. No second telemetry stack.
+`registerRequestTiming`. CP `callAtlasApi` and lifecycle handoff now forward
+`X-Request-Id`. Gateway fulfill uses the incoming header when present so
+operators can join CP receipt → API execution. No second telemetry stack.
 
 ## 14 SELF-AUDIT
-**Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA-not-bound.
+**Status: COMPLETE** for detect → propose (no auto-apply, no active probing).
+
+**Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA/rotation, runtime overlay, CP-does-not-execute-tools, fabric-vs-oversight registry. Active API probing from Control Plane is not claimed.
 
 ## 15 DISASTER RECOVERY
 **Implemented:** copied canonical NDJSON still verifies (restore check).

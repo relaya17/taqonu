@@ -93,11 +93,19 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     rmSync(dir, { recursive: true, force: true });
   });
 
-  function identity(overrides: Partial<{ agentId: string; ownerId: string; projectId: string | null }> = {}) {
+  function identity(
+    overrides: Partial<{
+      agentId: string;
+      ownerId: string;
+      projectId: string | null;
+      runtimeStatus: "ACTIVE" | "QUARANTINED" | "DISABLED";
+    }> = {},
+  ) {
     return resolveAgentIdentity({
       fabricAgentId: overrides.agentId ?? "RESEARCHER",
       sessionOwnerId: overrides.ownerId ?? OWNER_A,
       projectId: overrides.projectId === undefined ? PROJECT_A : overrides.projectId,
+      ...(overrides.runtimeStatus ? { runtimeStatus: overrides.runtimeStatus } : {}),
     });
   }
 
@@ -118,6 +126,15 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       ...overrides,
     };
   }
+
+  it("BLOCKS execution when Control Plane runtime status is not executable", async () => {
+    const result = await executeGovernedAction(
+      baseRequest({ identity: identity({ runtimeStatus: "QUARANTINED" }) }),
+    );
+    expect(result.stage).toBe("AUTHORIZATION");
+    expect(result.status).toBe("DENIED");
+    expect(result.reason).toMatch(/QUARANTINED/);
+  });
 
   // ── ATTACK 1: tool the catalog forbids ────────────────────────────────
   it("BLOCKS a tool the agent catalog does not grant", async () => {

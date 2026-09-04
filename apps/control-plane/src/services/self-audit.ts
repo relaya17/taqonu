@@ -1,6 +1,7 @@
 /**
  * Atlas self-audit (DEF-000) — detect and propose, never auto-apply.
  */
+import { agentMayExecute } from "@atlas/shared";
 import { controlPlaneToken } from "../control-plane-auth.js";
 import { listRegisteredApplications } from "./application-registry.js";
 import { listRegisteredAgents } from "./agent-registry.js";
@@ -124,6 +125,44 @@ export function runSelfAudit(): SelfAuditReport {
     evidence:
       "SECRET/SYSTEM_CRITICAL never leave Atlas; LLM/EXPORT/WEBHOOK/EMAIL/TELEMETRY share that table. No second policy engine.",
     recommendation: "Keep wrapping new outbound paths with assertEgressAllowed, not a new gate.",
+    autoApply: false,
+  });
+
+  const halted = agents.filter((agent) => !agentMayExecute(agent.status));
+  findings.push({
+    id: "agent-runtime-overlay",
+    severity: halted.length > 0 ? "MEDIUM" : "INFO",
+    title:
+      halted.length > 0
+        ? "Control Plane runtime overlay is blocking one or more oversight agents"
+        : "No non-executable Control Plane runtime overlay is applied",
+    evidence:
+      halted.length > 0
+        ? halted.map((agent) => `${agent.agentId}=${agent.status}`).join(", ")
+        : `${agents.length} oversight agents are executable`,
+    recommendation:
+      "API executeGovernedAction now denies non-executable runtimeStatus. Confirm the overlay is intentional.",
+    autoApply: false,
+  });
+
+  findings.push({
+    id: "cp-does-not-execute-tools",
+    severity: "INFO",
+    title: "Control Plane does not execute tools",
+    evidence:
+      "CP evaluate + callAtlasApi handoff only. Tool implementations register on the tenant API and run only through executeGovernedAction.",
+    recommendation: "Do not add executeTool to Control Plane.",
+    autoApply: false,
+  });
+
+  findings.push({
+    id: "fabric-vs-oversight-registry",
+    severity: "INFO",
+    title: "Fabric catalog remains the execution identity; CP /agents is oversight",
+    evidence:
+      "GET /api/v1/agents is the 9-item oversight list. A 404 overlay lookup means no CP circuit-break for that fabric id (defaults ACTIVE). Unreachable CP fail-closes as UNKNOWN.",
+    recommendation:
+      "Quarantine CODE_ENGINEER (and other oversight ids) on CP when execution must stop. Do not merge Fabric into the oversight list.",
     autoApply: false,
   });
 

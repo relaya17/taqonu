@@ -33,4 +33,5 @@ export * from "./security/injection-detector.js";
 export * from "./security/prompt-layers.js";
 export * from "./tools/runtime.js";
 export * from "./tools/fs-tools.js";
+export * from "./tools/analyze-repo.js";
 export * from "./tools/governed-target.js";

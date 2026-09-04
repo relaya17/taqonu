@@ -16,6 +16,7 @@ process.env.VERCEL = "1";
 const { buildApp } = await import("./create-app.js");
 const { buildTestEnv } = await import("./routes/test-helpers/build-route-test-app.js");
 const { atlasMetrics } = await import("./routes/metrics.js");
+const { listRegisteredTools } = await import("@atlas/agent-core");
 
 afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
@@ -96,6 +97,26 @@ describe("buildApp global latency hook", () => {
       expect(sample?.tags?.method).toBe("GET");
       expect(sample?.tags?.route).toBe("/health");
       expect(sample?.tags?.statusCode).toBe("200");
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("buildApp production tool registration", () => {
+  it("registers knowledge_search, read-only filesystem tools, and analyze_repo", async () => {
+    const app = await buildFullTestApp();
+    try {
+      const tools = listRegisteredTools();
+      expect(tools).toEqual(
+        expect.arrayContaining([
+          "knowledge_search",
+          "fs.read_file",
+          "fs.read_directory",
+          "fs.search_repo",
+          "analyze_repo",
+        ]),
+      );
     } finally {
       await app.close();
     }

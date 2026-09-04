@@ -5,6 +5,7 @@ import {
   type FabricAgentId,
 } from "@atlas/shared";
 import { assertGovernedProjectExists } from "./project-access.js";
+import { lookupControlPlaneAgentRuntimeStatus } from "./control-plane-bridge.js";
 
 /**
  * P0.2 — Agent Identity + Runtime Authorization Enforcement.
@@ -160,6 +161,20 @@ export function resolveAgentIdentity(input: {
     trustLevel: input.trustLevel ?? "FULL",
     runtimeStatus: input.runtimeStatus ?? "ACTIVE",
   };
+}
+
+/** Session identity plus Control Plane runtime overlay when CP is configured. */
+export async function resolveGovernedAgentIdentity(input: {
+  readonly fabricAgentId: string;
+  readonly sessionOwnerId: string;
+  readonly projectId: string | null;
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+}): Promise<AuthenticatedAgentIdentity> {
+  const lookup = await lookupControlPlaneAgentRuntimeStatus(input.fabricAgentId);
+  return resolveAgentIdentity({
+    ...input,
+    runtimeStatus: lookup.configured ? lookup.status : "ACTIVE",
+  });
 }
 
 /**

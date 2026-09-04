@@ -20,6 +20,7 @@ import {
 } from "@atlas/agent-core";
 import { findRepoRoot } from "./repo-root.js";
 import {
+  agentMayExecute,
   canonicalizeJson,
   type ApprovalRequest,
   type GovernanceDecision,
@@ -460,6 +461,16 @@ function auditOutcome(
 export async function executeGovernedAction(
   request: GovernedExecutionRequest,
 ): Promise<GovernedExecutionOutcome> {
+  if (!agentMayExecute(request.identity.runtimeStatus ?? "ACTIVE")) {
+    const outcome: GovernedExecutionOutcome = {
+      stage: "AUTHORIZATION",
+      status: "DENIED",
+      reason: `Agent "${request.identity.agentId}" is not executable (runtimeStatus=${request.identity.runtimeStatus ?? "ACTIVE"})`,
+    };
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    return outcome;
+  }
+
   // ── 1. Tool authorization (P0.2) ────────────────────────────────────
   try {
     enforceAgentToolAuthorization({

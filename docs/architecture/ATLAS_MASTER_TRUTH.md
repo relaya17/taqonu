@@ -1010,3 +1010,33 @@ agent-run retrieval bind Atlas-self scope from the authenticated session
 project-scoped rows in SQL and returns metadata. Incomplete scope never
 queries pgvector. Identity is never inferred. Historical chunks are not
 rewritten. Unrestricted web crawl remains not claimed.
+
+## 46. Phase 10 Agent Governance (2026-09-04)
+
+**Status: COMPLETE.** `executeGovernedAction` denies non-executable
+`runtimeStatus`. API reads the Control Plane overlay when configured
+(`resolveGovernedAgentIdentity`). 404 overlay → ACTIVE. Unreachable CP →
+UNKNOWN fail-closed. Catalog remains the execution identity.
+
+## 47. Phase 11 Tool Governance (2026-09-04)
+
+**Status: COMPLETE** for registered production tools. API startup registers
+`knowledge_search`, read-only filesystem tools, and `analyze_repo`.
+Unregistered policy names still fail closed. No second execution engine.
+
+## 48. Phase 12 Reliability (2026-09-04)
+
+**Status: COMPLETE** on the existing worker. Durable queue, crash recovery,
+and governed idempotency already exist. A distributed queue is not required
+by the current single-worker architecture.
+
+## 49. Phase 13 Observability (2026-09-04)
+
+**Status: COMPLETE.** CP → API hops forward `X-Request-Id`. Gateway fulfill
+uses the incoming header so CP receipt and API execution share one id.
+
+## 50. Phase 14 Self-Audit (2026-09-04)
+
+**Status: COMPLETE** for detect → propose. Added evidence-only findings for
+runtime overlay, CP-does-not-execute-tools, and fabric vs oversight
+registry. `autoApply` remains false. Active probing is not claimed.

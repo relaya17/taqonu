@@ -25,7 +25,7 @@ import {
 } from "@atlas/agent-core";
 import { executeGovernedAction } from "../services/governed-execution.js";
 import {
-  resolveAgentIdentity,
+  resolveGovernedAgentIdentity,
   enforceAgentToolAuthorization,
   type ToolExecutionPayload,
 } from "../services/agent-runtime-authz.js";
@@ -452,7 +452,7 @@ export async function registerAgentFabricRoutes(
 
     // Resolve identity from the session, not the body. The body names the
     // fabricAgentId but must not be able to override the ownerId.
-    const identity = resolveAgentIdentity({
+    const identity = await resolveGovernedAgentIdentity({
       fabricAgentId: body.fabricAgentId,
       sessionOwnerId: user.id,
       projectId: body.projectId ?? null,

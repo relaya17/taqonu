@@ -78,6 +78,7 @@ describe("Control Plane lifecycle handoff", () => {
       expect(body.identity.eventId).toBe("evt-1");
       expect(body.decision.decision).toBe("ALLOW");
       expect(headers.authorization).toBe("Bearer token");
+      expect(headers["x-request-id"]).toBe("req-1");
       expect(headers["x-idempotency-key"]).toBe("lifecycle:tenant-alpha:civio:evt-1");
       return new Response(
         JSON.stringify({

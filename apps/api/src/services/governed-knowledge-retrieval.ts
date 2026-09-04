@@ -13,7 +13,7 @@ import {
 } from "@atlas/knowledge";
 import { executeGovernedAction } from "./governed-execution.js";
 import {
-  resolveAgentIdentity,
+  resolveGovernedAgentIdentity,
   type AuthenticatedAgentIdentity,
 } from "./agent-runtime-authz.js";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
@@ -175,7 +175,7 @@ export async function retrieveGovernedKnowledge(input: {
 
   let identity: AuthenticatedAgentIdentity;
   try {
-    identity = resolveAgentIdentity({
+    identity = await resolveGovernedAgentIdentity({
       fabricAgentId: input.scope.requestingAgentId,
       sessionOwnerId: input.sessionOwnerId,
       projectId: input.scope.projectId,

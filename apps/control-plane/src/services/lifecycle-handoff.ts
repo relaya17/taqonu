@@ -45,7 +45,12 @@ export type AtlasApiCallResult =
  */
 export async function callAtlasApi(
   path: string,
-  init: { readonly method: string; readonly body?: unknown },
+  init: {
+    readonly method: string;
+    readonly body?: unknown;
+    readonly requestId?: string;
+    readonly extraHeaders?: Readonly<Record<string, string>>;
+  },
 ): Promise<AtlasApiCallResult> {
   const base = apiBaseUrl();
   const token = serviceToken();
@@ -65,13 +70,26 @@ export async function callAtlasApi(
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${token}`,
+        ...(init.requestId ? { "x-request-id": init.requestId } : {}),
+        ...(init.extraHeaders ?? {}),
       },
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
       signal: AbortSignal.timeout(8_000),
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
-      return { ok: false, reason: `API returned ${response.status}` };
+      const detail =
+        body && typeof body === "object"
+          ? ((body as { error?: { message?: string }; reason?: string }).error
+              ?.message ??
+            (body as { reason?: string }).reason)
+          : null;
+      return {
+        ok: false,
+        reason: detail
+          ? `API returned ${response.status}: ${detail}`
+          : `API returned ${response.status}`,
+      };
     }
     return { ok: true, status: response.status, body };
   } catch (error) {
@@ -129,44 +147,29 @@ export async function handoffGovernedDecisionToApi(
     idempotencyKey: `lifecycle:${decision.tenantId}:${decision.applicationId}:${decision.eventId}`,
   };
 
-  try {
-    const response = await fetch(`${base}${GOVERNED_LIFECYCLE_HANDOFF_PATH}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${token}`,
-        "x-idempotency-key": payload.idempotencyKey,
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8_000),
-    });
-    const body = (await response.json().catch(() => ({}))) as {
-      readonly status?: string;
-      readonly executed?: boolean;
-      readonly reason?: string;
-      readonly approvalRequestId?: string | null;
-      readonly error?: { readonly message?: string };
-    };
-    if (!response.ok) {
-      return {
-        status: "HANDOFF_FAILED",
-        reason:
-          body.error?.message ??
-          body.reason ??
-          `API handoff returned ${response.status}`,
-      };
-    }
-    return {
-      status: "HANDED_OFF",
-      reason: body.reason ?? "handed off",
-      executed: body.executed === true,
-      approvalRequestId: body.approvalRequestId ?? null,
-      ...(typeof body.status === "string" ? { lifecycleStatus: body.status } : {}),
-    };
-  } catch (error) {
+  const api = await callAtlasApi(GOVERNED_LIFECYCLE_HANDOFF_PATH, {
+    method: "POST",
+    body: payload,
+    requestId: decision.requestId,
+    extraHeaders: { "x-idempotency-key": payload.idempotencyKey },
+  });
+  if (!api.ok) {
     return {
       status: "HANDOFF_FAILED",
-      reason: error instanceof Error ? error.message : String(error),
+      reason: api.reason,
     };
   }
+  const body = (api.body ?? {}) as {
+    readonly status?: string;
+    readonly executed?: boolean;
+    readonly reason?: string;
+    readonly approvalRequestId?: string | null;
+  };
+  return {
+    status: "HANDED_OFF",
+    reason: body.reason ?? "handed off",
+    executed: body.executed === true,
+    approvalRequestId: body.approvalRequestId ?? null,
+    ...(typeof body.status === "string" ? { lifecycleStatus: body.status } : {}),
+  };
 }

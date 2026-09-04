@@ -49,6 +49,11 @@ export async function registerGatewayFulfillRoutes(
     )
       ? controlPlaneFulfillOwner(body.applicationId)
       : (await requireOperator(app, request)).id;
+    const incomingRequestId = request.headers["x-request-id"];
+    const requestId =
+      typeof incomingRequestId === "string" && incomingRequestId.trim().length > 0
+        ? incomingRequestId.trim()
+        : request.id;
     return fulfillGatewayHandoff({
       sessionOwnerId,
       applicationId: body.applicationId,
@@ -56,7 +61,7 @@ export async function registerGatewayFulfillRoutes(
       operation: body.operation,
       projectRoot: findRepoRoot(),
       projectId: body.projectId === undefined ? null : body.projectId,
-      requestId: request.id,
+      requestId,
       ...(body.toolArgs ? { toolArgs: body.toolArgs } : {}),
       ...(body.artifact ? { artifact: body.artifact } : {}),
       ...(body.approvalRequestId
