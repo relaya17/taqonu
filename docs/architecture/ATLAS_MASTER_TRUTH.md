@@ -1040,3 +1040,37 @@ uses the incoming header so CP receipt and API execution share one id.
 **Status: COMPLETE** for detect → propose. Added evidence-only findings for
 runtime overlay, CP-does-not-execute-tools, and fabric vs oversight
 registry. `autoApply` remains false. Active probing is not claimed.
+
+## 51. Phase 15 Disaster Recovery (2026-09-04)
+
+**Status: BLOCKED** on offsite destination. `runCanonicalAuditRestoreDrill`
+proves a local copy of the canonical API NDJSON still verifies. Receipts
+record `offsite: false`. Do not claim DR from backup existence.
+
+## 52. Phase 16 Supply Chain (2026-09-04)
+
+**Status: BLOCKED** on signing identity. SBOM remains COMPLETE. No unsigned
+Sigstore ceremony was added.
+
+## 53. Phase 17 Governance Test Suite (2026-09-04)
+
+**Status: COMPLETE.** Added world-state execution ≠ verification, quarantine
+denial, production tool registration, and CP-does-not-execute-tools proofs.
+
+## 54. Phase 18 Performance / Scale (2026-09-04)
+
+**Status: COMPLETE** for the existing in-process cache, limits, and latency
+stack. Redis and autoscaling are not required by current architecture.
+
+## 55. Phase 19 Intelligence (2026-09-04)
+
+**Status: COMPLETE** for governed suggestions (hypothesis, marketplace,
+PSA recommend, verdict actions). Live ML training on production traffic
+is BLOCKED pending Owner decision.
+
+## 56. Later-scope and production runtime (2026-09-04)
+
+Ingest / non-`def-000` / sibling execution remain BLOCKED — no
+authoritative execute contract. Production runtime for Control / Admin /
+Worker is the existing `deploy/` private-plane systemd set. API/web stay
+on the user plane (Vercel) per ADR-021.

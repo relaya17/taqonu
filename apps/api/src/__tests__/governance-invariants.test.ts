@@ -8,7 +8,12 @@ import {
   verifyAuditChain,
   verifyAuditLogChain,
 } from "../services/audit-log.js";
-import { composeLoopVerdict, verificationVerdictFromOutcome } from "../services/verification.js";
+import {
+  composeLoopVerdict,
+  evaluateWorldState,
+  captureExpectedState,
+  verificationVerdictFromOutcome,
+} from "../services/verification.js";
 import { checkResourceAccess } from "../services/resource-access.js";
 
 const ACTOR = "11111111-1111-4111-8111-111111111111";
@@ -43,6 +48,26 @@ describe("governance invariants (stability)", () => {
       resourceOwnerId: OTHER,
     });
     expect(result.decision).toBe("DENIED");
+  });
+
+  it("world-state execution is not verification", () => {
+    const expected = captureExpectedState({
+      artifactHash: "abc",
+      toolName: "knowledge_search",
+    });
+    const result = evaluateWorldState({
+      intended: true,
+      authorized: true,
+      expected,
+      actual: {
+        artifactHash: "abc",
+        toolName: "knowledge_search",
+        executed: true,
+        output: "ran",
+      },
+    });
+    expect(result.stageReached).toBe("EXECUTED");
+    expect(result.loopVerdict).not.toBe("VERIFIED");
   });
 
   it("executed is not verified", () => {

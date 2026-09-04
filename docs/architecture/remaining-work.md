@@ -310,25 +310,42 @@ operators can join CP receipt → API execution. No second telemetry stack.
 **Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA/rotation, runtime overlay, CP-does-not-execute-tools, fabric-vs-oversight registry. Active API probing from Control Plane is not claimed.
 
 ## 15 DISASTER RECOVERY
-**Implemented:** copied canonical NDJSON still verifies (restore check).
+**Status: BLOCKED** on offsite destination. Local restore proof exists.
 
-**Not claimed:** backup product, offsite replication, timed restore drills.
+**Implemented:** copied canonical NDJSON still verifies (restore check).
+`runCanonicalAuditRestoreDrill` copies the API NDJSON chain, verifies hash
+continuity, and writes a timestamped receipt with `offsite: false`.
+
+**BLOCKED — Owner decision required:** name the offsite backup destination
+and credentials (object store / region / retention). Do not claim disaster
+recovery from backup existence or local copies alone. Replication and
+timed production drills stay blocked until that destination exists.
 
 ## 16 SUPPLY-CHAIN / PRODUCTION SECURITY
+**Status: BLOCKED** on signing identity. SBOM remains COMPLETE.
+
 **Implemented:** CI `permissions: contents: read`. Secret scan and eval gate already existed.
 **SBOM generation:** `pnpm sbom:generate` produces CycloneDX 1.5 SBOM in
 `.atlas/sbom/sbom.json` and `.atlas/sbom/sbom.xml`. Scans all package.json files,
 generates component list with hashes, purls, licenses, and dependency graph.
 
-**Not claimed:** cryptographic signing of artifacts, Sigstore integration,
-provenance attestations (SLSA), registry artifact signing.
+**BLOCKED — Owner decision required:** signing identity for release
+artifacts (Sigstore / cosign key or identity). Do not add unsigned
+ceremony. SBOM generation remains the enforceable supply-chain control.
 
 ## 17 GOVERNANCE TEST SUITE
+**Status: COMPLETE** for enforcement proofs on the existing engines.
+
 **Implemented:** `apps/api/src/__tests__/governance-invariants.test.ts` and
 `apps/control-plane/src/__tests__/governance-invariants.test.ts`
-(unauthenticated DENY, customer admin ≠ operator, missing capability, wrong tenant, audit tamper, executed ≠ verified, CP audit non-canonical, self-audit never auto-applies).
+(unauthenticated DENY, customer admin ≠ operator, missing capability, wrong tenant, audit tamper, executed ≠ verified, world-state execution ≠ verification, CP audit non-canonical, self-audit never auto-applies, CP-does-not-execute-tools).
+`governed-execution.test.ts` proves QUARANTINED cannot execute.
+`create-app.test.ts` proves production tools are registered at startup.
 
 ## 18 PERFORMANCE / SCALE
+**Status: COMPLETE** for the existing in-process limits and latency stack.
+Redis / autoscaling are not required by current architecture.
+
 **Implemented:**
 - **Response cache:** `ResponseCache` LRU with TTL (`response-cache.ts`). Global
   `readCache` for expensive read operations. `cached()` helper for get-or-compute.
@@ -346,6 +363,8 @@ provenance attestations (SLSA), registry artifact signing.
 database connection pooling (external to Node), full APM integration.
 
 ## 19 INTELLIGENCE ROADMAP
+**Status: COMPLETE** for governed suggestions. Live ML training is BLOCKED.
+
 **Implemented:**
 - **Hypothesis engine:** `hypothesis-engine.ts` — create, list, update status,
   add supporting/contradicting evidence, confidence scoring. Stored in osStore.
@@ -359,9 +378,33 @@ database connection pooling (external to Node), full APM integration.
   `computeAgentReputation`, `ExpertBattleMetrics`, `AgentRanking`. Routes at
   `/api/v1/intelligence/reputation`.
 
-**Not claimed:** ML-based hypothesis suggestion, automated golden project
-verification, real reputation training data (requires production traffic),
-external marketplace integration, agent-to-agent negotiation.
+PSA `recommendFromPsa`, hypothesis engine, marketplace rankings, and
+Atlas verdict recommended actions already suggest without executing.
+Intelligence may recommend. Governance remains authoritative.
+
+**BLOCKED — Owner decision required:** live reputation/training on
+production traffic, including whether any automatic policy modification
+is ever permitted (default remains never). Do not add an ungoverned ML
+privilege path.
+
+## LATER-SCOPE (not a Phase 02 reopen)
+
+**Ingest execution — BLOCKED.** ADR-022: Control evaluates ingest and does
+not execute. Owner must define the authoritative tool / target / artifact
+intent. Do not invent `knowledge_search(query = eventId)`.
+
+**Non-`def-000` fulfillment — BLOCKED.** No sibling execute contract exists.
+Changing `applicationId` is not fulfillment.
+
+**Sibling / connected-application execution — BLOCKED.** Same missing
+contract. Applications remain isolated. Atlas does not become their database.
+
+**Production runtime — COMPLETE** for the existing private-plane artifacts:
+`deploy/systemd` for Control, Admin, and Worker; `deploy/verify.sh`;
+`docs/deployment/private-plane.md`. User-plane API/web remain Vercel per
+ADR-021. Do not merge planes.
+
+**ApprovalExecutionRepository** remains parked / historical.
 
 ## PHASE 11 PORTFOLIO GOVERNANCE (observability)
 

@@ -206,7 +206,15 @@ export function verifyAuditLogChain(): {
   readonly checked: number;
   readonly error: string | null;
 } {
-  const path = resolveAuditLogPath();
+  return verifyAuditLogChainAt(resolveAuditLogPath());
+}
+
+export function verifyAuditLogChainAt(path: string): {
+  readonly ok: boolean;
+  readonly status: AuditIntegrity;
+  readonly checked: number;
+  readonly error: string | null;
+} {
   if (!existsSync(path)) {
     return {
       ok: false,
