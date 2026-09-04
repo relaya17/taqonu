@@ -987,3 +987,17 @@ crash still finalize `OUTCOME_UNKNOWN` and do not execute twice.
 
 Stale remaining-work wording that said durable jobs were absent is
 corrected. Distributed queue service remains Phase 12.
+
+## 43. Phase 07 Verification (2026-09-04)
+
+**Status: COMPLETE.** `evaluateWorldState` is the general mechanism:
+INTENDED → AUTHORIZED → EXECUTED → VERIFIED. Gateway fulfill uses it.
+Execution is never treated as verification. Regression FAILED still
+overrides VERIFIED. This is not a QA product.
+
+## 44. Phase 08 Egress (2026-09-04)
+
+**Status: COMPLETE** for server hops. Control Plane → tenant API now
+goes through `decideEgress` (`atlas_internal` / TELEMETRY). Same-origin
+dashboard fetches, test harnesses, and the public landing page remain
+classified exceptions. No second egress engine.

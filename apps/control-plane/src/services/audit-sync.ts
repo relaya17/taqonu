@@ -7,6 +7,7 @@
  */
 
 import { listAuditEntries, type AuditEntry } from "./governance-state.js";
+import { assertControlPlaneApiEgress } from "./control-plane-egress.js";
 
 let lastSyncedSeq = 0;
 let apiBaseUrl = process.env.ATLAS_API_URL ?? "http://localhost:4000";
@@ -58,6 +59,11 @@ export async function syncAuditToApi(): Promise<{
   const pending = getUnsyncedEntries();
   if (pending.length === 0) {
     return { synced: 0, error: null };
+  }
+
+  const denied = assertControlPlaneApiEgress("cp-audit-import");
+  if (denied) {
+    return { synced: 0, error: denied };
   }
 
   try {

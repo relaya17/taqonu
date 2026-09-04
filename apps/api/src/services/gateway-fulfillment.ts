@@ -17,9 +17,8 @@ import { resolveAgentIdentity } from "./agent-runtime-authz.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import type { DispatchSourceContext } from "./agent-dispatch-guard.js";
 import {
-  assessRegression,
   captureExpectedState,
-  compareExpectedActual,
+  evaluateWorldState,
   composeLoopVerdict,
   verificationVerdictFromOutcome,
   type VerificationVerdict,
@@ -150,23 +149,31 @@ export async function fulfillGatewayHandoff(
   });
 
   const executed = outcome.status === "EXECUTED";
+  // AUTHORIZATION / APPROVAL / POLICY never reach EXECUTION. REQUIRE_APPROVAL
+  // and DENY are not authorized for world-state purposes.
+  const authorized = outcome.stage === "EXECUTION";
+  const world = evaluateWorldState({
+    intended: true,
+    authorized,
+    expected,
+    actual: {
+      artifactHash: executed ? outcome.artifactHash : expected.artifactHash,
+      toolName: mapping.toolName,
+      executed,
+      output: executed ? outcome.output : "",
+    },
+    baselineObservations,
+  });
   const compared = executed
-    ? compareExpectedActual(expected, {
-        artifactHash: outcome.artifactHash,
-        toolName: mapping.toolName,
-        executed: true,
-        output: outcome.output,
-      })
+    ? world.verification
     : {
         verdict: verificationVerdictFromOutcome(outcome),
         detail: `Not executed: ${outcome.stage}/${outcome.status}`,
       };
-  const regression = assessRegression({
-    baselineObservations,
-    actualOutput: outcome.status === "EXECUTED" ? outcome.output : "",
-    executed,
-  });
-  const loopVerdict = composeLoopVerdict(compared.verdict, regression.verdict);
+  const regression = world.regression;
+  const loopVerdict = executed
+    ? world.loopVerdict
+    : composeLoopVerdict(compared.verdict, regression.verdict);
   const verificationDetail =
     regression.verdict === "FAILED" ? regression.detail : compared.detail;
 

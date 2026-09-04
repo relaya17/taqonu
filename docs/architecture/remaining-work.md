@@ -167,6 +167,9 @@ still no second system of record.
 automation-engine dedup remains a documented caveat, not this path.
 
 ## 07 VERIFICATION
+**Status: COMPLETE** — world-state check is the existing Verification loop,
+not a QA product.
+
 **Implemented:**
 - Receipt verdicts: `VERIFIED | FAILED | PARTIAL | INCONCLUSIVE | BLOCKED`.
 - Reads against the application registry can be VERIFIED.
@@ -182,16 +185,28 @@ automation-engine dedup remains a documented caveat, not this path.
   uses approval values when `approvalRequestId` is provided — caller cannot
   invent observations at fulfill time.
 
-**Not claimed:** a general world-state expected-vs-actual checker; a regression
-product / suite engine; diagnosis.
+`evaluateWorldState` is the reusable mechanism:
+INTENDED → AUTHORIZED → EXECUTED → VERIFIED.
+Gateway fulfill uses it. Execution never implies VERIFIED. Regression
+FAILED still overrides VERIFIED. No separate QA suite engine.
 
 ## 08 EGRESS GOVERNANCE
+**Status: COMPLETE** for governed server hops. Browser same-origin UI
+fetches remain classified exceptions.
+
 **Implemented:**
 - Operations: WEBHOOK, EMAIL, TELEMETRY, PLUGIN, MESSAGING (same `decideEgress` table).
 - SECRET / SYSTEM_CRITICAL still never leave Atlas.
 - `assertEgressAllowed` wraps `decideEgress`. Call site: Control Plane event bridge (TELEMETRY / internal).
+- Control Plane → tenant API hops (`callAtlasApi`, audit sync) now call
+  `assertControlPlaneApiEgress` (same `decideEgress` table, `atlas_internal`).
 
-**Not claimed:** wrapping every `fetch` in the repo; a new egress product.
+**Classified exceptions (not wrapped):**
+- Control / Admin same-origin dashboard `fetch` (browser UI to its own API).
+- Test-harness `fetch` in `*.test.ts`.
+- Landing-page public `fetch` (marketing surface, not a governance hop).
+
+No new egress product.
 
 ## 09 MEMORY / KNOWLEDGE INTEGRITY
 **Implemented:** `capEpistemicStateForSource` — AGENT ceiling is PROPOSED

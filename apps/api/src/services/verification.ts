@@ -121,6 +121,71 @@ export function assessRegression(input: {
   };
 }
 
+/**
+ * General world-state check. Execution is never treated as verification.
+ * INTENDED → AUTHORIZED → EXECUTED → VERIFIED.
+ */
+export function evaluateWorldState(input: {
+  readonly intended: boolean;
+  readonly authorized: boolean;
+  readonly expected: ExpectedState;
+  readonly actual: ActualState;
+  readonly baselineObservations?: readonly string[];
+}): {
+  readonly stageReached: "INTENDED" | "AUTHORIZED" | "EXECUTED" | "VERIFIED";
+  readonly verification: { readonly verdict: VerificationVerdict; readonly detail: string };
+  readonly regression: { readonly verdict: VerificationVerdict; readonly detail: string };
+  readonly loopVerdict: VerificationVerdict;
+} {
+  if (!input.intended) {
+    const verification = {
+      verdict: "BLOCKED" as const,
+      detail: "No intended state was declared",
+    };
+    const regression = assessRegression({
+      baselineObservations: input.baselineObservations ?? [],
+      actualOutput: "",
+      executed: false,
+    });
+    return {
+      stageReached: "INTENDED",
+      verification,
+      regression,
+      loopVerdict: composeLoopVerdict(verification.verdict, regression.verdict),
+    };
+  }
+  if (!input.authorized) {
+    const verification = {
+      verdict: "BLOCKED" as const,
+      detail: "Intended state was not authorized",
+    };
+    const regression = assessRegression({
+      baselineObservations: input.baselineObservations ?? [],
+      actualOutput: "",
+      executed: false,
+    });
+    return {
+      stageReached: "AUTHORIZED",
+      verification,
+      regression,
+      loopVerdict: composeLoopVerdict(verification.verdict, regression.verdict),
+    };
+  }
+  const verification = compareExpectedActual(input.expected, input.actual);
+  const regression = assessRegression({
+    baselineObservations: input.baselineObservations ?? [],
+    actualOutput: input.actual.output,
+    executed: input.actual.executed,
+  });
+  const loopVerdict = composeLoopVerdict(verification.verdict, regression.verdict);
+  return {
+    stageReached: loopVerdict === "VERIFIED" ? "VERIFIED" : "EXECUTED",
+    verification,
+    regression,
+    loopVerdict,
+  };
+}
+
 export function composeLoopVerdict(
   verification: VerificationVerdict,
   regression: VerificationVerdict,

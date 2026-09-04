@@ -4,6 +4,7 @@ import {
   captureExpectedState,
   compareExpectedActual,
   composeLoopVerdict,
+  evaluateWorldState,
   verificationVerdictFromOutcome,
 } from "./verification.js";
 
@@ -120,6 +121,66 @@ describe("assessRegression", () => {
         executed: true,
       }).verdict,
     ).toBe("INCONCLUSIVE");
+  });
+});
+
+describe("evaluateWorldState", () => {
+  const expected = captureExpectedState({
+    artifactHash: "abc",
+    toolName: "knowledge_search",
+    expectedObservations: ["answer = 42"],
+  });
+
+  it("stops at AUTHORIZED when the action was not authorized", () => {
+    const result = evaluateWorldState({
+      intended: true,
+      authorized: false,
+      expected,
+      actual: {
+        artifactHash: "abc",
+        toolName: "knowledge_search",
+        executed: false,
+        output: "",
+      },
+    });
+    expect(result.stageReached).toBe("AUTHORIZED");
+    expect(result.loopVerdict).toBe("BLOCKED");
+  });
+
+  it("reaches EXECUTED but not VERIFIED when execution has no bound observations", () => {
+    const result = evaluateWorldState({
+      intended: true,
+      authorized: true,
+      expected: captureExpectedState({
+        artifactHash: "abc",
+        toolName: "knowledge_search",
+      }),
+      actual: {
+        artifactHash: "abc",
+        toolName: "knowledge_search",
+        executed: true,
+        output: "ok",
+      },
+    });
+    expect(result.stageReached).toBe("EXECUTED");
+    expect(result.loopVerdict).toBe("INCONCLUSIVE");
+  });
+
+  it("reaches VERIFIED only when expected observations match and regression does not fail", () => {
+    const result = evaluateWorldState({
+      intended: true,
+      authorized: true,
+      expected,
+      actual: {
+        artifactHash: "abc",
+        toolName: "knowledge_search",
+        executed: true,
+        output: "observation: answer = 42",
+      },
+      baselineObservations: ["answer = 42"],
+    });
+    expect(result.stageReached).toBe("VERIFIED");
+    expect(result.loopVerdict).toBe("VERIFIED");
   });
 });
 

@@ -10,6 +10,7 @@ import {
   type GovernedIdentity,
 } from "@atlas/shared";
 import type { SupervisedGovernanceDecision } from "./supervised-governance.js";
+import { assertControlPlaneApiEgress } from "./control-plane-egress.js";
 
 export type LifecycleHandoffStatus =
   | "NOT_ATTEMPTED"
@@ -53,6 +54,10 @@ export async function callAtlasApi(
       ok: false,
       reason: "ATLAS_API_URL or ATLAS_CONTROL_PLANE_TOKEN is not set",
     };
+  }
+  const denied = assertControlPlaneApiEgress(`cp-api:${path}`);
+  if (denied) {
+    return { ok: false, reason: denied };
   }
   try {
     const response = await fetch(`${base}${path}`, {
