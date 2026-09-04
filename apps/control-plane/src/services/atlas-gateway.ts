@@ -72,6 +72,8 @@ export interface GatewayRequest {
   readonly evidenceStale?: boolean;
   readonly boundEvidenceIds?: readonly string[];
   readonly conflictingClaimIds?: readonly string[];
+  /** HTTP Control Plane request id — forwarded on the API handoff, not reminted. */
+  readonly requestId?: string;
 }
 
 export interface GatewayEvaluation {
@@ -269,12 +271,14 @@ function asReceiptVerdict(value: unknown): ReceiptVerificationVerdict | null {
 
 async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation): Promise<GatewayEvaluation> {
   const ids = newReceiptIds();
+  const requestId = input.requestId ?? ids.requestId;
+  const overlay = input.agentId ? getRegisteredAgent(input.agentId) : undefined;
   if (isReadLike(input.operation)) {
     const observation = observeApplication(input.applicationId);
     const verified = observation !== null;
     const receipt: ExecutionReceipt = {
       receiptId: ids.receiptId,
-      requestId: ids.requestId,
+      requestId,
       applicationId: input.applicationId,
       operation: input.operation,
       agentId: input.agentId ?? null,
@@ -314,7 +318,7 @@ async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation
   if (input.applicationId !== ATLAS_SELF_APPLICATION_ID) {
     const receipt: ExecutionReceipt = {
       receiptId: ids.receiptId,
-      requestId: ids.requestId,
+      requestId,
       applicationId: input.applicationId,
       operation: input.operation,
       agentId: input.agentId ?? null,
@@ -336,7 +340,7 @@ async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation
   if (!input.agentId) {
     const receipt: ExecutionReceipt = {
       receiptId: ids.receiptId,
-      requestId: ids.requestId,
+      requestId,
       applicationId: input.applicationId,
       operation: input.operation,
       agentId: null,
@@ -356,18 +360,19 @@ async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation
 
   const api = await callAtlasApi("/api/v1/gateway/fulfill", {
     method: "POST",
-    requestId: ids.requestId,
+    requestId,
     body: {
       applicationId: input.applicationId,
       agentId: input.agentId,
       operation: input.operation,
+      ...(overlay ? { agentRuntimeStatus: overlay.status } : {}),
     },
   });
 
   if (!api.ok) {
     const receipt: ExecutionReceipt = {
       receiptId: ids.receiptId,
-      requestId: ids.requestId,
+      requestId,
       applicationId: input.applicationId,
       operation: input.operation,
       agentId: input.agentId,
@@ -394,7 +399,7 @@ async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation
   const executed = body.executed === true;
   const receipt: ExecutionReceipt = {
     receiptId: ids.receiptId,
-    requestId: ids.requestId,
+    requestId,
     applicationId: input.applicationId,
     operation: input.operation,
     agentId: input.agentId,

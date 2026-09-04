@@ -31,6 +31,7 @@ import {
 } from "../services/agent-runtime-authz.js";
 import { findRepoRoot } from "../services/repo-root.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
+import { lookupControlPlaneAgentRuntimeStatus } from "../services/control-plane-bridge.js";
 import {
   getKnowledgeCorpusPersistPath,
   getKnowledgeCorpusSource,

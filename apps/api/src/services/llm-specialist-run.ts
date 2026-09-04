@@ -12,6 +12,7 @@ import {
   type AllowedProposalAction,
 } from "./llm-specialist-proposal.js";
 import { submitAgentProposal } from "./agent-proposal.js";
+import { lookupControlPlaneAgentRuntimeStatus } from "./control-plane-bridge.js";
 
 /**
  * The one place the "proposal-first specialist" shape lives: generate a
@@ -66,6 +67,9 @@ export interface ProposalBackedSpecialistInput {
   /** Provider selection/credentials from `app.atlasEnv`; omitted → free offline provider. */
   readonly env?: LlmEnv;
   readonly taskId?: string;
+  /** Orchestrator → specialist is one hop. Direct tool-execute stays at 0. */
+  readonly delegationHopCount?: number;
+  readonly requestId?: string;
 }
 
 /** Evidence references for the run result: the real URI when the model cited one, else its raw reference string. */
@@ -141,6 +145,7 @@ export async function runProposalBackedSpecialist(
 
   let gate: Awaited<ReturnType<typeof submitAgentProposal>>;
   try {
+    const lookup = await lookupControlPlaneAgentRuntimeStatus(config.agentId);
     gate = await submitAgentProposal(proposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: input.ownerId,
@@ -157,6 +162,10 @@ export async function runProposalBackedSpecialist(
         trustLevel: generated.promptFlagged ? "untrusted" : "trusted",
       },
       routeLabel: config.routeLabel,
+      trustLevel: "DELEGATED",
+      delegationHopCount: input.delegationHopCount ?? 1,
+      ...(lookup.configured ? { agentRuntimeStatus: lookup.status } : {}),
+      ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
     });
   } catch (error) {
     return agentRunResultSchema.parse({

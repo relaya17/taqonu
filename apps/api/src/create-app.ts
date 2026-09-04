@@ -1,6 +1,7 @@
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import type { ServerEnv } from "@atlas/config";
 import { createLogger } from "@atlas/observability";
 import { isAllowedWebOrigin } from "./lib/web-origin.js";
@@ -86,6 +87,8 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
 
   const app = Fastify({
     logger: false,
+    requestIdHeader: "x-request-id",
+    genReqId: () => randomUUID(),
   });
 
   await app.register(cors, {

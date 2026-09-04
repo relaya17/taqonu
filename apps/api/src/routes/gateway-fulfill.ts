@@ -4,6 +4,7 @@ import {
   AtlasError,
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_SYSTEM_ID,
+  AGENT_RUNTIME_CONTROLS,
 } from "@atlas/shared";
 import { requireOperator } from "../middleware/auth-guards.js";
 import { findRepoRoot } from "../services/repo-root.js";
@@ -32,6 +33,7 @@ const bodySchema = z.object({
   approvalRequestId: z.string().uuid().optional(),
   expectedObservations: z.array(z.string().trim().min(1)).max(32).optional(),
   baselineObservations: z.array(z.string().trim().min(1)).max(32).optional(),
+  agentRuntimeStatus: z.enum(AGENT_RUNTIME_CONTROLS).optional(),
 });
 
 /**
@@ -44,16 +46,12 @@ export async function registerGatewayFulfillRoutes(
 ): Promise<void> {
   app.post("/api/v1/gateway/fulfill", async (request) => {
     const body = bodySchema.parse(request.body ?? {});
-    const sessionOwnerId = isControlPlaneServiceAuthorization(
+    const isCpService = isControlPlaneServiceAuthorization(
       request.headers.authorization,
-    )
+    );
+    const sessionOwnerId = isCpService
       ? controlPlaneFulfillOwner(body.applicationId)
       : (await requireOperator(app, request)).id;
-    const incomingRequestId = request.headers["x-request-id"];
-    const requestId =
-      typeof incomingRequestId === "string" && incomingRequestId.trim().length > 0
-        ? incomingRequestId.trim()
-        : request.id;
     return fulfillGatewayHandoff({
       sessionOwnerId,
       applicationId: body.applicationId,
@@ -61,7 +59,7 @@ export async function registerGatewayFulfillRoutes(
       operation: body.operation,
       projectRoot: findRepoRoot(),
       projectId: body.projectId === undefined ? null : body.projectId,
-      requestId,
+      requestId: request.id,
       ...(body.toolArgs ? { toolArgs: body.toolArgs } : {}),
       ...(body.artifact ? { artifact: body.artifact } : {}),
       ...(body.approvalRequestId
@@ -72,6 +70,9 @@ export async function registerGatewayFulfillRoutes(
         : {}),
       ...(body.baselineObservations
         ? { baselineObservations: body.baselineObservations }
+        : {}),
+      ...(isCpService && body.agentRuntimeStatus
+        ? { agentRuntimeStatus: body.agentRuntimeStatus }
         : {}),
     });
   });

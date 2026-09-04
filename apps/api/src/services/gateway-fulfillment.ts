@@ -40,6 +40,15 @@ export interface GatewayHandoff {
   readonly expectedObservations?: readonly string[];
   /** Prior observations that must still hold after mutation. Empty → not "no regression". */
   readonly baselineObservations?: readonly string[];
+  readonly agentRuntimeStatus?:
+    | "ACTIVE"
+    | "PAUSED"
+    | "DISABLED"
+    | "REVOKED"
+    | "QUARANTINED"
+    | "SUSPENDED"
+    | "DEGRADED"
+    | "UNKNOWN";
 }
 
 export interface GatewayFulfillmentResult {
@@ -90,6 +99,9 @@ export async function fulfillGatewayHandoff(
     sessionOwnerId: handoff.sessionOwnerId,
     projectId: handoff.projectId,
     trustLevel: "FULL",
+    ...(handoff.agentRuntimeStatus !== undefined
+      ? { runtimeStatus: handoff.agentRuntimeStatus }
+      : {}),
   });
 
   const artifact =
@@ -143,6 +155,9 @@ export async function fulfillGatewayHandoff(
     requestId: handoff.requestId,
     applicationId: handoff.applicationId,
     operation: handoff.operation,
+    ...(identity.runtimeStatus !== undefined
+      ? { agentRuntimeStatus: identity.runtimeStatus }
+      : {}),
     ...(handoff.approvalRequestId
       ? { approvalRequestId: handoff.approvalRequestId }
       : {}),

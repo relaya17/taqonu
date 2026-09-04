@@ -4,7 +4,7 @@ import {
   type EntityAction,
   type ProposalVerificationResult,
 } from "@atlas/agent-core";
-import { agentProposalSchema, type AgentProposal } from "@atlas/shared";
+import { agentProposalSchema, effectiveDelegationHopCount, type AgentProposal } from "@atlas/shared";
 import {
   dispatchAgentAction,
   unevaluatedGovernanceEvaluation,
@@ -80,6 +80,8 @@ export interface SubmitAgentProposalOptions {
    * Each agent-to-agent hop floors the risk bucket to at least APPROVAL.
    */
   readonly delegationHopCount?: number;
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+  readonly requestId?: string;
 }
 
 /** Proposal metadata carried alongside the raw dispatch decision, for audit-trail-provable rationale/claims. */
@@ -197,9 +199,14 @@ export async function submitAgentProposal(
     ...(options.agentRuntimeStatus !== undefined
       ? { agentRuntimeStatus: options.agentRuntimeStatus }
       : {}),
-    ...(options.delegationHopCount !== undefined
-      ? { delegationHopCount: options.delegationHopCount }
-      : {}),
+    trustLevel: options.trustLevel ?? "FULL",
+    delegationHopCount: effectiveDelegationHopCount({
+      ...(options.delegationHopCount !== undefined
+        ? { delegationHopCount: options.delegationHopCount }
+        : {}),
+      trustLevel: options.trustLevel ?? "FULL",
+    }),
+    ...(options.requestId !== undefined ? { requestId: options.requestId } : {}),
   });
 
   return {
