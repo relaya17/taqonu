@@ -35,7 +35,10 @@ import {
   computeExpertBattleMetrics,
   computeAgentRankings,
 } from "../services/agent-reputation.js";
-import { recommendFromVerificationHistory } from "../services/verification-learning.js";
+import {
+  recommendFromVerificationHistory,
+  scoreHistoricalOutcomes,
+} from "../services/verification-learning.js";
 import { listUnifiedAuditEntries } from "../services/audit-log.js";
 import { FABRIC_AGENT_IDS, type FabricAgentId, type AgentMode, AGENT_MODES } from "@atlas/shared";
 
@@ -314,6 +317,17 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
         verificationVerdict: entry.verificationVerdict,
         regressionVerdict: entry.regressionVerdict,
         result: entry.result,
+      })),
+    );
+  });
+
+  app.get("/api/v1/intelligence/outcome-signals", async () => {
+    const entries = listUnifiedAuditEntries();
+    return scoreHistoricalOutcomes(
+      entries.map((entry) => ({
+        result: entry.result,
+        verificationVerdict: entry.verificationVerdict,
+        agentId: entry.agentId,
       })),
     );
   });

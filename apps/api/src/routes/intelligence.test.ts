@@ -477,4 +477,20 @@ describe("Unit 6 read regression: public GET routes remain readable and unauthen
     expect(body.lessons.every((lesson) => lesson.executes === false)).toBe(true);
     expect(body.lessons.every((lesson) => lesson.autoApply === false)).toBe(true);
   });
+
+  it("GET /outcome-signals scores history and does not execute", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/intelligence/outcome-signals",
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      executes: boolean;
+      autoApply: boolean;
+      mutatesGovernance: boolean;
+    };
+    expect(body.executes).toBe(false);
+    expect(body.autoApply).toBe(false);
+    expect(body.mutatesGovernance).toBe(false);
+  });
 });

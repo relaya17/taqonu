@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { recommendFromVerificationHistory } from "./verification-learning.js";
+import {
+  recommendFromVerificationHistory,
+  scoreHistoricalOutcomes,
+} from "./verification-learning.js";
 
 describe("recommendFromVerificationHistory", () => {
   it("never marks lessons as executable or auto-apply", () => {
@@ -17,5 +20,19 @@ describe("recommendFromVerificationHistory", () => {
     ]);
     expect(report.regressionFailed).toBe(1);
     expect(report.lessons.some((lesson) => lesson.title.includes("Regression"))).toBe(true);
+  });
+});
+
+describe("scoreHistoricalOutcomes", () => {
+  it("never grants privileges or mutates governance", () => {
+    const report = scoreHistoricalOutcomes([
+      { result: "SUCCESS", verificationVerdict: "INCONCLUSIVE", agentId: "RESEARCHER" },
+      { result: "FAILURE", verificationVerdict: "FAILED", agentId: "RESEARCHER" },
+    ]);
+    expect(report.executes).toBe(false);
+    expect(report.autoApply).toBe(false);
+    expect(report.mutatesGovernance).toBe(false);
+    expect(report.successRate).toBe(0.5);
+    expect(report.recommendation).toMatch(/Do not auto-approve/);
   });
 });
