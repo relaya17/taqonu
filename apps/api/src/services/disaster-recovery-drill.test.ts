@@ -27,6 +27,7 @@ describe("canonical audit restore drill", () => {
     const result = runCanonicalAuditRestoreDrill({
       sourcePath: join(sourceDir, "audit.ndjson"),
       drillDir,
+      offsiteDir: null,
     });
     expect(result.ok).toBe(true);
     expect(result.status).toBe("VALID");
@@ -37,5 +38,19 @@ describe("canonical audit restore drill", () => {
     ) as { offsite: boolean; status: string };
     expect(receipt.offsite).toBe(false);
     expect(receipt.status).toBe("VALID");
+  });
+
+  it("replicas a verified copy to a configured directory and records offsite true", () => {
+    const offsiteDir = mkdtempSync(join(tmpdir(), "atlas-dr-offsite-"));
+    const result = runCanonicalAuditRestoreDrill({
+      sourcePath: join(sourceDir, "audit.ndjson"),
+      drillDir,
+      offsiteDir,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.offsite).toBe(true);
+    expect(result.offsitePath).toBe(join(offsiteDir, "audit.ndjson"));
+    expect(result.offsiteChecksum).toMatch(/^[a-f0-9]{64}$/);
+    rmSync(offsiteDir, { recursive: true, force: true });
   });
 });
