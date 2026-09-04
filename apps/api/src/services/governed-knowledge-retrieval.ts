@@ -1,4 +1,10 @@
-import { AtlasError, type KnowledgeSearchResult } from "@atlas/shared";
+import {
+  AtlasError,
+  ATLAS_SELF_APPLICATION_ID,
+  ATLAS_SELF_PROJECT_ID,
+  ATLAS_SELF_TENANT_ID,
+  type KnowledgeSearchResult,
+} from "@atlas/shared";
 import {
   isCompleteKnowledgeScope,
   missingKnowledgeScopeReason,
@@ -14,6 +20,46 @@ import { appendUnifiedAuditEntry } from "./audit-log.js";
 import { findRepoRoot } from "./repo-root.js";
 import { searchKnowledgeClosedLoop, type HybridRagEnv } from "./hybrid-rag.js";
 import { knowledgeSearchArtifact, registerKnowledgeSearchTool } from "./knowledge-search-tool.js";
+import { osStore } from "../store/os-store.js";
+import { getProjectOwnerId } from "./project-access.js";
+
+/** Conversation / agent-run retrieval uses the fabric RESEARCHER identity. */
+export const ATLAS_SURFACE_KNOWLEDGE_AGENT_ID = "RESEARCHER";
+
+/**
+ * Bind Knowledge Fabric scope from the authenticated Atlas-self session.
+ * Never inferred from an untrusted body. A requested project that is missing
+ * or owned by someone else fails closed (null) instead of impersonating.
+ */
+export function resolveAtlasSurfaceKnowledgeScope(input: {
+  readonly sessionOwnerId: string;
+  readonly requestedProjectId?: string | null;
+}): KnowledgeRetrievalScope | null {
+  const ownerId = input.sessionOwnerId.trim();
+  if (!ownerId) return null;
+
+  const requested = input.requestedProjectId?.trim() || null;
+  if (requested) {
+    if (!osStore.getProject(requested)) return null;
+    const boundOwner = getProjectOwnerId(requested);
+    if (boundOwner && boundOwner !== ownerId) return null;
+    return {
+      ownerId,
+      tenantId: ATLAS_SELF_TENANT_ID,
+      projectId: requested,
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+      requestingAgentId: ATLAS_SURFACE_KNOWLEDGE_AGENT_ID,
+    };
+  }
+
+  return {
+    ownerId,
+    tenantId: ATLAS_SELF_TENANT_ID,
+    projectId: ATLAS_SELF_PROJECT_ID,
+    applicationId: ATLAS_SELF_APPLICATION_ID,
+    requestingAgentId: ATLAS_SURFACE_KNOWLEDGE_AGENT_ID,
+  };
+}
 
 export type GovernedKnowledgeRetrieval =
   | { readonly ok: true; readonly result: KnowledgeSearchResult }
@@ -102,6 +148,8 @@ export async function retrieveGovernedKnowledge(input: {
   readonly pin?: KnowledgePin;
 }): Promise<GovernedKnowledgeRetrieval> {
   registerKnowledgeSearchTool(input.env);
+  const scopedProjectId = input.scope.projectId;
+  const scopedAgentId = input.scope.requestingAgentId;
   if (!isCompleteKnowledgeScope(input.scope)) {
     const reason = missingKnowledgeScopeReason(input.scope);
     const result = await searchKnowledgeClosedLoop(input.env, {
@@ -110,8 +158,8 @@ export async function retrieveGovernedKnowledge(input: {
     });
     auditRetrieval({
       ownerId: input.sessionOwnerId,
-      projectId: input.scope.projectId,
-      agentId: input.scope.requestingAgentId,
+      projectId: scopedProjectId,
+      agentId: scopedAgentId,
       query: input.query,
       result,
       reason,

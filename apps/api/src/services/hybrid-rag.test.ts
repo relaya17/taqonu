@@ -55,6 +55,29 @@ describe("hybrid-rag closed loop", () => {
     expect(document.embedding?.length).toBe(64);
   });
 
+  it("does not query pgvector when retrieval scope is incomplete", async () => {
+    const tryHybrid = vi.fn();
+    vi.doMock("@atlas/database", async () => {
+      const actual = await vi.importActual<typeof import("@atlas/database")>(
+        "@atlas/database",
+      );
+      return {
+        ...actual,
+        isLiveKnowledgeStore: () => true,
+        tryHybridSearchKnowledgeChunks: tryHybrid,
+        tryPersistKnowledgeChunk: vi.fn().mockResolvedValue(null),
+      };
+    });
+    const { searchKnowledgeClosedLoop } = await import("./hybrid-rag.js");
+    const result = await searchKnowledgeClosedLoop(liveEnv, {
+      query: "webhook idempotency",
+      scope: null,
+    });
+    expect(tryHybrid).not.toHaveBeenCalled();
+    expect(result.hits).toHaveLength(0);
+    expect(result.plainLanguage).toMatch(/scope/);
+  });
+
   it("live empty pgvector answer stays INSUFFICIENT_EVIDENCE (no local invent)", async () => {
     vi.doMock("@atlas/database", async () => {
       const actual = await vi.importActual<typeof import("@atlas/database")>(

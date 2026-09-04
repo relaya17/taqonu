@@ -8,6 +8,7 @@ import {
   getKnowledgeCorpusSource,
   ingestKnowledgeDocument,
   listKnowledgeCorpus,
+  isCompleteKnowledgeScope,
   searchKnowledgeFabric,
   upsertKnowledgeDocument,
   type CorpusDoc,
@@ -224,7 +225,13 @@ export async function searchKnowledgeClosedLoop(
 ): Promise<KnowledgeSearchResult> {
   const provider = getDefaultEmbeddingProvider();
   const [queryEmbedding] = await safeEmbed(provider, [input.query]);
-  if (!queryEmbedding || !isLiveKnowledgeStore(env)) {
+  const scope = input.scope ?? null;
+  // Incomplete scope never queries pgvector — candidates would leak across tenants.
+  if (
+    !queryEmbedding ||
+    !isLiveKnowledgeStore(env) ||
+    !isCompleteKnowledgeScope(scope)
+  ) {
     return localHybridSearch(input);
   }
 
@@ -233,6 +240,10 @@ export async function searchKnowledgeClosedLoop(
     queryText: input.query,
     matchThreshold: 0.2,
     matchCount: Math.max((input.maxResults ?? 20) * 3, 40),
+    ownerId: scope.ownerId,
+    tenantId: scope.tenantId,
+    projectId: scope.projectId,
+    applicationId: scope.applicationId,
   });
 
   // null = store offline/error → local fallback. [] = live INSUFFICIENT_EVIDENCE.

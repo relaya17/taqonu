@@ -102,10 +102,20 @@ describe("KnowledgeChunkRepository", () => {
     const matches = await repo.matchHybrid({
       queryEmbedding: embedding,
       queryText: "authz",
+      ownerId: "owner-1",
+      tenantId: "atlas",
+      projectId: "project-1",
+      applicationId: "def-000",
     });
     expect(rpc).toHaveBeenCalledWith(
       "match_knowledge_chunks",
-      expect.objectContaining({ query_text: "authz" }),
+      expect.objectContaining({
+        query_text: "authz",
+        filter_owner_id: "owner-1",
+        filter_tenant_id: "atlas",
+        filter_project_id: "project-1",
+        filter_application_id: "def-000",
+      }),
     );
     expect(matches).toHaveLength(1);
     expect(matches[0]?.similarity).toBeCloseTo(0.82);

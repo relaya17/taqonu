@@ -77,6 +77,10 @@ export async function tryHybridSearchKnowledgeChunks(
     queryText: string;
     matchThreshold?: number;
     matchCount?: number;
+    ownerId?: string | null;
+    tenantId?: string | null;
+    projectId?: string | null;
+    applicationId?: string | null;
   },
 ): Promise<readonly KnowledgeChunkMatch[] | null> {
   if (!isLiveKnowledgeStore(env)) return null;

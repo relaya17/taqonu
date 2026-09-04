@@ -1001,3 +1001,12 @@ overrides VERIFIED. This is not a QA product.
 goes through `decideEgress` (`atlas_internal` / TELEMETRY). Same-origin
 dashboard fetches, test harnesses, and the public landing page remain
 classified exceptions. No second egress engine.
+
+## 45. Phase 09 Memory / Knowledge (2026-09-04)
+
+**Status: COMPLETE** for the existing Knowledge Fabric. Conversation and
+agent-run retrieval bind Atlas-self scope from the authenticated session
+(`resolveAtlasSurfaceKnowledgeScope`). `match_knowledge_chunks` filters
+project-scoped rows in SQL and returns metadata. Incomplete scope never
+queries pgvector. Identity is never inferred. Historical chunks are not
+rewritten. Unrestricted web crawl remains not claimed.

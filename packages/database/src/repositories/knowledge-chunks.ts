@@ -117,6 +117,10 @@ export class KnowledgeChunkRepository {
     queryText: string;
     matchThreshold?: number;
     matchCount?: number;
+    ownerId?: string | null;
+    tenantId?: string | null;
+    projectId?: string | null;
+    applicationId?: string | null;
   }): Promise<readonly KnowledgeChunkMatch[]> {
     if (input.queryEmbedding.length !== KNOWLEDGE_EMBEDDING_DIMS) {
       throw new Error(
@@ -128,6 +132,10 @@ export class KnowledgeChunkRepository {
       query_text: input.queryText,
       match_threshold: input.matchThreshold ?? 0.2,
       match_count: input.matchCount ?? 40,
+      filter_owner_id: input.ownerId ?? null,
+      filter_tenant_id: input.tenantId ?? null,
+      filter_project_id: input.projectId ?? null,
+      filter_application_id: input.applicationId ?? null,
     });
     if (error) throw error;
     const rows = (data ?? []) as Record<string, unknown>[];

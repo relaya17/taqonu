@@ -29,7 +29,10 @@ import {
   resolveTier,
 } from "../services/plan-quota.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
-import { searchEligibleKnowledge } from "../services/governed-knowledge-retrieval.js";
+import {
+  resolveAtlasSurfaceKnowledgeScope,
+  searchEligibleKnowledge,
+} from "../services/governed-knowledge-retrieval.js";
 import {
   collectEvidenceRefs,
   insufficientEvidenceAnswer,
@@ -174,7 +177,10 @@ export async function registerConversationRoutes(
       knowledge = await searchEligibleKnowledge({
         env: app.atlasEnv,
         query: body.message,
-        scope: null,
+        scope: resolveAtlasSurfaceKnowledgeScope({
+          sessionOwnerId: user.id,
+          requestedProjectId: projectId,
+        }),
         maxResults: 8,
       });
     } catch {

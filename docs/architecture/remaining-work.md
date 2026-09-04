@@ -209,6 +209,8 @@ fetches remain classified exceptions.
 No new egress product.
 
 ## 09 MEMORY / KNOWLEDGE INTEGRITY
+**Status: COMPLETE** for the existing Knowledge Fabric (no second memory product).
+
 **Implemented:** `capEpistemicStateForSource` — AGENT ceiling is PROPOSED
 (AGENT+FACT cannot become FACT). `agent.run.completed` is forced to OBSERVED
 via `memoryEpistemicAfterAction`. Gateway memory is OBSERVED. No new memory types.
@@ -459,11 +461,17 @@ Conversation/agent retrieval uses the same eligibility function. Provenance
 fields (`sourceId`, `sourceVersion`, `documentId`) attach to hits;
 `collectEvidenceRefs` cites them. Unified audit records `knowledge.retrieved`.
 
-**Remaining limitation:** Conversation and agent-run bodies do not yet
-carry tenant/application/agent scope, so those paths fail closed to empty
-knowledge rather than inferring identity. `match_knowledge_chunks` still
-returns candidates without SQL-level tenant filters; eligibility filters
-after retrieve.
+Conversation and agent-run retrieval now bind Atlas-self scope from the
+authenticated session (`resolveAtlasSurfaceKnowledgeScope`): owner = session
+user, tenant = `atlas`, application = `def-000`, agent = `RESEARCHER`.
+A requested project is used only when it exists and is owned by the
+session; otherwise the path fails closed. Identity is never inferred from
+the body.
+
+`match_knowledge_chunks` now filters project-scoped rows by owner / tenant
+/ project / application metadata and returns metadata for eligibility.
+Unscoped reference rows remain visible. Incomplete scope never queries
+pgvector. Historical chunks are not rewritten.
 
 **Not claimed:** Unrestricted web crawl.
 

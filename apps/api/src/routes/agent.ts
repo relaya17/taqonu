@@ -37,7 +37,10 @@ import {
   patchArtifactSchema,
   type EngineeringAgentMode,
 } from "@atlas/shared";
-import { searchEligibleKnowledge } from "../services/governed-knowledge-retrieval.js";
+import {
+  resolveAtlasSurfaceKnowledgeScope,
+  searchEligibleKnowledge,
+} from "../services/governed-knowledge-retrieval.js";
 import {
   collectEvidenceRefs,
   insufficientEvidenceAnswer,
@@ -192,7 +195,10 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       knowledge = await searchEligibleKnowledge({
         env: app.atlasEnv,
         query: body.userRequest,
-        scope: null,
+        scope: resolveAtlasSurfaceKnowledgeScope({
+          sessionOwnerId: identity.ownerId,
+          requestedProjectId: projectId,
+        }),
         maxResults: 8,
       });
     } catch {

@@ -59,7 +59,7 @@ const STALE_AFTER_DAYS = 365;
 
 export function isCompleteKnowledgeScope(
   value: KnowledgeRetrievalScope | null | undefined,
-): boolean {
+): value is KnowledgeRetrievalScope {
   if (!value) return false;
   return (
     value.ownerId.trim().length > 0 &&
