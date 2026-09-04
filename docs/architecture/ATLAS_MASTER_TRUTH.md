@@ -923,3 +923,26 @@ fulfill. Missing config / unreachable API fail closed.
 - Sibling observe-only remaining (target P7/P10).
 
 Do not start remaining-work item 03 from this close.
+
+## 39. Phase 03 Identity / Authorization (2026-09-04)
+
+**Status: COMPLETE** for the existing identity model. No redesign.
+
+Focused completion found one reachable enforcement hole and one identity
+correctness defect:
+
+- `requireOwnerRole` existed and was unit-tested, but no production route
+  called it. `GET /api/v1/owner/brief` is now owner-only.
+- Control Plane role was process-global (`resolvedPrincipalRole`). Concurrent
+  requests could confuse OWNER and OPERATOR. Role is now request-scoped
+  (`WeakMap` on `IncomingMessage`).
+- Identical `ATLAS_CONTROL_PLANE_TOKEN` and
+  `ATLAS_CONTROL_PLANE_OWNER_TOKEN` values no longer elevate to OWNER.
+
+Unchanged and still sound: principal kinds; `cp:service` SERVICE identity;
+body `actorId` ignored; missing principal DENY at IDENTITY; customer admin
+≠ operator; `/admin/users` cannot grant operator/owner; `requireOwner` on
+the tenant API; Atlas-self `def-000` identity; gateway fulfill session user.
+
+**Not claimed here:** Control Plane bearer MFA and token rotation (Phase 04);
+sibling execution identity (later-scope).

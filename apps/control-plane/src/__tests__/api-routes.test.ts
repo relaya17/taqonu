@@ -11,7 +11,11 @@ import {
   resetAgentRuntimeForTests,
 } from "../services/agent-registry.js";
 import { setAtlasSelfControlApprovalVerifier } from "../services/atlas-self-agent-control.js";
-import { issueReauthTicket } from "../control-plane-auth.js";
+import {
+  authorizeControlPlaneRequest,
+  issueReauthTicket,
+  resetPrincipalRoleForTests,
+} from "../control-plane-auth.js";
 import { resetApplicationRegistryForTests } from "../services/application-registry.js";
 import { resetCivioConnectorForTests } from "../services/civio-connector.js";
 import { Readable } from "node:stream";
@@ -109,6 +113,9 @@ describe("Control Plane — API Routes", () => {
     resetAgentRuntimeForTests();
     resetCivioConnectorForTests();
     setAtlasSelfControlApprovalVerifier(null);
+    resetPrincipalRoleForTests();
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    delete process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN;
   });
 
   // ── Status ─────────────────────────────────────────────────────────
@@ -687,6 +694,36 @@ describe("Control Plane — API Routes", () => {
             entry.reason.includes(approvalId),
         ),
       ).toBe(true);
+    });
+  });
+
+  describe("GET /api/v1/owner/brief", () => {
+    it("denies operator and allows owner", async () => {
+      process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
+      process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "owner-secret";
+
+      const operatorReq = createMockReq("GET", "/api/v1/owner/brief", {
+        headers: { authorization: "Bearer operator-secret" },
+      });
+      expect(
+        authorizeControlPlaneRequest(operatorReq, createMockRes(), "/api/v1/owner/brief"),
+      ).toBe(true);
+      const operatorRes = createMockRes();
+      await router.handle(operatorReq, operatorRes);
+      expect(operatorRes._mock.statusCode).toBe(403);
+      expect(JSON.parse(operatorRes._mock.body).error).toMatch(/owner role required/i);
+
+      const ownerReq = createMockReq("GET", "/api/v1/owner/brief", {
+        headers: { authorization: "Bearer owner-secret" },
+      });
+      expect(
+        authorizeControlPlaneRequest(ownerReq, createMockRes(), "/api/v1/owner/brief"),
+      ).toBe(true);
+      const ownerRes = createMockRes();
+      await router.handle(ownerReq, ownerRes);
+      expect(ownerRes._mock.statusCode).toBe(200);
+      const body = JSON.parse(ownerRes._mock.body) as { pendingApprovals: number };
+      expect(typeof body.pendingApprovals).toBe("number");
     });
   });
 

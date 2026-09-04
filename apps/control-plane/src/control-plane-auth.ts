@@ -16,16 +16,29 @@ export interface ControlPlanePrincipal {
   readonly role: ControlPlanePrincipalRole;
 }
 
-let resolvedPrincipalRole: ControlPlanePrincipalRole | null = null;
+/**
+ * Request-scoped role. A process-global last-writer would confuse OWNER and
+ * OPERATOR under concurrent requests (identity mix-up).
+ */
+const principalRoleByRequest = new WeakMap<IncomingMessage, ControlPlanePrincipalRole>();
 
-export function resolveControlPlanePrincipal(): ControlPlanePrincipal {
-  const role = resolvedPrincipalRole ?? "OPERATOR";
+export function resolveControlPlanePrincipal(
+  req?: IncomingMessage,
+): ControlPlanePrincipal {
+  const role = (req ? principalRoleByRequest.get(req) : undefined) ?? "OPERATOR";
   return { kind: "SERVICE", id: CONTROL_PLANE_SERVICE_ID, actorKind: "SYSTEM", role };
 }
 
-/** Returns true if the current request was authenticated with the owner token. */
-export function isOwnerPrincipal(): boolean {
-  return resolvedPrincipalRole === "OWNER";
+/** Returns true if this request was authenticated as OWNER. */
+export function isOwnerPrincipal(req?: IncomingMessage): boolean {
+  return Boolean(req) && principalRoleByRequest.get(req!) === "OWNER";
+}
+
+function bindPrincipalRole(
+  req: IncomingMessage,
+  role: ControlPlanePrincipalRole,
+): void {
+  principalRoleByRequest.set(req, role);
 }
 
 /**
@@ -136,11 +149,9 @@ export function isSensitiveControlMutation(pathname: string, method: string): bo
   );
 }
 
-/**
- * Reset the resolved principal role (for testing).
- */
+/** Test hook retained so existing suites can reset per-case state. */
 export function resetPrincipalRoleForTests(): void {
-  resolvedPrincipalRole = null;
+  /* request-scoped WeakMap — nothing process-global to clear */
 }
 
 /**
@@ -151,24 +162,30 @@ export function authorizeControlPlaneRequest(
   res: ServerResponse,
   pathname: string,
 ): boolean {
-  resolvedPrincipalRole = null;
-
   if (isControlPlanePublicPath(pathname)) return true;
   if (isCivioConnectorIngressPath(pathname)) return true;
 
   const ownerToken = controlPlaneOwnerToken();
   const operatorToken = controlPlaneToken();
   const presented = bearerFrom(req);
+  const tokensCollide =
+    Boolean(ownerToken) &&
+    Boolean(operatorToken) &&
+    tokensEqual(ownerToken!, operatorToken!);
 
-  // Check owner token first (higher privilege)
-  if (ownerToken && presented && tokensEqual(presented, ownerToken)) {
-    resolvedPrincipalRole = "OWNER";
+  // Distinct owner credential only. Identical tokens cannot elevate to OWNER.
+  if (
+    !tokensCollide &&
+    ownerToken &&
+    presented &&
+    tokensEqual(presented, ownerToken)
+  ) {
+    bindPrincipalRole(req, "OWNER");
     return true;
   }
 
-  // Check operator token
   if (operatorToken && presented && tokensEqual(presented, operatorToken)) {
-    resolvedPrincipalRole = "OPERATOR";
+    bindPrincipalRole(req, "OPERATOR");
     return true;
   }
 
@@ -183,7 +200,7 @@ export function authorizeControlPlaneRequest(
         return false;
       }
     }
-    resolvedPrincipalRole = browserSession.role;
+    bindPrincipalRole(req, browserSession.role);
     return true;
   }
 
@@ -209,7 +226,7 @@ export function authorizeControlPlaneRequest(
   // Loopback dev defaults to OPERATOR
   const remote = req.socket.remoteAddress;
   if (isLoopbackAddress(remote)) {
-    resolvedPrincipalRole = "OPERATOR";
+    bindPrincipalRole(req, "OPERATOR");
     return true;
   }
   json(res, { error: "Control Plane is loopback-only without a token" }, 403);
@@ -221,9 +238,10 @@ export function authorizeControlPlaneRequest(
  * Call after authorizeControlPlaneRequest returns true.
  */
 export function requireOwnerRole(
+  req: IncomingMessage,
   res: ServerResponse,
 ): boolean {
-  if (resolvedPrincipalRole === "OWNER") return true;
+  if (principalRoleByRequest.get(req) === "OWNER") return true;
   json(res, { error: "Control Plane owner role required" }, 403);
   return false;
 }

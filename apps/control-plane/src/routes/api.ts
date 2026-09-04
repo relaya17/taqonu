@@ -50,6 +50,7 @@ import {
 } from "@atlas/shared";
 import {
   issueReauthTicket,
+  requireOwnerRole,
   resolveControlPlanePrincipal,
   verifyReauthTicket,
 } from "../control-plane-auth.js";
@@ -316,7 +317,8 @@ export function createApiRouter(): Router {
     json(res, runSelfAudit());
   });
 
-  router.get("/api/v1/owner/brief", (_req, res) => {
+  router.get("/api/v1/owner/brief", (req, res) => {
+    if (!requireOwnerRole(req, res)) return;
     json(res, ownerBrief());
   });
 
@@ -402,7 +404,7 @@ export function createApiRouter(): Router {
     const reauthHeader = headerValue(req, "x-atlas-reauth");
     const needsReauth = writeOps.has(operation);
     const reauthenticated = needsReauth ? verifyReauthTicket(reauthHeader) : true;
-    const principal = resolveControlPlanePrincipal();
+    const principal = resolveControlPlanePrincipal(req);
     const boundEvidenceIds = stringArray(record["boundEvidenceIds"]);
     const conflictingClaimIds = stringArray(record["conflictingClaimIds"]);
     const evaluation = await dispatchGatewayOperation({
@@ -477,7 +479,7 @@ export function createApiRouter(): Router {
       json(res, { error: "action must be pause|resume|disable|quarantine|revoke" }, 400);
       return;
     }
-    const principal = resolveControlPlanePrincipal();
+    const principal = resolveControlPlanePrincipal(req);
     const presentedApprovalId =
       typeof record["approvalId"] === "string" ? record["approvalId"].trim() : "";
     const independentlyVerified =

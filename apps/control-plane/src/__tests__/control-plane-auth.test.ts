@@ -97,7 +97,7 @@ describe("Control Plane auth (ADR-021)", () => {
     request.headers.cookie = pair;
     expect(readControlBrowserSession(request)).toEqual({ role: "OWNER", subject: "owner-1" });
     expect(authorizeControlPlaneRequest(request, fakeRes(), "/dashboard")).toBe(true);
-    expect(resolveControlPlanePrincipal().role).toBe("OWNER");
+    expect(resolveControlPlanePrincipal(request).role).toBe("OWNER");
 
     request.headers.cookie = `${pair}x`;
     expect(readControlBrowserSession(request)).toBeNull();
@@ -150,63 +150,72 @@ describe("Control Plane auth (ADR-021)", () => {
     process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
     process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "owner-secret";
 
-    // Operator token → OPERATOR role
+    const operatorReq = fakeReq("Bearer operator-secret");
     const operatorRes = fakeRes();
     expect(
-      authorizeControlPlaneRequest(
-        fakeReq("Bearer operator-secret"),
-        operatorRes,
-        "/dashboard",
-      ),
+      authorizeControlPlaneRequest(operatorReq, operatorRes, "/dashboard"),
     ).toBe(true);
-    expect(resolveControlPlanePrincipal().role).toBe("OPERATOR");
-    expect(isOwnerPrincipal()).toBe(false);
+    expect(resolveControlPlanePrincipal(operatorReq).role).toBe("OPERATOR");
+    expect(isOwnerPrincipal(operatorReq)).toBe(false);
 
     // Owner token → OWNER role
+    const ownerReq = fakeReq("Bearer owner-secret");
     const ownerRes = fakeRes();
     expect(
-      authorizeControlPlaneRequest(
-        fakeReq("Bearer owner-secret"),
-        ownerRes,
-        "/dashboard",
-      ),
+      authorizeControlPlaneRequest(ownerReq, ownerRes, "/dashboard"),
     ).toBe(true);
-    expect(resolveControlPlanePrincipal().role).toBe("OWNER");
-    expect(isOwnerPrincipal()).toBe(true);
+    expect(resolveControlPlanePrincipal(ownerReq).role).toBe("OWNER");
+    expect(isOwnerPrincipal(ownerReq)).toBe(true);
   });
 
   it("requireOwnerRole allows owner and denies operator", () => {
     process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
     process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "owner-secret";
 
-    // Operator tries owner-only op
-    authorizeControlPlaneRequest(
-      fakeReq("Bearer operator-secret"),
-      fakeRes(),
-      "/dashboard",
-    );
+    const operatorReq = fakeReq("Bearer operator-secret");
+    authorizeControlPlaneRequest(operatorReq, fakeRes(), "/dashboard");
     const operatorDenied = fakeRes();
-    expect(requireOwnerRole(operatorDenied)).toBe(false);
+    expect(requireOwnerRole(operatorReq, operatorDenied)).toBe(false);
     expect(operatorDenied.status).toBe(403);
 
-    // Owner can proceed
-    authorizeControlPlaneRequest(
-      fakeReq("Bearer owner-secret"),
-      fakeRes(),
-      "/dashboard",
-    );
+    const ownerReq = fakeReq("Bearer owner-secret");
+    authorizeControlPlaneRequest(ownerReq, fakeRes(), "/dashboard");
     const ownerAllowed = fakeRes();
-    expect(requireOwnerRole(ownerAllowed)).toBe(true);
+    expect(requireOwnerRole(ownerReq, ownerAllowed)).toBe(true);
+  });
+
+  it("identical owner and operator tokens never elevate to OWNER", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "shared-secret";
+    process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "shared-secret";
+    const req = fakeReq("Bearer shared-secret");
+    expect(authorizeControlPlaneRequest(req, fakeRes(), "/dashboard")).toBe(true);
+    expect(resolveControlPlanePrincipal(req).role).toBe("OPERATOR");
+    expect(isOwnerPrincipal(req)).toBe(false);
+    const denied = fakeRes();
+    expect(requireOwnerRole(req, denied)).toBe(false);
+    expect(denied.status).toBe(403);
+  });
+
+  it("keeps owner and operator roles isolated across concurrent requests", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
+    process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "owner-secret";
+    const operatorReq = fakeReq("Bearer operator-secret");
+    const ownerReq = fakeReq("Bearer owner-secret");
+    expect(authorizeControlPlaneRequest(operatorReq, fakeRes(), "/dashboard")).toBe(true);
+    expect(authorizeControlPlaneRequest(ownerReq, fakeRes(), "/dashboard")).toBe(true);
+    expect(resolveControlPlanePrincipal(operatorReq).role).toBe("OPERATOR");
+    expect(resolveControlPlanePrincipal(ownerReq).role).toBe("OWNER");
+    expect(isOwnerPrincipal(operatorReq)).toBe(false);
+    expect(isOwnerPrincipal(ownerReq)).toBe(true);
   });
 
   it("dev loopback defaults to OPERATOR, not OWNER", () => {
     process.env.NODE_ENV = "development";
+    const loopbackReq = fakeReq(undefined, "127.0.0.1");
     const res = fakeRes();
-    expect(
-      authorizeControlPlaneRequest(fakeReq(undefined, "127.0.0.1"), res, "/dashboard"),
-    ).toBe(true);
-    expect(resolveControlPlanePrincipal().role).toBe("OPERATOR");
-    expect(isOwnerPrincipal()).toBe(false);
+    expect(authorizeControlPlaneRequest(loopbackReq, res, "/dashboard")).toBe(true);
+    expect(resolveControlPlanePrincipal(loopbackReq).role).toBe("OPERATOR");
+    expect(isOwnerPrincipal(loopbackReq)).toBe(false);
   });
 
   it("uses a browser-session fallback only outside production", () => {

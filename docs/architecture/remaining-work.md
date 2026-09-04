@@ -68,6 +68,7 @@ on fulfill. No baseline → INCONCLUSIVE (not a pass). Missing a prior observati
 after mutation → FAILED, which overrides VERIFIED. Memory stays OBSERVED.
 
 ## 03 IDENTITY / AUTHZ
+**Status: COMPLETE** for the existing identity model (no redesign).
 Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 
 **Implemented (code + tests):**
@@ -80,7 +81,18 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - `/admin/users` cannot grant operator/owner.
 - **Distinct CP Owner vs Operator tokens:** `ATLAS_CONTROL_PLANE_OWNER_TOKEN`
   authenticates as OWNER; `ATLAS_CONTROL_PLANE_TOKEN` as OPERATOR. Dev loopback
-  defaults to OPERATOR. `requireOwnerRole` guard for owner-only ops.
+  defaults to OPERATOR.
+- **Request-scoped CP role** (`WeakMap` on the request). Concurrent requests
+  cannot mix OWNER and OPERATOR. Identical owner/operator secrets never
+  elevate to OWNER.
+- **`requireOwnerRole` is reachable:** `GET /api/v1/owner/brief` is owner-only.
+  Other CP reads stay operator-accessible (Admin uses the operator token).
+  Gateway writes and agent-control remain operator + reauth / approval; they
+  are not silently converted to owner-only.
+
+**Not claimed (authorized later items, not identity-model defects):**
+- Control Plane bearer MFA and token rotation — Phase 04.
+- Sibling / non-`def-000` application execution identity — later-scope.
 
 ## 04 CONTROL PLANE SECURITY
 **Implemented (code + tests):**
