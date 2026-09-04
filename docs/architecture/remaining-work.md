@@ -307,7 +307,7 @@ operators can join CP receipt → API execution. No second telemetry stack.
 ## 14 SELF-AUDIT
 **Status: COMPLETE** for detect → propose (no auto-apply, no active probing).
 
-**Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA/rotation, runtime overlay, CP-does-not-execute-tools, fabric-vs-oversight registry. Active API probing from Control Plane is not claimed.
+**Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA/rotation, runtime overlay, CP-does-not-execute-tools, fabric-vs-oversight registry, catalog/registration drift, policy-without-implementation, CP overlay vs API fail-closed, missing observational audit, verification-gap between gateway success and verification observations, expired-but-PENDING records, production runtime-config drift. Active API probing from Control Plane is not claimed. Findings do not mutate agent status or approvals.
 
 ## 15 DISASTER RECOVERY
 **Status: BLOCKED** on offsite destination. Local restore proof exists.
@@ -340,7 +340,9 @@ ceremony. SBOM generation remains the enforceable supply-chain control.
 `apps/control-plane/src/__tests__/governance-invariants.test.ts`
 (unauthenticated DENY, customer admin ≠ operator, missing capability, wrong tenant, audit tamper, executed ≠ verified, world-state execution ≠ verification, CP audit non-canonical, self-audit never auto-applies, CP-does-not-execute-tools).
 `governed-execution.test.ts` proves QUARANTINED cannot execute.
-`create-app.test.ts` proves production tools are registered at startup.
+`create-app.test.ts` and `production-tool-registry.test.ts` prove production tools are registered and unregistered names fail closed.
+`gateway-fulfill.test.ts` proves `X-Request-Id` correlation and CP SERVICE quarantine overlay denial.
+`self-audit.test.ts` proves detectors stay detect-only.
 
 ## 18 PERFORMANCE / SCALE
 **Status: COMPLETE** for the existing in-process limits and latency stack.

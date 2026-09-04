@@ -199,6 +199,55 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
     expect(body.principalId).toBe(ATLAS_SELF_SYSTEM_ID);
   });
 
+  it("forwards X-Request-Id into governed execution audit correlation", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "ok",
+    });
+    const requestId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: {
+        authorization: "Bearer cp-fulfill-token",
+        "x-request-id": requestId,
+      },
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const entry = listUnifiedAuditEntries().find(
+      (candidate) => candidate.type === "gateway.fulfill.request_agent_run",
+    );
+    expect(entry?.input["requestId"]).toBe(requestId);
+  });
+
+  it("denies a quarantined overlay passed by the Control Plane SERVICE hop", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "ok",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: { authorization: "Bearer cp-fulfill-token" },
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+        agentRuntimeStatus: "QUARANTINED",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { executed: boolean; outcome: { status: string; reason: string } };
+    expect(body.executed).toBe(false);
+    expect(body.outcome.status).toBe("DENIED");
+    expect(body.outcome.reason).toMatch(/QUARANTINED/);
+  });
+
   it("rejects a CP token for a non-Atlas-self application", async () => {
     const res = await app.inject({
       method: "POST",

@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { loadServerEnv, type ServerEnv } from "@atlas/config";
 import { errorHandler } from "../../middleware/error-handler.js";
 
@@ -30,7 +31,11 @@ export async function buildRouteTestApp(
   register: (app: FastifyInstance) => Promise<void>,
   envOverrides: Partial<ServerEnv> = {},
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: false,
+    requestIdHeader: "x-request-id",
+    genReqId: () => randomUUID(),
+  });
   app.setErrorHandler(errorHandler);
   app.decorate("atlasEnv", buildTestEnv(envOverrides));
   await register(app);
