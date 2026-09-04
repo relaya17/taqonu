@@ -134,7 +134,7 @@ describe("portfolio governance seed (Phase 11.1–11.3)", () => {
   });
 });
 
-describe("portfolio governance decisions (Phase 11.4)", () => {
+describe("portfolio governance decisions (Phase 11.8)", () => {
   it("CREATE_NEW and ADAPT require a separate catalog change", () => {
     expect(requiresOwnerAndCatalogChange("CREATE_NEW_ATLAS_SPECIALIST")).toBe(true);
     expect(requiresOwnerAndCatalogChange("ADAPT_INTO_EXISTING_ATLAS_CAPABILITY")).toBe(true);

@@ -3,7 +3,7 @@ import { FABRIC_AGENT_IDS } from "@atlas/shared";
 import { listRegisteredAgents } from "../services/agent-registry.js";
 import { getFabricProjection } from "../services/fabric-projection.js";
 
-describe("Control Plane fabric projection (Phase 11.6)", () => {
+describe("Control Plane fabric projection (ADR-022 Decision, Plane 2 - not a numbered Portfolio Governance phase)", () => {
   it("does not merge Fabric IDs into AGENT_DEFINITIONS", () => {
     const legacy = listRegisteredAgents();
     expect(legacy).toHaveLength(9);
