@@ -59,11 +59,21 @@ const report = {
     localReplicaImplemented: true,
     offsiteDirConfigured: envKeySet("ATLAS_OFFSITE_BACKUP_DIR"),
     cloudObjectStore: "BLOCKED BY EXTERNAL INFRASTRUCTURE",
+    classification: envKeySet("ATLAS_OFFSITE_BACKUP_DIR")
+      ? "FILESYSTEM OFFSITE CONFIGURED — NOT CLOUD DR"
+      : "DR CODE COMPLETE — EXTERNAL DESTINATION REQUIRED",
+    rpoRto: "NOT CLAIMED",
+    procedure: "pnpm dr:drill — docs/operations/disaster-recovery.md",
   },
   supplyChain: {
     signingIdentityConfigured: envKeySet("ATLAS_SIGNING_IDENTITY"),
     releaseReady: false,
     blocker: "Sigstore/cosign identity + verifier — Owner/deployment",
+    commands: {
+      generate: "pnpm sbom:generate",
+      verify: "pnpm supply-chain:verify",
+      sign: "pnpm supply-chain:sign",
+    },
   },
   privatePlane: {
     localhostIsNotProduction: true,

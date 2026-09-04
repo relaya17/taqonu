@@ -183,3 +183,56 @@ export function verifyUnsignedProvenance(
     evidence: "Unsigned SLSA-shaped provenance is recorded. Not a signed release.",
   };
 }
+
+export type ReleaseSignPlan =
+  | {
+      readonly action: "REFUSE";
+      readonly signing: "UNSIGNED";
+      readonly reason: string;
+    }
+  | {
+      readonly action: "REFUSE";
+      readonly signing: "INVALID";
+      readonly reason: string;
+    }
+  | {
+      readonly action: "SIGN";
+      readonly signingIdentity: string;
+    };
+
+/**
+ * Decide whether a real cosign/Sigstore ceremony may run.
+ * Never plans a placeholder signature.
+ */
+export function planReleaseSignature(input: {
+  readonly signingIdentity?: string | null;
+  readonly cosignAvailable: boolean;
+  readonly signatureAlreadyPresent?: boolean;
+}): ReleaseSignPlan {
+  const identity = input.signingIdentity?.trim() ?? "";
+  if (identity.length === 0) {
+    if (input.signatureAlreadyPresent) {
+      return {
+        action: "REFUSE",
+        signing: "INVALID",
+        reason:
+          "Signature file is present but ATLAS_SIGNING_IDENTITY is unset. Fail closed — do not treat an unverifiable blob as signed.",
+      };
+    }
+    return {
+      action: "REFUSE",
+      signing: "UNSIGNED",
+      reason:
+        "ATLAS_SIGNING_IDENTITY is unset. Do not mint a placeholder signature. Owner must provision Sigstore/cosign identity.",
+    };
+  }
+  if (!input.cosignAvailable) {
+    return {
+      action: "REFUSE",
+      signing: "INVALID",
+      reason:
+        "Signing identity is configured but cosign is not on PATH. Do not fake VERIFIED. Deploy the verifier with the identity.",
+    };
+  }
+  return { action: "SIGN", signingIdentity: identity };
+}

@@ -30,6 +30,8 @@
     "turbo": "turbo",
     "sbom:generate": "tsx scripts/generate-sbom.ts",
     "supply-chain:verify": "tsx scripts/verify-supply-chain.ts",
+    "supply-chain:sign": "tsx scripts/sign-release.ts",
+    "dr:drill": "tsx scripts/disaster-recovery-drill.ts",
     "runtime:probe": "tsx scripts/runtime-probe.ts",
     "production:live-proof": "tsx scripts/production-live-proof.ts",
     "private-plane:start": "node scripts/start-private-plane.mjs",

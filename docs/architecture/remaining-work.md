@@ -545,6 +545,24 @@ Admin unauth probe in `deploy/verify.sh` now uses `/api/v1/platform/hierarchy`
 
 Worker HTTP health was not added.
 
+## PRIORITY 3 + 4 — CLOUD DR, SIGNING, EXTERNAL SECURITY (2026-09-05)
+
+No second DR system. No fake signatures. No fabricated pentest.
+
+**Cloud DR:** BLOCKED. Local drill `pnpm dr:drill` VERIFIED (149 chain
+entries, checksum match). Filesystem offsite unset. Object-store URLs
+rejected. Classification: DR CODE COMPLETE — EXTERNAL DESTINATION REQUIRED.
+
+**Signing:** PARTIAL. SBOM VALID (101). Unsigned provenance verified.
+`pnpm supply-chain:sign` refuses placeholder signatures. Identity + cosign
+verifier remain EXTERNAL SERVICE REQUIRED. `releaseReady: false`.
+
+**External pentest:** SCOPE READY as a package
+(`docs/security/pentest-readiness.md`). Environment is not ready. Status is
+not COMPLETED. Internal live-proof 30 PASS / 0 FAIL / 1 BLOCKED / 2 SKIP.
+
+**ApprovalExecutionRepository** remains parked / historical.
+
 ## PHASE 11 PORTFOLIO GOVERNANCE (observability)
 
 New increment (owner-approved sequence). **Stop after each phase. Wait for Owner approval.**

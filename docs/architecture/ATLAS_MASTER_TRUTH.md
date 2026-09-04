@@ -1277,5 +1277,34 @@ remains OWNER DECISION REQUIRED.
 Internal suites are not an external pentest. ADR-022 still blocks sibling
 execute.
 
+## 63. Priority 3 + 4 — DR, signing, external security readiness (2026-09-05)
+
+Phases 10–14 were not reopened. No cloud credentials, signing identities,
+or pentest reports were invented.
+
+**Cloud DR:** BLOCKED (code complete; destination absent).
+`pnpm dr:drill` 2026-09-04T21:42:31Z — LOCAL DR — VERIFIED (`checked: 149`,
+sourceChecksum = restoredChecksum
+`a116f73c45bb7479a86999a19767676b53dd4201370219e7ec2ae5b12fde9d48`).
+`offsite: false`. `cloudObjectStore: false`. Object-store URLs rejected.
+RPO/RTO NOT CLAIMED.
+
+**Signing / provenance:** PARTIAL (SBOM + unsigned provenance verified;
+signature BLOCKED). `pnpm sbom:generate` 101 CycloneDX components.
+`pnpm supply-chain:verify` SBOM VALID, UNSIGNED, provenance ok signed:false,
+`releaseReady: false`. `pnpm supply-chain:sign` REFUSE UNSIGNED,
+`signatureWritten: false`. `ATLAS_SIGNING_IDENTITY` unset; cosign not used.
+
+**External security:** NOT READY FOR EXTERNAL PENTEST. Package status
+`SCOPE READY` (`docs/security/pentest-readiness.md`). No engagement.
+Live-proof 2026-09-04T21:42:33Z: 30 PASS / 0 FAIL / 1 BLOCKED / 2 SKIP.
+Adversarial this pass: governance-adversarial 15, agent-core tools 7, CP
+api-routes+egress 36, DR 8, supply-chain 11 — all passed.
+
+**Program verdict remains NOT PRODUCTION READY.** Next existing gate
+(Real Connected-App Execution) still requires ADR-022. Cloud DR and signed
+releases remain external.
+
+
 
 

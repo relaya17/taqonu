@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildUnsignedProvenance,
+  planReleaseSignature,
   verifySupplyChainArtifacts,
   verifyUnsignedProvenance,
 } from "./supply-chain.js";
@@ -84,5 +85,53 @@ describe("unsigned SLSA-shaped provenance", () => {
       },
     };
     expect(verifyUnsignedProvenance(forged).ok).toBe(false);
+  });
+});
+
+describe("planReleaseSignature", () => {
+  it("refuses to sign when identity is unset", () => {
+    const plan = planReleaseSignature({
+      signingIdentity: null,
+      cosignAvailable: false,
+    });
+    expect(plan.action).toBe("REFUSE");
+    if (plan.action === "REFUSE") {
+      expect(plan.signing).toBe("UNSIGNED");
+    }
+  });
+
+  it("invalidates a leftover signature blob without identity", () => {
+    const plan = planReleaseSignature({
+      signingIdentity: "",
+      cosignAvailable: true,
+      signatureAlreadyPresent: true,
+    });
+    expect(plan.action).toBe("REFUSE");
+    if (plan.action === "REFUSE") {
+      expect(plan.signing).toBe("INVALID");
+    }
+  });
+
+  it("refuses to fake VERIFIED when identity is set but cosign is missing", () => {
+    const plan = planReleaseSignature({
+      signingIdentity: "https://github.com/relaya17/taqonu-main/.github/workflows/ci.yml@refs/heads/main",
+      cosignAvailable: false,
+    });
+    expect(plan.action).toBe("REFUSE");
+    if (plan.action === "REFUSE") {
+      expect(plan.signing).toBe("INVALID");
+    }
+  });
+
+  it("plans a real ceremony only when identity and cosign are both present", () => {
+    const plan = planReleaseSignature({
+      signingIdentity: "https://github.com/relaya17/taqonu-main/.github/workflows/ci.yml@refs/heads/main",
+      cosignAvailable: true,
+    });
+    expect(plan).toEqual({
+      action: "SIGN",
+      signingIdentity:
+        "https://github.com/relaya17/taqonu-main/.github/workflows/ci.yml@refs/heads/main",
+    });
   });
 });

@@ -42,3 +42,5 @@ jobs:
         run: pnpm --filter @atlas/api exec tsx src/scripts/ci-secrets-scan.ts
       - name: Supply-chain SBOM verify (unsigned is expected)
         run: pnpm sbom:generate && pnpm supply-chain:verify
+      - name: Supply-chain sign refusal (do not mint a placeholder)
+        run: pnpm supply-chain:sign

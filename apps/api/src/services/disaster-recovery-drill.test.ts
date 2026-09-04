@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendAuditLogLine, setAuditLogPathForTests } from "./audit-log.js";
-import { runCanonicalAuditRestoreDrill, restoreCanonicalAuditFromReplica } from "./disaster-recovery-drill.js";
+import {
+  rejectNonFilesystemOffsiteDir,
+  restoreCanonicalAuditFromReplica,
+  runCanonicalAuditRestoreDrill,
+} from "./disaster-recovery-drill.js";
 
 describe("canonical audit restore drill", () => {
   let sourceDir: string;
@@ -32,6 +36,10 @@ describe("canonical audit restore drill", () => {
     expect(result.ok).toBe(true);
     expect(result.status).toBe("VALID");
     expect(result.offsite).toBe(false);
+    expect(result.cloudObjectStore).toBe(false);
+    expect(result.destinationKind).toBe("UNSET");
+    expect(result.sourceChecksum).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.restoredChecksum).toBe(result.sourceChecksum);
     expect(result.checked).toBe(2);
     const receipt = JSON.parse(
       readFileSync(join(drillDir, "receipt.json"), "utf8"),
@@ -51,7 +59,50 @@ describe("canonical audit restore drill", () => {
     expect(result.offsite).toBe(true);
     expect(result.offsitePath).toBe(join(offsiteDir, "audit.ndjson"));
     expect(result.offsiteChecksum).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.offsiteChecksum).toBe(result.restoredChecksum);
+    expect(result.destinationKind).toBe("FILESYSTEM_DIRECTORY");
+    expect(result.cloudObjectStore).toBe(false);
     rmSync(offsiteDir, { recursive: true, force: true });
+  });
+
+  it("fail-closes when the canonical audit log is missing", () => {
+    const result = runCanonicalAuditRestoreDrill({
+      sourcePath: join(sourceDir, "absent.ndjson"),
+      drillDir,
+      offsiteDir: null,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.offsite).toBe(false);
+    expect(result.cloudObjectStore).toBe(false);
+  });
+
+  it("rejects an object-store URL instead of claiming cloud DR", () => {
+    expect(rejectNonFilesystemOffsiteDir("s3://atlas-backups/audit")).toMatch(
+      /Object-store URLs are not implemented/,
+    );
+    const result = runCanonicalAuditRestoreDrill({
+      sourcePath: join(sourceDir, "audit.ndjson"),
+      drillDir,
+      offsiteDir: "s3://atlas-backups/audit",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.offsite).toBe(false);
+    expect(result.destinationKind).toBe("REJECTED");
+    expect(result.cloudObjectStore).toBe(false);
+  });
+
+  it("rejects an offsite path that is a file, not a directory", () => {
+    const fileDest = join(sourceDir, "not-a-dir");
+    writeFileSync(fileDest, "nope", "utf8");
+    const result = runCanonicalAuditRestoreDrill({
+      sourcePath: join(sourceDir, "audit.ndjson"),
+      drillDir,
+      offsiteDir: fileDest,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.offsite).toBe(false);
+    expect(result.destinationKind).toBe("REJECTED");
   });
 
   it("restores from the replica into an isolated directory and never overwrites canonical", () => {
@@ -70,6 +121,7 @@ describe("canonical audit restore drill", () => {
     expect(restored.ok).toBe(true);
     expect(restored.status).toBe("VALID");
     expect(restored.overwrittenCanonical).toBe(false);
+    expect(restored.replicaChecksum).toBe(restored.restoredChecksum);
     expect(restored.restoredPath).toBe(join(restoreDir, "audit.ndjson"));
     expect(readFileSync(join(sourceDir, "audit.ndjson"), "utf8")).toBe(
       readFileSync(restored.restoredPath, "utf8"),

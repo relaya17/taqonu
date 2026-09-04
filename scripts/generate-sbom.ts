@@ -12,14 +12,14 @@
 
 import { createHash } from "node:crypto";
 import {
-  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { buildUnsignedProvenance } from "../packages/shared/src/platform/supply-chain.ts";
 
 interface PackageJson {
   name: string;
@@ -295,24 +295,12 @@ async function main(): Promise<void> {
   writeFileSync(xmlPath, toXml(bom), "utf8");
 
   const sbomSha256 = createHash("sha256").update(readFileSync(jsonPath)).digest("hex");
-  const provenance = {
-    _type: "https://in-toto.io/Statement/v1",
-    predicateType: "https://slsa.dev/provenance/v1",
-    subject: [{ name: "sbom.json", digest: { sha256: sbomSha256 } }],
-    predicate: {
-      buildDefinition: {
-        buildType: "https://atlas.local/build/pnpm-turbo@v1",
-        externalParameters: {
-          repository: rootPkg.name,
-          commit: process.env.GITHUB_SHA ?? "local",
-        },
-      },
-      runDetails: {
-        builder: { id: process.env.GITHUB_WORKFLOW ? "github-actions" : "local/pnpm" },
-        signed: false,
-      },
-    },
-  };
+  const provenance = buildUnsignedProvenance({
+    sbomSha256,
+    commit: process.env.GITHUB_SHA ?? "local",
+    repository: rootPkg.name,
+    builderId: process.env.GITHUB_WORKFLOW ? "github-actions" : "local/pnpm",
+  });
   const provenancePath = join(outDir, "provenance.json");
   writeFileSync(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`, "utf8");
 

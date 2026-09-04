@@ -225,6 +225,14 @@ canonical hash-chain. Outbound HTTPS needs no inbound rule. Set
 - [ ] Portfolio view still reports `ingestEnabled: false`
 - [ ] `pnpm test:unit` still passes 1,953/1,953 from a clean checkout
 
+## Disaster recovery, signing, external security
+
+These are not systemd units on the VM:
+
+- Canonical audit DR: `docs/operations/disaster-recovery.md` / `pnpm dr:drill`
+- SBOM / unsigned provenance / fail-closed signing: `docs/security/supply-chain.md`
+- External pentest package (not a completed test): `docs/security/pentest-readiness.md`
+
 ---
 
 ## What was rehearsed before any VM existed
@@ -240,6 +248,10 @@ entries and the Portfolio view reports `ingestEnabled: false`. Admin returns 401
 without a token and 200 with one, rendering 81 KB of HTML with no "Control Plane
 unreachable" banner — meaning the Admin → Control Plane hop authenticated and
 returned live data. That hop is precisely what fails on Vercel.
+
+Current Admin unauth posture (2026-09-05): promo `GET /` is 200; privileged
+`GET /api/v1/platform/hierarchy` is 401 when a token is configured. Do not
+treat the historical “Admin `/` returns 401” rehearsal line as the live check.
 
 **Not proven, because it needs the VM.** systemd hardening under
 `ProtectSystem=strict`, the nginx header injection, the Tailscale bind, ufw, and

@@ -15,3 +15,5 @@
 - Internal suites (`governance-adversarial`, `production:live-proof`, Control Plane auth tests) are **not** an external penetration test. Externally tested: none until an Owner-authorized engagement.
 - Loopback private-plane success (`127.0.0.1` / `localhost`) is **LOCAL PRIVATE PLANE**, not production Tailscale/systemd exposure proof.
 - Admin `GET /` is a public promo page; privileged Admin JSON (`/api/v1/platform/hierarchy` and writes) remains bearer-gated.
+- External pentest package: `docs/security/pentest-readiness.md` (**SCOPE READY**, not a completed assessment).
+- Supply-chain commands and fail-closed signing: `docs/security/supply-chain.md`.
