@@ -346,6 +346,33 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("does not HTTP-fulfill a non-def-000 sibling even on ALLOW write", async () => {
+    ingestGatewayEvent({
+      type: "application.registered",
+      applicationId: "hotel-os",
+      payload: { name: "HotelOS" },
+    });
+    process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+    process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "hotel-os",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      reason: "sibling write",
+      approved: true,
+      independentApprovalVerified: true,
+      verificationPlanPresent: true,
+    });
+    expect(result.executed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.receipt?.verification.detail ?? result.reason).toMatch(
+      /Atlas-self only|Unknown application/i,
+    );
+  });
+
   it("inspect ALLOW does not call the API fulfill hop", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
