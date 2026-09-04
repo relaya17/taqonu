@@ -975,3 +975,15 @@ HMAC reauth remains one-shot replay protection, not MFA.
 
 Historical records are not rewritten. CP `verifyAuditChain` stays
 `canonical: false`.
+
+## 42. Phase 06 Execution Safety (2026-09-04)
+
+**Status: COMPLETE** on the existing governed path.
+
+Durable worker-queue crash recovery was already implemented. This close
+persists `executeGovernedAction` idempotency so a process crash cannot
+replay an already-EXECUTED tool. Claimed approvals that started before
+crash still finalize `OUTCOME_UNKNOWN` and do not execute twice.
+
+Stale remaining-work wording that said durable jobs were absent is
+corrected. Distributed queue service remains Phase 12.

@@ -146,12 +146,25 @@ sequence is rejected. Historical API lines are never rewritten. There is
 still no second system of record.
 
 ## 06 EXECUTION SAFETY
-**Implemented on the existing runtime (not a job queue):**
+**Status: COMPLETE** on the existing runtime (no second execution engine).
+
+**Implemented (code + tests):**
 - `executeTool` already has timeout + AbortSignal.
 - Approval consume is one-shot (existing).
-- `executeGovernedAction` accepts optional `idempotencyKey` (process-local replay).
+- `executeGovernedAction` accepts optional `idempotencyKey`.
+- **Durable governed idempotency:** EXECUTED outcomes persist to
+  `.atlas/governed-idempotency.json` (atomic write). A process restart
+  replays the same key instead of executing the tool again. Different
+  artifact/target still fail closed.
+- **Durable worker jobs + crash recovery:** `apps/worker` persists
+  `.atlas/worker-queue.json`. Interrupted RUNNING jobs return to PENDING
+  on startup (`recoverPendingJobs`). Retries then terminal FAILED.
+- **In-flight approval recovery:** `runGovernedClaimedExecution` will not
+  re-run a CLAIMED approval that already has `executionStartedAt`; it
+  finalizes `OUTCOME_UNKNOWN` instead of duplicating side effects.
 
-**Not claimed:** durable jobs, crash-recovery workers, distributed idempotency.
+**Not claimed:** a separate distributed queue service (Phase 12). Process-local
+automation-engine dedup remains a documented caveat, not this path.
 
 ## 07 VERIFICATION
 **Implemented:**

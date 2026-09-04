@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, resolve } from "node:path";
+import {
   executeTool,
   extractGovernedTarget,
   resolveCanonicalToolOperationForRequest,
@@ -8,6 +18,7 @@ import {
   type EntityAction,
   type ToolExecutionOutcome,
 } from "@atlas/agent-core";
+import { findRepoRoot } from "./repo-root.js";
 import {
   canonicalizeJson,
   type ApprovalRequest,
@@ -192,9 +203,92 @@ interface IdempotentExecution {
 }
 
 const governedIdempotency = new Map<string, IdempotentExecution>();
+let idempotencyPathOverride: string | null = null;
+
+function resolveGovernedIdempotencyPath(): string {
+  if (idempotencyPathOverride) return idempotencyPathOverride;
+  const fromEnv = process.env.ATLAS_GOVERNED_IDEMPOTENCY_PATH?.trim();
+  if (fromEnv) return resolve(fromEnv);
+  return resolve(findRepoRoot(), ".atlas", "governed-idempotency.json");
+}
+
+function persistenceEnabled(): boolean {
+  if (idempotencyPathOverride) return true;
+  if (process.env.VITEST === "true") return false;
+  return true;
+}
+
+function persistGovernedIdempotency(): void {
+  if (!persistenceEnabled()) return;
+  const path = resolveGovernedIdempotencyPath();
+  mkdirSync(dirname(path), { recursive: true });
+  const payload = {
+    version: 1 as const,
+    entries: [...governedIdempotency.entries()].map(([key, value]) => ({
+      key,
+      artifactHash: value.artifactHash,
+      outcome: value.outcome,
+    })),
+  };
+  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(payload), "utf8");
+  try {
+    try {
+      renameSync(tmpPath, path);
+    } catch {
+      copyFileSync(tmpPath, path);
+      unlinkSync(tmpPath);
+    }
+  } catch (error) {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // ignore leftover temp cleanup
+    }
+    throw error;
+  }
+}
+
+function loadGovernedIdempotency(): void {
+  governedIdempotency.clear();
+  const path = resolveGovernedIdempotencyPath();
+  if (!existsSync(path)) return;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as {
+      entries?: Array<{ key?: string; artifactHash?: string; outcome?: GovernedExecutionOutcome }>;
+    };
+    for (const entry of parsed.entries ?? []) {
+      if (!entry.key || !entry.artifactHash || !entry.outcome) continue;
+      governedIdempotency.set(entry.key, {
+        artifactHash: entry.artifactHash,
+        outcome: entry.outcome,
+      });
+    }
+  } catch {
+    // fail closed to empty replay cache; execution still requires live authorization
+  }
+}
+
+if (persistenceEnabled()) {
+  loadGovernedIdempotency();
+}
 
 export function resetGovernedIdempotencyForTests(): void {
   governedIdempotency.clear();
+  if (idempotencyPathOverride && existsSync(idempotencyPathOverride)) {
+    unlinkSync(idempotencyPathOverride);
+  }
+}
+
+export function setGovernedIdempotencyPathForTests(path: string | null): void {
+  idempotencyPathOverride = path;
+  loadGovernedIdempotency();
+}
+
+/** Simulate process restart: drop memory and reload the durable file. */
+export function reloadGovernedIdempotencyForTests(): void {
+  governedIdempotency.clear();
+  loadGovernedIdempotency();
 }
 
 interface GovernanceAuditContext {
@@ -575,6 +669,7 @@ export async function executeGovernedAction(
   auditOutcome(governedRequest, artifactHash, outcome, { gate, approval }, extracted.target);
   if (governedRequest.idempotencyKey && outcome.status === "EXECUTED") {
     governedIdempotency.set(governedRequest.idempotencyKey, { artifactHash, outcome });
+    persistGovernedIdempotency();
   }
   return outcome;
 }

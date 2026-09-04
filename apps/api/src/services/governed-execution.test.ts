@@ -23,7 +23,9 @@ import {
   computeArtifactHash,
   computeGovernedBindingHash,
   executeGovernedAction,
+  reloadGovernedIdempotencyForTests,
   resetGovernedIdempotencyForTests,
+  setGovernedIdempotencyPathForTests,
 } from "./governed-execution.js";
 import { resetGovernedClaimStartsForTests } from "./governed-claimed-execution.js";
 import { listGovernanceDecisions } from "./governance-decision.js";
@@ -525,6 +527,26 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(first.status).toBe("EXECUTED");
     expect(second.status).toBe("EXECUTED");
     expect(runs).toBe(1);
+  });
+
+  it("replays a durable idempotency key after an in-memory crash", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        return "observation: answer = 42";
+      },
+    });
+    setGovernedIdempotencyPathForTests(join(dir, "governed-idempotency.json"));
+    const first = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-crash" }));
+    expect(first.status).toBe("EXECUTED");
+    reloadGovernedIdempotencyForTests();
+    const second = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-crash" }));
+    expect(second.status).toBe("EXECUTED");
+    expect(runs).toBe(1);
+    setGovernedIdempotencyPathForTests(null);
   });
 
   it("does not replay an idempotency key when the canonical target differs", async () => {
