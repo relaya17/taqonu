@@ -60,6 +60,7 @@ describe("Atlas Admin platform HTML", () => {
     expect(html).toContain('data-surface="CONTROL"');
     expect(html).toContain('data-surface="STUDIO"');
     expect(html).toContain("/he/studio");
+    expect(html).toContain('href="/portfolio"');
     expect(html).not.toContain("VAN-AG-001");
     expect(html).not.toContain("KEEP_SOURCE_SPECIFIC");
     expect(html).not.toContain('data-agent-id="CODE_ENGINEER"');

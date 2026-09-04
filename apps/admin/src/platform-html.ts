@@ -60,6 +60,7 @@ export function renderPlatformHtml(data: PlatformPageData): string {
       ? ""
       : `<main>
     <p class="banner" data-i18n="hierarchyBanner">Atlas Admin supervises Control and Studio. This is not Control's operational dashboard.</p>
+    <p><a href="/portfolio" data-i18n="openPortfolio">Open portfolio governance</a></p>
     <section class="hierarchy" data-hierarchy="admin-control-studio">
       <pre class="tree">ATLAS ADMIN
 ├── ATLAS CONTROL  → connected apps / processes / operational agents
@@ -115,6 +116,8 @@ export function renderPlatformHtml(data: PlatformPageData): string {
       ·
       <a href="${esc(controlHref)}" data-i18n="navControl">Control</a>
       ·
+      <a href="/portfolio" data-i18n="navPortfolio">Portfolio</a>
+      ·
       <a href="/login" data-i18n="navLogin">Login</a>
     </div>
   </nav>
@@ -145,8 +148,10 @@ export function renderPlatformHtml(data: PlatformPageData): string {
         btnLogin: "כניסת בעלים",
         navStudio: "Studio",
         navControl: "Control",
+        navPortfolio: "תיק יישומים",
         navLogin: "כניסה",
         hierarchyBanner: "אדמין מפקח על Control ו-Studio. זה אינו הדשבורד התפעולי של Control.",
+        openPortfolio: "פתח ממשל תיק יישומים",
         openControl: "פתח את ממשק Control התפעולי",
         openStudio: "פתח את סביבת Studio",
         tenantAdminNote: "apps/web/app/admin הוא ניהול דייר — לא אדמין הפלטפורמה.",
@@ -158,8 +163,10 @@ export function renderPlatformHtml(data: PlatformPageData): string {
         btnLogin: "Owner login",
         navStudio: "Studio",
         navControl: "Control",
+        navPortfolio: "Portfolio",
         navLogin: "Login",
         hierarchyBanner: "Atlas Admin supervises Control and Studio. This is not Control's operational dashboard.",
+        openPortfolio: "Open portfolio governance",
         openControl: "Open Control operational UI",
         openStudio: "Open Studio workspace",
         tenantAdminNote: "apps/web/app/admin is tenant administration — not this Atlas Admin.",
@@ -171,8 +178,10 @@ export function renderPlatformHtml(data: PlatformPageData): string {
         btnLogin: "دخول المالك",
         navStudio: "Studio",
         navControl: "Control",
+        navPortfolio: "المحفظة",
         navLogin: "دخول",
         hierarchyBanner: "تشرف Admin على Control وStudio. هذه ليست لوحة Control التشغيلية.",
+        openPortfolio: "افتح حوكمة المحفظة",
         openControl: "افتح واجهة Control التشغيلية",
         openStudio: "افتح مساحة Studio",
         tenantAdminNote: "apps/web/app/admin إدارة مستأجر وليست إدارة منصة Atlas.",

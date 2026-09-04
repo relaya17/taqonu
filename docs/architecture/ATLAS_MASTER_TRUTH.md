@@ -238,7 +238,7 @@ has ever been produced or reviewed in this environment).
 | 11.6 Global Deduplication | `82e883e` | present (`deduplication.test.ts`, 43 DedupRelation records) | present, correctly labeled | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.7 Canonical Capability Mapping | `82e883e` | present | present | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.8 Governance Decisions | `82e883e` | present (`seed.ts:2440`) | present; `governance-decisions.test.ts` correctly labeled, plus `index.test.ts` label corrected this cycle (§22) | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
-| 11.9 Portfolio UI Interface | `82e883e` | **ABSENT** — deleted by `4883bfd` (unrelated ADR-021 admin restructure; replacement files carry zero portfolio content). Backend data source (`GET /api/v1/portfolio-governance`, `apps/api/src/routes/portfolio-governance.ts`) is still live and its response shape is byte-for-byte compatible with what the deleted UI consumed (`snapshot.applications`, `.sourceAgents`, `.capabilities`, `.evidence`, `.dedupRelations`, `.governanceDecisions`, `.conflicts`, `.canonicalCapabilities` all confirmed present in `packages/shared/src/portfolio/index.ts`). | test file deleted with it | n/a | n/a | now pointed here | **REGRESSION — OWNER DECISION REQUIRED (architecture, not just code).** Investigated 2026-09-04: the pre-deletion UI fetched this data from `CONTROL_API` (Control Plane, static `ATLAS_CONTROL_PLANE_TOKEN` bearer). The route now lives only in `apps/api` (tenant API) behind `requireOperator` → `requireUser` → real Supabase-JWT auth — a static service token cannot satisfy it, and `apps/admin`'s own browser session is a separate HMAC-signed cookie, not a Supabase session. Restoring 11.9 therefore requires an explicit choice of cross-service auth model, not a copy-paste port. See §25 for the three concrete options. No route/rendering code was written this cycle. |
+| 11.9 Portfolio UI Interface | `82e883e` | **RECOVERED / ADAPTED (Option A)** — historical UI lived in `apps/admin/src/owner-html.ts` + `owner-html.test.ts` (`82e883e`), deleted as collateral damage by `4883bfd` (ADR-021 admin restructure). Recovered 2026-09-04 as a new Admin surface (`/portfolio`) that reads Control Plane `GET /api/v1/portfolio-governance` (`getControlPlanePortfolioView()`), not the tenant API. Tenant API `GET/POST /api/v1/portfolio-governance` remains behind `requireOperator` / `requireOwner` → `requireUser` (Supabase JWT / session). No static-token exception was added to `requireUser`. Writes stay on the tenant API; Admin is read-only. | restored: `portfolio-html.test.ts`, `portfolio-projection.test.ts`, `portfolio-route.test.ts`, `portfolio-option-a.runtime.test.ts` (plus existing Admin auth / platform HTML / API portfolio / CP alignment tests) | **PASS** this cycle (`pnpm --filter @atlas/admin test` 21/21; API portfolio+auth 15/15; CP alignment/auth/api/dashboard 68/68) | **PASS** for Admin → Control Plane on ephemeral in-process HTTP servers (`portfolio-option-a.runtime.test.ts`). Default ports `:3200` / `:3100` / `:4000` were not listening. | now pointed here | **IMPLEMENTED — RUNTIME VERIFIED** (Admin → Control Plane projection). Historical deletion record preserved in §23. Selected auth model = Option A (§33, §34). |
 | 11.10 Control Plane alignment tests | `82e883e` | present (17 numbered cases, 5 groups) | present | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.11 Security | `82e883e` | present | present, exactly 33 `it()` blocks | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.12 Audit | `82e883e` | present | present, exactly 25 `it()` blocks | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
@@ -381,26 +381,27 @@ here and in §16/§24.
 collateral damage by `4883bfd` (2026-09-02, ADR-021 admin restructure:
 `owner-html.ts`/`owner-html.test.ts` removed, replaced by
 `platform-html.ts`/`platform-overview.ts`, which contain zero
-capability/decision/portfolio references per grep). Not restored as of
-current HEAD.
+capability/decision/portfolio inventory). Identified as a regression on
+2026-09-04. Recovered/adapted the same day under Option A (Admin → Control
+Plane → shared seed/overlay projection). The present implementation is a
+recovery of the historical feature, not a claim that `4883bfd` never
+deleted it.
 
 **Recovery investigation performed 2026-09-04:** the rendering logic
 (`renderOwnerHtml`'s portfolio-specific helpers, `packages/shared`-compatible
-field names, i18n keys for he/en/ar) is fully recoverable from
-`git show 4883bfd^:apps/admin/src/owner-html.ts` and the backend endpoint it
-depended on is unchanged and still correctly shaped. The blocker is
-architectural, not code-availability: the endpoint's auth model changed
-(§16 row for 11.9) between when 11.9 was built and now, in a way the old
-fetch pattern cannot satisfy. This is exactly the kind of "genuinely
-incompatible" case the Owner directive's §7 anticipated — restoration was
-not attempted blind. See §25 for the decision and options.
+field names, i18n keys for he/en/ar) was recovered from
+`git show 4883bfd^:apps/admin/src/owner-html.ts`. The old fetch/auth blob
+was **not** restored: Admin now reuses `fetchSupervisedJson` +
+`ATLAS_CONTROL_PLANE_TOKEN` against Control Plane
+`GET /api/v1/portfolio-governance`. Tenant API authorization
+(`requireOperator` / `requireOwner` → `requireUser`) was left unchanged.
 
 ## 24. True Remaining Work (P0–P3)
 
 | Gap ID | Capability | Current state | Missing component | Reason missing | Dependencies | Risk | Priority | Verification required | Definition of Done |
 |---|---|---|---|---|---|---|---|---|---|
 | G-1 | Native test/typecheck execution | Code implemented, never independently run this session | Execution evidence for all packages except Owner-attested Synthetic Universe | Environment (Windows/pnpm symlinks unreachable from this Linux bridge) | Owner's native terminal | Medium — unverified code could hide defects | **P0** | Run §19a commands natively | Exact command + PASS/FAIL output recorded here |
-| G-2 | Phase 11.9 Admin UI | Absent (regressed); rendering logic recoverable, backend compatible, cross-service auth model incompatible (see §16, §23) | A decided auth model for admin→api server-to-server calls, then the route/rendering code itself | Deleted as collateral damage; auth architecture changed independently afterward | Owner decision on auth model (§25); current `platform-html.ts`/`requireOperator` architecture | Medium — wrong choice here creates a new cross-service trust boundary | **P1** | New/restored tests + native run, once auth model is chosen | Auth model decided → feature implemented → tests pass → native-verified → documented |
+| G-2 | Phase 11.9 Admin UI | **Closed this cycle** — recovered/adapted under Option A (Admin → Control Plane projection). Tenant API `requireUser` / `requireOperator` / `requireOwner` unchanged. See §16, §23, §33, §34. | none outstanding for the selected model | Historical UI deleted by `4883bfd`; recovered 2026-09-04 | Owner chose Option A | Medium if a later cycle reopens Option B (static-token API exception) — that remains forbidden | **closed** | Admin tests 21/21; API portfolio+auth 15/15; CP 68/68; Admin→CP runtime on ephemeral HTTP servers | Auth model decided → feature implemented → tests pass → runtime-verified on in-process servers → documented. Default `:3200`/`:3100`/`:4000` daemons were not running. |
 | G-3 | Owner re-approval of 11.5–11.15 | Implemented, undocumented as approved | A recorded Owner decision superseding the `831410e` retraction | Documentation-only rollback never revisited | none | Low (code already shipped either way) | **P2** | none (decision, not code) | Owner decision recorded with the §16-of-directive metadata schema |
 | G-4 | SBOM script execution evidence | Script present; attempted 2026-09-04: `node_modules/.bin/tsx scripts/generate-sbom.ts` fails with `Cannot find module 'esbuild'` — same class of environment issue as G-1, not a code defect | Execution + output review | Native-binary (esbuild) resolution fails through this bridge | native environment | Low | **P3** | Run `pnpm sbom:generate` natively, review sbom.json/sbom.xml | Output reviewed, findings recorded |
 | G-5 | Reliability/DR documentation | **Closed this cycle** — full read-through performed (not grep-only): durable job-queue crash recovery (`apps/worker/src/queue-persistence.ts`) and claim-based execution idempotency (`governed-claimed-execution.ts`) both confirmed real and durable; automation-engine dedup confirmed process-local only (documented caveat, not a defect); store-level atomic-write durability cited from a prior code-verified audit trail (`living-request-tracker.md`). Offsite backup/replication and multi-region HA confirmed MISSING by a prior, pre-existing, honestly-labeled audit (`ATLAS_VERIFICATION_REPORT_2026-08-28.md`) — not newly discovered here, not silently adopted as a new gap either. | Independent re-verification via actual test execution (still BLOCKED-ENVIRONMENT); a decision on whether offsite backup/replication is in scope for the current stage | None outstanding from this cycle's investigation depth | native test execution (for re-verification only) | Low — code read directly, not inferred | **P3** (was P2; downgraded now that real evidence closes most of the open question) | Native test execution of `apps/worker` once available | §14 now carries evidence-based status per mechanism instead of a grep-only placeholder |
@@ -413,28 +414,17 @@ manufacture gaps").
 
 1. Whether to formally re-approve the already-implemented 11.5–11.15 work
    (G-3), and with what documentation wording.
-2. **Phase 11.9 Admin UI auth model (G-2).** Rendering logic and backend
-   are both ready; the open question is how `apps/admin` should reach the
-   owner-gated `GET /api/v1/portfolio-governance` on `apps/api`. Three
-   options, none implemented yet:
-   - **(a) Route it through Control Plane** (matching the pre-deletion
-     pattern): add a thin read-only projection endpoint in
-     `apps/control-plane` that reads the same `packages/shared/src/portfolio`
-     snapshot, reusing the existing static-token trust between admin and
-     control-plane. Requires control-plane to gain access to the persisted
-     overlay currently owned by `apps/api/src/services/portfolio-governance-store.ts`.
-   - **(b) Mint a scoped service credential** for admin→api calls (a new
-     `ATLAS_ADMIN_SERVICE_TOKEN` or similar, recognized by `requireUser`/
-     `getRequestUser` as a narrow, audit-logged, non-interactive operator
-     identity). New cross-service trust boundary — a security-policy
-     change, per directive §19, requiring explicit sign-off.
-   - **(c) Client-side fetch using the owner's own Studio/API session**
-     instead of a server-to-server call — avoids minting new credentials,
-     but only works when the owner is separately signed into Studio/API in
-     the same browser, since `apps/admin`'s browser session is a distinct
-     HMAC cookie today, not a shared Supabase session.
-   No code was written for any option this cycle; this is a genuine
-   Owner decision, not a technical fact I can establish from evidence.
+2. **Phase 11.9 Admin UI auth model (G-2).** **Decided: Option A.**
+   Owner execution directive 2026-09-04 selected
+   `Admin → Control Plane → Portfolio Governance API` as the trust
+   boundary, with the explicit prohibition on weakening `requireUser` /
+   adding a static-token API exception. Implemented the same day: Admin
+   reads Control Plane's existing `GET /api/v1/portfolio-governance`
+   (shared seed + `.atlas/portfolio-governance.json` overlay). Control
+   Plane does **not** HTTP-forward to the tenant API. Writes remain
+   `POST /api/v1/portfolio-governance/decisions` on the tenant API
+   behind `requireOwner`. Options B and C were not implemented. See §33
+   and §34.
 3. Whether to schedule native test/typecheck execution (G-1) before any
    further code is written or committed, given §16 of the directive:
    "Never claim Level 5 or Level 6 based only on Level 1–3 evidence."
@@ -450,26 +440,23 @@ manufacture gaps").
 Per the directive's §20: **Phase A** (this document) — done this cycle.
 **Phase B** (repair inconsistencies) — the test-label and `remaining-
 work.md` fixes are done this cycle; Synthetic Universe documentation
-integration is done (§17). **Phase C** (11.9 recovery) — **not started**;
-requires an Owner decision (§25.2) before any code is written, because it
-cannot be verified in this environment. **Phase D** (gap matrix) — done
-this cycle (§24). **Phase E** (build P0/P1) — **not started** for the same
-reason as Phase C; G-1 itself (native test execution) is the literal
-precondition for safely doing any of Phase E's Build Protocol (§27/§28).
-**Phase F** (finalize) — partially done (this document + roadmap pointer);
-fully closing it depends on Phases C/E.
+integration is done (§17). **Phase C** (11.9 recovery) — **executed this cycle under Option A**
+(§16, §23, §34). Native Admin/API/CP tests ran in this Windows
+environment; default daemon ports were not listening. **Phase D** (gap matrix) — done
+this cycle (§24). **Phase E** (build P0/P1) — Phase C (11.9) is no longer waiting;
+remaining G-1 work is native verification of packages not run this
+cycle. **Phase F** (finalize) — this document updated for 11.9 (§34).
 
 ## 27. Verification Gates
 
 Level 1 (static inspection) and Level 2 (typecheck/lint/build *by reading*,
 not executing) evidence underlies every "IMPLEMENTED" status in this
-document. **No Level 3 (unit tests), Level 4 (integration tests), Level 5
-(runtime verification), or Level 6 (production-readiness/governance
-verification) evidence was produced in this session**, except where
-explicitly marked "Owner-reported" for Synthetic Universe (§17), which is
-itself not independently confirmed. No capability in this document claims
-Level 5 or 6 on the strength of Level 1–3 evidence alone, per the
-directive's own rule.
+document. **Exception this cycle — Phase 11.9 Option A:** Level 3 Admin/
+API/CP tests were executed on this Windows host, and Level 5 Admin →
+Control Plane runtime was executed on ephemeral in-process HTTP servers
+(§34). Default daemon ports `:3200` / `:3100` / `:4000` were not
+listening. Level 6 (production-readiness) is **not** claimed. Other
+areas remain at the earlier Level 1–2 evidence unless separately marked.
 
 ## 28. Build Protocol
 
@@ -549,8 +536,10 @@ newly discovered here.
 
 ## 33. Phase 11.9 — Authentication Options (detailed analysis, 2026-09-04)
 
-No code was written for any option below. This section exists so the Owner
-can choose one; implementation follows only after that choice.
+Owner selected **Option A** on 2026-09-04 and it was implemented the same
+day (§34). Options B and C remain recorded here as the rejected
+alternatives. The analysis below is the pre-decision text; do not read
+"no code was written" as current status.
 
 ### Option A — Route through Control Plane (projection endpoint)
 
@@ -665,7 +654,7 @@ a server-to-server call from `apps/admin` at all.
 - **Assessment:** Strong, conservative alternative to Option A. Its cost is
   UX/session-unification, not security surface.
 
-### Recommendation (not a decision — the Owner decides)
+### Recommendation (historical — Owner later chose Option A)
 
 Option A first (closest to original intent, smallest new trust surface,
 one clean persistence-boundary question to resolve). Option C as a solid,
@@ -673,3 +662,53 @@ more conservative fallback if extracting the portfolio-read path is judged
 too invasive right now. Option B only if both A and C are explicitly ruled
 out, and even then narrowly scoped — never as a change to `requireUser`
 itself.
+
+Owner execution directive 2026-09-04 selected Option A. Implementation
+record: §34.
+
+## 34. Phase 11.9 Option A — Execution Record (2026-09-04)
+
+This is a recovery/adaptation of the historical 11.9 feature
+(`82e883e` → deleted by `4883bfd` → recovered under current architecture).
+It is not a claim that the deletion never happened.
+
+- **Selected authentication model:** Option A — Admin → Control Plane →
+  Portfolio Governance projection. Control Plane is the trusted
+  intermediary. Admin does not call the tenant API for this read.
+- **Trust path:** Owner browser cookie `atlas_admin_session` (HMAC, role
+  OWNER) or Admin Bearer `ATLAS_CONTROL_PLANE_TOKEN` →
+  `authorizeAdminRequest` → Admin `fetchSupervisedJson` → Control Plane
+  `GET /api/v1/portfolio-governance` (Bearer `ATLAS_CONTROL_PLANE_TOKEN`,
+  CP principal OPERATOR) → `getControlPlanePortfolioView()` (seed +
+  `.atlas/portfolio-governance.json` overlay).
+- **Writes / audit:** `POST /api/v1/portfolio-governance/decisions` remains
+  on the tenant API behind `requireOwner` → `requireUser` and
+  `appendUnifiedAuditEntry`. Admin exposes no write/decisions route
+  (404). Control Plane does not HTTP-forward to the tenant API.
+- **Affected components:** `apps/admin` (new `portfolio-html.ts`,
+  `portfolio-projection.ts`, `/portfolio` + Admin JSON proxy after Admin
+  auth, platform nav link). Control Plane portfolio route was already
+  present. Tenant API auth/routes unchanged.
+- **Security:** no `requireUser` static-token exception; no
+  `requireOperator` weakening; no browser-exposed secret; no client-side
+  authorization decision; no unauthenticated Admin → API path.
+- **Persistence caveat:** Control Plane reads the overlay file only; the
+  tenant API also writes osStore. Documented, not changed.
+- **Tests:** `pnpm --filter @atlas/admin test` — 21/21 PASS.
+  `pnpm --filter @atlas/api test -- src/routes/portfolio-governance.test.ts src/middleware/auth-guards.test.ts src/middleware/public-routes.test.ts src/private-by-default.test.ts` — 15/15 PASS.
+  `pnpm --filter @atlas/control-plane test -- src/__tests__/control-plane-alignment.test.ts src/__tests__/control-plane-auth.test.ts src/__tests__/api-routes.test.ts src/routes/dashboard.test.ts` — 68/68 PASS.
+- **Typecheck / build:** `pnpm --filter @atlas/admin typecheck` PASS;
+  `pnpm --filter @atlas/admin build` PASS. `@atlas/admin` has no lint
+  script.
+- **Runtime verification:** Admin → live Control Plane on ephemeral
+  in-process HTTP servers (`portfolio-option-a.runtime.test.ts`) PASS
+  (unauthenticated 401, invalid bearer 401, authorized 200, CP
+  `writeAuthority: ATLAS_API`). Default ports `:3200` / `:3100` / `:4000`
+  timed out (daemons not running). Tenant-API mutation/audit path was
+  not re-exercised against a live `:4000` in this cycle; existing API
+  route tests cover 401/403/owner decide.
+- **Commit SHA:** recorded immediately after the Phase 11.9 commit
+  (this paragraph is updated in the same documentation pass).
+- **Final verification level:** **IMPLEMENTED — RUNTIME VERIFIED** for
+  the Admin → Control Plane read path. Not PRODUCTION READY. Default
+  daemon ports were down.

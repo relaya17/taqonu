@@ -305,10 +305,11 @@ authoritative source.
 **11.5-11.15 - implemented, code and tests present in the repository (persistence,
 global deduplication, canonical capability mapping, governance decisions,
 control-plane alignment tests, security, audit, the 11.13/11.14 QA/sign-off
-milestones, and knowledge-ingestion audit). Status: IMPLEMENTED -
-VERIFICATION REQUIRED (BLOCKED-ENVIRONMENT — no independent test/typecheck
-execution has been performed against current HEAD from this environment).
-See ATLAS_MASTER_TRUTH.md for the full per-phase evidence matrix.**
+milestones, and knowledge-ingestion audit). Phase 11.9 Admin UI was deleted
+by `4883bfd` and recovered/adapted 2026-09-04 under Option A (Admin →
+Control Plane projection). Other 11.5–11.15 items remain IMPLEMENTED —
+UNVERIFIED (BLOCKED-ENVIRONMENT) except where Master Truth records a
+newer verification level. Authoritative status: ATLAS_MASTER_TRUTH.md §16/§34.**
 
 ### Historical record for Phase 11 - preserved, not erased
 

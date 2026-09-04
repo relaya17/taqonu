@@ -3,6 +3,8 @@ import { platformHierarchyDocument } from "@atlas/shared";
 import { authorizeAdminRequest } from "./admin-auth.js";
 import { renderPlatformHtml } from "./platform-html.js";
 import { composePlatformOverview } from "./platform-overview.js";
+import { renderPortfolioHtml } from "./portfolio-html.js";
+import { loadPortfolioProjection } from "./portfolio-projection.js";
 import {
   authenticateAdminBrowser,
   clearAdminBrowserSession,
@@ -12,11 +14,12 @@ import {
 
 const PORT = parseInt(process.env["ADMIN_PORT"] ?? "3200", 10);
 const HOST = process.env["HOST"] ?? "127.0.0.1";
-const CONTROL_API =
-  (process.env["ATLAS_CONTROL_PLANE_URL"] ?? "http://127.0.0.1:3100").replace(
+function controlApiOrigin(): string {
+  return (process.env["ATLAS_CONTROL_PLANE_URL"] ?? "http://127.0.0.1:3100").replace(
     /\/$/,
     "",
   );
+}
 const WEB_ORIGIN = (process.env["WEB_ORIGIN"] ?? "http://localhost:3000").replace(
   /\/$/,
   "",
@@ -39,7 +42,7 @@ function demoFields(): { demoEmail?: string; demoPassword?: string } {
 
 function platformPageBase() {
   return {
-    controlOrigin: CONTROL_API,
+    controlOrigin: controlApiOrigin(),
     studioOrigin: WEB_ORIGIN,
     adminOrigin: adminOrigin(),
     ...demoFields(),
@@ -49,7 +52,7 @@ function platformPageBase() {
 async function fetchSupervisedJson(url: string): Promise<unknown> {
   const headers: Record<string, string> = {};
   const token = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
-  if (token && url.startsWith(CONTROL_API)) {
+  if (token && url.startsWith(controlApiOrigin())) {
     headers.Authorization = `Bearer ${token}`;
   }
   const res = await fetch(url, { headers });
@@ -62,7 +65,7 @@ async function fetchSupervisedJson(url: string): Promise<unknown> {
 async function loadPlatformOverview() {
   return composePlatformOverview({
     adminOrigin: adminOrigin(),
-    controlOrigin: CONTROL_API,
+    controlOrigin: controlApiOrigin(),
     studioOrigin: WEB_ORIGIN,
     fetchJson: fetchSupervisedJson,
   });
@@ -73,6 +76,18 @@ async function loadPlatformPage() {
   return renderPlatformHtml({
     ...platformPageBase(),
     overview,
+  });
+}
+
+async function loadPortfolioPage() {
+  const projection = await loadPortfolioProjection({
+    controlOrigin: controlApiOrigin(),
+    fetchJson: fetchSupervisedJson,
+  });
+  return renderPortfolioHtml({
+    controlOrigin: controlApiOrigin(),
+    adminOrigin: adminOrigin(),
+    projection,
   });
 }
 
@@ -203,6 +218,22 @@ async function handleAdminRequestAsync(
     res.end(JSON.stringify(overview));
     return;
   }
+  if (pathname === "/api/v1/portfolio-governance" && method === "GET") {
+    const projection = await loadPortfolioProjection({
+      controlOrigin: controlApiOrigin(),
+      fetchJson: fetchSupervisedJson,
+    });
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify(projection));
+    return;
+  }
+  if (pathname === "/portfolio" && method === "GET") {
+    sendHtml(res, await loadPortfolioPage());
+    return;
+  }
   if (pathname === "/" || pathname === "/index.html") {
     const html = await loadPlatformPage();
     res.writeHead(200, {
@@ -229,7 +260,8 @@ const server = createServer(handleAdminRequest);
 
 // Vercel invokes the exported handler per request. Binding a port inside a
 // serverless function never gets a listener and stalls the invocation.
-if (!process.env["VERCEL"]) {
+// Vitest imports this module for handleAdminRequest; do not bind :3200 in tests.
+if (!process.env["VERCEL"] && process.env["VITEST"] !== "true") {
   server.listen(PORT, HOST, () => {
     console.log(`[atlas-admin] Atlas Admin (platform supervisor) http://${HOST}:${PORT}/`);
   });
