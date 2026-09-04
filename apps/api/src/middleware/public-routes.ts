@@ -34,6 +34,7 @@ const PUBLIC_EXACT = new Set([
   "POST /api/v1/gateway/fulfill",
   "POST /api/v1/approvals/verify-atlas-self",
   "POST /api/v1/approvals/atlas-self/control-request",
+  "POST /api/v1/audit/cp-import",
 ]);
 
 const PUBLIC_PREFIXES: ReadonlyArray<{ method: string; prefix: string }> = [

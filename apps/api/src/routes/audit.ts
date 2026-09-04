@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AtlasError } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
 import { requireAdmin } from "../middleware/auth-guards.js";
+import { isControlPlaneServiceAuthorization } from "../services/governed-lifecycle-handoff.js";
 import {
   countAuditLogLines,
   listUnifiedAuditEntries,
@@ -65,25 +67,36 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
   /**
    * POST /api/v1/audit/cp-import
    *
-   * Import Control Plane audit entries into the canonical API audit file.
-   * This merges CP hashes into the API's authoritative hash-chain.
-   * Admin-only (internal bridge endpoint).
+   * Import Control Plane observational entries into the canonical API file.
+   * CP hashes are provenance (`cpHash`); the API chain remains the SoR.
+   * Control Plane SERVICE bearer or customer admin.
    */
   app.post("/api/v1/audit/cp-import", async (request, reply) => {
-    await requireAdmin(app, request);
+    if (!isControlPlaneServiceAuthorization(request.headers.authorization)) {
+      await requireAdmin(app, request);
+    }
     const body = z.object({
       entries: z.array(cpAuditEntrySchema),
     }).parse(request.body);
-    
+
     if (body.entries.length === 0) {
-      return { imported: 0, records: [] };
+      return { imported: 0, skipped: 0, records: [] };
     }
-    
-    const result = importCpAuditBatch(body.entries);
-    return reply.status(201).send({
-      imported: result.imported,
-      records: result.records.map(r => ({ id: r.id, type: r.type, hash: r.hash })),
-      note: "Control Plane entries merged into canonical API audit file.",
-    });
+
+    try {
+      const result = importCpAuditBatch(body.entries);
+      return reply.status(201).send({
+        imported: result.imported,
+        skipped: result.skipped,
+        records: result.records.map((r) => ({ id: r.id, type: r.type, hash: r.hash })),
+        note: "Control Plane entries merged into canonical API audit file.",
+      });
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Control Plane audit import rejected",
+        { statusCode: 400 },
+      );
+    }
   });
 }

@@ -960,3 +960,18 @@ sibling execution identity (later-scope).
   tenant API service hop. Collision still never elevates to OWNER.
 
 HMAC reauth remains one-shot replay protection, not MFA.
+
+## 41. Phase 05 Canonical Audit (2026-09-04)
+
+**Status: COMPLETE.** API NDJSON remains the only system of record.
+
+- `POST /api/v1/audit/cp-import` accepts Control Plane SERVICE bearer or
+  admin session. Handler still authenticates.
+- Imported rows keep `cpHash` / `cpPrevHash` as provenance. The API then
+  hashes the new line into its own chain.
+- Duplicate `cpHash` is skipped. Broken CP sequences are rejected.
+- Control Plane `startPeriodicSync` is reachable from `server.ts` and uses
+  the service bearer, not a session cookie.
+
+Historical records are not rewritten. CP `verifyAuditChain` stays
+`canonical: false`.

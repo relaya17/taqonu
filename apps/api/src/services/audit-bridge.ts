@@ -1,15 +1,18 @@
 /**
  * Audit Bridge — Merge Control Plane audit entries into the canonical API audit file.
  *
- * This allows the Control Plane to forward its audit entries to be persisted
- * in the canonical hash-chained NDJSON file alongside API audit entries.
- * 
- * The entries are prefixed with `cp:` in their type to distinguish them
- * from API-native entries while maintaining a single source of truth.
+ * Control Plane in-memory hashes stay observational. The API NDJSON chain is
+ * the only system of record. Imported rows keep `cpHash` / `cpPrevHash` as
+ * provenance; the API then hashes the new line into its own chain.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
-import { appendAuditLogLine, type AuditLogRecord } from "./audit-log.js";
+import {
+  appendAuditLogLine,
+  resolveAuditLogPath,
+  type AuditLogRecord,
+} from "./audit-log.js";
 
 export const cpAuditEntrySchema = z.object({
   seq: z.number(),
@@ -29,6 +32,38 @@ export const cpAuditEntrySchema = z.object({
 });
 
 export type CpAuditEntry = z.infer<typeof cpAuditEntrySchema>;
+
+function importedCpHashes(): Set<string> {
+  const seen = new Set<string>();
+  const path = resolveAuditLogPath();
+  if (!existsSync(path)) return seen;
+  const raw = readFileSync(path, "utf8");
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line) as { payload?: { cpHash?: unknown } };
+      const hash = parsed.payload?.cpHash;
+      if (typeof hash === "string" && hash.length > 0) seen.add(hash);
+    } catch {
+      // skip corrupt line; verifyAuditLogChain is the integrity gate
+    }
+  }
+  return seen;
+}
+
+export function assertCpHashContinuity(entries: readonly CpAuditEntry[]): void {
+  const ordered = [...entries].sort((a, b) => a.seq - b.seq);
+  for (let i = 1; i < ordered.length; i += 1) {
+    const previous = ordered[i - 1];
+    const current = ordered[i];
+    if (!previous || !current) continue;
+    if (current.prevHash !== previous.hash) {
+      throw new Error(
+        `Control Plane hash break between seq ${previous.seq} and ${current.seq}`,
+      );
+    }
+  }
+}
 
 /**
  * Import a Control Plane audit entry into the canonical API audit file.
@@ -55,18 +90,30 @@ export function importCpAuditEntry(entry: CpAuditEntry): AuditLogRecord {
 }
 
 /**
- * Batch import multiple Control Plane audit entries.
+ * Batch import. Dedups by `cpHash`. Rejects a broken CP hash sequence.
+ * Historical API lines are never rewritten.
  */
 export function importCpAuditBatch(entries: CpAuditEntry[]): {
   imported: number;
+  skipped: number;
   records: AuditLogRecord[];
 } {
+  assertCpHashContinuity(entries);
+  const seen = importedCpHashes();
   const records: AuditLogRecord[] = [];
+  let skipped = 0;
   for (const entry of entries) {
-    records.push(importCpAuditEntry(entry));
+    if (seen.has(entry.hash)) {
+      skipped += 1;
+      continue;
+    }
+    const record = importCpAuditEntry(entry);
+    seen.add(entry.hash);
+    records.push(record);
   }
   return {
     imported: records.length,
+    skipped,
     records,
   };
 }

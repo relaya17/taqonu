@@ -64,8 +64,13 @@ export async function syncAuditToApi(): Promise<{
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    if (adminToken) {
-      headers["Cookie"] = `atlas_session=${adminToken}`;
+    const token =
+      adminToken ??
+      process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim() ??
+      process.env["ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS"]?.trim() ??
+      "";
+    if (token) {
+      headers.authorization = `Bearer ${token}`;
     }
 
     const response = await fetch(`${apiBaseUrl}/api/v1/audit/cp-import`, {

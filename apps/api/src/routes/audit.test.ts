@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,5 +131,53 @@ describe("GET /api/v1/audit", () => {
       url: "/api/v1/audit?limit=5000",
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("POST /api/v1/audit/cp-import", () => {
+  const prevToken = process.env.ATLAS_CONTROL_PLANE_TOKEN;
+
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    else process.env.ATLAS_CONTROL_PLANE_TOKEN = prevToken;
+  });
+
+  it("accepts the Control Plane service bearer and rejects anonymous", async () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "cp-audit-import-token";
+    getRequestUser.mockReturnValue(null);
+    const denied = await app.inject({
+      method: "POST",
+      url: "/api/v1/audit/cp-import",
+      payload: { entries: [] },
+    });
+    expect(denied.statusCode).toBe(401);
+
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/api/v1/audit/cp-import",
+      headers: { authorization: "Bearer cp-audit-import-token" },
+      payload: {
+        entries: [
+          {
+            seq: 1,
+            timestamp: "2026-09-04T00:00:00.000Z",
+            type: "gateway.decision",
+            actorId: "cp:service",
+            actorKind: "SYSTEM",
+            reason: "import",
+            policy: "DOCUMENT.READ",
+            risk: "LOW",
+            approval: "NOT_REQUIRED",
+            result: "SUCCESS",
+            ownerId: "00000000-0000-4000-8000-def000000000",
+            projectId: null,
+            hash: "cp-hash-import-1",
+            prevHash: "GENESIS",
+          },
+        ],
+      },
+    });
+    expect(allowed.statusCode).toBe(201);
+    expect(allowed.json().imported).toBe(1);
   });
 });

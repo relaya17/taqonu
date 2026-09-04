@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createRequestHandler } from "./http.js";
+import { startPeriodicSync, stopPeriodicSync } from "./services/audit-sync.js";
 
 /**
  * Atlas Control Plane — governance, oversight, and AI agent management.
@@ -21,6 +22,7 @@ const server = createServer(handleControlPlaneRequest);
 
 function shutdown(signal: string): void {
   console.log(`[control-plane] ${signal} — closing`);
+  stopPeriodicSync();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 }
@@ -31,6 +33,7 @@ if (!process.env["VERCEL"]) {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
+  startPeriodicSync();
   server.listen(PORT, HOST, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗

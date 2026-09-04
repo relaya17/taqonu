@@ -19,6 +19,7 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     expect(
       isPublicAtlasRoute("POST", "/api/v1/approvals/atlas-self/control-request"),
     ).toBe(true);
+    expect(isPublicAtlasRoute("POST", "/api/v1/audit/cp-import")).toBe(true);
   });
 
   it("denies tenant and studio reads", () => {

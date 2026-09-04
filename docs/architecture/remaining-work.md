@@ -119,6 +119,8 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
   previous operator secret so rotation does not silently drop sessions.
 
 ## 05 CANONICAL AUDIT
+**Status: COMPLETE** — API NDJSON is the only system of record.
+
 **Implemented (code + tests):**
 - API NDJSON is the system of record.
 - `verifyAuditLogChain` returns `VALID | BROKEN | INCOMPLETE | UNKNOWN`.
@@ -136,7 +138,12 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - **ESCALATE as decision:** `OPERATING_DECISIONS` now includes `ALLOW`, `DENY`,
   `REQUIRE_APPROVAL`, and `ESCALATE`.
 
-**Not claimed:** merging CP hashes into the API file; a second SoR.
+Control Plane observational hashes are imported as `cpHash` / `cpPrevHash`
+provenance on the API chain. `startPeriodicSync` is started from
+`apps/control-plane/src/server.ts` and authenticates with the Control Plane
+service bearer. Duplicate `cpHash` values are skipped. A broken CP hash
+sequence is rejected. Historical API lines are never rewritten. There is
+still no second system of record.
 
 ## 06 EXECUTION SAFETY
 **Implemented on the existing runtime (not a job queue):**
