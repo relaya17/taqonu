@@ -267,6 +267,12 @@ external marketplace integration, agent-to-agent negotiation.
 
 New increment (owner-approved sequence). **Stop after each phase. Wait for Owner approval.**
 
+Full current status, per-phase evidence, and history for all of Phase 11 now
+lives in the single authoritative document:
+`docs/architecture/ATLAS_MASTER_TRUTH.md` (section "Portfolio Governance
+11.1-11.15"). This section is a summary pointer only; it is not the
+authoritative source.
+
 **11.1 Foundation / persistence — complete.**
 - Separated-plane data model and overlay persistence.
 - Safety locks: no ingest, no sibling execution, no Fabric writes, no source
@@ -296,7 +302,31 @@ New increment (owner-approved sequence). **Stop after each phase. Wait for Owner
 - Default source runtime: UNKNOWN / NOT_PROBED. Documentation ≠ OBSERVED_UP.
 - 19 Phase 4 provenance/evidence tests.
 
-**Later (do not start without Owner approval):** 11.5 persistence … 11.10 tests.
+**11.5-11.15 - implemented, code and tests present in the repository (persistence,
+global deduplication, canonical capability mapping, governance decisions,
+control-plane alignment tests, security, audit, the 11.13/11.14 QA/sign-off
+milestones, and knowledge-ingestion audit). Status: IMPLEMENTED -
+VERIFICATION REQUIRED (BLOCKED-ENVIRONMENT — no independent test/typecheck
+execution has been performed against current HEAD from this environment).
+See ATLAS_MASTER_TRUTH.md for the full per-phase evidence matrix.**
+
+### Historical record for Phase 11 - preserved, not erased
+
+On 2026-08-28, commit `82e883e` documented Phase 11.1-11.15 as complete and
+owner-approved, with a full specification for each phase written into this
+file. 66 minutes later, commit `831410e` removed the 11.5-11.15 detail from
+this file and replaced it with the line below, without any corresponding
+code change - the 11.5-11.15 code and tests from `82e883e` remain intact
+through current HEAD. This was a documentation-only retraction; it was
+never technically reversed, and no Owner re-approval of that specific work
+has since been recorded in this file.
+
+Original superseded line, kept verbatim for traceability:
+> Later (do not start without Owner approval): 11.5 persistence … 11.10 tests.
+
+Whether to formally re-approve this already-implemented work, and how to
+word its current status, remains an open Owner decision (see
+ATLAS_MASTER_TRUTH.md, section 25).
 
 ## OPERATIONAL LIFECYCLE (Decision → Evidence)
 
