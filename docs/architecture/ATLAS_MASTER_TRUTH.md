@@ -711,3 +711,58 @@ It is not a claim that the deletion never happened.
 - **Final verification level:** **IMPLEMENTED — RUNTIME VERIFIED** for
   the Admin → Control Plane read path. Not PRODUCTION READY. Default
   daemon ports were down.
+
+### 34a. Verification & closure pass (same day, after `73b11d1`)
+
+No production 11.9 code was rebuilt. This pass re-inspected the committed
+Option A path, re-ran tests, and added one API assertion that a successful
+owner decision writes `portfolio.governance.decided` to the unified audit
+log (`apps/api/src/routes/portfolio-governance.test.ts`). Tenant API
+`requireUser` / `requireOperator` / `requireOwner` remain unmodified
+(`git diff 56c9861..73b11d1` on those files is empty).
+
+**Architecture confirmed (not Admin HTTP → API):**
+
+```text
+Admin (authorizeAdminRequest)
+  → Control Plane GET /api/v1/portfolio-governance
+  → getControlPlanePortfolioView() (seed + overlay file)
+Writes / audit remain:
+  POST /api/v1/portfolio-governance/decisions
+  → requireOwner → requireUser → appendUnifiedAuditEntry
+```
+
+Control Plane does **not** HTTP-forward to the tenant API. That hop would
+require a static-token exception and was rejected with Option B.
+
+**Security re-check:** no `requireUser` bypass; no `requireOperator`
+weakening; token only on Admin server `fetchSupervisedJson` when the URL
+starts with the Control Plane origin; no Admin write surface; no
+unauthenticated Admin → API path.
+
+**Commands this pass:**
+
+| Command | Result |
+|---|---|
+| `pnpm --filter @atlas/admin test` | 21/21 PASS |
+| `pnpm --filter @atlas/api test -- src/routes/portfolio-governance.test.ts src/middleware/auth-guards.test.ts src/middleware/public-routes.test.ts src/private-by-default.test.ts` | first run 15/15; after audit assertion `portfolio-governance.test.ts` 6/6 |
+| `pnpm --filter @atlas/control-plane test -- src/__tests__/control-plane-alignment.test.ts src/__tests__/control-plane-auth.test.ts src/__tests__/api-routes.test.ts src/routes/dashboard.test.ts` | 68/68 PASS |
+| `pnpm --filter @atlas/shared test -- src/portfolio/audit.test.ts src/portfolio/security.test.ts` | 58/58 PASS |
+| `pnpm --filter @atlas/admin typecheck` | PASS |
+| `pnpm --filter @atlas/admin build` | PASS |
+| `pnpm --filter @atlas/control-plane lint` | PASS |
+| `pnpm --filter @atlas/api lint` | PASS |
+| `pnpm --filter @atlas/admin lint` | no lint script (`ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT`) |
+
+**Runtime this pass:** default `:3200` / `:3100` / `:4000` timed out again
+(daemons not running). In-process Admin → Control Plane
+(`portfolio-option-a.runtime.test.ts`) re-passed: unauthenticated 401,
+invalid bearer 401, authorized 200. API inject tests: anonymous GET 401,
+tenant-admin GET 403, operator GET 200, operator POST decide 403, owner
+POST decide 200 + `portfolio.governance.decided` audit line. Portfolio
+Governance inventory is global (not tenant-scoped); the unauthorized-scope
+equivalent is the 403 tenant-admin / operator-decide cases.
+
+**Closure verification level:** **IMPLEMENTED — RUNTIME VERIFIED**
+(Admin → Control Plane on ephemeral HTTP servers + API inject
+auth/audit). Default daemon ports still down. Not PRODUCTION READY.

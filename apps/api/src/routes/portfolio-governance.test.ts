@@ -26,6 +26,9 @@ const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.
 const { resetPortfolioOverlayForTests } = await import(
   "../services/portfolio-governance-store.js"
 );
+const { readAuditLogTail, setAuditLogPathForTests } = await import(
+  "../services/audit-log.js"
+);
 
 let app: FastifyInstance;
 
@@ -174,6 +177,35 @@ describe("POST /api/v1/portfolio-governance/decisions", () => {
     expect(body.decision.knowledgeIngested).toBe(false);
     expect(body.governance.ingestExecuted).toBe(false);
     expect(FABRIC_AGENT_IDS).toHaveLength(16);
+  });
+
+  it("writes portfolio.governance.decided to the unified audit log", async () => {
+    const auditPath = join(tmpDir, "audit.ndjson");
+    setAuditLogPathForTests(auditPath);
+    const previousSkip = process.env.ATLAS_SKIP_AUDIT_LOG;
+    delete process.env.ATLAS_SKIP_AUDIT_LOG;
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/portfolio-governance/decisions",
+        payload: {
+          action: "KEEP_SOURCE_SPECIFIC",
+          verdict: "APPROVED",
+          rationale: "Owner decision must produce canonical audit evidence",
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const decided = readAuditLogTail(20).find(
+        (entry) => entry.type === "portfolio.governance.decided",
+      );
+      expect(decided).toBeDefined();
+      expect(decided?.payload["actorId"]).toBe("22222222-2222-4222-8222-222222222222");
+      expect(decided?.payload["action"]).toBe("KEEP_SOURCE_SPECIFIC");
+    } finally {
+      if (previousSkip === undefined) delete process.env.ATLAS_SKIP_AUDIT_LOG;
+      else process.env.ATLAS_SKIP_AUDIT_LOG = previousSkip;
+      setAuditLogPathForTests(null);
+    }
   });
 
   it("does not expose ingest, probe, or promote endpoints", async () => {
