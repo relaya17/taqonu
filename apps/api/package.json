@@ -35,6 +35,7 @@
     "@atlas/qa-core": "workspace:*",
     "@atlas/shared": "workspace:*",
     "@atlas/state": "workspace:*",
+    "@atlas/synthetic-universe": "workspace:*",
     "@atlas/system-model": "workspace:*",
     "@fastify/cors": "^11.0.0",
     "@fastify/rate-limit": "^11.2.0",

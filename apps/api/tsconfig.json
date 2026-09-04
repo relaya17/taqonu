@@ -28,6 +28,7 @@
     { "path": "../../packages/state" },
     { "path": "../../packages/system-model" },
     { "path": "../../packages/qa-core" },
-    { "path": "../../packages/experts" }
+    { "path": "../../packages/experts" },
+    { "path": "../../packages/synthetic-universe" }
   ]
 }

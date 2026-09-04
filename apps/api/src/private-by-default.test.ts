@@ -39,6 +39,30 @@ describe("private-by-default API hook (ADR-021)", () => {
       expect(
         (await app.inject({ method: "GET", url: "/api/v1/metrics" })).statusCode,
       ).toBe(401);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/v1/synthetic/scenarios/run",
+            payload: {
+              tenantId: "TEST-REALTY-001",
+              scenarioId: "real-estate-deal-completion",
+            },
+          })
+        ).statusCode,
+      ).toBe(401);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/v1/synthetic/scenarios/closed-loop",
+            payload: {
+              tenantId: "TEST-REALTY-001",
+              scenarioId: "real-estate-deal-incomplete-payment",
+            },
+          })
+        ).statusCode,
+      ).toBe(401);
     } finally {
       await app.close();
     }
