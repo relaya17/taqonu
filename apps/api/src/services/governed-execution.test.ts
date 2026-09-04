@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  registerAnalyzeRepoTool,
   registerFilesystemTools,
   registerTool,
   resetToolRegistryForTests,
@@ -98,7 +99,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       agentId: string;
       ownerId: string;
       projectId: string | null;
-      runtimeStatus: "ACTIVE" | "QUARANTINED" | "DISABLED";
+      runtimeStatus: "ACTIVE" | "QUARANTINED" | "DISABLED" | "SUSPENDED";
     }> = {},
   ) {
     return resolveAgentIdentity({
@@ -134,6 +135,57 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(result.stage).toBe("AUTHORIZATION");
     expect(result.status).toBe("DENIED");
     expect(result.reason).toMatch(/QUARANTINED/);
+  });
+
+  it("BLOCKS a suspended agent and does not default the overlay to ACTIVE", async () => {
+    const result = await executeGovernedAction(
+      baseRequest({ identity: identity({ runtimeStatus: "SUSPENDED" }) }),
+    );
+    expect(result.status).toBe("DENIED");
+    expect(result.reason).toMatch(/SUSPENDED/);
+  });
+
+  it("BLOCKS when runtime status is missing entirely (fail closed, not ACTIVE)", async () => {
+    const resolved = identity();
+    const result = await executeGovernedAction(
+      baseRequest({
+        identity: {
+          agentId: resolved.agentId,
+          ownerId: resolved.ownerId,
+          projectId: resolved.projectId,
+          authorityScope: resolved.authorityScope,
+          trustLevel: resolved.trustLevel,
+        },
+      }),
+    );
+    expect(result.status).toBe("DENIED");
+    expect(result.reason).toMatch(/UNKNOWN/);
+  });
+
+  it("EXECUTES analyze_repo as a read-only structured analysis", async () => {
+    registerAnalyzeRepoTool();
+    const result = await executeGovernedAction(
+      baseRequest({
+        identity: identity({ agentId: "ARCHITECT" }),
+        toolName: "analyze_repo",
+        toolArgs: {},
+      }),
+    );
+    expect(result.status).toBe("EXECUTED");
+    if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
+    const parsed = JSON.parse(result.output) as { topLevel: string[]; fileCount: number };
+    expect(Array.isArray(parsed.topLevel)).toBe(true);
+    expect(parsed.fileCount).toBeGreaterThan(0);
+  });
+
+  it("BLOCKS an unauthorized filesystem write tool", async () => {
+    const result = await executeGovernedAction(
+      baseRequest({
+        toolName: "fs.write_patch",
+        toolArgs: { path: "src/index.ts" },
+      }),
+    );
+    expect(result.status).toBe("DENIED");
   });
 
   // ── ATTACK 1: tool the catalog forbids ────────────────────────────────

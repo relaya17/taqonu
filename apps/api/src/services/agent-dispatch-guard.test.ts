@@ -252,6 +252,36 @@ describe("dispatchAgentAction", () => {
     expect(result.decision).toBe("APPROVAL_REQUIRED");
   });
 
+  it("treats missing hop metadata on a delegated path as a hop, not zero", async () => {
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.agent.delegation.missing-hop",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      trustLevel: "DELEGATED",
+    });
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("records the request id on the audit entry for operator reconstruction", async () => {
+    const requestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.agent.correlation",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      requestId,
+    });
+    expect(result.decision).toBe("ALLOWED");
+    const entry = listUnifiedAuditEntries().find((e) => e.type === "test.agent.correlation");
+    expect(entry?.input["requestId"]).toBe(requestId);
+    expect(entry?.correlationId).toBe(requestId);
+  });
+
   const ARTIFACT_HASH = "a".repeat(64);
 
   async function claimedMatchingCreate(overrides: {

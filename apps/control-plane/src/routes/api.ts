@@ -57,6 +57,7 @@ import {
 import {
   hashIdempotencyBody,
   lookupIdempotency,
+  resolveRequestId,
   storeIdempotentResponse,
 } from "../services/control-plane-hardening.js";
 
@@ -415,6 +416,7 @@ export function createApiRouter(): Router {
       reason,
       requiresReauth: needsReauth,
       reauthenticated,
+      requestId: resolveRequestId(req),
       ...(typeof record["agentId"] === "string" ? { agentId: record["agentId"] } : {}),
       ...(record["approved"] === true && applicationId !== "def-000"
         ? { approved: true }

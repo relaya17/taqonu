@@ -262,11 +262,14 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
         agentId: string;
         operation: string;
         toolName?: string;
+        agentRuntimeStatus?: string;
       };
       expect(body.applicationId).toBe("def-000");
       expect(body.agentId).toBe("CODE_ENGINEER");
       expect(body.operation).toBe("request_agent_run");
       expect(body.toolName).toBeUndefined();
+      expect(body.agentRuntimeStatus).toBe("ACTIVE");
+      expect((init?.headers as Record<string, string>)["x-request-id"]).toBeTruthy();
       return new Response(
         JSON.stringify({
           executed: true,

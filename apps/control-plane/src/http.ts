@@ -91,6 +91,7 @@ async function requestHandler(
   }
 
   const requestId = resolveRequestId(req);
+  req.headers["x-request-id"] = requestId;
   applyControlPlaneSecurityHeaders(res, requestId);
 
   const pathname = new URL(
