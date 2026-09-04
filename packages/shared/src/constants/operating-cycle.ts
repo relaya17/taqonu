@@ -73,6 +73,33 @@ export function agentMayExecute(status: AgentRuntimeControl): boolean {
   return !NON_EXECUTABLE.has(status);
 }
 
+/**
+ * Combine overlay + identity statuses. Any non-executable value wins.
+ * Completely missing status is UNKNOWN (fail closed), never an implicit ACTIVE.
+ */
+export function combineAgentRuntimeStatus(
+  ...statuses: Array<AgentRuntimeControl | undefined>
+): AgentRuntimeControl {
+  const present = statuses.filter((status): status is AgentRuntimeControl => status !== undefined);
+  const blocked = present.find((status) => !agentMayExecute(status));
+  return blocked ?? present[0] ?? "UNKNOWN";
+}
+
+/**
+ * Missing hop metadata on a delegated path cannot be treated as zero hops.
+ * Direct human-initiated work stays at 0 when the count is omitted.
+ */
+export function effectiveDelegationHopCount(input: {
+  readonly delegationHopCount?: number;
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+}): number {
+  if (typeof input.delegationHopCount === "number" && Number.isFinite(input.delegationHopCount)) {
+    return Math.max(0, Math.trunc(input.delegationHopCount));
+  }
+  if (input.trustLevel === "DELEGATED") return 1;
+  return 0;
+}
+
 export interface OperatingCycleInput {
   readonly actorId: string;
   readonly actorKind: "USER" | "AGENT" | "SYSTEM";

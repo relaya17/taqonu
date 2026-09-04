@@ -17,6 +17,7 @@ const { buildApp } = await import("./create-app.js");
 const { buildTestEnv } = await import("./routes/test-helpers/build-route-test-app.js");
 const { atlasMetrics } = await import("./routes/metrics.js");
 const { listRegisteredTools } = await import("@atlas/agent-core");
+const { PRODUCTION_IMPLEMENTED_TOOLS } = await import("@atlas/shared");
 
 afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
@@ -108,15 +109,7 @@ describe("buildApp production tool registration", () => {
     const app = await buildFullTestApp();
     try {
       const tools = listRegisteredTools();
-      expect(tools).toEqual(
-        expect.arrayContaining([
-          "knowledge_search",
-          "fs.read_file",
-          "fs.read_directory",
-          "fs.search_repo",
-          "analyze_repo",
-        ]),
-      );
+      expect(tools).toEqual(expect.arrayContaining([...PRODUCTION_IMPLEMENTED_TOOLS]));
     } finally {
       await app.close();
     }

@@ -2,6 +2,7 @@ import {
   AtlasError,
   FABRIC_AGENT_IDS,
   FABRIC_AGENT_CATALOG,
+  combineAgentRuntimeStatus,
   type FabricAgentId,
 } from "@atlas/shared";
 import { assertGovernedProjectExists } from "./project-access.js";
@@ -169,11 +170,20 @@ export async function resolveGovernedAgentIdentity(input: {
   readonly sessionOwnerId: string;
   readonly projectId: string | null;
   readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+  /** Overlay already read from CP (e.g. gateway fulfill body from SERVICE hop). */
+  readonly runtimeStatus?: AuthenticatedAgentIdentity["runtimeStatus"];
 }): Promise<AuthenticatedAgentIdentity> {
   const lookup = await lookupControlPlaneAgentRuntimeStatus(input.fabricAgentId);
+  const fromLookup = lookup.configured ? lookup.status : undefined;
+  const overlayPresent = input.runtimeStatus !== undefined || fromLookup !== undefined;
   return resolveAgentIdentity({
-    ...input,
-    runtimeStatus: lookup.configured ? lookup.status : "ACTIVE",
+    fabricAgentId: input.fabricAgentId,
+    sessionOwnerId: input.sessionOwnerId,
+    projectId: input.projectId,
+    ...(input.trustLevel !== undefined ? { trustLevel: input.trustLevel } : {}),
+    runtimeStatus: overlayPresent
+      ? combineAgentRuntimeStatus(input.runtimeStatus, fromLookup)
+      : "ACTIVE",
   });
 }
 

@@ -22,6 +22,8 @@ import { findRepoRoot } from "./repo-root.js";
 import {
   agentMayExecute,
   canonicalizeJson,
+  combineAgentRuntimeStatus,
+  effectiveDelegationHopCount,
   type ApprovalRequest,
   type GovernanceDecision,
   type GovernanceDecisionInput,
@@ -408,7 +410,14 @@ function buildGovernanceDecision(
       sourceTrustLevel: request.sourceContext.trustLevel,
       authorityScope: request.identity.authorityScope ?? null,
       agentTrustLevel: request.identity.trustLevel ?? null,
-      delegationHopCount: request.delegationHopCount ?? 0,
+      delegationHopCount: effectiveDelegationHopCount({
+        ...(request.delegationHopCount !== undefined
+          ? { delegationHopCount: request.delegationHopCount }
+          : {}),
+        ...(request.identity.trustLevel !== undefined
+          ? { trustLevel: request.identity.trustLevel }
+          : {}),
+      }),
     },
     execution: resolveExecution(outcome),
   };
@@ -433,6 +442,7 @@ function auditOutcome(
       approvalRequestId: request.approvalRequestId ?? null,
       entityType: request.entityType,
       action: request.action,
+      requestId: request.requestId,
       ...(canonicalTarget !== undefined ? { canonicalTarget } : {}),
     },
     output: {
@@ -461,15 +471,28 @@ function auditOutcome(
 export async function executeGovernedAction(
   request: GovernedExecutionRequest,
 ): Promise<GovernedExecutionOutcome> {
-  if (!agentMayExecute(request.identity.runtimeStatus ?? "ACTIVE")) {
+  const runtimeStatus = combineAgentRuntimeStatus(
+    request.agentRuntimeStatus,
+    request.identity.runtimeStatus,
+  );
+  if (!agentMayExecute(runtimeStatus)) {
     const outcome: GovernedExecutionOutcome = {
       stage: "AUTHORIZATION",
       status: "DENIED",
-      reason: `Agent "${request.identity.agentId}" is not executable (runtimeStatus=${request.identity.runtimeStatus ?? "ACTIVE"})`,
+      reason: `Agent "${request.identity.agentId}" is not executable (runtimeStatus=${runtimeStatus})`,
     };
     auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
   }
+
+  const delegationHopCount = effectiveDelegationHopCount({
+    ...(request.delegationHopCount !== undefined
+      ? { delegationHopCount: request.delegationHopCount }
+      : {}),
+    ...(request.identity.trustLevel !== undefined
+      ? { trustLevel: request.identity.trustLevel }
+      : {}),
+  });
 
   // ── 1. Tool authorization (P0.2) ────────────────────────────────────
   try {
@@ -599,12 +622,8 @@ export async function executeGovernedAction(
     sourceContext: governedRequest.sourceContext,
     projectId: governedRequest.identity.projectId,
     routeLabel: `${governedRequest.routeLabel}.gate`,
-    ...(governedRequest.agentRuntimeStatus !== undefined
-      ? { agentRuntimeStatus: governedRequest.agentRuntimeStatus }
-      : {}),
-    ...(governedRequest.delegationHopCount !== undefined
-      ? { delegationHopCount: governedRequest.delegationHopCount }
-      : {}),
+    agentRuntimeStatus: runtimeStatus,
+    delegationHopCount,
     dispatchInput: { toolName: governedRequest.toolName, artifactHash },
     executeOnce: async ({ gate }) => {
       let toolResult: ToolExecutionOutcome;

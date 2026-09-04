@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { agentMayExecute, evaluateOperatingCycle } from "./operating-cycle.js";
+import {
+  agentMayExecute,
+  combineAgentRuntimeStatus,
+  effectiveDelegationHopCount,
+  evaluateOperatingCycle,
+} from "./operating-cycle.js";
 
 describe("evaluateOperatingCycle", () => {
   it("denies execution when the agent is quarantined", () => {
@@ -104,5 +109,28 @@ describe("evaluateOperatingCycle", () => {
     expect(agentMayExecute("DISABLED")).toBe(false);
     expect(agentMayExecute("SUSPENDED")).toBe(false);
     expect(agentMayExecute("QUARANTINED")).toBe(false);
+    expect(agentMayExecute("UNKNOWN")).toBe(false);
+  });
+});
+
+describe("combineAgentRuntimeStatus", () => {
+  it("fail-closes to UNKNOWN when no status is supplied", () => {
+    expect(combineAgentRuntimeStatus()).toBe("UNKNOWN");
+    expect(combineAgentRuntimeStatus(undefined, undefined)).toBe("UNKNOWN");
+  });
+
+  it("lets a non-executable overlay win over a local ACTIVE default", () => {
+    expect(combineAgentRuntimeStatus("ACTIVE", "QUARANTINED")).toBe("QUARANTINED");
+    expect(combineAgentRuntimeStatus("SUSPENDED", "ACTIVE")).toBe("SUSPENDED");
+  });
+});
+
+describe("effectiveDelegationHopCount", () => {
+  it("treats omitted hops on a delegated path as one hop, not zero", () => {
+    expect(effectiveDelegationHopCount({ trustLevel: "DELEGATED" })).toBe(1);
+    expect(effectiveDelegationHopCount({ trustLevel: "FULL" })).toBe(0);
+    expect(effectiveDelegationHopCount({ delegationHopCount: 2, trustLevel: "DELEGATED" })).toBe(
+      2,
+    );
   });
 });

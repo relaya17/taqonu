@@ -26,4 +26,19 @@ export type MvpAgentMode = (typeof MVP_AGENT_MODES)[number];
 
 export const AUTHORITY_TIERS = ["TIER_1", "TIER_2", "TIER_3", "TIER_4"] as const;
 
+/**
+ * Tools the tenant API production startup path is required to register.
+ * Catalog entries outside this set remain policy-only: executeTool fail-closes
+ * until an implementation is registered. This is not an execution registry.
+ */
+export const PRODUCTION_IMPLEMENTED_TOOLS = [
+  "knowledge_search",
+  "fs.read_file",
+  "fs.read_directory",
+  "fs.search_repo",
+  "analyze_repo",
+] as const;
+
+export type ProductionImplementedTool = (typeof PRODUCTION_IMPLEMENTED_TOOLS)[number];
+
 export type AuthorityTier = (typeof AUTHORITY_TIERS)[number];
