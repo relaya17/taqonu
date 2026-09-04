@@ -9,6 +9,8 @@ import {
 } from "@atlas/agent-core";
 import {
   agentMayExecute,
+  combineAgentRuntimeStatus,
+  effectiveDelegationHopCount,
   type AgentRuntimeControl,
   type ApprovalRequest,
   type UnifiedAuditEntryInput,
@@ -121,6 +123,13 @@ export interface DispatchAgentActionOptions {
     | "UNKNOWN";
   /** Agent A → B hops. Each hop floors to approval; never inherits unlimited authority. */
   readonly delegationHopCount?: number;
+  /** When DELEGATED, omitted hop count floors to 1 rather than 0. */
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+  /**
+   * HTTP / CP request id for the same handoff. Recorded on the audit entry
+   * so an operator can join CP → API without a second telemetry stack.
+   */
+  readonly requestId?: string;
   /**
    * Claimed Stage-3 `ApprovalRequest` record. Re-derived here — not a boolean.
    * Absent → current behavior. Present but mismatched → DENIED (fail closed).
@@ -318,23 +327,48 @@ function presentedArtifactHash(
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function auditRequestBinding(options: DispatchAgentActionOptions): {
+  readonly input: Record<string, unknown>;
+  readonly correlationId?: string;
+} {
+  const input = {
+    ...(options.input ?? {}),
+    ...(options.requestId !== undefined ? { requestId: options.requestId } : {}),
+  };
+  const correlationId =
+    typeof options.requestId === "string" && UUID_RE.test(options.requestId)
+      ? options.requestId
+      : undefined;
+  return correlationId !== undefined ? { input, correlationId } : { input };
+}
+
 export async function dispatchAgentAction(
   options: DispatchAgentActionOptions,
 ): Promise<DispatchAgentActionResult> {
   const { actor, entityType, action, routeLabel, sourceContext } = options;
   const policyLabel = `${entityType}.${action}`;
+  const { input: auditInput, correlationId } = auditRequestBinding(options);
+  const hops = effectiveDelegationHopCount({
+    ...(options.delegationHopCount !== undefined
+      ? { delegationHopCount: options.delegationHopCount }
+      : {}),
+    ...(options.trustLevel !== undefined ? { trustLevel: options.trustLevel } : {}),
+  });
+  const runtimeStatus = options.agentRuntimeStatus
+    ? combineAgentRuntimeStatus(options.agentRuntimeStatus)
+    : undefined;
 
-  if (
-    options.agentRuntimeStatus &&
-    !agentMayExecute(options.agentRuntimeStatus as AgentRuntimeControl)
-  ) {
+  if (runtimeStatus !== undefined && !agentMayExecute(runtimeStatus as AgentRuntimeControl)) {
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
       actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason: `Agent runtime control ${options.agentRuntimeStatus} blocks execution`,
-      input: options.input ?? {},
+      input: auditInput,
       output: {},
       policy: policyLabel,
       risk: "CRITICAL",
@@ -343,7 +377,8 @@ export async function dispatchAgentAction(
       decision: "DENY",
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
-      delegationHopCount: options.delegationHopCount ?? null,
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      delegationHopCount: hops,
       blockedAt: "AUTHORIZATION",
     });
     return {
@@ -378,7 +413,7 @@ export async function dispatchAgentAction(
       actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason,
-      input: options.input ?? {},
+      input: auditInput,
       output: {},
       policy: policyLabel,
       risk: "CRITICAL",
@@ -389,7 +424,8 @@ export async function dispatchAgentAction(
       action,
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
-      delegationHopCount: options.delegationHopCount ?? null,
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      delegationHopCount: hops,
       blockedAt: "APPROVAL",
     });
     return {
@@ -412,7 +448,7 @@ export async function dispatchAgentAction(
       actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason: entityAuthz.reason,
-      input: options.input ?? {},
+      input: auditInput,
       output: {},
       policy: policyLabel,
       risk: "CRITICAL",
@@ -423,7 +459,8 @@ export async function dispatchAgentAction(
       action,
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
-      delegationHopCount: options.delegationHopCount ?? null,
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      delegationHopCount: hops,
       blockedAt: "POLICY",
     });
     return {
@@ -460,9 +497,7 @@ export async function dispatchAgentAction(
   const untrustedFloored = floorBucketForUntrustedSource(rawBucket, sourceContext.trustLevel);
   const automationFloored = floorBucketForAutomationActor(rawBucket, actor.kind, action);
   const delegationFloored =
-    (options.delegationHopCount ?? 0) > 0
-      ? stricterBucket(rawBucket, "APPROVAL")
-      : rawBucket;
+    hops > 0 ? stricterBucket(rawBucket, "APPROVAL") : rawBucket;
   const bucket = stricterBucket(
     stricterBucket(untrustedFloored, automationFloored),
     delegationFloored,
@@ -485,7 +520,7 @@ export async function dispatchAgentAction(
         untrustedSource: sourceContext.trustLevel === "untrusted",
         automationActor:
           actor.kind === "AUTOMATION" && AUTOMATION_FLOORED_ACTIONS.has(action),
-        delegation: (options.delegationHopCount ?? 0) > 0,
+        delegation: hops > 0,
       },
     },
   };
@@ -524,7 +559,7 @@ export async function dispatchAgentAction(
         score,
         bucket,
         projectId: options.projectId ?? null,
-        input: options.input ?? {},
+        input: auditInput,
       },
     });
 
@@ -534,7 +569,7 @@ export async function dispatchAgentAction(
       actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
       agentId: actor.agentId,
       reason: explanation.factors.join("; "),
-      input: options.input ?? {},
+      input: auditInput,
       output: { approvalRequestId: approvalRequest.id },
       policy: policyLabel,
       risk: riskLevel,
@@ -551,7 +586,8 @@ export async function dispatchAgentAction(
       approvalId: approvalRequest.id,
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
-      delegationHopCount: options.delegationHopCount ?? null,
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      delegationHopCount: hops,
       blockedAt: "APPROVAL",
     });
 
@@ -574,7 +610,7 @@ export async function dispatchAgentAction(
     actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
     agentId: actor.agentId,
     reason: explanation.factors.join("; "),
-    input: options.input ?? {},
+    input: auditInput,
     output: {},
     policy: policyLabel,
     risk: riskLevel,
@@ -585,7 +621,8 @@ export async function dispatchAgentAction(
     action,
     projectId: options.projectId ?? null,
     ownerId: actor.onBehalfOfUserId,
-    delegationHopCount: options.delegationHopCount ?? null,
+    ...(correlationId !== undefined ? { correlationId } : {}),
+    delegationHopCount: hops,
   });
 
   return { decision: "ALLOWED", score, bucket, auditId: record.id, evaluation };

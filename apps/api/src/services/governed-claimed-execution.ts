@@ -100,6 +100,7 @@ export interface RunGovernedClaimedExecutionInput<T> {
     | "DEGRADED"
     | "UNKNOWN";
   readonly delegationHopCount?: number;
+  readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
   readonly dispatchInput?: Record<string, unknown>;
   /**
    * HUMAN_ONLY live-decision path only (CP7.2). When present, `claimOrResume`
@@ -279,12 +280,14 @@ async function runPolicy(
       ...(input.dispatchInput ?? {}),
       ...(input.artifactHash !== undefined ? { artifactHash: input.artifactHash } : {}),
     },
+    requestId: input.requestId,
     ...(input.agentRuntimeStatus !== undefined
       ? { agentRuntimeStatus: input.agentRuntimeStatus }
       : {}),
     ...(input.delegationHopCount !== undefined
       ? { delegationHopCount: input.delegationHopCount }
       : {}),
+    ...(input.trustLevel !== undefined ? { trustLevel: input.trustLevel } : {}),
     ...(claimed !== undefined ? { claimedApproval: claimed } : {}),
   });
 }

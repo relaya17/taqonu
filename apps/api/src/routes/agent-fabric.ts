@@ -266,6 +266,7 @@ export async function registerAgentFabricRoutes(
         // scans and legal-media reviews. If the gate denies or requires
         // approval, return a SKIPPED run carrying the reason.
         if (agentId === "SECURITY" || agentId === "LEGAL_MEDIA_COMMS") {
+          const lookup = await lookupControlPlaneAgentRuntimeStatus(agentId);
           const gate = await dispatchAgentAction({
             actor: {
               kind: "AGENT",
@@ -281,6 +282,10 @@ export async function registerAgentFabricRoutes(
             },
             projectId: body.projectId ?? null,
             input: { request: requestStr },
+            trustLevel: "DELEGATED",
+            delegationHopCount: 1,
+            requestId: request.id,
+            ...(lookup.configured ? { agentRuntimeStatus: lookup.status } : {}),
           });
 
           if (gate.decision !== "ALLOWED") {
@@ -326,6 +331,8 @@ export async function registerAgentFabricRoutes(
             projectId: body.projectId ?? null,
             ownerId: user.id,
             env: app.atlasEnv,
+            delegationHopCount: 1,
+            requestId: request.id,
           });
         }
         if (agentId === "RESEARCHER") {
@@ -334,6 +341,8 @@ export async function registerAgentFabricRoutes(
             projectId: body.projectId ?? null,
             ownerId: user.id,
             env: app.atlasEnv,
+            delegationHopCount: 1,
+            requestId: request.id,
           });
         }
         return null;
@@ -542,6 +551,9 @@ export async function registerAgentFabricRoutes(
         origin: "user_message",
         trustLevel: "trusted",
       },
+      ...(identity.runtimeStatus !== undefined
+        ? { agentRuntimeStatus: identity.runtimeStatus }
+        : {}),
     });
 
     // Map outcome to HTTP status and response shape.

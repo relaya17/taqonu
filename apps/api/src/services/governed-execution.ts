@@ -624,6 +624,9 @@ export async function executeGovernedAction(
     routeLabel: `${governedRequest.routeLabel}.gate`,
     agentRuntimeStatus: runtimeStatus,
     delegationHopCount,
+    ...(governedRequest.identity.trustLevel !== undefined
+      ? { trustLevel: governedRequest.identity.trustLevel }
+      : {}),
     dispatchInput: { toolName: governedRequest.toolName, artifactHash },
     executeOnce: async ({ gate }) => {
       let toolResult: ToolExecutionOutcome;
