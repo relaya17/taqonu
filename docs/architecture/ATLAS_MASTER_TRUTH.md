@@ -1134,3 +1134,39 @@ Phases 10–14 or inventing sibling execute mappings.
 **Program verdict: ATLAS PROGRAM — BLOCKED** on those Owner/deployment
 decisions. Phases 03–14, 17–18, suggestion-only 19, local/replica DR, and
 SBOM verify are COMPLETE on the existing architecture.
+
+## 59. Authorized completion continuation (2026-09-04)
+
+Phases 10–14 were not reopened. Remaining authorized work closed on the
+existing architecture.
+
+**Phase 15.** Isolated restore-from-replica (`restoreCanonicalAuditFromReplica`)
+never overwrites canonical. Tampered replicas fail closed. Operator runbook:
+`docs/operations/disaster-recovery.md`. Filesystem replica remains implemented.
+Cloud object-store is still an external infrastructure blocker.
+
+**Phase 16.** Unsigned in-toto/SLSA provenance is generated next to the SBOM
+and verified fail-closed (`signed: false`). Signing identity + Sigstore/cosign
+verifier remain Owner/deployment blockers. `releaseReady` stays false.
+
+**Phase 17.** Adversarial matrix expanded (suspended, expired approval,
+delegation hops, hop ceiling 10, forged identity, policy bypass, missing
+audit, production skip-audit forbidden, executed ≠ verified). Sibling
+gateway fulfill is refused in `fulfillGatewayHandoff`, not only at CP SERVICE.
+
+**Phase 18.** Measured 12 sequential + 8 concurrent `executeGovernedAction`
+calls. Redis is not required. Process-local queue kept.
+
+**Phase 19.** `scoreHistoricalOutcomes` / `GET /api/v1/intelligence/outcome-signals`
+recommend only (`executes: false`, `autoApply: false`, `mutatesGovernance: false`).
+
+**Connected applications.** Inventory unchanged: `def-000` gateway fulfill;
+Civio HMAC evaluate-only; CaseFlow / HotelOS / BrokerOS / LexStudy / Vantera
+inventory-only. ADR-022 still blocks ingest execute and sibling fulfill.
+
+**Runtime probe.** `pnpm runtime:probe` — local `:3000/:3100/:3200/:4000`
+were not listening. Do not claim PRODUCTION READY.
+
+**Program verdict: ATLAS PROGRAM — BLOCKED** on cloud DR destination,
+Sigstore/cosign identity+verifier, live ML training, ADR-022 ingest/sibling
+execute, and a live private-plane deployment for runtime evidence.
