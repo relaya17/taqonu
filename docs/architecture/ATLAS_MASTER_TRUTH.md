@@ -1305,6 +1305,27 @@ api-routes+egress 36, DR 8, supply-chain 11 — all passed.
 (Real Connected-App Execution) still requires ADR-022. Cloud DR and signed
 releases remain external.
 
+## 64. Final remaining-work reconciliation (2026-09-05)
+
+No commits after `4a2ebe6` until this documentation pointer. Phases 10–14
+were not reopened. ADR-022 was not bypassed. No credentials, contracts,
+signatures, or pentest results were invented.
+
+**CODE-COMPLETABLE REMAINING WORK: NONE** except recording the current
+remainder at the top of `docs/architecture/remaining-work.md` so stages
+01–19 are not mistaken for an open backlog.
+
+Re-ran 2026-09-04T21:47:58Z–21:48:27Z: `environment:gate` unchanged
+blockers; `supply-chain:verify` SBOM VALID / UNSIGNED / `releaseReady: false`;
+`supply-chain:sign` REFUSE; `production:live-proof` 30 PASS / 0 FAIL /
+1 BLOCKED / 2 SKIP. Local plane still listening; Studio still down.
+
+**Production gate: NOT PRODUCTION READY.** Minimum remaining: private VM,
+live database, Studio env, offsite DR destination, signing identity,
+external pentest engagement. ADR-022 is required only for connected-app
+execute, not for Atlas-self private-plane production.
+
+
 
 
 

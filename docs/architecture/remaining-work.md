@@ -4,6 +4,47 @@ Do not confuse **missing for stability** with **roadmap**.
 Do not mark a stage Done without implementation + tests + runtime evidence.
 Do not duplicate: `executeGovernedAction`, `dispatchAgentAction`, `executeTool`, `approvals.ts`, `verifyProposal`, `audit-log.ts`.
 
+## CURRENT AUTHORITATIVE REMAINING (2026-09-05)
+
+This section is the **current** remainder. Sections 01–19 below are
+historical stage records. Do not reopen them. Do not treat them as an
+open engineering backlog.
+
+**Production gate: NOT PRODUCTION READY.**
+
+**CODE-COMPLETABLE REMAINING WORK: NONE** (this pointer is documentation
+synchronization only).
+
+Authoritative narrative: `docs/architecture/ATLAS_MASTER_TRUTH.md` §62–§64.
+
+### Done — do not redo
+
+- Atlas-self governed execution on the **local** private plane
+- Local canonical-audit DR drill
+- SBOM + unsigned provenance + fail-closed signing CLI
+- Internal security live-proof; pentest **scope** package (not a pentest)
+- Connected-app inventory with exactly one classification per app
+
+### Minimum remaining (nothing else is a production blocker)
+
+| # | Missing requirement | Type |
+| - | --- | --- |
+| 1 | Ubuntu + Tailscale + systemd private plane (`docs/deployment/private-plane.md`) | INFRASTRUCTURE |
+| 2 | Live Supabase/Postgres (API health is local JSON) | CREDENTIAL |
+| 3 | Studio `apps/web/.env.local` (do not commit `replace-me`) | CREDENTIAL |
+| 4 | Offsite DR destination: set `ATLAS_OFFSITE_BACKUP_DIR` **or** Owner-authorize a cloud bucket (no object-store client in-repo) | INFRASTRUCTURE / CREDENTIAL |
+| 5 | Sigstore/cosign identity + deployed verifier | EXTERNAL PROVIDER |
+| 6 | External pentest on an Owner-designated environment (`docs/security/pentest-readiness.md` is SCOPE READY) | SECURITY VENDOR |
+| 7 | ADR-022 sibling execute **only if** connected-app execution is part of the production definition | OWNER DECISION |
+
+Live ML training, demo/customer packaging, and Phase 11 re-entry are
+**NOT REQUIRED** for this production gate.
+
+ADR-022 request (not an amendment):
+`docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+
+---
+
 ## 01 BASELINE / FREEZE
 Git snapshot + quality-gate evidence of what is actually implemented.
 See commit `e7773e0`.

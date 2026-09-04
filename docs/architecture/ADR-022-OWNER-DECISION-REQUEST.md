@@ -2,7 +2,8 @@
 
 **Status:** REQUEST — not an amendment. Do not treat this file as authorization.
 **Date:** 2026-09-05
-**Checkpoint:** HEAD `7adbe54` plus this reconciliation increment.
+**Historical checkpoint (request filed):** `7adbe54` plus reconciliation `073c9ac`.
+**Later commits did not amend ADR-022:** `f3dc4ae`, `4a2ebe6`. The request is unchanged.
 
 No code silently overrides ADR-022. No speculative connector was added.
 
