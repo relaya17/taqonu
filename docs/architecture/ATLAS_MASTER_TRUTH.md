@@ -961,6 +961,11 @@ sibling execution identity (later-scope).
 
 HMAC reauth remains one-shot replay protection, not MFA.
 
+Production or `ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA=1` refuses
+privileged Control browser mutations (`/gateway/ops`, agent-control)
+unless the session recorded `mfaSatisfied`. Machine bearers stay
+non-TOTP.
+
 ## 41. Phase 05 Canonical Audit (2026-09-04)
 
 **Status: COMPLETE.** API NDJSON remains the only system of record.
@@ -1049,38 +1054,47 @@ mutate runtime state. Active probing is not claimed.
 
 ## 51. Phase 15 Disaster Recovery (2026-09-04)
 
-**Status: BLOCKED** on offsite destination. `runCanonicalAuditRestoreDrill`
-proves a local copy of the canonical API NDJSON still verifies. Receipts
-record `offsite: false`. Do not claim DR from backup existence.
+**Status at first close:** BLOCKED on offsite destination.
+`runCanonicalAuditRestoreDrill` proved a local copy still verifies.
+Receipts recorded `offsite: false`.
+
+**Current (same day, §58):** configured filesystem replica is implemented.
+Cloud object-store destination remains an Owner deployment decision.
 
 ## 52. Phase 16 Supply Chain (2026-09-04)
 
-**Status: BLOCKED** on signing identity. SBOM remains COMPLETE. No unsigned
-Sigstore ceremony was added.
+**Status at first close:** BLOCKED on signing identity. SBOM COMPLETE.
+No unsigned Sigstore ceremony.
+
+**Current (same day, §58):** `verifySupplyChainArtifacts` is fail-closed.
+`releaseReady` stays false without a real verifier. Identity still Owner.
 
 ## 53. Phase 17 Governance Test Suite (2026-09-04)
 
 **Status: COMPLETE.** Added world-state execution ≠ verification, quarantine
 denial, production tool registration, CP-does-not-execute-tools, request-id
-handoff correlation, and self-audit detect-only proofs.
+handoff correlation, self-audit detect-only proofs, and the adversarial
+suite (`governance-adversarial.test.ts`).
 
 ## 54. Phase 18 Performance / Scale (2026-09-04)
 
 **Status: COMPLETE** for the existing in-process cache, limits, and latency
 stack. Redis and autoscaling are not required by current architecture.
+Concurrent governed idempotency is serialized in-process.
 
 ## 55. Phase 19 Intelligence (2026-09-04)
 
 **Status: COMPLETE** for governed suggestions (hypothesis, marketplace,
-PSA recommend, verdict actions). Live ML training on production traffic
-is BLOCKED pending Owner decision.
+PSA recommend, verdict actions, verification-lessons). Live ML training
+on production traffic is BLOCKED pending Owner decision.
 
 ## 56. Later-scope and production runtime (2026-09-04)
 
-Ingest / non-`def-000` / sibling execution remain BLOCKED — no
-authoritative execute contract. Production runtime for Control / Admin /
-Worker is the existing `deploy/` private-plane systemd set. API/web stay
-on the user plane (Vercel) per ADR-021.
+Ingest / non-`def-000` / sibling execution remain BLOCKED — ADR-022 and
+no authoritative execute contract. `CONNECTED_APPLICATION_RUNTIME` records
+the inventory. Production runtime for Control / Admin / Worker is the
+existing `deploy/` private-plane systemd set. API/web stay on the user
+plane (Vercel) per ADR-021.
 
 ## 57. Master completion authorization (2026-09-04)
 
@@ -1091,5 +1105,32 @@ offsite destination. Phase 16 remains BLOCKED on signing identity. Live
 ML training and ingest / non-`def-000` / sibling execute remain BLOCKED
 on Owner decisions. `ApprovalExecutionRepository` stays parked.
 
-**Program verdict: ATLAS PROGRAM — BLOCKED** until those Owner decisions
-exist. Do not relabel blocked items as complete.
+**Program verdict at this authorization:** ATLAS PROGRAM — BLOCKED until
+those Owner decisions exist. Do not relabel blocked items as complete.
+
+Historical record — superseded as *current program verdict* by §58; this
+section is not erased.
+
+## 58. Master completion pass (2026-09-04)
+
+Owner authorized finishing already-authorized residuals without reopening
+Phases 10–14 or inventing sibling execute mappings.
+
+**Closed this pass**
+- Privileged Control browser mutations can require MFA-satisfied sessions.
+- Canonical restore drill can replica to `ATLAS_OFFSITE_BACKUP_DIR`.
+- Supply-chain verify is fail-closed (SBOM valid / signing UNSIGNED or INVALID).
+- Concurrent governed idempotency is serialized.
+- Adversarial governance suite + connected-application inventory.
+- Verification-informed recommendations (`executes: false`).
+
+**Still BLOCKED (cannot safely infer)**
+- Cloud object-store DR destination and credentials.
+- Sigstore/cosign signing identity and deployed verifier.
+- Live ML training on production traffic.
+- Ingest execution (ADR-022: no tools on ingest; no Civio execute intent).
+- Non-`def-000` / sibling HTTP fulfill (no execute contract).
+
+**Program verdict: ATLAS PROGRAM — BLOCKED** on those Owner/deployment
+decisions. Phases 03–14, 17–18, suggestion-only 19, local/replica DR, and
+SBOM verify are COMPLETE on the existing architecture.

@@ -91,8 +91,8 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
   are not silently converted to owner-only.
 
 **Not claimed (authorized later items, not identity-model defects):**
-- Control Plane bearer MFA and token rotation — Phase 04.
-- Sibling / non-`def-000` application execution identity — later-scope.
+- Sibling / non-`def-000` application execution identity — later-scope (ADR-022).
+  Control Plane bearer MFA and token rotation closed in Phase 04.
 
 ## 04 CONTROL PLANE SECURITY
 **Status: COMPLETE** for the existing auth model (no redesign).
@@ -117,6 +117,11 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
   Admin, and the tenant API service hop. Collision still never elevates to
   OWNER. Browser cookies and reauth tickets verify against current then
   previous operator secret so rotation does not silently drop sessions.
+- **Privileged browser mutations:** production, or
+  `ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA=1`, refuses `POST /gateway/ops`
+  and agent-control from a password-only Control session. MFA-satisfied
+  sessions and machine bearers are unchanged. HMAC reauth remains one-shot
+  replay protection, not TOTP.
 
 ## 05 CANONICAL AUDIT
 **Status: COMPLETE** — API NDJSON is the only system of record.
@@ -145,6 +150,10 @@ service bearer. Duplicate `cpHash` values are skipped. A broken CP hash
 sequence is rejected. Historical API lines are never rewritten. There is
 still no second system of record.
 
+**Traceability:** `governance-adversarial.test.ts` joins
+`executeGovernedAction.requestId` → unified audit `input.requestId` →
+`governance.decision.correlation.requestId`.
+
 ## 06 EXECUTION SAFETY
 **Status: COMPLETE** on the existing runtime (no second execution engine).
 
@@ -162,6 +171,8 @@ still no second system of record.
 - **In-flight approval recovery:** `runGovernedClaimedExecution` will not
   re-run a CLAIMED approval that already has `executionStartedAt`; it
   finalizes `OUTCOME_UNKNOWN` instead of duplicating side effects.
+- **Concurrent idempotency:** same `idempotencyKey` is serialized in-process
+  so overlapping calls cannot execute the tool twice.
 
 **Not claimed:** a separate distributed queue. Phase 12 confirmed the
 process-local `.atlas/worker-queue.json` worker is the architecture; Redis
@@ -321,28 +332,36 @@ stack.
 **Implemented:** detect → propose only. `autoApply: false` on every finding. Checks: CP auth, non-canonical audit, DEF-000, agent denials, egress policy presence, MFA/rotation, runtime overlay, CP-does-not-execute-tools, fabric-vs-oversight registry, catalog/registration drift, policy-without-implementation, CP overlay vs API fail-closed, missing observational audit, verification-gap between gateway success and verification observations, expired-but-PENDING records, production runtime-config drift. Active API probing from Control Plane is not claimed. Findings do not mutate agent status or approvals.
 
 ## 15 DISASTER RECOVERY
-**Status: BLOCKED** on offsite destination. Local restore proof exists.
+**Status: COMPLETE** for local restore and configured filesystem replica.
+Object-store / cloud destination remains an Owner deployment decision.
 
-**Implemented:** copied canonical NDJSON still verifies (restore check).
-`runCanonicalAuditRestoreDrill` copies the API NDJSON chain, verifies hash
-continuity, and writes a timestamped receipt with `offsite: false`.
+**Implemented:** `runCanonicalAuditRestoreDrill` copies the API NDJSON chain,
+verifies hash continuity, and writes a timestamped receipt. When
+`ATLAS_OFFSITE_BACKUP_DIR` (or `offsiteDir`) is set, the verified copy is
+replicated and checksum-matched; the receipt records `offsite: true` only
+after replica verification. Unset destination → `offsite: false`. This is
+still the same NDJSON system of record — not a second history.
 
-**BLOCKED — Owner decision required:** name the offsite backup destination
-and credentials (object store / region / retention). Do not claim disaster
-recovery from backup existence or local copies alone. Replication and
-timed production drills stay blocked until that destination exists.
+**BLOCKED — Owner decision required for cloud object store:** bucket /
+region / credentials if the replica must leave the host filesystem.
+Do not claim S3/GCS existence from a directory replica.
 
 ## 16 SUPPLY-CHAIN / PRODUCTION SECURITY
-**Status: BLOCKED** on signing identity. SBOM remains COMPLETE.
+**Status: COMPLETE** for SBOM. Signing remains BLOCKED on identity + verifier.
 
 **Implemented:** CI `permissions: contents: read`. Secret scan and eval gate already existed.
 **SBOM generation:** `pnpm sbom:generate` produces CycloneDX 1.5 SBOM in
-`.atlas/sbom/sbom.json` and `.atlas/sbom/sbom.xml`. Scans all package.json files,
-generates component list with hashes, purls, licenses, and dependency graph.
+`.atlas/sbom/sbom.json` and `.atlas/sbom/sbom.xml`.
+**SBOM verify:** `pnpm supply-chain:verify` (`verifySupplyChainArtifacts`)
+fails closed on invalid SBOM. Missing signature is `UNSIGNED`, never
+`VERIFIED`. A signature blob without `ATLAS_SIGNING_IDENTITY` is `INVALID`.
+`releaseReady` stays false until a real Sigstore/cosign verifier exists.
+CI generates SBOM and verifies it; unsigned is expected (`ATLAS_REQUIRE_SIGNED_RELEASE` is not set).
 
 **BLOCKED — Owner decision required:** signing identity for release
-artifacts (Sigstore / cosign key or identity). Do not add unsigned
-ceremony. SBOM generation remains the enforceable supply-chain control.
+artifacts (Sigstore / cosign key or identity) plus a deployed verifier.
+Do not add unsigned ceremony. SBOM generation remains the enforceable
+supply-chain control.
 
 ## 17 GOVERNANCE TEST SUITE
 **Status: COMPLETE** for enforcement proofs on the existing engines.
@@ -354,6 +373,9 @@ ceremony. SBOM generation remains the enforceable supply-chain control.
 `create-app.test.ts` and `production-tool-registry.test.ts` prove production tools are registered and unregistered names fail closed.
 `gateway-fulfill.test.ts` proves `X-Request-Id` correlation and CP SERVICE quarantine overlay denial.
 `self-audit.test.ts` proves detectors stay detect-only.
+`governance-adversarial.test.ts` proves unauthorized tool/agent, quarantine,
+missing runtime status, forged approval id, missing tool registration,
+cross-tenant DENY, approval replay, and requestId audit/decision join.
 
 ## 18 PERFORMANCE / SCALE
 **Status: COMPLETE** for the existing in-process limits and latency stack.
@@ -374,6 +396,8 @@ Redis / autoscaling are not required by current architecture.
 
 **Not claimed:** distributed cache (Redis), auto-scaling, load balancer config,
 database connection pooling (external to Node), full APM integration.
+Concurrent governed idempotency is serialized in-process (Phase 06).
+Measured ceilings live in `PERFORMANCE_LIMITS` (`performance-limits.test.ts`).
 
 ## 19 INTELLIGENCE ROADMAP
 **Status: COMPLETE** for governed suggestions. Live ML training is BLOCKED.
@@ -393,6 +417,8 @@ database connection pooling (external to Node), full APM integration.
 
 PSA `recommendFromPsa`, hypothesis engine, marketplace rankings, and
 Atlas verdict recommended actions already suggest without executing.
+`GET /api/v1/intelligence/verification-lessons` reads audit verification
+verdicts and returns lessons with `executes: false` / `autoApply: false`.
 Intelligence may recommend. Governance remains authoritative.
 
 **BLOCKED — Owner decision required:** live reputation/training on
@@ -402,15 +428,20 @@ privilege path.
 
 ## LATER-SCOPE (not a Phase 02 reopen)
 
-**Ingest execution — BLOCKED.** ADR-022: Control evaluates ingest and does
-not execute. Owner must define the authoritative tool / target / artifact
-intent. Do not invent `knowledge_search(query = eventId)`.
+**Ingest execution — BLOCKED (ADR-022).** Control evaluates ingest and does
+not execute. Civio events still have no authoritative tool / target /
+artifact. Do not invent `knowledge_search(query = eventId)`. Amending
+ADR-022 is required before ingest can execute.
 
 **Non-`def-000` fulfillment — BLOCKED.** No sibling execute contract exists.
-Changing `applicationId` is not fulfillment.
+`dispatchGatewayOperation` does not HTTP-fulfill `hotel-os` (or other
+siblings) even on ALLOW write. Changing `applicationId` is not fulfillment.
 
 **Sibling / connected-application execution — BLOCKED.** Same missing
-contract. Applications remain isolated. Atlas does not become their database.
+contract. Authoritative inventory: `CONNECTED_APPLICATION_RUNTIME` —
+`def-000` gateway fulfill; `civio` HMAC evaluate-only; CaseFlow, HotelOS,
+BrokerOS, LexStudy, Vantera inventory-only. Atlas does not become their
+database.
 
 **Production runtime — COMPLETE** for the existing private-plane artifacts:
 `deploy/systemd` for Control, Admin, and Worker; `deploy/verify.sh`;
