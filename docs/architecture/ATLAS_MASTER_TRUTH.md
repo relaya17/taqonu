@@ -402,7 +402,7 @@ was **not** restored: Admin now reuses `fetchSupervisedJson` +
 
 | Gap ID | Capability | Current state | Missing component | Reason missing | Dependencies | Risk | Priority | Verification required | Definition of Done |
 |---|---|---|---|---|---|---|---|---|---|
-| G-1 | Native test/typecheck execution | **Partially closed this cycle (native Windows).** `pnpm typecheck` 53/53 PASS. Full `pnpm test` first failed on `@atlas/shared` unpaired-surrogate c14n (fixed, then 372/372). `turbo test --continue --filter=!@atlas/shared` 45/46 — `@atlas/api` 2 `memory-pipeline` isolation failures remain. See §35. | Remaining: API memory-pipeline isolation; full `pnpm test` green in one shot | First-run c14n defect + pre-existing API store pollution | none for typecheck | Medium — two API tests still fail in the full API suite | **P1** (was P0) | Re-run `pnpm test` after any authorized API test-isolation fix | Full `pnpm test` green + typecheck green |
+| G-1 | Native test/typecheck execution | **Closed this cycle (native Windows).** After the §36 remediation queue: `pnpm test` 47/47 PASS (includes `@atlas/api` 1118/1118 and `memory-pipeline.test.ts` 16/16), `pnpm typecheck` 53/53 PASS. Same host also recorded `pnpm build` 30/30 PASS (includes `@atlas/web`) and `pnpm lint` 46/46 PASS. `@atlas/worker` still has no `package.json` `test` script (unchanged; not a turbo failure). See §35–§36. | none outstanding for the G-1 DoD | Gate leftovers were test isolation, unused lint symbols, and the shared/node client boundary | none | Low — native commands now green in one shot | **closed** | Re-run the four root scripts after any later change | Full `pnpm test` green + typecheck green |
 | G-2 | Phase 11.9 Admin UI | **Closed this cycle** — recovered/adapted under Option A (Admin → Control Plane projection). Tenant API `requireUser` / `requireOperator` / `requireOwner` unchanged. See §16, §23, §33, §34. | none outstanding for the selected model | Historical UI deleted by `4883bfd`; recovered 2026-09-04 | Owner chose Option A | Medium if a later cycle reopens Option B (static-token API exception) — that remains forbidden | **closed** | Admin tests 21/21; API portfolio+auth 15/15; CP 68/68; Admin→CP runtime on ephemeral HTTP servers | Auth model decided → feature implemented → tests pass → runtime-verified on in-process servers → documented. Default `:3200`/`:3100`/`:4000` daemons were not running. |
 | G-3 | Owner re-approval of 11.5–11.15 | Implemented, undocumented as approved | A recorded Owner decision superseding the `831410e` retraction | Documentation-only rollback never revisited | none | Low (code already shipped either way) | **P2** | none (decision, not code) | Owner decision recorded with the §16-of-directive metadata schema |
 | G-4 | SBOM script execution evidence | **Closed this cycle** — `pnpm sbom:generate` PASS on native Windows; 101 CycloneDX 1.5 components written under `.atlas/sbom/`. | none | Previous miss was Linux-bridge esbuild only | none | Low | **closed** | Artifacts reviewed locally (gitignored) | Command PASS + files exist |
@@ -446,8 +446,8 @@ integration is done (§17). **Phase C** (11.9 recovery) — **executed this cycl
 (§16, §23, §34). Native Admin/API/CP tests ran in this Windows
 environment; default daemon ports were not listening. **Phase D** (gap matrix) — done
 this cycle (§24). **Phase E** (build P0/P1) — Phase C (11.9) is no longer waiting;
-remaining G-1 work is native verification of packages not run this
-cycle. **Phase F** (finalize) — this document updated for 11.9 (§34).
+G-1 native `pnpm test` / `pnpm typecheck` are now green (§36). **Phase F**
+(finalize) — this document updated for 11.9 (§34) and the §36 remediations.
 
 ## 27. Verification Gates
 
@@ -798,3 +798,52 @@ running). In-process Admin→CP and API inject paths re-passed.
 tests were run with `pnpm exec vitest run` in `apps/worker` — 7/7 PASS
 (retry / dead-letter / continue-after-throw). `queue-persistence.ts`
 has no dedicated test file.
+
+The three gate leftovers listed above were remediations executed later
+the same day. Results: §36. This section remains the gate record; it
+does not claim those three were fixed during the gate.
+
+## 36. Verified remediation queue (2026-09-04, after §35)
+
+Baseline HEAD at start: `16ac12a`. Phase 11.9 and Synthetic Universe
+were not rebuilt. No new audit. Three existing gate findings only.
+
+1. **memory-pipeline isolation.** Root cause confirmed: shared singleton
+   `osStore` already held ≥20 rows when two `retrieveMemories({ budget: 20 })`
+   cases ran later in the same file. Product ranking/budget was not
+   changed. Fix: `osStore.unloadForTests()` in the per-agent
+   `beforeEach` before fixture inserts.
+   Focused: `pnpm --filter @atlas/api test -- src/services/memory-pipeline.test.ts`
+   — **16/16 PASS**.
+
+2. **engineering-loop lint.** Removed unused `beforeAll` import, unused
+   `isAbsolute` import, unused `validatePathContainment` (never called;
+   not wired in — that would change behavior), and unused `source`
+   parameter name (`_source`).
+   Focused: `pnpm --filter @atlas/engineering-loop lint` PASS;
+   `pnpm --filter @atlas/engineering-loop test` **13/13 PASS**.
+
+3. **`@atlas/shared` → Next client `node:crypto`.** Webpack failed
+   because the main barrel pulled `atlas-self.ts` → `hashCanonicalJson`
+   (`node:crypto`) into `apps/web/lib/ai-provider-preference.ts` (client).
+   Hash helpers moved to `atlas-self-hash.ts` and exported only from
+   the existing `@atlas/shared/node` entry. Identity/predicates stay on
+   the main barrel. No browser polyfill. No shared rewrite. Node callers
+   import hashes from `@atlas/shared/node`.
+   Focused: `@atlas/shared` atlas-self + execution-envelope **10/10 PASS**;
+   API atlas-self/kernel/lifecycle **34/34 PASS**; database
+   `live-approval-requests.test.ts` **27/27 PASS**;
+   `pnpm --filter @atlas/web build` PASS (compiled successfully).
+
+Full native commands after all three:
+
+| Command | Result |
+|---|---|
+| `pnpm test` | 47/47 PASS (`@atlas/shared` 372, `@atlas/api` 1118 including memory-pipeline 16, `@atlas/control-plane` 215, `@atlas/synthetic-universe` 34, `@atlas/engineering-loop` 13) |
+| `pnpm typecheck` | 53/53 PASS |
+| `pnpm build` | 30/30 PASS (includes `@atlas/web`) |
+| `pnpm lint` | 46/46 PASS |
+
+Not claimed: PRODUCTION READY. Default `:3200` / `:3100` / `:4000`
+daemons were not re-probed this pass. G-3 remains an Owner documentation
+decision. `@atlas/worker` still has no `test` script.

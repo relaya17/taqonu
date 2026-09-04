@@ -1,4 +1,3 @@
-import { hashCanonicalJson } from "../approval/hash.js";
 import { ATLAS_SELF_APPLICATION_ID } from "./atlas-gateway.js";
 import { ATLAS_SELF_SYSTEM_ID } from "../schemas/managed-system.schema.js";
 
@@ -17,18 +16,6 @@ export const ATLAS_SELF_CONTROL_REQUEST_PATH =
   "/api/v1/approvals/atlas-self/control-request";
 
 export { ATLAS_SELF_APPLICATION_ID, ATLAS_SELF_SYSTEM_ID };
-
-/** Same artifactHash already used by Phase 13 live-approval tests. */
-export function atlasSelfControlArtifactHash(
-  agentId: string,
-  controlAction: string,
-): string {
-  return atlasSelfArtifactHash({
-    applicationId: ATLAS_SELF_APPLICATION_ID,
-    agentId,
-    controlAction,
-  });
-}
 
 export function isAtlasSelfApplicationId(
   value: string | null | undefined,
@@ -79,11 +66,4 @@ export function isAtlasSelfApprovalContext(context: unknown): boolean {
     return true;
   }
   return false;
-}
-
-/** Binding hash stored on Atlas-self approval records (existing artifactHash field). */
-export function atlasSelfArtifactHash(
-  parts: Record<string, string>,
-): string {
-  return hashCanonicalJson(parts);
 }

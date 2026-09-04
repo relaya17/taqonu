@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ATLAS_SELF_APPLICATION_ID,
   atlasSelfApprovalContext,
-  atlasSelfArtifactHash,
 } from "@atlas/shared";
+import { atlasSelfArtifactHash } from "@atlas/shared/node";
 import { createInProcessLiveApprovalClient } from "./live-approval-requests.in-process.js";
 import {
   LiveApprovalPersistenceError,

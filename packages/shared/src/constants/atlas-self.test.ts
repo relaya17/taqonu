@@ -4,12 +4,14 @@ import {
   ATLAS_SELF_PROJECT_ID,
   ATLAS_SELF_TENANT_ID,
   atlasSelfApprovalContext,
-  atlasSelfArtifactHash,
-  atlasSelfControlArtifactHash,
   isAtlasSelfApplicationId,
   isAtlasSelfApprovalContext,
   isAtlasSelfProjectId,
 } from "./atlas-self.js";
+import {
+  atlasSelfArtifactHash,
+  atlasSelfControlArtifactHash,
+} from "./atlas-self-hash.js";
 
 describe("Atlas-self identity", () => {
   it("preserves def-000 and rejects a wrong application id", () => {

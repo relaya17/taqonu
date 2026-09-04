@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, resolve, relative, sep, normalize, isAbsolute } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   atlasProofReportSchema,
   type AtlasProofReport,
@@ -94,74 +94,12 @@ export function inRepoGoldenFixtureRoot(fromCwd = process.cwd()): string {
 }
 
 /**
- * Validate that a candidate path stays within an authorized root.
- * Performs lexical + canonical checks to reject:
- * - Path traversal (..)
- * - Symlinks/junctions escaping the root
- *
- * Returns {ok: true, path} on success or {ok: false, reason} on failure.
- */
-function validatePathContainment(
-  authorizedRoot: string,
-  candidate: string,
-): { ok: true; path: string } | { ok: false; reason: string } {
-  if (typeof candidate !== "string" || candidate.trim().length === 0) {
-    return { ok: false, reason: "path must be a non-empty string" };
-  }
-
-  const root = resolve(authorizedRoot);
-  const target = resolve(root, normalize(candidate));
-
-  // LEXICAL CHECK: Reject traversal by comparing path segments
-  const rel = relative(root, target);
-  if (rel === "") return { ok: true, path: target };
-  if (rel.startsWith("..") || rel.split(sep).includes("..")) {
-    return { ok: false, reason: "path escapes the authorized root (lexical containment)" };
-  }
-
-  // CANONICAL CHECK: Resolve symlinks/junctions and re-check containment
-  let canonicalRoot: string;
-  try {
-    canonicalRoot = realpathSync(root);
-  } catch {
-    // Root doesn't exist on disk; nothing to canonicalize against
-    return { ok: true, path: target };
-  }
-
-  let canonicalTarget: string;
-  try {
-    canonicalTarget = realpathSync(target);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      // Target doesn't exist; cannot be a symlink escape
-      return { ok: true, path: target };
-    }
-    return {
-      ok: false,
-      reason: `failed to canonicalize path: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-
-  // Check canonical containment
-  const canonicalRel = relative(canonicalRoot, canonicalTarget);
-  if (canonicalRel === "") return { ok: true, path: target };
-  if (canonicalRel.startsWith("..") || canonicalRel.split(sep).includes("..")) {
-    return {
-      ok: false,
-      reason: "path resolves (via symlink or junction) outside the authorized root (canonical containment)",
-    };
-  }
-
-  return { ok: true, path: target };
-}
-
-/**
  * Validate that a root path is authorized for filesystem operations.
  * Ensures the path can be canonicalized and doesn't violate containment.
  */
 function validateRootPath(
   root: string,
-  source: GoldenWorkspaceSource,
+  _source: GoldenWorkspaceSource,
 ): { ok: true } | { ok: false; reason: string } {
   if (!root || root.trim().length === 0) {
     return { ok: false, reason: "root path must not be empty" };

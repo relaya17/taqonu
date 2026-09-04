@@ -3,9 +3,9 @@ import {
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_PROJECT_ID,
   AtlasError,
-  atlasSelfArtifactHash,
   fabricAgentIdSchema,
 } from "@atlas/shared";
+import { atlasSelfArtifactHash } from "@atlas/shared/node";
 import {
   CORE_AGENT_IDS,
   listAgentLifecycleState,

@@ -12,9 +12,9 @@ import {
   isAuthorizedOfficialKnowledgeUrl,
   AtlasError,
   ATLAS_SELF_APPLICATION_ID,
-  atlasSelfArtifactHash,
   type FabricAgentId,
 } from "@atlas/shared";
+import { atlasSelfArtifactHash } from "@atlas/shared/node";
 import {
   authorizeEntityAction,
   createTaskPlan,

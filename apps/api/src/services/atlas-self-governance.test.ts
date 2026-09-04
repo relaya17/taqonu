@@ -6,8 +6,8 @@ import {
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_PROJECT_ID,
   ATLAS_SELF_TENANT_ID,
-  atlasSelfControlArtifactHash,
 } from "@atlas/shared";
+import { atlasSelfControlArtifactHash } from "@atlas/shared/node";
 
 const storeDir = mkdtempSync(join(tmpdir(), "atlas-self-gov-"));
 process.env.ATLAS_STORE_PATH = join(storeDir, "store.json");

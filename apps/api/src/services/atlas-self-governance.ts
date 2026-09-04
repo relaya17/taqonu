@@ -12,13 +12,15 @@ import {
   AtlasError,
   CONTROL_PLANE_SERVICE_ID,
   atlasSelfApprovalContext,
-  atlasSelfArtifactHash,
-  atlasSelfControlArtifactHash,
   isAtlasSelfApprovalContext,
   isAtlasSelfProjectId,
   isAtlasSelfProjectSlug,
   type ApprovalRequest,
 } from "@atlas/shared";
+import {
+  atlasSelfArtifactHash,
+  atlasSelfControlArtifactHash,
+} from "@atlas/shared/node";
 import { osStore } from "../store/os-store.js";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
 import { createApprovalRequest, getApprovalRequest } from "./approvals.js";

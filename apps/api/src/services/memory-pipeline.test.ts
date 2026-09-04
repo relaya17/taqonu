@@ -298,6 +298,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
 
   beforeEach(() => {
     process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.unloadForTests();
     osStore.addMemory(
       memory(null, "judge-only note", OWNER_A, ["JUDGE"]),
     );
