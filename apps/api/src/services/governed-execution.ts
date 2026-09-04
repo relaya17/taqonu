@@ -206,7 +206,20 @@ interface IdempotentExecution {
 }
 
 const governedIdempotency = new Map<string, IdempotentExecution>();
+const governedIdempotencyLocks = new Map<string, Promise<unknown>>();
 let idempotencyPathOverride: string | null = null;
+
+function withGovernedIdempotencyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (governedIdempotencyLocks.get(key) ?? Promise.resolve()).then(fn, fn);
+  governedIdempotencyLocks.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
 
 function resolveGovernedIdempotencyPath(): string {
   if (idempotencyPathOverride) return idempotencyPathOverride;
@@ -278,6 +291,7 @@ if (persistenceEnabled()) {
 
 export function resetGovernedIdempotencyForTests(): void {
   governedIdempotency.clear();
+  governedIdempotencyLocks.clear();
   if (idempotencyPathOverride && existsSync(idempotencyPathOverride)) {
     unlinkSync(idempotencyPathOverride);
   }
@@ -583,27 +597,28 @@ export async function executeGovernedAction(
   }
 
   // ── 6. Idempotency (binding hash) ───────────────────────────────────
-  if (governedRequest.idempotencyKey) {
-    const prior = governedIdempotency.get(governedRequest.idempotencyKey);
-    if (prior) {
-      if (prior.artifactHash !== artifactHash) {
-        const outcome: GovernedExecutionOutcome = {
-          stage: "EXECUTION",
-          status: "FAILED",
-          reason: "idempotency key reused with a different artifact",
-        };
-        auditOutcome(
-          governedRequest,
-          artifactHash,
-          outcome,
-          EMPTY_GOVERNANCE_AUDIT_CONTEXT,
-          extracted.target,
-        );
-        return outcome;
+  const finishGovernedExecution = async (): Promise<GovernedExecutionOutcome> => {
+    if (governedRequest.idempotencyKey) {
+      const prior = governedIdempotency.get(governedRequest.idempotencyKey);
+      if (prior) {
+        if (prior.artifactHash !== artifactHash) {
+          const outcome: GovernedExecutionOutcome = {
+            stage: "EXECUTION",
+            status: "FAILED",
+            reason: "idempotency key reused with a different artifact",
+          };
+          auditOutcome(
+            governedRequest,
+            artifactHash,
+            outcome,
+            EMPTY_GOVERNANCE_AUDIT_CONTEXT,
+            extracted.target,
+          );
+          return outcome;
+        }
+        return prior.outcome;
       }
-      return prior.outcome;
     }
-  }
 
   const helper = await runGovernedClaimedExecution({
     executorId: governedRequest.identity.agentId,
@@ -705,4 +720,9 @@ export async function executeGovernedAction(
     persistGovernedIdempotency();
   }
   return outcome;
+  };
+
+  return governedRequest.idempotencyKey
+    ? withGovernedIdempotencyLock(governedRequest.idempotencyKey, finishGovernedExecution)
+    : finishGovernedExecution();
 }

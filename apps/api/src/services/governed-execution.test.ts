@@ -598,6 +598,28 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(runs).toBe(1);
   });
 
+  it("serializes concurrent reuse of the same idempotency key", async () => {
+    let runs = 0;
+    resetToolRegistryForTests();
+    registerTool({
+      name: "knowledge_search",
+      run: async () => {
+        runs += 1;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return "observation: answer = 42";
+      },
+    });
+    const [a, b, c] = await Promise.all([
+      executeGovernedAction(baseRequest({ idempotencyKey: "gov-concurrent" })),
+      executeGovernedAction(baseRequest({ idempotencyKey: "gov-concurrent" })),
+      executeGovernedAction(baseRequest({ idempotencyKey: "gov-concurrent" })),
+    ]);
+    expect(a.status).toBe("EXECUTED");
+    expect(b.status).toBe("EXECUTED");
+    expect(c.status).toBe("EXECUTED");
+    expect(runs).toBe(1);
+  });
+
   it("replays a durable idempotency key after an in-memory crash", async () => {
     let runs = 0;
     resetToolRegistryForTests();
