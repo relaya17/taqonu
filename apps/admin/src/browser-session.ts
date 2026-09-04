@@ -12,6 +12,18 @@ function secret(): string | null {
   );
 }
 
+function verificationSecrets(): readonly string[] {
+  const current = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
+  const previous = process.env["ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS"]?.trim();
+  const secrets: string[] = [];
+  if (current) secrets.push(current);
+  if (previous && previous !== current) secrets.push(previous);
+  if (secrets.length === 0 && process.env["NODE_ENV"] !== "production") {
+    secrets.push(DEVELOPMENT_SECRET);
+  }
+  return secrets;
+}
+
 function sign(payload: string, key: string): string {
   return createHmac("sha256", key).update(payload).digest("base64url");
 }
@@ -32,9 +44,9 @@ export function clearAdminBrowserSession(): string {
 }
 
 export function readAdminBrowserSession(req: IncomingMessage): { readonly subject: string } | null {
-  const key = secret();
+  const keys = verificationSecrets();
   const cookie = req.headers.cookie;
-  if (!key || typeof cookie !== "string") return null;
+  if (keys.length === 0 || typeof cookie !== "string") return null;
   const encoded = cookie
     .split(";")
     .map((part) => part.trim())
@@ -45,8 +57,11 @@ export function readAdminBrowserSession(req: IncomingMessage): { readonly subjec
   if (separator <= 0) return null;
   const payload = encoded.slice(0, separator);
   const presented = Buffer.from(encoded.slice(separator + 1));
-  const expected = Buffer.from(sign(payload, key));
-  if (presented.length !== expected.length || !timingSafeEqual(presented, expected)) {
+  const macOk = keys.some((key) => {
+    const expected = Buffer.from(sign(payload, key));
+    return presented.length === expected.length && timingSafeEqual(presented, expected);
+  });
+  if (!macOk) {
     return null;
   }
   try {
@@ -64,10 +79,20 @@ export function readAdminBrowserSession(req: IncomingMessage): { readonly subjec
   }
 }
 
+export type AdminBrowserAuthResult =
+  | { readonly status: "ok"; readonly subject: string }
+  | { readonly status: "mfa_required"; readonly mfaToken: string };
+
+function ownerSessionFromAuthBody(
+  body: { role?: string; user?: { id?: string } },
+): { readonly subject: string } | null {
+  return body.role === "owner" && body.user?.id ? { subject: body.user.id } : null;
+}
+
 export async function authenticateAdminBrowser(
   email: string,
   password: string,
-): Promise<{ readonly subject: string } | null> {
+): Promise<AdminBrowserAuthResult | null> {
   const apiUrl = (process.env["ATLAS_API_URL"] ?? "http://localhost:4000").replace(/\/$/, "");
   const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
     method: "POST",
@@ -75,6 +100,30 @@ export async function authenticateAdminBrowser(
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) return null;
-  const body = (await response.json()) as { role?: string; user?: { id?: string } };
-  return body.role === "owner" && body.user?.id ? { subject: body.user.id } : null;
+  const body = (await response.json()) as {
+    mfaRequired?: boolean;
+    mfaToken?: string;
+    role?: string;
+    user?: { id?: string };
+  };
+  if (body.mfaRequired === true) {
+    if (typeof body.mfaToken !== "string" || body.mfaToken.length < 10) return null;
+    return { status: "mfa_required", mfaToken: body.mfaToken };
+  }
+  const session = ownerSessionFromAuthBody(body);
+  return session ? { status: "ok", ...session } : null;
+}
+
+export async function completeAdminBrowserMfa(
+  mfaToken: string,
+  code: string,
+): Promise<{ readonly subject: string } | null> {
+  const apiUrl = (process.env["ATLAS_API_URL"] ?? "http://localhost:4000").replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/api/v1/auth/mfa/verify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mfaToken, code }),
+  });
+  if (!response.ok) return null;
+  return ownerSessionFromAuthBody((await response.json()) as { role?: string; user?: { id?: string } });
 }

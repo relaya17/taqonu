@@ -5,11 +5,11 @@
  * Binding (tool/target/artifact) is validated separately and never rewritten.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import {
   extractGovernedTarget,
   resolveCanonicalToolOperationForRequest,
 } from "@atlas/agent-core";
+import { matchControlPlaneServiceToken } from "@atlas/shared/node";
 import {
   AtlasError,
   CONTROL_PLANE_SERVICE_ID,
@@ -38,8 +38,9 @@ export function isControlPlaneServiceAuthorization(
 }
 
 export function requireControlPlaneService(authorizationHeader: string | undefined): void {
-  const expected = process.env.ATLAS_CONTROL_PLANE_TOKEN?.trim() ?? "";
-  if (!expected) {
+  const current = process.env.ATLAS_CONTROL_PLANE_TOKEN?.trim() ?? "";
+  const previous = process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS?.trim() ?? "";
+  if (!current && !previous) {
     throw new AtlasError(
       "CONFIG_ERROR",
       "ATLAS_CONTROL_PLANE_TOKEN is not configured",
@@ -48,9 +49,7 @@ export function requireControlPlaneService(authorizationHeader: string | undefin
   }
   const match = /^Bearer\s+(\S+)$/i.exec((authorizationHeader ?? "").trim());
   const presented = match?.[1] ?? "";
-  const left = Buffer.from(presented);
-  const right = Buffer.from(expected);
-  if (left.length === 0 || left.length !== right.length || !timingSafeEqual(left, right)) {
+  if (!matchControlPlaneServiceToken(presented)) {
     throw new AtlasError("UNAUTHORIZED", "Control Plane service authentication failed", {
       statusCode: 401,
     });

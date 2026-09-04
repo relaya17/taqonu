@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { matchControlPlaneServiceToken } from "@atlas/shared/node";
 import { readAdminBrowserSession } from "./browser-session.js";
 
 export function adminToken(): string | null {
@@ -17,26 +17,20 @@ function isLoopback(addr: string | undefined): boolean {
   );
 }
 
-function tokensEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
-}
-
 export function authorizeAdminRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): boolean {
   const token = adminToken();
+  const previous = process.env["ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS"]?.trim() ?? "";
   const header = req.headers.authorization;
   const presented =
     typeof header === "string"
       ? /^Bearer\s+(\S+)/i.exec(header.trim())?.[1] ?? null
       : null;
 
-  if (token) {
-    if (presented && tokensEqual(presented, token)) return true;
+  if (token || previous) {
+    if (matchControlPlaneServiceToken(presented)) return true;
     const browserSession = readAdminBrowserSession(req);
     if (browserSession) {
       const method = (req.method ?? "GET").toUpperCase();

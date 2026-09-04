@@ -1,5 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  controlPlaneOperatorSecrets,
+  controlPlaneOwnerSecrets,
+  matchControlPlaneBearer,
+} from "@atlas/shared/node";
 import { json } from "./routes/router.js";
 import { readControlBrowserSession } from "./browser-session.js";
 
@@ -85,6 +90,17 @@ function tokensEqual(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
+function hmacSecrets(): readonly string[] {
+  const current = controlPlaneToken();
+  const previous = process.env["ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS"]?.trim() ?? "";
+  const secrets: string[] = [];
+  if (current) secrets.push(current);
+  if (previous.length > 0 && (!current || !tokensEqual(previous, current))) {
+    secrets.push(previous);
+  }
+  return secrets;
+}
+
 export function isControlPlanePublicPath(pathname: string): boolean {
   return pathname === "/api/v1/status";
 }
@@ -127,11 +143,15 @@ export function verifyReauthTicket(
   const mac = ticket.slice(lastDot + 1);
   const expires = Number(body.split(".")[0]);
   if (!Number.isFinite(expires) || expires < now) return false;
-  const expected = createHmac("sha256", reauthSecret()).update(body).digest("hex");
-  const left = Buffer.from(mac);
-  const right = Buffer.from(expected);
-  if (left.length !== right.length) return false;
-  if (!timingSafeEqual(left, right)) return false;
+  const secrets = hmacSecrets();
+  const candidates = secrets.length > 0 ? secrets : [reauthSecret()];
+  const macOk = candidates.some((secret) => {
+    const expected = createHmac("sha256", secret).update(body).digest("hex");
+    const left = Buffer.from(mac);
+    const right = Buffer.from(expected);
+    return left.length === right.length && timingSafeEqual(left, right);
+  });
+  if (!macOk) return false;
   if (consumedReauthTickets.has(ticket)) return false;
   consumedReauthTickets.add(ticket);
   return true;
@@ -165,27 +185,10 @@ export function authorizeControlPlaneRequest(
   if (isControlPlanePublicPath(pathname)) return true;
   if (isCivioConnectorIngressPath(pathname)) return true;
 
-  const ownerToken = controlPlaneOwnerToken();
-  const operatorToken = controlPlaneToken();
   const presented = bearerFrom(req);
-  const tokensCollide =
-    Boolean(ownerToken) &&
-    Boolean(operatorToken) &&
-    tokensEqual(ownerToken!, operatorToken!);
-
-  // Distinct owner credential only. Identical tokens cannot elevate to OWNER.
-  if (
-    !tokensCollide &&
-    ownerToken &&
-    presented &&
-    tokensEqual(presented, ownerToken)
-  ) {
-    bindPrincipalRole(req, "OWNER");
-    return true;
-  }
-
-  if (operatorToken && presented && tokensEqual(presented, operatorToken)) {
-    bindPrincipalRole(req, "OPERATOR");
+  const bearerRole = matchControlPlaneBearer(presented);
+  if (bearerRole) {
+    bindPrincipalRole(req, bearerRole);
     return true;
   }
 
@@ -205,7 +208,7 @@ export function authorizeControlPlaneRequest(
   }
 
   // If any token is configured but none matched, deny
-  if (ownerToken || operatorToken) {
+  if (controlPlaneOperatorSecrets().length > 0 || controlPlaneOwnerSecrets().length > 0) {
     json(res, { error: "Control Plane authentication required" }, 401);
     return false;
   }

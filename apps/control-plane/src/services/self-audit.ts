@@ -73,12 +73,12 @@ export function runSelfAudit(): SelfAuditReport {
 
   findings.push({
     id: "cp-mfa-not-bound",
-    severity: production ? "MEDIUM" : "INFO",
-    title: "Control Plane MFA is not implemented",
+    severity: "INFO",
+    title: "Control Plane browser MFA uses tenant TOTP; service bearers use rotation",
     evidence:
-      "HMAC reauth tickets are one-shot until TTL; they are not TOTP/WebAuthn. Owner vs Operator tokens are distinct; GET /api/v1/owner/brief requires OWNER. Control Plane bearer MFA is not bound.",
+      "Privileged browser login on Control and Admin completes existing /auth/mfa/verify. HMAC reauth tickets remain one-shot and are not TOTP. Service bearers accept current plus ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS.",
     recommendation:
-      "Do not expose the Control Plane to the internet until distinct credentials and MFA exist.",
+      "Keep production private; rotate with PREVIOUS overlapping current; do not put TOTP on machine bearers.",
     autoApply: false,
   });
 

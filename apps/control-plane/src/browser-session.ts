@@ -14,6 +14,18 @@ function secret(): string | null {
   );
 }
 
+function verificationSecrets(): readonly string[] {
+  const current = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim();
+  const previous = process.env["ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS"]?.trim();
+  const secrets: string[] = [];
+  if (current) secrets.push(current);
+  if (previous && previous !== current) secrets.push(previous);
+  if (secrets.length === 0 && process.env["NODE_ENV"] !== "production") {
+    secrets.push(DEVELOPMENT_SECRET);
+  }
+  return secrets;
+}
+
 function sign(payload: string, key: string): string {
   return createHmac("sha256", key).update(payload).digest("base64url");
 }
@@ -39,9 +51,9 @@ export function clearControlBrowserSession(): string {
 export function readControlBrowserSession(
   req: IncomingMessage,
 ): { readonly role: ControlBrowserRole; readonly subject: string } | null {
-  const key = secret();
+  const keys = verificationSecrets();
   const cookie = req.headers.cookie;
-  if (!key || typeof cookie !== "string") return null;
+  if (keys.length === 0 || typeof cookie !== "string") return null;
   const encoded = cookie
     .split(";")
     .map((part) => part.trim())
@@ -52,8 +64,11 @@ export function readControlBrowserSession(
   if (separator <= 0) return null;
   const payload = encoded.slice(0, separator);
   const presented = Buffer.from(encoded.slice(separator + 1));
-  const expected = Buffer.from(sign(payload, key));
-  if (presented.length !== expected.length || !timingSafeEqual(presented, expected)) {
+  const macOk = keys.some((key) => {
+    const expected = Buffer.from(sign(payload, key));
+    return presented.length === expected.length && timingSafeEqual(presented, expected);
+  });
+  if (!macOk) {
     return null;
   }
   try {
@@ -76,10 +91,23 @@ export function readControlBrowserSession(
   }
 }
 
+export type ControlBrowserAuthResult =
+  | { readonly status: "ok"; readonly role: ControlBrowserRole; readonly subject: string }
+  | { readonly status: "mfa_required"; readonly mfaToken: string };
+
+function sessionFromAuthBody(
+  body: { role?: string; user?: { id?: string } },
+): { readonly role: ControlBrowserRole; readonly subject: string } | null {
+  if (body.role !== "operator" && body.role !== "owner") return null;
+  const subject = body.user?.id;
+  if (!subject) return null;
+  return { role: body.role === "owner" ? "OWNER" : "OPERATOR", subject };
+}
+
 export async function authenticateControlBrowser(
   email: string,
   password: string,
-): Promise<{ readonly role: ControlBrowserRole; readonly subject: string } | null> {
+): Promise<ControlBrowserAuthResult | null> {
   const apiUrl = (process.env["ATLAS_API_URL"] ?? "http://localhost:4000").replace(/\/$/, "");
   const response = await fetch(`${apiUrl}/api/v1/auth/login`, {
     method: "POST",
@@ -87,9 +115,30 @@ export async function authenticateControlBrowser(
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) return null;
-  const body = (await response.json()) as { role?: string; user?: { id?: string } };
-  if (body.role !== "operator" && body.role !== "owner") return null;
-  const subject = body.user?.id;
-  if (!subject) return null;
-  return { role: body.role === "owner" ? "OWNER" : "OPERATOR", subject };
+  const body = (await response.json()) as {
+    mfaRequired?: boolean;
+    mfaToken?: string;
+    role?: string;
+    user?: { id?: string };
+  };
+  if (body.mfaRequired === true) {
+    if (typeof body.mfaToken !== "string" || body.mfaToken.length < 10) return null;
+    return { status: "mfa_required", mfaToken: body.mfaToken };
+  }
+  const session = sessionFromAuthBody(body);
+  return session ? { status: "ok", ...session } : null;
+}
+
+export async function completeControlBrowserMfa(
+  mfaToken: string,
+  code: string,
+): Promise<{ readonly role: ControlBrowserRole; readonly subject: string } | null> {
+  const apiUrl = (process.env["ATLAS_API_URL"] ?? "http://localhost:4000").replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/api/v1/auth/mfa/verify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mfaToken, code }),
+  });
+  if (!response.ok) return null;
+  return sessionFromAuthBody((await response.json()) as { role?: string; user?: { id?: string } });
 }

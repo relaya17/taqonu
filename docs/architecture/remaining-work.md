@@ -95,6 +95,8 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - Sibling / non-`def-000` application execution identity — later-scope.
 
 ## 04 CONTROL PLANE SECURITY
+**Status: COMPLETE** for the existing auth model (no redesign).
+
 **Implemented (code + tests):**
 - Secure response headers (nosniff, DENY frame, no-store, noindex).
 - `X-Request-Id` echoed or minted.
@@ -105,8 +107,16 @@ Real principals. No default `atlas-owner`. Customer admin ≠ operator.
 - **Full TOTP MFA (user auth):** `auth-store.ts` implements TOTP with otplib
   (`/auth/mfa/setup`, `/auth/mfa/confirm`, `/auth/mfa/verify`, `/auth/mfa/disable`).
   Scrypt-hashed backup codes, one-shot consumption, rate limiting. 16+ tests in `auth.test.ts`.
-
-**Not claimed:** token rotation/revoke across processes, MFA on Control Plane bearer auth.
+- **Control / Admin browser MFA:** privileged browser login now completes the
+  existing tenant TOTP challenge (`/auth/mfa/verify`). A password-only
+  response that returns `mfaRequired` does not issue a Control or Admin
+  session. Machine bearer tokens remain non-TOTP (no human in the hop).
+- **Service-token rotation:** current + previous operator/owner secrets
+  (`ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS`,
+  `ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS`) are accepted across Control,
+  Admin, and the tenant API service hop. Collision still never elevates to
+  OWNER. Browser cookies and reauth tickets verify against current then
+  previous operator secret so rotation does not silently drop sessions.
 
 ## 05 CANONICAL AUDIT
 **Implemented (code + tests):**

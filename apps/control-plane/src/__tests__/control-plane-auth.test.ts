@@ -48,7 +48,9 @@ function fakeRes(): ServerResponse & { status: number; body: string } {
 describe("Control Plane auth (ADR-021)", () => {
   afterEach(() => {
     delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS;
     delete process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN;
+    delete process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS;
     delete process.env.NODE_ENV;
     resetConsumedReauthTicketsForTests();
     resetPrincipalRoleForTests();
@@ -216,6 +218,24 @@ describe("Control Plane auth (ADR-021)", () => {
     expect(authorizeControlPlaneRequest(loopbackReq, res, "/dashboard")).toBe(true);
     expect(resolveControlPlanePrincipal(loopbackReq).role).toBe("OPERATOR");
     expect(isOwnerPrincipal(loopbackReq)).toBe(false);
+  });
+
+  it("accepts the previous operator token during rotation", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "new-op";
+    process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS = "old-op";
+    const req = fakeReq("Bearer old-op");
+    expect(authorizeControlPlaneRequest(req, fakeRes(), "/dashboard")).toBe(true);
+    expect(resolveControlPlanePrincipal(req).role).toBe("OPERATOR");
+  });
+
+  it("accepts the previous owner token during rotation", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "operator-secret";
+    process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN = "new-owner";
+    process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS = "old-owner";
+    const req = fakeReq("Bearer old-owner");
+    expect(authorizeControlPlaneRequest(req, fakeRes(), "/dashboard")).toBe(true);
+    expect(resolveControlPlanePrincipal(req).role).toBe("OWNER");
+    expect(isOwnerPrincipal(req)).toBe(true);
   });
 
   it("uses a browser-session fallback only outside production", () => {

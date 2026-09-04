@@ -61,4 +61,14 @@ describe("apps/admin auth", () => {
     );
     delete process.env.NODE_ENV;
   });
+
+  it("accepts the previous operator token during rotation", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "new-admin-token";
+    process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS = "old-admin-token";
+    expect(
+      authorizeAdminRequest(fakeReq("Bearer old-admin-token"), fakeRes()),
+    ).toBe(true);
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS;
+  });
 });

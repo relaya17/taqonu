@@ -77,6 +77,12 @@ Generate tokens with `openssl rand -base64 48`. Two rules:
   (OWNER) must be **different** values.
 - `ATLAS_CONTROL_PLANE_TOKEN` must be **identical** in `control-plane.env` and
   `admin.env`.
+- Rotation: set the new current token, keep the retiring value in
+  `ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS` (and
+  `ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS` when rotating the owner secret)
+  on Control, Admin, and the tenant API. Restart those processes, then
+  remove PREVIOUS after every process has the new current. Do not leave
+  PREVIOUS set indefinitely.
 
 Then put the same operator token into the nginx snippet:
 

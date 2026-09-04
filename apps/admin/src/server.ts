@@ -8,6 +8,7 @@ import { loadPortfolioProjection } from "./portfolio-projection.js";
 import {
   authenticateAdminBrowser,
   clearAdminBrowserSession,
+  completeAdminBrowserMfa,
   issueAdminBrowserSession,
   readAdminBrowserSession,
 } from "./browser-session.js";
@@ -97,18 +98,25 @@ function escapeHtml(value: string): string {
   })[character] ?? character);
 }
 
-function loginHtml(message = ""): string {
+function loginHtml(
+  message = "",
+  challenge?: { readonly mfaToken: string; readonly email: string },
+): string {
   const demoEnabled =
     process.env["NODE_ENV"] !== "production" ||
     process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
-  const email = demoEnabled
-    ? escapeHtml(process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local")
-    : "";
-  const password = demoEnabled
+  const email = escapeHtml(
+    challenge?.email ||
+      (demoEnabled ? (process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local") : ""),
+  );
+  const password = demoEnabled && !challenge
     ? escapeHtml(process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!")
     : "";
   const escaped = escapeHtml(message);
-  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atlas Admin</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#f5f5f5;font:16px sans-serif}main{width:min(360px,calc(100% - 40px));padding:28px;border:1px solid #30343b;background:#14171c}h1{font-size:24px;margin:0 0 8px}p{color:#aeb4be}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;margin-top:6px;padding:11px;background:#0b0d10;color:#fff;border:1px solid #454b55}button{width:100%;margin-top:20px;padding:12px;border:0;background:#fff;color:#111;font-weight:700;cursor:pointer}.error{color:#ff8c8c}</style></head><body><main><h1>Atlas Admin</h1><p>כניסת בעלים בלבד</p>${escaped ? `<p class="error">${escaped}</p>` : ""}<form method="post" action="/auth/login"><label>אימייל<input type="email" name="email" value="${email}" autocomplete="username" required></label><label>סיסמה<input type="password" name="password" value="${password}" autocomplete="current-password" required autofocus></label><button type="submit">כניסה</button></form></main></body></html>`;
+  const mfaFields = challenge
+    ? `<input type="hidden" name="mfaToken" value="${escapeHtml(challenge.mfaToken)}"><label>קוד MFA<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>`
+    : `<label>סיסמה<input type="password" name="password" value="${password}" autocomplete="current-password" required autofocus></label>`;
+  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atlas Admin</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#f5f5f5;font:16px sans-serif}main{width:min(360px,calc(100% - 40px));padding:28px;border:1px solid #30343b;background:#14171c}h1{font-size:24px;margin:0 0 8px}p{color:#aeb4be}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;margin-top:6px;padding:11px;background:#0b0d10;color:#fff;border:1px solid #454b55}button{width:100%;margin-top:20px;padding:12px;border:0;background:#fff;color:#111;font-weight:700;cursor:pointer}.error{color:#ff8c8c}</style></head><body><main><h1>Atlas Admin</h1><p>${challenge ? "נדרש קוד אימות" : "כניסת בעלים בלבד"}</p>${escaped ? `<p class="error">${escaped}</p>` : ""}<form method="post" action="/auth/login"><label>אימייל<input type="email" name="email" value="${email}" autocomplete="username" required></label>${mfaFields}<button type="submit">כניסה</button></form></main></body></html>`;
 }
 
 function sendHtml(res: ServerResponse, body: string, status = 200): void {
@@ -120,7 +128,12 @@ function sendHtml(res: ServerResponse, body: string, status = 200): void {
   res.end(body);
 }
 
-async function readLogin(req: IncomingMessage): Promise<{ email: string; password: string }> {
+async function readLogin(req: IncomingMessage): Promise<{
+  email: string;
+  password: string;
+  mfaToken: string;
+  code: string;
+}> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -130,7 +143,12 @@ async function readLogin(req: IncomingMessage): Promise<{ email: string; passwor
     chunks.push(buffer);
   }
   const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
-  return { email: form.get("email")?.trim() ?? "", password: form.get("password") ?? "" };
+  return {
+    email: form.get("email")?.trim() ?? "",
+    password: form.get("password") ?? "",
+    mfaToken: form.get("mfaToken")?.trim() ?? "",
+    code: form.get("code")?.trim() ?? "",
+  };
 }
 
 export function handleAdminRequest(
@@ -184,12 +202,34 @@ async function handleAdminRequestAsync(
   }
   if (pathname === "/auth/login" && method === "POST") {
     const credentials = await readLogin(req);
-    const session = await authenticateAdminBrowser(credentials.email, credentials.password);
-    if (!session) {
+    if (credentials.mfaToken) {
+      const session = await completeAdminBrowserMfa(credentials.mfaToken, credentials.code);
+      if (!session) {
+        sendHtml(
+          res,
+          loginHtml("קוד האימות שגוי או שפג תוקפו", {
+            mfaToken: credentials.mfaToken,
+            email: credentials.email,
+          }),
+          401,
+        );
+        return;
+      }
+      res.setHeader("Set-Cookie", issueAdminBrowserSession(session.subject));
+      res.writeHead(303, { Location: "/" });
+      res.end();
+      return;
+    }
+    const result = await authenticateAdminBrowser(credentials.email, credentials.password);
+    if (!result) {
       sendHtml(res, loginHtml("פרטי הכניסה שגויים או שאין הרשאת owner"), 401);
       return;
     }
-    res.setHeader("Set-Cookie", issueAdminBrowserSession(session.subject));
+    if (result.status === "mfa_required") {
+      sendHtml(res, loginHtml("", { mfaToken: result.mfaToken, email: credentials.email }));
+      return;
+    }
+    res.setHeader("Set-Cookie", issueAdminBrowserSession(result.subject));
     res.writeHead(303, { Location: "/" });
     res.end();
     return;

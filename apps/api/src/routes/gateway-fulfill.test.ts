@@ -158,15 +158,19 @@ describe("POST /api/v1/gateway/fulfill", () => {
 
 describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
   const prevToken = process.env.ATLAS_CONTROL_PLANE_TOKEN;
+  const prevPrevious = process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS;
 
   beforeEach(() => {
     process.env.ATLAS_CONTROL_PLANE_TOKEN = "cp-fulfill-token";
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS;
     getRequestUser.mockReturnValue(null);
   });
 
   afterEach(() => {
     if (prevToken === undefined) delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
     else process.env.ATLAS_CONTROL_PLANE_TOKEN = prevToken;
+    if (prevPrevious === undefined) delete process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS;
+    else process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS = prevPrevious;
   });
 
   it("accepts a valid CP token for Atlas-self and still uses executeGovernedAction", async () => {
@@ -207,6 +211,26 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
       },
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("accepts the previous CP token during rotation", async () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "new-cp-fulfill-token";
+    process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS = "cp-fulfill-token";
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "ok",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: { authorization: "Bearer cp-fulfill-token" },
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(200);
   });
 
   it("rejects an invalid CP token without a user session", async () => {

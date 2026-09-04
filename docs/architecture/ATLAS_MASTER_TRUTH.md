@@ -946,3 +946,17 @@ the tenant API; Atlas-self `def-000` identity; gateway fulfill session user.
 
 **Not claimed here:** Control Plane bearer MFA and token rotation (Phase 04);
 sibling execution identity (later-scope).
+
+## 40. Phase 04 Control Plane Security (2026-09-04)
+
+**Status: COMPLETE** for the existing authentication architecture.
+
+- Privileged Control / Admin **browser** login now completes tenant TOTP
+  (`POST /api/v1/auth/mfa/verify`). Password-only `mfaRequired` does not
+  issue a session.
+- Service bearers remain machine identity. They are **not** TOTP-bound.
+- Rotation uses `ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS` and
+  `ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS` on Control, Admin, and the
+  tenant API service hop. Collision still never elevates to OWNER.
+
+HMAC reauth remains one-shot replay protection, not MFA.
