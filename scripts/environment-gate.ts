@@ -78,4 +78,25 @@ const report = {
   })),
 };
 
-console.log(JSON.stringify(report, null, 2));
+async function probe(url: string): Promise<{
+  readonly url: string;
+  readonly reachable: boolean;
+  readonly status: number | null;
+}> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+    return { url, reachable: true, status: response.status };
+  } catch {
+    return { url, reachable: false, status: null };
+  }
+}
+
+const listenProbes = {
+  note: "Loopback reachability is LOCAL PRIVATE PLANE only. It is not Ubuntu/Tailscale/systemd production proof.",
+  apiHealth: await probe("http://127.0.0.1:4000/health"),
+  controlPlaneStatus: await probe("http://127.0.0.1:3100/api/v1/status"),
+  adminRoot: await probe("http://127.0.0.1:3200/"),
+  studioRoot: await probe("http://127.0.0.1:3000/"),
+};
+
+console.log(JSON.stringify({ ...report, listenProbes }, null, 2));

@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { AtlasError } from "@atlas/shared";
 import { loadServerEnv } from "@atlas/config";
 import { isAllowedWebOrigin } from "./lib/web-origin.js";
+import { apiListenOptions } from "./lib/listen-options.js";
 import { buildApp } from "./create-app.js";
 
 export type NodeHttpHandler = (
@@ -86,8 +87,9 @@ async function main(): Promise<void> {
   const server = createServer((req, res) => handle(req, res));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    // Dual-stack (:: + IPv4) so Windows Chrome `localhost` (::1) works, not only 127.0.0.1.
-    server.listen({ port, ipv6Only: false }, () => resolve());
+    // HOST from private-plane start binds loopback. Unset HOST stays dual-stack
+    // so Windows Chrome `localhost` (::1) still works.
+    server.listen(apiListenOptions(port), () => resolve());
   });
   console.error(
     JSON.stringify({

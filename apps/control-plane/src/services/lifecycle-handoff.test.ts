@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupervisedGovernanceDecision } from "./supervised-governance.js";
-import { handoffGovernedDecisionToApi } from "./lifecycle-handoff.js";
+import {
+  handoffGovernedDecisionToApi,
+  resolveAtlasApiTarget,
+} from "./lifecycle-handoff.js";
 
 const decision: SupervisedGovernanceDecision = {
   decision: "ALLOW",
@@ -94,5 +97,39 @@ describe("Control Plane lifecycle handoff", () => {
     expect(result.status).toBe("HANDED_OFF");
     expect(result.executed).toBe(false);
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a non-http ATLAS_API_URL without fetching", async () => {
+    process.env["ATLAS_API_URL"] = "file:///etc/passwd";
+    process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await handoffGovernedDecisionToApi(decision);
+    expect(result.status).toBe("HANDOFF_FAILED");
+    expect(result.reason).toMatch(/http or https/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveAtlasApiTarget", () => {
+  it("joins a same-origin API path", () => {
+    const result = resolveAtlasApiTarget("http://127.0.0.1:4000", "/api/v1/gateway/fulfill");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe("http://127.0.0.1:4000/api/v1/gateway/fulfill");
+    }
+  });
+
+  it("refuses a non-http scheme", () => {
+    const result = resolveAtlasApiTarget("file:///etc/passwd", "/api/v1/health");
+    expect(result.ok).toBe(false);
+  });
+
+  it("refuses a path that would leave the configured origin", () => {
+    const result = resolveAtlasApiTarget(
+      "http://127.0.0.1:4000",
+      "https://127.0.0.1.attacker.test/steal",
+    );
+    expect(result.ok).toBe(false);
   });
 });

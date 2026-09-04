@@ -1225,4 +1225,57 @@ defines the worker as a polling loop with no HTTP.
 
 Demo/customer package is not opened: production gate is still NOT PRODUCTION READY.
 
+## 62. Priority 1 + 2 — production infrastructure and security readiness (2026-09-05)
+
+Phases 10–14 were not reopened. ADR-022 was not bypassed. No sibling execute
+contract was invented. No secrets, VMs, or signatures were fabricated.
+
+**Question:** Is the Atlas private production plane operational and sufficiently
+security-hardened to proceed to Real Connected-App Execution?
+
+**Answer:** No. Local private-plane Atlas-self execution is proven. Production
+private plane (Ubuntu + Tailscale + systemd), Studio credentials, live
+Supabase, signed releases, and an external pentest are not. Sibling execute
+remains OWNER DECISION REQUIRED.
+
+**LOCAL PRIVATE PLANE (this workstation, `pnpm private-plane:start`)**
+- API `:4000` `/health` 200; `/api/v1/health` HEALTHY — local JSON store;
+  Supabase not configured; worker component UNKNOWN by design.
+- Control `:3100` `/api/v1/status` 200; token-gated health 200.
+- Admin `:3200` `GET /` 200 promo; `GET /api/v1/platform/hierarchy` 401 without
+  bearer, 200 with SERVICE token.
+- Worker process started (`worker_started`, recoveredJobs 0). No HTTP health.
+- Studio `:3000` down — `apps/web/.env.local` absent.
+- `pnpm production:live-proof` 2026-09-04T21:31:19Z: 30 PASS / 0 FAIL /
+  1 BLOCKED (Studio) / 2 SKIP (localhost≠production, external pentest).
+- Atlas-self fulfill request `f6bc6b24-62b5-4db0-950e-34e236631556`:
+  `analyze_repo` EXECUTED, `artifactHash` 64 hex, `verified: false` /
+  `INCONCLUSIVE`.
+- HotelOS write: HTTP 403 DENY `Unknown application: hotelos`, `executed: false`.
+- Civio HMAC ingest 202 evaluate-only; invalid HMAC 401.
+
+**Code-completable increments this pass**
+- `deploy/verify.sh` and `docs/deployment/private-plane.md` now probe Admin
+  hierarchy for unauth 401 (promo `GET /` is 200 by design).
+- CP `resolveAtlasApiTarget` refuses non-http schemes and origin escape.
+- API `apiListenOptions` honors `HOST` from private-plane start; unset HOST
+  remains dual-stack for Windows Chrome `localhost`.
+- Environment gate records loopback listen probes without inventing secrets.
+
+**Tests this pass (all passed)**
+- Control Plane lifecycle-handoff + egress + api-routes: 44.
+- API governance-adversarial: 15; gateway-fulfill + fulfillment + DR + egress:
+  included in a 48-test slice; listen-options: 2; governed-execution file: 54
+  with adversarial file (15 + 39).
+- Shared egress + connected-applications: 12.
+- Agent-core tools adversarial: 7 (do not treat `HARDENING_STATUS.md` “21+”
+  as current).
+- Worker: 17.
+- Supply chain: SBOM VALID, UNSIGNED, `releaseReady: false`.
+
+**NOT PRODUCTION READY.** Loopback is not the Ubuntu/Tailscale plane.
+Internal suites are not an external pentest. ADR-022 still blocks sibling
+execute.
+
+
 

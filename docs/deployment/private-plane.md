@@ -206,8 +206,9 @@ canonical hash-chain. Outbound HTTPS needs no inbound rule. Set
 - [ ] `GET /api/v1/agents` with the operator token → **200**
 
 ### Atlas Admin
-- [ ] `GET /` without a token → **401** (token set) or **503** (token missing)
-- [ ] `GET /` with the operator token → **200**
+- [ ] `GET /` without a token → **200** promo HTML (not a privileged surface)
+- [ ] `GET /api/v1/platform/hierarchy` without a token → **401** (token set) or **503** (token missing)
+- [ ] `GET /` with the operator token → **200** platform HTML
 - [ ] Browsing `http://<tailscale-ip>:8443/` renders Atlas Admin (not a Control dashboard clone)
 - [ ] `GET /api/v1/platform/hierarchy` with auth → Admin supervises Control and Studio
 

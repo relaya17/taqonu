@@ -147,10 +147,27 @@ record({
   actual: webRoot.error ?? `HTTP ${webRoot.status}`,
   evidence: "web .env.local was absent at last inspection; BLOCKED is an environment gap",
 });
+record({
+  id: "infra.localhost-is-not-production",
+  status: "SKIP",
+  expected: "Ubuntu + Tailscale production private plane per docs/deployment/private-plane.md",
+  actual: "this script probes loopback (LOCAL PRIVATE PLANE)",
+  evidence: "Loopback success is not production VM / Tailscale / systemd proof.",
+});
 
 const apiUp = listening(apiLiveness);
 const cpUp = listening(cpStatus);
 const adminUp = adminRoot.status !== null;
+
+if (adminUp) {
+  record({
+    id: "security.admin.promo-root",
+    status: adminRoot.status === 200 ? "PASS" : "FAIL",
+    expected: "GET / without a token → 200 promo HTML (not a privileged JSON surface)",
+    actual: `HTTP ${adminRoot.status}`,
+    evidence: typeof adminRoot.body === "string" ? adminRoot.body.slice(0, 160) : JSON.stringify(adminRoot.body).slice(0, 200),
+  });
+}
 
 if (!TOKEN) {
   record({
@@ -349,12 +366,13 @@ if (cpUp) {
     record({
       id: "security.cp.sibling.no-http-fulfill",
       status:
-        siblingBody?.executed === true
-          ? "FAIL"
-          : siblingWrite.status !== null
-            ? "PASS"
-            : "FAIL",
-      expected: "Sibling write must not execute tools (executed !== true)",
+        siblingWrite.status === 403 &&
+        siblingBody?.executed !== true &&
+        siblingBody?.decision === "DENY"
+          ? "PASS"
+          : "FAIL",
+      expected:
+        "hotelos request_agent_run → 403 DENY at IDENTITY (not in CP registry); executed !== true",
       actual: `HTTP ${siblingWrite.status} decision=${siblingBody?.decision} executed=${String(siblingBody?.executed)}`,
       evidence: JSON.stringify(siblingWrite.body).slice(0, 500),
     });
@@ -443,7 +461,11 @@ if (apiUp) {
       outcome?: { status?: string; stage?: string };
       verificationVerdict?: string;
       applicationId?: string;
+      observation?: { artifactHash?: string };
     } | null;
+    const artifactHash = fulfillBody?.observation?.artifactHash;
+    const artifactHashOk =
+      typeof artifactHash === "string" && /^[a-f0-9]{64}$/i.test(artifactHash);
     const executed =
       fulfill.status === 200 &&
       fulfillBody?.executed === true &&
@@ -456,6 +478,13 @@ if (apiUp) {
         "CP bearer → fulfill → executeGovernedAction → executeTool(analyze_repo) executed:true",
       actual: `HTTP ${fulfill.status} executed=${String(fulfillBody?.executed)} tool=${fulfillBody?.toolName} outcome=${fulfillBody?.outcome?.status}`,
       evidence: JSON.stringify({ requestId, body: fulfill.body }).slice(0, 800),
+    });
+    record({
+      id: "e2e.def-000.artifact-hash",
+      status: executed && artifactHashOk ? "PASS" : executed ? "FAIL" : "SKIP",
+      expected: "EXECUTED fulfill returns observation.artifactHash (64 hex)",
+      actual: `hashLength=${typeof artifactHash === "string" ? artifactHash.length : 0}`,
+      evidence: "Request correlation is x-request-id; hash is the execution artifact, not world-state VERIFIED",
     });
     record({
       id: "e2e.def-000.executed-not-verified",

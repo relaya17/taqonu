@@ -35,6 +35,39 @@ function serviceToken(): string | null {
   return raw && raw.length > 0 ? raw : null;
 }
 
+/**
+ * Fail-closed URL join for the CP → API hop.
+ * Operator-configured base only; path must stay on that origin (no file: / open redirect).
+ */
+export function resolveAtlasApiTarget(
+  base: string,
+  path: string,
+): { readonly ok: true; readonly url: string } | { readonly ok: false; readonly reason: string } {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    return {
+      ok: false,
+      reason: "Atlas API path must be a same-origin absolute path",
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(base);
+  } catch {
+    return { ok: false, reason: "ATLAS_API_URL is not a valid URL" };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { ok: false, reason: "ATLAS_API_URL must be http or https" };
+  }
+  const url = new URL(path, parsed);
+  if (url.origin !== parsed.origin) {
+    return {
+      ok: false,
+      reason: "Atlas API hop refused to leave the configured origin",
+    };
+  }
+  return { ok: true, url: url.toString() };
+}
+
 export type AtlasApiCallResult =
   | { readonly ok: true; readonly status: number; readonly body: unknown }
   | { readonly ok: false; readonly reason: string };
@@ -64,8 +97,12 @@ export async function callAtlasApi(
   if (denied) {
     return { ok: false, reason: denied };
   }
+  const target = resolveAtlasApiTarget(base, path);
+  if (!target.ok) {
+    return { ok: false, reason: target.reason };
+  }
   try {
-    const response = await fetch(`${base}${path}`, {
+    const response = await fetch(target.url, {
       method: init.method,
       headers: {
         "content-type": "application/json",

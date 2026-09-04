@@ -57,10 +57,11 @@ else
 fi
 
 section "4. Owner Admin :3200"
-ADMIN_UNAUTH="$(code http://127.0.0.1:3200/)"
+# GET / is a promo page (200) by design. Privileged JSON is token-gated.
+ADMIN_UNAUTH="$(code http://127.0.0.1:3200/api/v1/platform/hierarchy)"
 [[ "$ADMIN_UNAUTH" == "401" || "$ADMIN_UNAUTH" == "503" ]] \
-  && ok "Admin rejects a token-less request ($ADMIN_UNAUTH)" \
-  || bad "Admin returned $ADMIN_UNAUTH — expected 401 (token set) or 503 (token missing)"
+  && ok "Admin hierarchy rejects a token-less request ($ADMIN_UNAUTH)" \
+  || bad "Admin hierarchy returned $ADMIN_UNAUTH — expected 401 (token set) or 503 (token missing)"
 
 if [[ -n "$CP_TOKEN" ]]; then
   [[ "$(code -H "Authorization: Bearer $CP_TOKEN" http://127.0.0.1:3200/)" == "200" ]] \

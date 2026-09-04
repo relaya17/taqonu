@@ -12,3 +12,6 @@
 - Atlas Gateway is the only Control Plane ↔ application/agent integration boundary
 - Atlas may propose self-fixes; it cannot silently weaken security or rewrite audit history
 - LLM egress is classified and policy-gated (secrets never go to external providers)
+- Internal suites (`governance-adversarial`, `production:live-proof`, Control Plane auth tests) are **not** an external penetration test. Externally tested: none until an Owner-authorized engagement.
+- Loopback private-plane success (`127.0.0.1` / `localhost`) is **LOCAL PRIVATE PLANE**, not production Tailscale/systemd exposure proof.
+- Admin `GET /` is a public promo page; privileged Admin JSON (`/api/v1/platform/hierarchy` and writes) remains bearer-gated.

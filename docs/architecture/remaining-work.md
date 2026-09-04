@@ -523,6 +523,28 @@ Owner request updated: `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
 
 **ApprovalExecutionRepository** remains parked / historical.
 
+## PRIORITY 1 + 2 — INFRASTRUCTURE AND SECURITY (2026-09-05)
+
+Read-only reconciliation first. No sibling execute. No invented credentials.
+
+**Program verdict: NOT PRODUCTION READY.**
+
+Local private plane (API/CP/Admin/Worker) is IMPLEMENTED — RUNTIME VERIFIED on
+loopback. Studio is CREDENTIAL BLOCKED. systemd/Tailscale VM is EXTERNAL
+INFRASTRUCTURE BLOCKED. Live Supabase is CREDENTIAL BLOCKED. Signing is
+EXTERNAL SERVICE REQUIRED. External pentest is EXTERNAL SECURITY REQUIRED.
+Sibling execute is OWNER DECISION REQUIRED (ADR-022).
+
+`pnpm production:live-proof`: 30 PASS / 0 FAIL / 1 BLOCKED / 2 SKIP.
+`pnpm environment:gate` listen probes: API/CP/Admin 200 on loopback; Studio
+unreachable. SBOM VALID, unsigned.
+
+Admin unauth probe in `deploy/verify.sh` now uses `/api/v1/platform/hierarchy`
+(promo `GET /` is 200). CP API hop refuses non-http URLs. Local API honors
+`HOST` when set.
+
+Worker HTTP health was not added.
+
 ## PHASE 11 PORTFOLIO GOVERNANCE (observability)
 
 New increment (owner-approved sequence). **Stop after each phase. Wait for Owner approval.**
