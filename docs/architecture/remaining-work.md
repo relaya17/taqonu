@@ -163,8 +163,10 @@ still no second system of record.
   re-run a CLAIMED approval that already has `executionStartedAt`; it
   finalizes `OUTCOME_UNKNOWN` instead of duplicating side effects.
 
-**Not claimed:** a separate distributed queue service (Phase 12). Process-local
-automation-engine dedup remains a documented caveat, not this path.
+**Not claimed:** a separate distributed queue. Phase 12 confirmed the
+process-local `.atlas/worker-queue.json` worker is the architecture; Redis
+is not required. Process-local automation-engine dedup remains a documented
+caveat, not this path.
 
 ## 07 VERIFICATION
 **Status: COMPLETE** — world-state check is the existing Verification loop,
@@ -243,12 +245,16 @@ Flagged injection logs `agent_prompt_injection_flagged` /
   and `runtimeStatus` fields.
 - **Control Plane runtime overlay:** `resolveGovernedAgentIdentity` reads
   CP `GET /api/v1/agents/:id` when `ATLAS_CONTROL_PLANE_URL` is set.
-  `executeGovernedAction` denies unless `agentMayExecute(runtimeStatus)`.
+  `executeGovernedAction` combines overlay + identity via
+  `combineAgentRuntimeStatus` and denies unless `agentMayExecute`.
   Unreachable CP fail-closes as UNKNOWN. A 404 overlay (fabric-only id)
   defaults ACTIVE. Unset CP URL keeps local ACTIVE (tests / API-only).
-- **Delegation wiring:** `agentRuntimeStatus` and `delegationHopCount` now wired
-  through `submitAgentProposal`, `executeGovernedAction`, and
-  `dispatchAgentAction` — enforcement is on every live dispatch path.
+  CP SERVICE gateway fulfill may pass `agentRuntimeStatus`; operator
+  sessions cannot inject it.
+- **Delegation wiring:** `effectiveDelegationHopCount` floors omitted hops
+  on `DELEGATED` to 1. Wired through `submitAgentProposal`,
+  `executeGovernedAction`, `dispatchAgentAction`, specialist LLM runs, and
+  SECURITY/LEGAL fabric gates. PSA hop-floor behavior is unchanged.
 - **Session trust:** `resolveAgentIdentity` defaults `trustLevel` to `FULL`
   (signed-in human). `LAB` is opt-in, not the live default.
 - **Live tool hop:** `POST /api/v1/agents/tool-execute` derives identity from
@@ -270,9 +276,11 @@ table. `governed-execution.test.ts` uses catalog-granted `knowledge_search` +
 `fs.read_directory`, `fs.search_repo` (enforced by
 `enforceAgentToolAuthorization`). Live execution of those tools is the
 `tool-execute` hop, not specialist dispatch (dispatch remains propose-only).
-API startup now registers `knowledge_search`, the read-only filesystem tools,
-and `analyze_repo`. Unregistered policy names still fail closed. No second
-execution engine.
+API startup (`create-app.ts`) registers `knowledge_search`,
+`registerFilesystemTools()`, and `registerAnalyzeRepoTool()`. `analyze_repo`
+is a bounded read-only workspace walk (no network, no code execution).
+Unregistered policy names still fail closed. A catalog grant is not a
+production registration. No second execution engine.
 
 **Proof reports:** stored as `lastProofReport:${projectId}` (or
 `lastProofReport:global` when no project) — not a single shared slot.
@@ -297,12 +305,15 @@ and durable governed idempotency are Phase 06.
 ## 13 OBSERVABILITY
 **Status: COMPLETE** for the existing per-plane stack plus handoff correlation.
 
-**Implemented:** one request id — CP `X-Request-Id`;
-`executeGovernedAction.requestId` already correlated. API global rate limit
-300/min (`@fastify/rate-limit`) and `http_request_duration_ms` via
-`registerRequestTiming`. CP `callAtlasApi` and lifecycle handoff now forward
-`X-Request-Id`. Gateway fulfill uses the incoming header when present so
-operators can join CP receipt → API execution. No second telemetry stack.
+**Implemented:** one request id — CP `X-Request-Id` is pinned on the inbound
+HTTP request and forwarded on `callAtlasApi` / lifecycle handoff. Tenant API
+Fastify uses `requestIdHeader: "x-request-id"` so that value becomes
+`request.id` and `executeGovernedAction.requestId`. Gateway fulfill and
+`dispatchAgentAction` write `input.requestId`; UUID values also populate
+audit `correlationId`. Operators can join CP receipt → API execution →
+governed decision. API global rate limit 300/min and
+`http_request_duration_ms` via `registerRequestTiming`. No second telemetry
+stack.
 
 ## 14 SELF-AUDIT
 **Status: COMPLETE** for detect → propose (no auto-apply, no active probing).

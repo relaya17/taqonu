@@ -986,7 +986,8 @@ replay an already-EXECUTED tool. Claimed approvals that started before
 crash still finalize `OUTCOME_UNKNOWN` and do not execute twice.
 
 Stale remaining-work wording that said durable jobs were absent is
-corrected. Distributed queue service remains Phase 12.
+corrected. Phase 12 later confirmed a distributed queue is not required
+by the current single-worker file-backed architecture.
 
 ## 43. Phase 07 Verification (2026-09-04)
 
@@ -1032,8 +1033,10 @@ by the current single-worker architecture.
 
 ## 49. Phase 13 Observability (2026-09-04)
 
-**Status: COMPLETE.** CP → API hops forward `X-Request-Id`. Gateway fulfill
-uses the incoming header so CP receipt and API execution share one id.
+**Status: COMPLETE.** CP → API hops forward the same `X-Request-Id`. Tenant
+API Fastify honors that header as `request.id`. Gateway fulfill and
+governed/dispatch audit `input.requestId` share it. UUID values also fill
+`correlationId`. No second telemetry stack.
 
 ## 50. Phase 14 Self-Audit (2026-09-04)
 
