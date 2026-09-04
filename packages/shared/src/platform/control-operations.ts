@@ -198,7 +198,10 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
       status: "PARTIAL",
       live: false,
       route: "GET /api/v1/supervision",
-      notes: ["Observe-path receipts exist. Mutation verification is incomplete without fulfill."],
+      notes: [
+        "Observe-path receipts exist. Atlas-self ALLOW writes verify on the API fulfill hop.",
+        "Ingest execution and non-def-000 fulfill are outside Phase 02.",
+      ],
     },
     {
       domain: "evidenceAudit",

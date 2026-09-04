@@ -27,19 +27,34 @@ Honest remaining gaps (not a missing executor):
   control-plane, worker.
 
 ## 02 GATEWAY COMPLETION
-Evaluate + handoff exist. Control does not run tools. See commit `e7773e0`.
-**Atlas-self write hop (2026-09-04):** `fulfillAllow` now calls tenant
-`POST /api/v1/gateway/fulfill` for ALLOW write-like ops on `def-000`, fail-closed,
-via the existing CP SERVICE bearer (`callAtlasApi`). Control Plane still does
-not run tools. Non-`def-000` applications remain receipt-only (no HTTP fulfill).
-Execution on ingest is still NOT IMPLEMENTED.
+**Status: COMPLETE (Atlas-self first).** Control evaluates and hands off.
+Control does not run tools. See commit `e7773e0` (evaluate + handoff) and
+`332b11e` (Atlas-self ALLOW → tenant `POST /api/v1/gateway/fulfill`,
+fail-closed, existing CP SERVICE bearer).
+
+**Definition of Done (this item):** evaluate ALLOW / DENY / REQUIRE_APPROVAL;
+ALLOW write-like ops on `def-000` reach
+`fulfillGatewayHandoff` → `executeGovernedAction` → `executeTool`; DENY and
+REQUIRE_APPROVAL do not execute; missing config / unreachable API fail
+closed; no second execution engine.
+
+**NOT PART OF PHASE 02** (do not treat as incomplete 02 work):
+- Execution on event ingest. ADR-022 Phase 3: Control evaluates ingest and
+  does **not** execute Civio or Atlas tools on ingest. Civio events lack an
+  authoritative tool/target/artifact (`ALLOW ≠ EXECUTED` until an Owner-
+  authorized execution intent exists). Do not invent
+  `knowledge_search(query = eventId)`.
+- HTTP fulfill for non-`def-000` applications. Target architecture P6 is
+  Atlas-self first. Sibling execute is ADR-022-locked until a later phase.
+- Other siblings remain observe-only (target P7/P10).
+
 Phase 2 (2026-09-02) added Control operational contracts
 (`GET /api/v1/operational-foundation`, empty `GET /api/v1/processes`).
 Phase 3 (2026-09-02) added the first sibling ingress: HMAC
 `POST /api/v1/connectors/civio/events` plus `emitCivioEventToControl`.
 Civio runtime emit is wired in `github.com/relaya17/civio` at authenticated
-`POST /api/ai/legal-query` (housing → `civio.rights.answered`). Execution
-on ingest is NOT IMPLEMENTED. Other siblings remain observe-only.
+`POST /api/ai/legal-query` (housing → `civio.rights.answered`). Those
+increments stay as recorded; they are not a reason to keep item 02 open.
 
 ```
 Application → Gateway → Identity → Registries → Capability

@@ -310,6 +310,23 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("REQUIRE_APPROVAL does not call the API fulfill hop", async () => {
+    process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+    process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      reason: "run diagnostic agent",
+    });
+    expect(result.decision).toBe("REQUIRE_APPROVAL");
+    expect(result.executed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("inspect ALLOW does not call the API fulfill hop", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";

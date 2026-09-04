@@ -895,3 +895,31 @@ Those columns stay evidence-based. Native gate results remain in §35–§36.
 **Final governance state:** G-3 = CLOSED. 11.5–11.15 = RE-APPROVED.
 The next engineering task, if any, requires a separate explicit Owner
 authorization.
+
+## 38. Phase 02 Gateway Completion (2026-09-04)
+
+**Status: COMPLETE** for the authoritative item-02 DoD (Atlas-self first).
+
+Implementation commit: `332b11e`
+(`feat(gateway): wire CP ALLOW writes to tenant gateway/fulfill`).
+
+Path:
+
+`dispatchGatewayOperation` ALLOW write on `def-000`
+→ `callAtlasApi` + `ATLAS_CONTROL_PLANE_TOKEN`
+→ `POST /api/v1/gateway/fulfill`
+→ `fulfillGatewayHandoff`
+→ `executeGovernedAction`
+→ `executeTool`
+
+Control Plane does not run tools. DENY and REQUIRE_APPROVAL do not call
+fulfill. Missing config / unreachable API fail closed.
+
+**NOT PART OF PHASE 02** (left untouched; require a later Owner decision):
+
+- Event-ingest execution (ADR-022: no tools on ingest; Civio events have
+  no authoritative execution intent).
+- HTTP fulfill for non-`def-000` applications (P6 Atlas-self first).
+- Sibling observe-only remaining (target P7/P10).
+
+Do not start remaining-work item 03 from this close.

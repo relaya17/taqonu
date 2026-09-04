@@ -196,7 +196,7 @@ Control is **not** Atlas Studio. It does not host the developer editor, file tre
 | Portfolio inventory (not live apps) | `GET /api/v1/portfolio-governance` → `getControlPlanePortfolioView()`; seed `packages/shared/src/portfolio/seed.ts` | PARTIAL (inventory) / MISSING (live) |
 | Gateway evaluate ALLOW/DENY/REQUIRE_APPROVAL | `evaluateGatewayRequest`, `dispatchGatewayOperation` in `atlas-gateway.ts` | PARTIAL |
 | Read ops = in-memory OBSERVATION | `fulfillAllow()` `executionKind: "OBSERVATION"` | PARTIAL |
-| Write ops = handoff, **does not call** API fulfill | `fulfillAllow()` `executionKind: "HANDED_OFF_GOVERNED"`; comment cites `POST /api/v1/gateway/fulfill`; no HTTP call | CONFLICTING vs `remaining-work.md` “GATEWAY COMPLETION Wired” |
+| Write ops = handoff, **does not call** API fulfill | Historical (pre-`332b11e`): `fulfillAllow()` returned `HANDED_OFF_GOVERNED` with no HTTP call. **Current (2026-09-04):** Atlas-self (`def-000`) ALLOW writes call `POST /api/v1/gateway/fulfill` fail-closed. Non-`def-000` remain receipt-only by design (P6 Atlas-self first). | RESOLVED for Atlas-self; remaining sibling execute is a later phase |
 | Event ingest is in-process | `POST /api/v1/gateway/events` → `ingestGatewayEvent` | PARTIAL |
 | API→CP bridge is fail-open telemetry, always `def-000` | `apps/api/src/services/control-plane-bridge.ts` | PARTIAL / CONFLICTING |
 | CP audit sync exists, not started | `startPeriodicSync` in `audit-sync.ts`; **no** call from `server.ts` | MISSING (reachability) |
@@ -802,6 +802,9 @@ These are **real conflicts**. They are not automatically bugs to “fix” in th
 7. **Ask-agent raw `workspaceRoot` vs tree/file ownership resolver.**
 8. **Two agent lists** — Fabric 16 vs CP 9. ADR-022 already says CP list is not execution; still confusing for Admin/Control UIs.
 9. **`remaining-work.md` “GATEWAY COMPLETION Wired” vs `fulfillAllow` not calling `POST /api/v1/gateway/fulfill`.**
+   **Resolved 2026-09-04 (`332b11e`):** Atlas-self ALLOW writes call the tenant
+   fulfill hop fail-closed. Historical conflict text kept. Sibling / ingest
+   execute remains a later phase (ADR-022; P7), not a reopened 02 gap.
 10. **`control-plane-bridge.ts` fail-open + hardcoded `def-000`** vs target fail-closed enforcement and multi-app identity.
 11. **Audit planes** — NDJSON vs `osStore.appendAudit` vs CP in-memory; `startPeriodicSync` unreachable.
 12. **ADR-022 observe-without-execute lock** vs target Control that must eventually supervise live processes. That requires an **explicit later phase**, not silent override of ADR-022.
@@ -852,7 +855,7 @@ These are **real conflicts**. They are not automatically bugs to “fix” in th
 | **P3 — Audit SoR** | Studio writes and CP decisions reach `appendUnifiedAuditEntry`. Start or replace `audit-sync` with a reachable path. | P1 |
 | **P4 — Studio upgrade (in place)** | Editor quality, evidenceIds on proposals, optional in-page patch status, Fabric propose-only for developer agents, optional Knowledge retrieval with allow-lists. | P0, P2, P3 |
 | **P5 — Admin purpose split** | Admin API for platform concerns; Admin UI stops cloning Control operational dashboards. Health of Control/Studio as **components**. | P1 |
-| **P6 — Control enforcement hop** | Wire CP ALLOW/APPROVAL to API `gateway/fulfill` **fail-closed**, without turning CP into a tool runner. Still Atlas-self first. | P3 |
+| **P6 — Control enforcement hop** | Wire CP ALLOW/APPROVAL to API `gateway/fulfill` **fail-closed**, without turning CP into a tool runner. Still Atlas-self first. **Atlas-self ALLOW hop implemented 2026-09-04 (`332b11e`).** REQUIRE_APPROVAL remains a decision (not a second CP queue). Sibling execute is not P6. | P3 |
 | **P7 — Connector contract** | Specify and implement the first supervisory connector against **one** sibling, observe-only, ADR-022 constraints until explicitly lifted. | P5, P6, explicit Owner lift of ADR-022 probe rules |
 | **P8 — Process / events** | Normalization, process state, monitoring ≠ audit. | P7 |
 | **P9 — Personal Supervising Agent** | Identity, persistence, bindings, subscriptions, escalate/approve. | P6, P8, memory scopes |
