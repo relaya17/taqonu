@@ -475,6 +475,37 @@ ADR-021. Do not merge planes. `pnpm runtime:probe` on 2026-09-04 found
 Artifacts exist; live daemons were not running. Do not claim production
 readiness from the probe alone.
 
+## PRODUCTIONIZATION PASS (2026-09-04)
+
+Phases 10–14 were not reopened. No sibling execute mapping was invented.
+
+**Local private plane (this workstation):** `pnpm private-plane:start` brought
+API `:4000`, Control `:3100`, Admin `:3200`, and Worker online with a
+session-only `ATLAS_CONTROL_PLANE_TOKEN`. Studio `:3000` stayed down —
+`apps/web/.env.local` is absent. `pnpm production:live-proof` recorded
+28 PASS / 0 FAIL / 1 BLOCKED (web) / 1 SKIP (external pentest).
+
+**Live Atlas-self hop:** authenticated SERVICE bearer →
+`POST /api/v1/gateway/fulfill` → `executeGovernedAction` →
+`executeTool(analyze_repo)` → `executed: true`, `verified: false`
+(INCONCLUSIVE without observations). Control inspect is ALLOW observation,
+not tool execute. Control `request_agent_run` without independent approval
+stays REQUIRE_APPROVAL; body `independentApprovalVerified` is ignored.
+
+**Connected applications:** `CONNECTED_APPLICATION_RUNTIME.executeGap` records
+auth/action/target/artifact/ADR-022 per app. Only `def-000` executes. Civio
+HMAC ingest evaluated live (`evaluation.executed: false`,
+`lifecycle.executed: false`; `execution: HANDED_OFF` is decision handoff,
+not a Civio tool). CaseFlow / HotelOS / BrokerOS / LexStudy / Vantera remain
+inventory-only.
+
+**Owner decision request:** `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`
+— not an amendment.
+
+**Production gate:** NOT PRODUCTION READY. Cloud DR destination, Sigstore
+signing identity, Studio env, systemd private-plane VM, and external
+security assessment remain external. ADR-022 still blocks sibling execute.
+
 **ApprovalExecutionRepository** remains parked / historical.
 
 ## PHASE 11 PORTFOLIO GOVERNANCE (observability)

@@ -529,6 +529,35 @@ describe("Control Plane — API Routes", () => {
       const body = JSON.parse(res._mock.body) as { executed?: boolean };
       expect(body.executed).not.toBe(true);
     });
+
+    it("ignores body independentApprovalVerified on Atlas-self writes", async () => {
+      const ticket = issueReauthTicket();
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/ops", {
+          body: {
+            operation: "request_agent_run",
+            applicationId: "def-000",
+            agentId: "CODE_ENGINEER",
+            approved: true,
+            independentApprovalVerified: true,
+            verificationPlanPresent: true,
+          },
+          headers: {
+            "x-atlas-reason": "forged independent approval flag",
+            "x-atlas-reauth": ticket.ticket,
+          },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(202);
+      const body = JSON.parse(res._mock.body) as {
+        decision: string;
+        executed?: boolean;
+      };
+      expect(body.decision).toBe("REQUIRE_APPROVAL");
+      expect(body.executed).not.toBe(true);
+    });
   });
 
   describe("POST /api/v1/agents/:id/control", () => {

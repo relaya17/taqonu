@@ -22,14 +22,26 @@ describe("connected application runtime inventory", () => {
     expect(civio?.connection).toBe("HMAC_CONNECTOR");
     expect(civio?.ingest).toBe("EVALUATE_ONLY");
     expect(civio?.execute).toBe("NONE");
+    expect(civio?.executeGap).toEqual({
+      authentication: "PRESENT",
+      actions: "ABSENT",
+      target: "ABSENT",
+      artifact: "ABSENT",
+      adr022: "PERMITS_EVALUATE_ONLY",
+    });
   });
 
-  it("siblings remain inventory-only", () => {
+  it("siblings remain inventory-only with no execute contract", () => {
     for (const id of ["caseflow", "hotelos", "brokeros", "lexstudy", "vantera"] as const) {
       const row = getConnectedApplicationRuntime(id);
       expect(row?.connection).toBe("INVENTORY_ONLY");
       expect(row?.execute).toBe("NONE");
       expect(row?.ingest).toBe("NONE");
+      expect(row?.executeGap.authentication).toBe("ABSENT");
+      expect(row?.executeGap.actions).toBe("ABSENT");
+      expect(row?.executeGap.target).toBe("ABSENT");
+      expect(row?.executeGap.artifact).toBe("ABSENT");
+      expect(row?.executeGap.adr022).toBe("OBSERVE_ONLY");
     }
   });
 });

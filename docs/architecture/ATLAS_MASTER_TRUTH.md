@@ -1170,3 +1170,35 @@ were not listening. Do not claim PRODUCTION READY.
 **Program verdict: ATLAS PROGRAM — BLOCKED** on cloud DR destination,
 Sigstore/cosign identity+verifier, live ML training, ADR-022 ingest/sibling
 execute, and a live private-plane deployment for runtime evidence.
+
+## 60. Productionization and connected-app completion (2026-09-04)
+
+Phases 10–14 were not reopened. ADR-022 was not silently overridden.
+
+**RUNTIME VERIFIED (local private plane, this workstation)**
+- API `:4000` `/health` 200; `/api/v1/health` HEALTHY (local JSON store;
+  Supabase not configured; worker component UNKNOWN by design).
+- Control `:3100` `/api/v1/status` 200; token-gated `/api/v1/health` 200.
+- Admin `:3200` listening; hierarchy 401 without bearer, 200 with SERVICE token.
+- Worker process started (`worker_started` log). API cannot attest worker
+  liveness over HTTP.
+- Atlas-self fulfill: `analyze_repo` EXECUTED; `verified: false` /
+  `INCONCLUSIVE`.
+- DEF-000 self-audit: `systemId=DEF-000`, every finding `autoApply: false`.
+- Civio HMAC ingest: 202 evaluate-only; invalid HMAC 401.
+
+**BLOCKED-ENVIRONMENT**
+- Studio `:3000` — no `apps/web/.env.local`.
+- Cloud object-store DR credentials.
+- Sigstore/cosign signing identity (`releaseReady: false`, provenance unsigned).
+- Linux systemd private-plane VM (`deploy/`) — not this Windows workstation.
+- External penetration test — not performed.
+
+**OWNER DECISION REQUIRED**
+- ADR-022 sibling/Civio execute contract. Request:
+  `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+
+**Program verdict: NOT PRODUCTION READY.** Local runtime evidence exists for
+Atlas-self governed execution. Sibling connected-app execution is still
+impossible without an Owner amendment and an authoritative sibling contract.
+
