@@ -236,7 +236,7 @@ closed for this host. See §35.
 | 11.2 App/Source Agent inventory | `82e883e` | present | present | BLOCKED-ENVIRONMENT | none | remaining-work.md: complete | IMPLEMENTED — UNVERIFIED |
 | 11.3 Capability Extraction | `82e883e` | present | present | BLOCKED-ENVIRONMENT | none | remaining-work.md: complete | IMPLEMENTED — UNVERIFIED |
 | 11.4 Provenance and Evidence | `82e883e` | present | present (label now correct after this cycle's fix, see §22) | BLOCKED-ENVIRONMENT | none | remaining-work.md: complete | IMPLEMENTED — UNVERIFIED |
-| 11.5 Persistence & Data Layer | `82e883e` | present (`portfolio-governance-store.ts` + `.test.ts`, 10+ cases) | present | BLOCKED-ENVIRONMENT | none | now pointed here (§22) | IMPLEMENTED — UNVERIFIED; OWNER DECISION REQUIRED (re-approval wording, §25) |
+| 11.5 Persistence & Data Layer | `82e883e` | present (`portfolio-governance-store.ts` + `.test.ts`, 10+ cases) | present | BLOCKED-ENVIRONMENT | none | now pointed here (§22) | IMPLEMENTED — UNVERIFIED; G-3 RE-APPROVED as current governance state (§37). Re-approval does not change this row's verification level. |
 | 11.6 Global Deduplication | `82e883e` | present (`deduplication.test.ts`, 43 DedupRelation records) | present, correctly labeled | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.7 Canonical Capability Mapping | `82e883e` | present | present | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.8 Governance Decisions | `82e883e` | present (`seed.ts:2440`) | present; `governance-decisions.test.ts` correctly labeled, plus `index.test.ts` label corrected this cycle (§22) | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
@@ -347,6 +347,12 @@ superseded as a historical record: §16 and `remaining-work.md` both preserve
 it verbatim per Owner instruction (§2.4 of the directive — never rewrite
 history).
 
+On 2026-09-04 the Owner recorded G-3: RE-APPROVE 11.5–11.15 as the current
+governance state (§37). That decision supersedes `831410e` **as the current
+Owner approval status**. It does not delete or rewrite `831410e`, this
+section, §16's historical implementation column, or `remaining-work.md`'s
+preserved retraction line.
+
 ## 22. Documentation Reconciliation
 
 **Current authoritative document:** this file.
@@ -404,7 +410,7 @@ was **not** restored: Admin now reuses `fetchSupervisedJson` +
 |---|---|---|---|---|---|---|---|---|---|
 | G-1 | Native test/typecheck execution | **Closed this cycle (native Windows).** After the §36 remediation queue: `pnpm test` 47/47 PASS (includes `@atlas/api` 1118/1118 and `memory-pipeline.test.ts` 16/16), `pnpm typecheck` 53/53 PASS. Same host also recorded `pnpm build` 30/30 PASS (includes `@atlas/web`) and `pnpm lint` 46/46 PASS. `@atlas/worker` still has no `package.json` `test` script (unchanged; not a turbo failure). See §35–§36. | none outstanding for the G-1 DoD | Gate leftovers were test isolation, unused lint symbols, and the shared/node client boundary | none | Low — native commands now green in one shot | **closed** | Re-run the four root scripts after any later change | Full `pnpm test` green + typecheck green |
 | G-2 | Phase 11.9 Admin UI | **Closed this cycle** — recovered/adapted under Option A (Admin → Control Plane projection). Tenant API `requireUser` / `requireOperator` / `requireOwner` unchanged. See §16, §23, §33, §34. | none outstanding for the selected model | Historical UI deleted by `4883bfd`; recovered 2026-09-04 | Owner chose Option A | Medium if a later cycle reopens Option B (static-token API exception) — that remains forbidden | **closed** | Admin tests 21/21; API portfolio+auth 15/15; CP 68/68; Admin→CP runtime on ephemeral HTTP servers | Auth model decided → feature implemented → tests pass → runtime-verified on in-process servers → documented. Default `:3200`/`:3100`/`:4000` daemons were not running. |
-| G-3 | Owner re-approval of 11.5–11.15 | Implemented, undocumented as approved | A recorded Owner decision superseding the `831410e` retraction | Documentation-only rollback never revisited | none | Low (code already shipped either way) | **P2** | none (decision, not code) | Owner decision recorded with the §16-of-directive metadata schema |
+| G-3 | Owner re-approval of 11.5–11.15 | **Closed this cycle.** Owner RE-APPROVED 11.5–11.15 as the current authoritative governance state (2026-09-04). Confirms the existing implementation and Master Truth technical wording. Does not authorize rebuild or change verification levels. `831410e` remains as historical record. See §21, §25, §37. | none | Documentation-only Owner decision now recorded | none | Low | **closed** | Decision present in Master Truth with metadata schema; historical records intact | Owner decision recorded with the §28/§29 metadata schema |
 | G-4 | SBOM script execution evidence | **Closed this cycle** — `pnpm sbom:generate` PASS on native Windows; 101 CycloneDX 1.5 components written under `.atlas/sbom/`. | none | Previous miss was Linux-bridge esbuild only | none | Low | **closed** | Artifacts reviewed locally (gitignored) | Command PASS + files exist |
 | G-5 | Reliability/DR documentation | **Closed this cycle** — full read-through performed (not grep-only): durable job-queue crash recovery (`apps/worker/src/queue-persistence.ts`) and claim-based execution idempotency (`governed-claimed-execution.ts`) both confirmed real and durable; automation-engine dedup confirmed process-local only (documented caveat, not a defect); store-level atomic-write durability cited from a prior code-verified audit trail (`living-request-tracker.md`). Offsite backup/replication and multi-region HA confirmed MISSING by a prior, pre-existing, honestly-labeled audit (`ATLAS_VERIFICATION_REPORT_2026-08-28.md`) — not newly discovered here, not silently adopted as a new gap either. | Independent re-verification via actual test execution (still BLOCKED-ENVIRONMENT); a decision on whether offsite backup/replication is in scope for the current stage | None outstanding from this cycle's investigation depth | native test execution (for re-verification only) | Low — code read directly, not inferred | **P3** (was P2; downgraded now that real evidence closes most of the open question) | Native test execution of `apps/worker` once available | §14 now carries evidence-based status per mechanism instead of a grep-only placeholder |
 
@@ -414,8 +420,13 @@ manufacture gaps").
 
 ## 25. Owner Decisions
 
-1. Whether to formally re-approve the already-implemented 11.5–11.15 work
-   (G-3), and with what documentation wording.
+1. **Owner re-approval of 11.5–11.15 (G-3).** **Decided: RE-APPROVE.**
+   Owner decision 2026-09-04 formally re-approves Portfolio Governance
+   11.5–11.15 as the current authoritative governance state. This confirms
+   the existing implementation and the technical wording already in this
+   document. It does not authorize a rebuild, new code, or a change of
+   verification level. Historical retraction `831410e` is preserved
+   (§20, §21). Full metadata: §37.
 2. **Phase 11.9 Admin UI auth model (G-2).** **Decided: Option A.**
    Owner execution directive 2026-09-04 selected
    `Admin → Control Plane → Portfolio Governance API` as the trust
@@ -447,7 +458,8 @@ integration is done (§17). **Phase C** (11.9 recovery) — **executed this cycl
 environment; default daemon ports were not listening. **Phase D** (gap matrix) — done
 this cycle (§24). **Phase E** (build P0/P1) — Phase C (11.9) is no longer waiting;
 G-1 native `pnpm test` / `pnpm typecheck` are now green (§36). **Phase F**
-(finalize) — this document updated for 11.9 (§34) and the §36 remediations.
+(finalize) — this document updated for 11.9 (§34), the §36 remediations,
+and G-3 Owner re-approval (§37).
 
 ## 27. Verification Gates
 
@@ -845,5 +857,41 @@ Full native commands after all three:
 | `pnpm lint` | 46/46 PASS |
 
 Not claimed: PRODUCTION READY. Default `:3200` / `:3100` / `:4000`
-daemons were not re-probed this pass. G-3 remains an Owner documentation
-decision. `@atlas/worker` still has no `test` script.
+daemons were not re-probed this pass. G-3 is a recorded Owner decision
+(§37). `@atlas/worker` still has no `test` script.
+
+## 37. G-3 Owner Decision — RE-APPROVE 11.5–11.15 (2026-09-04)
+
+Recorded per the §28/§29 metadata schema. Documentation only. No code
+change. No rebuild. No new audit. No Verification Gate rerun.
+
+| Field | Value |
+|---|---|
+| Decision ID | G-3 |
+| Date | 2026-09-04 |
+| Owner | Atlas Owner |
+| Scope | Portfolio Governance 11.5–11.15 |
+| Reason | Formally re-approve the already-implemented 11.5–11.15 work as the current authoritative governance state after the Native Verification Gate and Verified Remediation Queue closed. Close the documentation-only gap left by `831410e`. |
+| Affected components | This document only (`§16` 11.5 status wording, `§21`, `§24` G-3, `§25` item 1, `§26`, `§36`, this section) |
+| Authorized actions | Record this decision; mark G-3 CLOSED; preserve historical and superseded records |
+| Forbidden actions | Code changes; architecture redesign; rebuilding Phase 11.9; another broad audit; rerunning the completed Verification Gate; deleting `ApprovalExecutionRepository`; unrelated remediation; pushing to remote |
+| Expected verification | Decision present in this file; historical records (`831410e`, §20, §21, `remaining-work.md` preserved retraction line) intact; worktree contains only this documentation change |
+| Actual verification | Decision recorded in this section; `831410e` chain in §20 and the §21 historical-preservation paragraph left in place; §16 verification levels not upgraded by this decision; 11.9 remains **IMPLEMENTED — RUNTIME VERIFIED**; 11.13/11.14 remain milestone markers with no dedicated code |
+| Verification date | 2026-09-04 |
+| Commit SHA | this documentation commit (reported with the recording response) |
+| Documentation updated | this file |
+| Supersedes | `831410e` **as the current Owner approval status only** — not as a historical record |
+| Status | APPROVED / RE-APPROVED. G-3 = CLOSED |
+
+**Decision text (Owner, 2026-09-04):** Portfolio Governance items 11.5–11.15
+are re-approved as the current authoritative governance state of Atlas.
+The approval is of the existing implementation and of the technical
+wording already in this document. It is not authorization to rebuild.
+
+**Verification-level rule applied while recording:** G-3 does not convert
+`IMPLEMENTED — UNVERIFIED` rows in §16 into TESTED / RUNTIME VERIFIED.
+Those columns stay evidence-based. Native gate results remain in §35–§36.
+
+**Final governance state:** G-3 = CLOSED. 11.5–11.15 = RE-APPROVED.
+The next engineering task, if any, requires a separate explicit Owner
+authorization.
