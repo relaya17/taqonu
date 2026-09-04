@@ -28,7 +28,8 @@
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rimraf node_modules",
     "turbo": "turbo",
-    "sbom:generate": "tsx scripts/generate-sbom.ts"
+    "sbom:generate": "tsx scripts/generate-sbom.ts",
+    "supply-chain:verify": "tsx scripts/verify-supply-chain.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

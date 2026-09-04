@@ -9,6 +9,8 @@ export * from "./platform/civio-connector.js";
 export * from "./platform/supervised-process.js";
 export * from "./platform/governed-lifecycle-handoff.js";
 export * from "./platform/personal-supervising-agent.js";
+export * from "./platform/connected-applications.js";
+export * from "./platform/supply-chain.js";
 export * from "./approval/canonicalization.js";
 
 export type AgentReputationSummary = { score: number; details?: string; };

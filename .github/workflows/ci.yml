@@ -40,3 +40,5 @@ jobs:
           ATLAS_SKIP_METRICS_LOG: "1"
           NODE_ENV: test
         run: pnpm --filter @atlas/api exec tsx src/scripts/ci-secrets-scan.ts
+      - name: Supply-chain SBOM verify (unsigned is expected)
+        run: pnpm sbom:generate && pnpm supply-chain:verify
