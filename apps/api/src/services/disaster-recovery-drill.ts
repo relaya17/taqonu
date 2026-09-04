@@ -116,3 +116,59 @@ export function runCanonicalAuditRestoreDrill(input?: {
   );
   return result;
 }
+
+export interface CanonicalAuditRestoreResult {
+  readonly restoredAt: string;
+  readonly replicaPath: string;
+  readonly restoredPath: string;
+  readonly ok: boolean;
+  readonly status: string;
+  readonly checked: number;
+  readonly error: string | null;
+  readonly overwrittenCanonical: false;
+}
+
+/**
+ * Restore from a replica into an isolated directory, then verify the chain.
+ * Never overwrites the live canonical path. Operators copy the verified
+ * restored file only after reviewing the receipt.
+ */
+export function restoreCanonicalAuditFromReplica(input: {
+  readonly replicaPath: string;
+  readonly restoreDir: string;
+}): CanonicalAuditRestoreResult {
+  const restoredAt = new Date().toISOString();
+  if (!existsSync(input.replicaPath)) {
+    return {
+      restoredAt,
+      replicaPath: input.replicaPath,
+      restoredPath: "",
+      ok: false,
+      status: "INCOMPLETE",
+      checked: 0,
+      error: "replica is missing — nothing to restore",
+      overwrittenCanonical: false,
+    };
+  }
+
+  mkdirSync(input.restoreDir, { recursive: true });
+  const restoredPath = join(input.restoreDir, "audit.ndjson");
+  copyFileSync(input.replicaPath, restoredPath);
+  const verified = verifyAuditLogChainAt(restoredPath);
+  const result: CanonicalAuditRestoreResult = {
+    restoredAt,
+    replicaPath: input.replicaPath,
+    restoredPath,
+    ok: verified.ok,
+    status: verified.status,
+    checked: verified.checked,
+    error: verified.error,
+    overwrittenCanonical: false,
+  };
+  writeFileSync(
+    join(input.restoreDir, "restore-receipt.json"),
+    `${JSON.stringify(result, null, 2)}\n`,
+    "utf8",
+  );
+  return result;
+}
