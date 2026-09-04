@@ -291,6 +291,22 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("forwards the Control Plane request id on X-Request-Id and the overlay status", async () => {
+    process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+    process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+    const requestId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>)["x-request-id"]).toBe(requestId);
+      const body = JSON.parse(String(init?.body)) as { agentRuntimeStatus?: string };
+      expect(body.agentRuntimeStatus).toBe("ACTIVE");
+      return new Response(JSON.stringify({ executed: false }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await dispatchGatewayOperation({ ...allowedWrite, requestId });
+    expect(result.receipt?.requestId).toBe(requestId);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("DENY does not call the API fulfill hop", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
