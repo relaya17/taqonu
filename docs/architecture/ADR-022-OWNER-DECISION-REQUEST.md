@@ -1,100 +1,117 @@
 # Owner decision request — ADR-022 and sibling execute
 
 **Status:** REQUEST — not an amendment. Do not treat this file as authorization.
-**Date:** 2026-09-04
-**Scope:** Real Connected-Application execution beyond Atlas-self (`def-000`).
+**Date:** 2026-09-05
+**Checkpoint:** HEAD `7adbe54` plus this reconciliation increment.
 
-This request exists because productionization reached an architectural wall.
-No code in this pass silently overrides ADR-022.
-
----
-
-## Exact blocked capability
-
-Governed **execute** of a sibling Connected Application:
-
-```text
-Atlas → Authorization → Control Plane → Connected-App authorization
-      → Real application action → Result → Canonical audit → Verification
-```
-
-Blocked applications:
-
-| Application | Current contract | Blocked capability |
-| --- | --- | --- |
-| Civio | HMAC ingest evaluate-only | Atlas-to-Civio inbound action; ingest-time tool/target/artifact execute |
-| CaseFlow | Inventory only | Any connector, auth, action, target, artifact |
-| HotelOS | Inventory only | Same |
-| BrokerOS | Inventory only | Same (`fixtures/golden-brokeros` is an exemplar, not a connector) |
-| LexStudy | Inventory only | Same |
-| Vantera | Inventory only | Same |
-
-Not blocked: Atlas-self `def-000` via `POST /api/v1/gateway/fulfill` → `executeGovernedAction` → `executeTool`. Control Plane still does not run tools.
+No code silently overrides ADR-022. No speculative connector was added.
 
 ---
 
-## Current architecture
+## OWNER DECISION REQUIRED
 
-- ADR-022: Control **evaluates** Civio ingest and **does not execute tools** on ingest.
-- Atlas-to-Civio inbound actions are **not implemented**.
-- CaseFlow, HotelOS, BrokerOS, LexStudy, Vantera stay observe-only / not connected.
-- `CONNECTED_APPLICATION_RUNTIME` is the inventory: only `def-000` has `execute: GATEWAY_FULFILL`.
-- `CIVIO_SUPPORTED_ACTIONS` is empty. Civio events have no authoritative tool, target, or artifact.
-- `fulfillGatewayHandoff` refuses non-`def-000`. HTTP gateway fulfill is Atlas-self only.
-- Sibling ALLOW writes on Control Plane produce a receipt with `executed: false` and **no** HTTP fulfill hop.
+Atlas-self (`def-000`) already has a real governed execute hop. Sibling **execute** does not.
 
----
+### Civio
 
-## Why the existing contract is insufficient
+| Field | Fact |
+| --- | --- |
+| Exact application | `civio` (`github.com/relaya17/civio`, local clone present) |
+| Exact missing contract | Atlas → Civio inbound action; ingest-time tool/target/artifact |
+| Exact missing endpoint | No inbound Civio URL. Existing path is Civio → `POST /api/v1/connectors/civio/events` only |
+| Exact missing action | `CIVIO_SUPPORTED_ACTIONS = []` |
+| Exact missing credential | Live Civio process + `ATLAS_CIVIO_*` on **both** runtimes (does not create an action) |
+| Exact ADR-022 conflict | Evaluate ingest; do not execute tools on ingest; inbound NOT_IMPLEMENTED |
+| Smallest decision | Authorize **one** named Civio inbound action with identity, auth, target, artifact, audit, verification — or keep evaluate-only |
+| Engineering consequence | Without amendment: ingest remains evaluate-only. With amendment: new egress/authz/SSRF surface |
+| What Atlas can prove without that decision | HMAC ingest 202, `evaluation.executed: false`, invalid HMAC 401, Atlas-self `analyze_repo` EXECUTED |
 
-ADR-022 plus the Civio envelope authorize **observation and evaluation**, not **application action**.
+### CaseFlow
 
-Inventing a mapping such as `knowledge_search(query = eventId)` or treating portfolio seed as a live API would:
+| Field | Fact |
+| --- | --- |
+| Exact application | `caseflow` (`github/CaseFlow-AI-main`, local clone present) |
+| Exact missing contract | Atlas → CaseFlow governed action |
+| Exact missing endpoint | No taqonu execute URL. Sibling has `emitArletOsEvent` → `POST /api/v1/gateway/events` (observe) and an **internal** `/api/atlas` engineering-audit module (name collision) |
+| Exact missing action | No CaseFlow tool registered in Fabric / `CONNECTED_APPLICATION_RUNTIME` |
+| Exact missing credential | CaseFlow runtime + `ATLAS_CONTROL_PLANE_URL` / token for **outbound observe only** |
+| Exact ADR-022 conflict | Observe-only / not connected |
+| Smallest decision | Whether outbound `gateway/events` observe is enough, or one CaseFlow write action is authorized |
+| Engineering consequence | Implementing execute without amendment would invent a sibling fulfill mapping |
+| What Atlas can prove without that decision | Inventory + DENY unknown sibling fulfill; CaseFlow outbound observe is sibling-side, not Atlas execute |
 
-- fabricate an execute contract that does not exist in Civio or sibling repos
-- collapse SOURCE identity into Fabric identity
-- violate “ALLOW ≠ EXECUTED”
+### HotelOS
 
----
+| Field | Fact |
+| --- | --- |
+| Exact application | `hotelos` (`github/hotelOS-AI-main`, local clone present) |
+| Exact missing contract | Atlas → HotelOS inbound action |
+| Exact missing endpoint | HotelOS `intelligenceApiAvailable` is **hardcoded false**. Outbound `POST /api/v1/gateway/events` only (ADR 0016) |
+| Exact missing action | No HotelOS tool/target/artifact in Atlas |
+| Exact missing credential | `ATLAS_TELEMETRY_URL` / `ATLAS_TELEMETRY_TOKEN` on HotelOS for observe only |
+| Exact ADR-022 conflict | Observe-only / not connected. HotelOS ADR 0016 does not propose using `gateway/fulfill` |
+| Smallest decision | Keep one-way telemetry, or authorize one inbound HotelOS action with a confirmed HotelOS API |
+| Engineering consequence | Flipping `intelligenceApiAvailable` without a real HotelOS inbound API would be a fabricated contract |
+| What Atlas can prove without that decision | Inventory; sibling write `hotelos` DENY unknown application; Atlas-self execute |
 
-## Minimal required change (if Owner authorizes later)
+### BrokerOS
 
-Pick **one** sibling and one action, then amend ADR-022 explicitly with:
+| Field | Fact |
+| --- | --- |
+| Exact application | `brokeros` (`github/brokerOS` — **not present** on this workstation) |
+| Exact missing contract | Entire connector: auth, endpoint, action, target, artifact |
+| Exact missing endpoint | none in this monorepo (`fixtures/golden-brokeros` is an exemplar) |
+| Exact missing action | none |
+| Exact missing credential | BrokerOS runtime not available here |
+| Exact ADR-022 conflict | Observe-only / not connected |
+| Smallest decision | Whether BrokerOS is ever an executable connected app |
+| Engineering consequence | Fixture/evals must not be treated as live BrokerOS |
+| What Atlas can prove without that decision | Golden-project / eval fixtures remain synthetic |
 
-1. Application identity (never `def-000`)
-2. Authentication (existing HMAC for Civio, or a new connector for others)
-3. Authoritative action/tool name owned by that application
-4. Target identifier and artifact/result schema
-5. Whether Control may HTTP-fulfill that application, or only evaluate
-6. Canonical audit fields and world-state verification observations
-7. Fail-closed behavior when the sibling runtime is unreachable
+### LexStudy
 
-Do not reuse Atlas-self `analyze_repo` as a stand-in for a sibling action.
+| Field | Fact |
+| --- | --- |
+| Exact application | `lexstudy` (`github/LexStudy-main` — **not present** here) |
+| Exact missing contract | Entire connector |
+| Exact missing endpoint / action / credential | none / none / sibling repo absent |
+| Exact ADR-022 conflict | Observe-only / not connected |
+| Smallest decision | Whether LexStudy is ever executable from Atlas |
+| Engineering consequence | Portfolio source agents stay inventory |
+| What Atlas can prove without that decision | Inventory only |
 
----
+### Vantera
 
-## Implications
-
-| Plane | If Owner keeps ADR-022 | If Owner amends for one action |
-| --- | --- | --- |
-| Security | Sibling execute remains impossible; attack surface stays ingest/eval | New egress, authz, SSRF, and tenant-binding surface on that action |
-| Governance | Evaluate-only; Fabric catalog unchanged | New policy cell + approval path for that action |
-| Audit | Civio ingest audit is in-memory CP + optional API import; execute audit is Atlas-self only | Canonical NDJSON must record sibling `applicationId`, tool, target, artifact |
-| Verification | Ingest `execution: NOT_IMPLEMENTED`; world-state verify is Atlas-self | Sibling world-state observations must come from that app, not Atlas fixtures |
+| Field | Fact |
+| --- | --- |
+| Exact application | `vantera` (`github/vantera` — **not present** here) |
+| Exact missing contract | Entire connector |
+| Exact missing endpoint / action / credential | none / none / sibling repo absent |
+| Exact ADR-022 conflict | Observe-only. Vantera product name “Atlas” is a knowledge service, not taqonu execute |
+| Smallest decision | Whether Vantera is ever executable from Atlas |
+| Engineering consequence | Do not import Vantera Atlas as a Fabric agent |
+| What Atlas can prove without that decision | Inventory only |
 
 ---
 
 ## Proposed decision (for Owner, not implemented)
 
-**Recommended default:** keep ADR-022. Atlas-self remains the only executable Connected Application until a sibling publishes an authoritative execute contract.
+**Recommended default:** keep ADR-022. Atlas-self remains the only executable Connected Application.
 
-**Alternative:** authorize a single Civio inbound action (not ingest-time execute) with an explicit ADR-022 amendment. That still requires the Civio runtime, credentials, and action schema — none of which exist in this monorepo.
+**Not recommended:** treating HotelOS/CaseFlow outbound `gateway/events` telemetry as Atlas execution.
 
 ---
 
-## What this pass did without the decision
+## Classification (exactly one per app)
 
-- Recorded `executeGap` on every inventory row
-- Ran live `def-000` fulfill when the private plane was up
-- Ran Civio HMAC evaluate-only when `ATLAS_CIVIO_*` was set
-- Did not invent sibling fulfill mappings
+| Application | Classification |
+| --- | --- |
+| def-000 | REAL EXECUTION READY |
+| civio | EVALUATE-ONLY |
+| caseflow | INVENTORY ONLY |
+| hotelos | INVENTORY ONLY |
+| brokeros | INVENTORY ONLY |
+| lexstudy | INVENTORY ONLY |
+| vantera | INVENTORY ONLY |
+
+Authoritative code: `packages/shared/src/platform/connected-applications.ts`.

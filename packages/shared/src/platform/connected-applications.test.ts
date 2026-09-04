@@ -29,6 +29,19 @@ describe("connected application runtime inventory", () => {
       artifact: "ABSENT",
       adr022: "PERMITS_EVALUATE_ONLY",
     });
+    expect(civio?.reconciliation.classification).toBe("EVALUATE-ONLY");
+    expect(civio?.reconciliation.missingAction).toMatch(/CIVIO_SUPPORTED_ACTIONS/);
+  });
+
+  it("classifies Atlas-self as real execution ready and siblings as inventory only", () => {
+    expect(getConnectedApplicationRuntime("def-000")?.reconciliation.classification).toBe(
+      "REAL EXECUTION READY",
+    );
+    for (const id of ["caseflow", "hotelos", "brokeros", "lexstudy", "vantera"] as const) {
+      expect(getConnectedApplicationRuntime(id)?.reconciliation.classification).toBe(
+        "INVENTORY ONLY",
+      );
+    }
   });
 
   it("siblings remain inventory-only with no execute contract", () => {
@@ -42,6 +55,14 @@ describe("connected application runtime inventory", () => {
       expect(row?.executeGap.target).toBe("ABSENT");
       expect(row?.executeGap.artifact).toBe("ABSENT");
       expect(row?.executeGap.adr022).toBe("OBSERVE_ONLY");
+      expect(row?.reconciliation.classification).toBe("INVENTORY ONLY");
+      expect(row?.reconciliation.executionEndpoint).toBe("none");
     }
+    expect(getConnectedApplicationRuntime("hotelos")?.reconciliation.siblingObservePath).toMatch(
+      /gateway\/events/,
+    );
+    expect(getConnectedApplicationRuntime("caseflow")?.reconciliation.siblingObservePath).toMatch(
+      /gateway\/events/,
+    );
   });
 });

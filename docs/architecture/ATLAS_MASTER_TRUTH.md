@@ -1202,3 +1202,27 @@ Phases 10–14 were not reopened. ADR-022 was not silently overridden.
 Atlas-self governed execution. Sibling connected-app execution is still
 impossible without an Owner amendment and an authoritative sibling contract.
 
+## 61. Connected-app reconciliation (2026-09-05)
+
+Phases 10–14 were not reopened. Checkpoint `7adbe54` was not reset.
+
+**Classification (exactly one)**
+- `def-000` — REAL EXECUTION READY
+- `civio` — EVALUATE-ONLY
+- CaseFlow, HotelOS, BrokerOS, LexStudy, Vantera — INVENTORY ONLY
+
+**Inspected outside this monorepo (not executed)**
+- `github/civio`: outbound emit only.
+- `github/hotelOS-AI-main`: outbound telemetry; inbound API not confirmed.
+- `github/CaseFlow-AI-main`: outbound gateway events; `/api/atlas` is CaseFlow's own audit UI.
+
+**OWNER DECISION REQUIRED** remains ADR-022 sibling/Civio execute.
+**BLOCKED-ENVIRONMENT:** Studio `.env.local`, live Supabase, systemd VM, cloud DR, Sigstore.
+**External security:** PENDING EXTERNAL ENGAGEMENT.
+
+Worker HTTP health was not added. `docs/deployment/private-plane.md` already
+defines the worker as a polling loop with no HTTP.
+
+Demo/customer package is not opened: production gate is still NOT PRODUCTION READY.
+
+

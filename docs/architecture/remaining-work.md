@@ -506,6 +506,21 @@ inventory-only.
 signing identity, Studio env, systemd private-plane VM, and external
 security assessment remain external. ADR-022 still blocks sibling execute.
 
+## CONNECTED-APP RECONCILIATION (2026-09-05)
+
+Authoritative inventory now includes `reconciliation.classification`
+(exactly one value per app). Local sibling inspection:
+
+- Civio clone: outbound HMAC only; `CIVIO_SUPPORTED_ACTIONS = []`.
+- HotelOS clone: one-way `gateway/events` telemetry; `intelligenceApiAvailable: false`.
+- CaseFlow clone: outbound `gateway/events`; internal `/api/atlas` is not taqonu execute.
+- BrokerOS / LexStudy / Vantera clones: not on this workstation.
+
+No sibling execute contract exists. No speculative connector was added.
+Owner request updated: `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+
+`pnpm environment:gate` reports Studio/DB/DR/signing blockers without inventing secrets.
+
 **ApprovalExecutionRepository** remains parked / historical.
 
 ## PHASE 11 PORTFOLIO GOVERNANCE (observability)

@@ -32,7 +32,8 @@
     "supply-chain:verify": "tsx scripts/verify-supply-chain.ts",
     "runtime:probe": "tsx scripts/runtime-probe.ts",
     "production:live-proof": "tsx scripts/production-live-proof.ts",
-    "private-plane:start": "node scripts/start-private-plane.mjs"
+    "private-plane:start": "node scripts/start-private-plane.mjs",
+    "environment:gate": "tsx scripts/environment-gate.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",
