@@ -333,4 +333,29 @@ describe("submitAgentProposal — verification gate (runs before dispatch)", () 
     // "we verified this" must never be indistinguishable from "nothing objected".
     expect(entry?.input?.["verificationVerdict"]).toBe("VERIFIED");
   });
+
+  it("denies a quarantined agent instead of defaulting to ACTIVE", async () => {
+    const result = await submitAgentProposal(buildProposal(), {
+      actorKind: "AGENT",
+      onBehalfOfUserId: USER_ID,
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      routeLabel: "test.agent-proposal.quarantined",
+      agentRuntimeStatus: "QUARANTINED",
+    });
+    expect(result.decision).toBe("DENIED");
+    if (result.decision !== "DENIED") throw new Error("expected DENIED");
+    expect(result.reason).toMatch(/QUARANTINED/);
+  });
+
+  it("increments / preserves delegation hops by flooring to approval", async () => {
+    const result = await submitAgentProposal(buildProposal(), {
+      actorKind: "AGENT",
+      onBehalfOfUserId: USER_ID,
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      routeLabel: "test.agent-proposal.hop",
+      trustLevel: "DELEGATED",
+      delegationHopCount: 1,
+    });
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+  });
 });
