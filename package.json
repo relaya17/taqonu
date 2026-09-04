@@ -29,7 +29,8 @@
     "clean": "turbo run clean && rimraf node_modules",
     "turbo": "turbo",
     "sbom:generate": "tsx scripts/generate-sbom.ts",
-    "supply-chain:verify": "tsx scripts/verify-supply-chain.ts"
+    "supply-chain:verify": "tsx scripts/verify-supply-chain.ts",
+    "runtime:probe": "tsx scripts/runtime-probe.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",
