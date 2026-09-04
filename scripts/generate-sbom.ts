@@ -294,10 +294,33 @@ async function main(): Promise<void> {
   writeFileSync(jsonPath, JSON.stringify(bom, null, 2), "utf8");
   writeFileSync(xmlPath, toXml(bom), "utf8");
 
+  const sbomSha256 = createHash("sha256").update(readFileSync(jsonPath)).digest("hex");
+  const provenance = {
+    _type: "https://in-toto.io/Statement/v1",
+    predicateType: "https://slsa.dev/provenance/v1",
+    subject: [{ name: "sbom.json", digest: { sha256: sbomSha256 } }],
+    predicate: {
+      buildDefinition: {
+        buildType: "https://atlas.local/build/pnpm-turbo@v1",
+        externalParameters: {
+          repository: rootPkg.name,
+          commit: process.env.GITHUB_SHA ?? "local",
+        },
+      },
+      runDetails: {
+        builder: { id: process.env.GITHUB_WORKFLOW ? "github-actions" : "local/pnpm" },
+        signed: false,
+      },
+    },
+  };
+  const provenancePath = join(outDir, "provenance.json");
+  writeFileSync(provenancePath, `${JSON.stringify(provenance, null, 2)}\n`, "utf8");
+
   console.log(`\nSBOM generated successfully!`);
   console.log(`  Components: ${bom.components.length}`);
   console.log(`  JSON: ${jsonPath}`);
   console.log(`  XML:  ${xmlPath}`);
+  console.log(`  Provenance (unsigned): ${provenancePath}`);
 }
 
 main().catch((err) => {

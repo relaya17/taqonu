@@ -101,3 +101,85 @@ export function verifySupplyChainArtifacts(
     signingIdentityConfigured: true,
   };
 }
+
+export interface UnsignedProvenanceStatement {
+  readonly _type: "https://in-toto.io/Statement/v1";
+  readonly predicateType: "https://slsa.dev/provenance/v1";
+  readonly subject: readonly { readonly name: string; readonly digest: { readonly sha256: string } }[];
+  readonly predicate: {
+    readonly buildDefinition: {
+      readonly buildType: "https://atlas.local/build/pnpm-turbo@v1";
+      readonly externalParameters: {
+        readonly repository: string;
+        readonly commit: string;
+      };
+    };
+    readonly runDetails: {
+      readonly builder: { readonly id: string };
+      readonly signed: false;
+    };
+  };
+}
+
+export function buildUnsignedProvenance(input: {
+  readonly sbomSha256: string;
+  readonly commit: string;
+  readonly repository: string;
+  readonly builderId?: string;
+}): UnsignedProvenanceStatement {
+  return {
+    _type: "https://in-toto.io/Statement/v1",
+    predicateType: "https://slsa.dev/provenance/v1",
+    subject: [{ name: "sbom.json", digest: { sha256: input.sbomSha256 } }],
+    predicate: {
+      buildDefinition: {
+        buildType: "https://atlas.local/build/pnpm-turbo@v1",
+        externalParameters: {
+          repository: input.repository,
+          commit: input.commit,
+        },
+      },
+      runDetails: {
+        builder: { id: input.builderId ?? "local/pnpm" },
+        signed: false,
+      },
+    },
+  };
+}
+
+export function verifyUnsignedProvenance(
+  statement: unknown,
+  expectedSbomSha256?: string,
+): { readonly ok: boolean; readonly signed: false; readonly evidence: string } {
+  if (!statement || typeof statement !== "object") {
+    return { ok: false, signed: false, evidence: "provenance statement missing" };
+  }
+  const row = statement as {
+    readonly _type?: unknown;
+    readonly predicateType?: unknown;
+    readonly subject?: readonly { readonly digest?: { readonly sha256?: unknown } }[];
+    readonly predicate?: { readonly runDetails?: { readonly signed?: unknown } };
+  };
+  if (row._type !== "https://in-toto.io/Statement/v1") {
+    return { ok: false, signed: false, evidence: "not an in-toto Statement" };
+  }
+  if (row.predicateType !== "https://slsa.dev/provenance/v1") {
+    return { ok: false, signed: false, evidence: "not SLSA provenance v1" };
+  }
+  if (row.predicate?.runDetails?.signed !== false) {
+    return {
+      ok: false,
+      signed: false,
+      evidence: "unsigned provenance must not claim signed:true",
+    };
+  }
+  const digest = row.subject?.[0]?.digest?.sha256;
+  if (typeof digest !== "string" || !digest || (expectedSbomSha256 && digest !== expectedSbomSha256)) {
+    return { ok: false, signed: false, evidence: "SBOM digest mismatch or missing" };
+  }
+  return {
+    ok: true,
+    signed: false,
+    evidence: "Unsigned SLSA-shaped provenance is recorded. Not a signed release.",
+  };
+}

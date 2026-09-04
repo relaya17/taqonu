@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { verifySupplyChainArtifacts } from "./supply-chain.js";
+import {
+  buildUnsignedProvenance,
+  verifySupplyChainArtifacts,
+  verifyUnsignedProvenance,
+} from "./supply-chain.js";
 
 const VALID_SBOM = JSON.stringify({
   bomFormat: "CycloneDX",
@@ -47,5 +51,38 @@ describe("verifySupplyChainArtifacts", () => {
     expect(result.signing).toBe("INVALID");
     expect(result.releaseReady).toBe(false);
     expect(result.evidence).toMatch(/Do not fake VERIFIED/);
+  });
+});
+
+describe("unsigned SLSA-shaped provenance", () => {
+  it("records builder/commit/SBOM digest without claiming a signature", () => {
+    const statement = buildUnsignedProvenance({
+      sbomSha256: "a".repeat(64),
+      commit: "abc123",
+      repository: "relaya17/taqonu-main",
+    });
+    expect(statement.predicate.runDetails.signed).toBe(false);
+    const verified = verifyUnsignedProvenance(statement, "a".repeat(64));
+    expect(verified.ok).toBe(true);
+    expect(verified.signed).toBe(false);
+    expect(verified.evidence).toMatch(/Not a signed release/);
+  });
+
+  it("fail-closes a missing statement, digest mismatch, and forged signed:true", () => {
+    expect(verifyUnsignedProvenance(null).ok).toBe(false);
+    const statement = buildUnsignedProvenance({
+      sbomSha256: "a".repeat(64),
+      commit: "abc123",
+      repository: "relaya17/taqonu-main",
+    });
+    expect(verifyUnsignedProvenance(statement, "b".repeat(64)).ok).toBe(false);
+    const forged = {
+      ...statement,
+      predicate: {
+        ...statement.predicate,
+        runDetails: { ...statement.predicate.runDetails, signed: true as unknown as false },
+      },
+    };
+    expect(verifyUnsignedProvenance(forged).ok).toBe(false);
   });
 });
