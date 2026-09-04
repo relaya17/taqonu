@@ -222,9 +222,11 @@ inspection of the installed platform packages — not a code defect, and not
 something a code change could fix.** Resolves automatically the moment this
 command runs on your actual Windows machine (native execution, §19).
 
-**Status: IMPLEMENTED — UNVERIFIED, BLOCKED-ENVIRONMENT for execution**
-(script and its `package.json` wiring confirmed present; no SBOM content
-has ever been produced or reviewed in this environment).
+**Status: IMPLEMENTED — TEST VERIFIED (native Windows, 2026-09-04).**
+`pnpm sbom:generate` produced CycloneDX 1.5 at `.atlas/sbom/sbom.json` and
+`.atlas/sbom/sbom.xml` (101 components). `.atlas/` is gitignored — artifacts
+are local evidence, not committed. The earlier Linux-bridge esbuild miss is
+closed for this host. See §35.
 
 ## 16. Portfolio Governance 11.1–11.15
 
@@ -400,10 +402,10 @@ was **not** restored: Admin now reuses `fetchSupervisedJson` +
 
 | Gap ID | Capability | Current state | Missing component | Reason missing | Dependencies | Risk | Priority | Verification required | Definition of Done |
 |---|---|---|---|---|---|---|---|---|---|
-| G-1 | Native test/typecheck execution | Code implemented, never independently run this session | Execution evidence for all packages except Owner-attested Synthetic Universe | Environment (Windows/pnpm symlinks unreachable from this Linux bridge) | Owner's native terminal | Medium — unverified code could hide defects | **P0** | Run §19a commands natively | Exact command + PASS/FAIL output recorded here |
+| G-1 | Native test/typecheck execution | **Partially closed this cycle (native Windows).** `pnpm typecheck` 53/53 PASS. Full `pnpm test` first failed on `@atlas/shared` unpaired-surrogate c14n (fixed, then 372/372). `turbo test --continue --filter=!@atlas/shared` 45/46 — `@atlas/api` 2 `memory-pipeline` isolation failures remain. See §35. | Remaining: API memory-pipeline isolation; full `pnpm test` green in one shot | First-run c14n defect + pre-existing API store pollution | none for typecheck | Medium — two API tests still fail in the full API suite | **P1** (was P0) | Re-run `pnpm test` after any authorized API test-isolation fix | Full `pnpm test` green + typecheck green |
 | G-2 | Phase 11.9 Admin UI | **Closed this cycle** — recovered/adapted under Option A (Admin → Control Plane projection). Tenant API `requireUser` / `requireOperator` / `requireOwner` unchanged. See §16, §23, §33, §34. | none outstanding for the selected model | Historical UI deleted by `4883bfd`; recovered 2026-09-04 | Owner chose Option A | Medium if a later cycle reopens Option B (static-token API exception) — that remains forbidden | **closed** | Admin tests 21/21; API portfolio+auth 15/15; CP 68/68; Admin→CP runtime on ephemeral HTTP servers | Auth model decided → feature implemented → tests pass → runtime-verified on in-process servers → documented. Default `:3200`/`:3100`/`:4000` daemons were not running. |
 | G-3 | Owner re-approval of 11.5–11.15 | Implemented, undocumented as approved | A recorded Owner decision superseding the `831410e` retraction | Documentation-only rollback never revisited | none | Low (code already shipped either way) | **P2** | none (decision, not code) | Owner decision recorded with the §16-of-directive metadata schema |
-| G-4 | SBOM script execution evidence | Script present; attempted 2026-09-04: `node_modules/.bin/tsx scripts/generate-sbom.ts` fails with `Cannot find module 'esbuild'` — same class of environment issue as G-1, not a code defect | Execution + output review | Native-binary (esbuild) resolution fails through this bridge | native environment | Low | **P3** | Run `pnpm sbom:generate` natively, review sbom.json/sbom.xml | Output reviewed, findings recorded |
+| G-4 | SBOM script execution evidence | **Closed this cycle** — `pnpm sbom:generate` PASS on native Windows; 101 CycloneDX 1.5 components written under `.atlas/sbom/`. | none | Previous miss was Linux-bridge esbuild only | none | Low | **closed** | Artifacts reviewed locally (gitignored) | Command PASS + files exist |
 | G-5 | Reliability/DR documentation | **Closed this cycle** — full read-through performed (not grep-only): durable job-queue crash recovery (`apps/worker/src/queue-persistence.ts`) and claim-based execution idempotency (`governed-claimed-execution.ts`) both confirmed real and durable; automation-engine dedup confirmed process-local only (documented caveat, not a defect); store-level atomic-write durability cited from a prior code-verified audit trail (`living-request-tracker.md`). Offsite backup/replication and multi-region HA confirmed MISSING by a prior, pre-existing, honestly-labeled audit (`ATLAS_VERIFICATION_REPORT_2026-08-28.md`) — not newly discovered here, not silently adopted as a new gap either. | Independent re-verification via actual test execution (still BLOCKED-ENVIRONMENT); a decision on whether offsite backup/replication is in scope for the current stage | None outstanding from this cycle's investigation depth | native test execution (for re-verification only) | Low — code read directly, not inferred | **P3** (was P2; downgraded now that real evidence closes most of the open question) | Native test execution of `apps/worker` once available | §14 now carries evidence-based status per mechanism instead of a grep-only placeholder |
 
 No other gap is asserted. Old-roadmap unchecked boxes that current code and
@@ -524,9 +526,9 @@ between two copies of the same template.
 | Execution Safety | IMPLEMENTED — UNVERIFIED | `realpathSync` two-stage path containment + `MAX_WALK_DEPTH`/`MAX_SCAN_FILES` bounds in `packages/agent-core/src/tools/runtime.ts`/`fs-tools.ts` (§9, confirmed in earlier audits, not re-read this cycle) |
 | Egress | IMPLEMENTED — UNVERIFIED | `apps/api/src/services/egress-gate.ts`: `assertLlmEgressAllowed` calls `decideEgress` (data-class + destination → ALLOW/DENY/REQUIRE_APPROVAL) and audit-logs every decision via `appendUnifiedAuditEntry`; used by `control-plane-bridge.ts`. Read directly this cycle. |
 | Agent Governance | IMPLEMENTED — UNVERIFIED | Unchanged from §12 — 16-agent `FABRIC_AGENT_CATALOG`, not re-investigated this cycle (no new evidence needed) |
-| Reliability | IMPLEMENTED — UNVERIFIED (with one process-local caveat) | See §14, full read-through this cycle |
+| Reliability | IMPLEMENTED — TEST VERIFIED for worker retry/dead-letter (7/7 via `pnpm exec vitest run` in `apps/worker`). `queue-persistence.ts` still has no dedicated test file. Process-local automation dedup caveat unchanged. | See §14, §35 |
 | DR | PARTIAL — durable job-queue recovery IMPLEMENTED; offsite backup/replication and multi-region HA confirmed MISSING by a prior, pre-existing audit (`ATLAS_VERIFICATION_REPORT_2026-08-28.md`) | See §14 |
-| Supply Chain | IMPLEMENTED — UNVERIFIED, BLOCKED-ENVIRONMENT (root cause now confirmed: Windows-only esbuild binary installed, no Linux equivalent available to this bridge) | See §15 |
+| Supply Chain | IMPLEMENTED — TEST VERIFIED (`pnpm sbom:generate` PASS, 101 CycloneDX components under `.atlas/sbom/`) | See §15, §35 |
 | Intelligence (RAG/knowledge layer) | IMPLEMENTED — UNVERIFIED | `packages/embeddings/src` (provider abstraction) and `packages/knowledge/src/{fabric,ranking,verification}` confirmed present by directory listing this cycle; contents not read in depth — no claim beyond "exists with that structure" |
 
 No area above was found MISSING outright except the specific, already-
@@ -766,3 +768,33 @@ equivalent is the 403 tenant-admin / operator-decide cases.
 **Closure verification level:** **IMPLEMENTED — RUNTIME VERIFIED**
 (Admin → Control Plane on ephemeral HTTP servers + API inject
 auth/audit). Default daemon ports still down. Not PRODUCTION READY.
+
+## 35. Native verification gate (2026-09-04, after 11.9 close)
+
+Baseline HEAD at start: `d821cff`. Phase 11.9 was not rebuilt.
+
+One proven production defect was fixed this gate:
+`packages/shared/src/approval/canonicalization.ts` — unpaired high
+surrogate at end-of-string was not rejected because `charCodeAt` past
+the last index is `NaN` and `NaN < 0xdc00` is false. Test
+`execution-envelope.test.ts` already required the throw. After the
+bounds check: `pnpm --filter @atlas/shared test` **372/372 PASS**.
+
+Pre-existing failures **not** fixed (no speculative edits):
+
+- `@atlas/api` `memory-pipeline.test.ts` — two retrieveMemories cases
+  fail when the shared `osStore` already has ≥20 rows (`budget: 20`);
+  isolation, not a proven product-scoping defect.
+- `@atlas/engineering-loop` lint — 4 unused-symbol errors in
+  `proof-run.ts` / `proof-run.test.ts`.
+- `@atlas/web` build — webpack `UnhandledSchemeError` for `node:crypto`
+  imported via `@atlas/shared` into a client component. Pre-existing
+  Next/shared boundary. Not a 11.9 issue.
+
+Default ports `:3200` / `:3100` / `:4000` timed out (daemons not
+running). In-process Admin→CP and API inject paths re-passed.
+
+`@atlas/worker` has **no** `test` script in `package.json`. Worker
+tests were run with `pnpm exec vitest run` in `apps/worker` — 7/7 PASS
+(retry / dead-letter / continue-after-throw). `queue-persistence.ts`
+has no dedicated test file.
