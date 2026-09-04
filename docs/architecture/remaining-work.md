@@ -309,7 +309,8 @@ milestones, and knowledge-ingestion audit). Phase 11.9 Admin UI was deleted
 by `4883bfd` and recovered/adapted 2026-09-04 under Option A (Admin →
 Control Plane projection). Other 11.5–11.15 items remain IMPLEMENTED —
 UNVERIFIED (BLOCKED-ENVIRONMENT) except where Master Truth records a
-newer verification level. Authoritative status: ATLAS_MASTER_TRUTH.md §16/§34.**
+newer verification level. Authoritative status: ATLAS_MASTER_TRUTH.md
+§16/§34/§37. G-3 = CLOSED. 11.5–11.15 = RE-APPROVED.**
 
 ### Historical record for Phase 11 - preserved, not erased
 
@@ -325,9 +326,9 @@ has since been recorded in this file.
 Original superseded line, kept verbatim for traceability:
 > Later (do not start without Owner approval): 11.5 persistence … 11.10 tests.
 
-Whether to formally re-approve this already-implemented work, and how to
-word its current status, remains an open Owner decision (see
-ATLAS_MASTER_TRUTH.md, section 25).
+Current status (2026-09-04): G-3 = CLOSED. 11.5–11.15 = RE-APPROVED.
+Recorded in ATLAS_MASTER_TRUTH.md §25/§37. The historical retraction
+above remains preserved and is not rewritten.
 
 ## OPERATIONAL LIFECYCLE (Decision → Evidence)
 
