@@ -463,4 +463,18 @@ describe("Unit 6 read regression: public GET routes remain readable and unauthen
     const res = await app.inject({ method: "GET", url: "/api/v1/intelligence/marketplace" });
     expect(res.statusCode).toBe(200);
   });
+
+  it("GET /verification-lessons recommends and does not execute", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/intelligence/verification-lessons",
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      lessons: Array<{ executes: boolean; autoApply: boolean }>;
+    };
+    expect(body.lessons.length).toBeGreaterThan(0);
+    expect(body.lessons.every((lesson) => lesson.executes === false)).toBe(true);
+    expect(body.lessons.every((lesson) => lesson.autoApply === false)).toBe(true);
+  });
 });

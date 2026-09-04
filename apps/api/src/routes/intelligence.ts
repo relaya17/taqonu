@@ -35,6 +35,8 @@ import {
   computeExpertBattleMetrics,
   computeAgentRankings,
 } from "../services/agent-reputation.js";
+import { recommendFromVerificationHistory } from "../services/verification-learning.js";
+import { listUnifiedAuditEntries } from "../services/audit-log.js";
 import { FABRIC_AGENT_IDS, type FabricAgentId, type AgentMode, AGENT_MODES } from "@atlas/shared";
 
 const hypothesisCreateSchema = z.object({
@@ -300,5 +302,19 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
   app.get("/api/v1/intelligence/reputation/rankings/:domain", async (request) => {
     const { domain } = request.params as { domain: string };
     return computeAgentRankings(domain);
+  });
+
+  app.get("/api/v1/intelligence/verification-lessons", async () => {
+    const entries = listUnifiedAuditEntries();
+    return recommendFromVerificationHistory(
+      entries.map((entry) => ({
+        ...(typeof entry.input["requestId"] === "string"
+          ? { requestId: entry.input["requestId"] }
+          : {}),
+        verificationVerdict: entry.verificationVerdict,
+        regressionVerdict: entry.regressionVerdict,
+        result: entry.result,
+      })),
+    );
   });
 }
