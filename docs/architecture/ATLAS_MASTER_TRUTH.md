@@ -163,16 +163,28 @@ a prior audit pass but not re-examined this cycle.
 
 ## 14. Reliability / Disaster Recovery
 
-Not independently investigated in this session at the depth applied to
-governance/execution/Portfolio Governance. No DR runbook, backup/restore
-mechanism, or failover path was specifically inventoried.
-**Status: UNKNOWN / NOT INVESTIGATED** — do not infer absence or presence.
+Grep-depth check performed 2026-09-04: idempotency/retry-related code
+confirmed present in `apps/api/src/services/approvals.ts`,
+`governed-claimed-execution.ts`, `governed-lifecycle.ts`, and
+`automation-engine.ts` — reliability appears handled per-mechanism inside
+the governed-execution path rather than as a dedicated subsystem. This was
+a filename/grep pass only; none of these mechanisms were read in depth, and
+no DR runbook, backup/restore mechanism, or failover path was specifically
+inventoried or ruled out. **Status: PARTIAL — grep-level evidence only; a
+real read-through is still required (G-5, §24) before this can be called
+IMPLEMENTED or ABSENT.**
 
 ## 15. Supply Chain
 
-`scripts/generate-sbom.ts` exists. Its output has not been inspected or run
-this session. **Status: IMPLEMENTED — UNVERIFIED** (script presence only;
-no execution evidence, no SBOM content reviewed).
+`scripts/generate-sbom.ts` exists (`pnpm sbom:generate` → `tsx
+scripts/generate-sbom.ts`, CycloneDX 1.5 output). Execution attempted
+2026-09-04: `node_modules/.bin/tsx scripts/generate-sbom.ts` fails with
+`Cannot find module 'esbuild'` — the same class of environment issue as
+§19 (a native/platform-specific dependency unresolvable through this
+bridge), not a code defect. **Status: IMPLEMENTED — UNVERIFIED,
+BLOCKED-ENVIRONMENT for execution** (script and its `package.json` wiring
+confirmed present; no SBOM content has ever been produced or reviewed in
+this environment).
 
 ## 16. Portfolio Governance 11.1–11.15
 
@@ -186,7 +198,7 @@ no execution evidence, no SBOM content reviewed).
 | 11.6 Global Deduplication | `82e883e` | present (`deduplication.test.ts`, 43 DedupRelation records) | present, correctly labeled | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.7 Canonical Capability Mapping | `82e883e` | present | present | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.8 Governance Decisions | `82e883e` | present (`seed.ts:2440`) | present; `governance-decisions.test.ts` correctly labeled, plus `index.test.ts` label corrected this cycle (§22) | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
-| 11.9 Portfolio UI Interface | `82e883e` | **ABSENT** — deleted by `4883bfd` (unrelated ADR-021 admin restructure; replacement files carry zero portfolio content) | test file deleted with it | n/a | n/a | now pointed here | **REGRESSION — OWNER DECISION REQUIRED** (§7 of directive; not rebuilt this cycle, see §25) |
+| 11.9 Portfolio UI Interface | `82e883e` | **ABSENT** — deleted by `4883bfd` (unrelated ADR-021 admin restructure; replacement files carry zero portfolio content). Backend data source (`GET /api/v1/portfolio-governance`, `apps/api/src/routes/portfolio-governance.ts`) is still live and its response shape is byte-for-byte compatible with what the deleted UI consumed (`snapshot.applications`, `.sourceAgents`, `.capabilities`, `.evidence`, `.dedupRelations`, `.governanceDecisions`, `.conflicts`, `.canonicalCapabilities` all confirmed present in `packages/shared/src/portfolio/index.ts`). | test file deleted with it | n/a | n/a | now pointed here | **REGRESSION — OWNER DECISION REQUIRED (architecture, not just code).** Investigated 2026-09-04: the pre-deletion UI fetched this data from `CONTROL_API` (Control Plane, static `ATLAS_CONTROL_PLANE_TOKEN` bearer). The route now lives only in `apps/api` (tenant API) behind `requireOperator` → `requireUser` → real Supabase-JWT auth — a static service token cannot satisfy it, and `apps/admin`'s own browser session is a separate HMAC-signed cookie, not a Supabase session. Restoring 11.9 therefore requires an explicit choice of cross-service auth model, not a copy-paste port. See §25 for the three concrete options. No route/rendering code was written this cycle. |
 | 11.10 Control Plane alignment tests | `82e883e` | present (17 numbered cases, 5 groups) | present | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.11 Security | `82e883e` | present | present, exactly 33 `it()` blocks | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
 | 11.12 Audit | `82e883e` | present | present, exactly 25 `it()` blocks | BLOCKED-ENVIRONMENT | none | now pointed here | IMPLEMENTED — UNVERIFIED |
@@ -330,20 +342,28 @@ collateral damage by `4883bfd` (2026-09-02, ADR-021 admin restructure:
 `owner-html.ts`/`owner-html.test.ts` removed, replaced by
 `platform-html.ts`/`platform-overview.ts`, which contain zero
 capability/decision/portfolio references per grep). Not restored as of
-current HEAD. **This document does not restore it** — per the directive's
-own §7/§9, restoration requires investigating architecture compatibility
-first and is an Owner decision on scope and approach (§25), not a
-default action.
+current HEAD.
+
+**Recovery investigation performed 2026-09-04:** the rendering logic
+(`renderOwnerHtml`'s portfolio-specific helpers, `packages/shared`-compatible
+field names, i18n keys for he/en/ar) is fully recoverable from
+`git show 4883bfd^:apps/admin/src/owner-html.ts` and the backend endpoint it
+depended on is unchanged and still correctly shaped. The blocker is
+architectural, not code-availability: the endpoint's auth model changed
+(§16 row for 11.9) between when 11.9 was built and now, in a way the old
+fetch pattern cannot satisfy. This is exactly the kind of "genuinely
+incompatible" case the Owner directive's §7 anticipated — restoration was
+not attempted blind. See §25 for the decision and options.
 
 ## 24. True Remaining Work (P0–P3)
 
 | Gap ID | Capability | Current state | Missing component | Reason missing | Dependencies | Risk | Priority | Verification required | Definition of Done |
 |---|---|---|---|---|---|---|---|---|---|
 | G-1 | Native test/typecheck execution | Code implemented, never independently run this session | Execution evidence for all packages except Owner-attested Synthetic Universe | Environment (Windows/pnpm symlinks unreachable from this Linux bridge) | Owner's native terminal | Medium — unverified code could hide defects | **P0** | Run §19a commands natively | Exact command + PASS/FAIL output recorded here |
-| G-2 | Phase 11.9 Admin UI | Absent (regressed) | Portfolio capabilities/decisions rendering in Admin | Deleted as collateral damage by unrelated commit | Current `platform-html.ts` architecture (ADR-021) | Low (observability only, no execution/authorization surface) | **P1** | New/restored tests + native run | Feature implemented, tests pass, native-verified, documented |
+| G-2 | Phase 11.9 Admin UI | Absent (regressed); rendering logic recoverable, backend compatible, cross-service auth model incompatible (see §16, §23) | A decided auth model for admin→api server-to-server calls, then the route/rendering code itself | Deleted as collateral damage; auth architecture changed independently afterward | Owner decision on auth model (§25); current `platform-html.ts`/`requireOperator` architecture | Medium — wrong choice here creates a new cross-service trust boundary | **P1** | New/restored tests + native run, once auth model is chosen | Auth model decided → feature implemented → tests pass → native-verified → documented |
 | G-3 | Owner re-approval of 11.5–11.15 | Implemented, undocumented as approved | A recorded Owner decision superseding the `831410e` retraction | Documentation-only rollback never revisited | none | Low (code already shipped either way) | **P2** | none (decision, not code) | Owner decision recorded with the §16-of-directive metadata schema |
-| G-4 | SBOM script execution evidence | Script present, never run/reviewed | Execution + output review | Not yet attempted | native environment | Low | **P3** | Run `scripts/generate-sbom.ts` natively, review output | Output reviewed, findings recorded |
-| G-5 | Reliability/DR documentation | Not investigated | Full inventory of DR/backup/failover posture | Out of scope of prior audits | none | Unknown — cannot assess risk without investigating | **P2** | Dedicated audit pass | Section 14 upgraded from UNKNOWN to a real status |
+| G-4 | SBOM script execution evidence | Script present; attempted 2026-09-04: `node_modules/.bin/tsx scripts/generate-sbom.ts` fails with `Cannot find module 'esbuild'` — same class of environment issue as G-1, not a code defect | Execution + output review | Native-binary (esbuild) resolution fails through this bridge | native environment | Low | **P3** | Run `pnpm sbom:generate` natively, review sbom.json/sbom.xml | Output reviewed, findings recorded |
+| G-5 | Reliability/DR documentation | Partially investigated 2026-09-04: idempotency/retry-related code confirmed present inside specific mechanisms (`apps/api/src/services/approvals.ts`, `governed-claimed-execution.ts`, `governed-lifecycle.ts`, `automation-engine.ts`) — reliability is handled per-mechanism, not as a separate subsystem. No dedicated backup/crash-recovery/failover subsystem was found or ruled out at this depth. | A real backup/failover/crash-recovery inventory (this cycle only found idempotency-adjacent code, did not evaluate it) | Out of scope of prior audits; this cycle's pass was a grep-depth check only | none | Unknown — cannot assess risk without a deeper pass | **P2** | Dedicated audit pass reading the mechanisms found | Section 14 upgraded from UNKNOWN to a real status with evidence per mechanism |
 
 No other gap is asserted. Old-roadmap unchecked boxes that current code and
 tests already satisfy are **not** listed here (per directive §10, "do not
@@ -353,11 +373,28 @@ manufacture gaps").
 
 1. Whether to formally re-approve the already-implemented 11.5–11.15 work
    (G-3), and with what documentation wording.
-2. Whether/how to restore Phase 11.9's Admin UI (G-2) — restore-and-adapt
-   the historical implementation, or a minimum new implementation, per the
-   directive's §7 preference order — and whether to authorize that
-   implementation work now, given it cannot be independently verified from
-   this environment (§19).
+2. **Phase 11.9 Admin UI auth model (G-2).** Rendering logic and backend
+   are both ready; the open question is how `apps/admin` should reach the
+   owner-gated `GET /api/v1/portfolio-governance` on `apps/api`. Three
+   options, none implemented yet:
+   - **(a) Route it through Control Plane** (matching the pre-deletion
+     pattern): add a thin read-only projection endpoint in
+     `apps/control-plane` that reads the same `packages/shared/src/portfolio`
+     snapshot, reusing the existing static-token trust between admin and
+     control-plane. Requires control-plane to gain access to the persisted
+     overlay currently owned by `apps/api/src/services/portfolio-governance-store.ts`.
+   - **(b) Mint a scoped service credential** for admin→api calls (a new
+     `ATLAS_ADMIN_SERVICE_TOKEN` or similar, recognized by `requireUser`/
+     `getRequestUser` as a narrow, audit-logged, non-interactive operator
+     identity). New cross-service trust boundary — a security-policy
+     change, per directive §19, requiring explicit sign-off.
+   - **(c) Client-side fetch using the owner's own Studio/API session**
+     instead of a server-to-server call — avoids minting new credentials,
+     but only works when the owner is separately signed into Studio/API in
+     the same browser, since `apps/admin`'s browser session is a distinct
+     HMAC cookie today, not a shared Supabase session.
+   No code was written for any option this cycle; this is a genuine
+   Owner decision, not a technical fact I can establish from evidence.
 3. Whether to schedule native test/typecheck execution (G-1) before any
    further code is written or committed, given §16 of the directive:
    "Never claim Level 5 or Level 6 based only on Level 1–3 evidence."
