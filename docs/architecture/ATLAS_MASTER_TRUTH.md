@@ -707,8 +707,7 @@ It is not a claim that the deletion never happened.
   timed out (daemons not running). Tenant-API mutation/audit path was
   not re-exercised against a live `:4000` in this cycle; existing API
   route tests cover 401/403/owner decide.
-- **Commit SHA:** recorded immediately after the Phase 11.9 commit
-  (this paragraph is updated in the same documentation pass).
+- **Commit SHA:** `73b11d1` (`feat(portfolio): restore Phase 11.9 Admin UI via Control Plane`). This documentation SHA update is a follow-up docs commit on the same branch.
 - **Final verification level:** **IMPLEMENTED — RUNTIME VERIFIED** for
   the Admin → Control Plane read path. Not PRODUCTION READY. Default
   daemon ports were down.
