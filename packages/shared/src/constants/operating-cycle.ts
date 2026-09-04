@@ -10,6 +10,9 @@
 
 import { assessEvidenceSufficiency } from "./evidence-sufficiency.js";
 
+/** Audit schema and dispatch both refuse hops above this bound. */
+export const MAX_DELEGATION_HOP_COUNT = 10;
+
 export const OPERATING_CYCLE_STAGES = [
   "IDENTITY",
   "AUTHORIZATION",

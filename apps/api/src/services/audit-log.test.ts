@@ -99,6 +99,21 @@ describe("append-only audit log", () => {
     delete process.env.ATLAS_SKIP_AUDIT_LOG;
   });
 
+  it("forbids ATLAS_SKIP_AUDIT_LOG in production (fail-closed)", () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    process.env.ATLAS_SKIP_AUDIT_LOG = "1";
+    expect(() => appendAuditLogLine({ type: "test.production-skip" })).toThrow(
+      /forbidden in production/,
+    );
+    delete process.env.ATLAS_SKIP_AUDIT_LOG;
+    if (previous === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
   it("survives a corrupt last line by resetting chain to GENESIS", () => {
     writeFileSync(logFile, "{not-json\n", "utf8");
     setAuditLogPathForTests(logFile);

@@ -24,6 +24,7 @@ import {
   canonicalizeJson,
   combineAgentRuntimeStatus,
   effectiveDelegationHopCount,
+  MAX_DELEGATION_HOP_COUNT,
   type ApprovalRequest,
   type GovernanceDecision,
   type GovernanceDecisionInput,
@@ -507,6 +508,15 @@ export async function executeGovernedAction(
       ? { trustLevel: request.identity.trustLevel }
       : {}),
   });
+  if (delegationHopCount > MAX_DELEGATION_HOP_COUNT) {
+    const outcome: GovernedExecutionOutcome = {
+      stage: "AUTHORIZATION",
+      status: "DENIED",
+      reason: `Excessive delegation depth hops=${delegationHopCount} exceeds ${MAX_DELEGATION_HOP_COUNT}`,
+    };
+    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    return outcome;
+  }
 
   // ── 1. Tool authorization (P0.2) ────────────────────────────────────
   try {

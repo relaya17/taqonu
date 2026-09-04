@@ -11,6 +11,7 @@ import {
   agentMayExecute,
   combineAgentRuntimeStatus,
   effectiveDelegationHopCount,
+  MAX_DELEGATION_HOP_COUNT,
   type AgentRuntimeControl,
   type ApprovalRequest,
   type UnifiedAuditEntryInput,
@@ -360,6 +361,36 @@ export async function dispatchAgentAction(
   const runtimeStatus = options.agentRuntimeStatus
     ? combineAgentRuntimeStatus(options.agentRuntimeStatus)
     : undefined;
+
+  if (hops > MAX_DELEGATION_HOP_COUNT) {
+    appendUnifiedAuditEntry({
+      type: routeLabel,
+      actorId: actor.agentId,
+      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
+      agentId: actor.agentId,
+      reason: `Excessive delegation depth hops=${hops} exceeds ${MAX_DELEGATION_HOP_COUNT}`,
+      input: auditInput,
+      output: { hops },
+      policy: policyLabel,
+      risk: "CRITICAL",
+      approval: "REJECTED",
+      result: "FAILURE",
+      decision: "DENY",
+      projectId: options.projectId ?? null,
+      ownerId: actor.onBehalfOfUserId,
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      delegationHopCount: MAX_DELEGATION_HOP_COUNT,
+      blockedAt: "AUTHORIZATION",
+    });
+    return {
+      decision: "DENIED",
+      reason: `Excessive delegation depth hops=${hops} exceeds ${MAX_DELEGATION_HOP_COUNT}`,
+      evaluation: unevaluatedGovernanceEvaluation(
+        "NOT_EVALUATED",
+        "Delegation depth exceeds the audit-bound maximum",
+      ),
+    };
+  }
 
   if (runtimeStatus !== undefined && !agentMayExecute(runtimeStatus as AgentRuntimeControl)) {
     appendUnifiedAuditEntry({

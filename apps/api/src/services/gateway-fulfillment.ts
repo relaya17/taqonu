@@ -5,7 +5,11 @@
  * It calls `executeGovernedAction`, which already composes
  * catalog authz → approval → dispatchAgentAction → executeTool → audit.
  */
-import { mapGatewayHandoff, memoryEpistemicAfterAction } from "@atlas/shared";
+import {
+  isAtlasSelfApplicationId,
+  mapGatewayHandoff,
+  memoryEpistemicAfterAction,
+} from "@atlas/shared";
 import { extractGovernedTarget } from "@atlas/agent-core";
 import {
   computeArtifactHash,
@@ -74,6 +78,25 @@ function unmappedOutcome(
 export async function fulfillGatewayHandoff(
   handoff: GatewayHandoff,
 ): Promise<GatewayFulfillmentResult> {
+  if (!isAtlasSelfApplicationId(handoff.applicationId)) {
+    const outcome = unmappedOutcome(
+      `Gateway fulfill is Atlas-self only; "${handoff.applicationId}" has no execute contract`,
+    );
+    return {
+      applicationId: handoff.applicationId,
+      operation: handoff.operation,
+      toolName: null,
+      principalId: handoff.sessionOwnerId,
+      outcome,
+      executed: false,
+      verified: false,
+      verificationVerdict: verificationVerdictFromOutcome(outcome),
+      regressionVerdict: "BLOCKED",
+      observation: null,
+      verificationDetail: outcome.reason,
+    };
+  }
+
   const mapping = mapGatewayHandoff(handoff.operation, handoff.agentId);
   if (!mapping) {
     const outcome = unmappedOutcome(

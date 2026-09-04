@@ -1,4 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { evaluateGatewayRequest } from "../services/atlas-gateway.js";
 import { resetApplicationRegistryForTests } from "../services/application-registry.js";
 import { resetGovernanceStateForTests, verifyAuditChain } from "../services/governance-state.js";
@@ -38,5 +41,13 @@ describe("Control Plane governance invariants", () => {
     expect(report.findings.some((f) => f.id === "cp-mfa-not-bound")).toBe(true);
     expect(report.findings.some((f) => f.id === "cp-does-not-execute-tools")).toBe(true);
     expect(report.findings.some((f) => f.id === "fabric-vs-oversight-registry")).toBe(true);
+  });
+
+  it("Control Plane does not depend on agent-core executeTool", () => {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "../../package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+    expect(pkg.dependencies?.["@atlas/agent-core"]).toBeUndefined();
   });
 });

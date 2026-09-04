@@ -3,12 +3,21 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeTool, registerTool, resetToolRegistryForTests } from "@atlas/agent-core";
-import { resolveAgentIdentity } from "../services/agent-runtime-authz.js";
+import {
+  enforceAgentToolAuthorization,
+  resolveAgentIdentity,
+} from "../services/agent-runtime-authz.js";
+import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
+import {
+  captureExpectedState,
+  evaluateWorldState,
+  verificationVerdictFromOutcome,
+} from "../services/verification.js";
+import { appendAuditLogLine, setAuditLogPathForTests, listUnifiedAuditEntries } from "../services/audit-log.js";
 import {
   executeGovernedAction,
   resetGovernedIdempotencyForTests,
 } from "../services/governed-execution.js";
-import { setAuditLogPathForTests, listUnifiedAuditEntries } from "../services/audit-log.js";
 import { listGovernanceDecisions } from "../services/governance-decision.js";
 import { resetApprovalsForTests } from "../services/approvals-test-store.js";
 import { consumeApprovalRequest, createApprovalRequest } from "../services/approvals.js";
@@ -53,7 +62,10 @@ describe("governance adversarial suite", () => {
   });
 
   function identity(
-    overrides: { runtimeStatus?: "ACTIVE" | "QUARANTINED"; agentId?: "RESEARCHER" | "JUDGE" } = {},
+    overrides: {
+      runtimeStatus?: "ACTIVE" | "QUARANTINED" | "SUSPENDED";
+      agentId?: "RESEARCHER" | "JUDGE";
+    } = {},
   ) {
     return resolveAgentIdentity({
       fabricAgentId: overrides.agentId ?? "RESEARCHER",
@@ -151,6 +163,133 @@ describe("governance adversarial suite", () => {
     });
     await consumeApprovalRequest(created.id);
     await expect(consumeApprovalRequest(created.id)).rejects.toThrow(/not APPROVED/i);
+  });
+
+  it("refuses a suspended agent", async () => {
+    const result = await executeGovernedAction(
+      request({ identity: identity({ runtimeStatus: "SUSPENDED" }) }),
+    );
+    expect(result.status).toBe("DENIED");
+    expect(result.status).not.toBe("EXECUTED");
+  });
+
+  it("refuses an expired approval", async () => {
+    const created = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "READ",
+      requestedBy: "RESEARCHER",
+      reason: "expired adversarial",
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+    const { decideApprovalRequest } = await import("../services/approvals.js");
+    await decideApprovalRequest(created.id, {
+      decidedBy: OWNER,
+      approve: true,
+      decisionReason: "ok",
+    });
+    const result = await executeGovernedAction(request({ approvalRequestId: created.id }));
+    expect(result.status).not.toBe("EXECUTED");
+  });
+
+  it("floors delegated and excessive hops to approval — never inherit AUTO", async () => {
+    const delegated = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: "RESEARCHER", onBehalfOfUserId: OWNER },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.adversarial.delegation",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      trustLevel: "DELEGATED",
+    });
+    expect(delegated.decision).toBe("APPROVAL_REQUIRED");
+    const atBound = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: "RESEARCHER", onBehalfOfUserId: OWNER },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.adversarial.hop-bound",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      delegationHopCount: 10,
+    });
+    expect(atBound.decision).toBe("APPROVAL_REQUIRED");
+    const excessive = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: "RESEARCHER", onBehalfOfUserId: OWNER },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.adversarial.excessive-hops",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      delegationHopCount: 50,
+    });
+    expect(excessive.decision).toBe("DENIED");
+    expect(excessive.reason).toMatch(/Excessive delegation depth/);
+  });
+
+  it("refuses a forged identity payload that names another tenant", () => {
+    expect(() =>
+      enforceAgentToolAuthorization({
+        identity: identity(),
+        requestedTool: "knowledge_search",
+        payload: { targetOwnerId: OTHER },
+      }),
+    ).toThrow(/cross-tenant/);
+  });
+
+  it("refuses a policy-cell bypass (DELETE asserted against canonical READ)", async () => {
+    const result = await executeGovernedAction(request({ action: "DELETE" }));
+    expect(result.status).toBe("DENIED");
+    expect(result.status).not.toBe("EXECUTED");
+  });
+
+  it("keeps executed distinct from verified", () => {
+    const expected = captureExpectedState({
+      artifactHash: "abc",
+      toolName: "knowledge_search",
+    });
+    const world = evaluateWorldState({
+      intended: true,
+      authorized: true,
+      expected,
+      actual: {
+        artifactHash: "abc",
+        toolName: "knowledge_search",
+        executed: true,
+        output: "ran",
+      },
+    });
+    expect(world.stageReached).toBe("EXECUTED");
+    expect(world.loopVerdict).not.toBe("VERIFIED");
+    expect(
+      verificationVerdictFromOutcome({
+        stage: "EXECUTION",
+        status: "EXECUTED",
+        artifactHash: "00",
+        output: "ok",
+      }),
+    ).not.toBe("VERIFIED");
+  });
+
+  it("does not report an allowed execution when audit persistence is skipped", async () => {
+    process.env.ATLAS_SKIP_AUDIT_LOG = "1";
+    await expect(executeGovernedAction(request())).rejects.toThrow(
+      /GovernanceDecision persistence is disabled/,
+    );
+    delete process.env.ATLAS_SKIP_AUDIT_LOG;
+  });
+
+  it("forbids skipping the audit log in production", () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    process.env.ATLAS_SKIP_AUDIT_LOG = "1";
+    expect(() => appendAuditLogLine({ type: "test.adversarial.fail-open" })).toThrow(
+      /forbidden in production/,
+    );
+    delete process.env.ATLAS_SKIP_AUDIT_LOG;
+    if (previous === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previous;
+    }
   });
 
   it("traces requestId from execution into audit and governance.decision", async () => {

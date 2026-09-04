@@ -139,6 +139,41 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     expect(verifyAuditChain().intact).toBe(true);
   });
 
+  it("refuses a sibling applicationId and does not execute tools", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "must-not-run",
+    });
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "hotel-os",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_sibling",
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("DENIED");
+    expect(result.toolName).toBeNull();
+    expect(result.verificationDetail).toMatch(/no execute contract/i);
+  });
+
+  it("refuses an unmapped operation as an invalid handoff", async () => {
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "invented.operation",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_unmapped",
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("DENIED");
+    expect(result.toolName).toBeNull();
+  });
+
   it("can VERIFIED only when expected observations match — memory stays OBSERVED", async () => {
     registerTool({
       name: "analyze_repo",

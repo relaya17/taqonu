@@ -140,6 +140,9 @@ export function appendAuditLogLine(
   };
 
   if (process.env.ATLAS_SKIP_AUDIT_LOG === "1") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("ATLAS_SKIP_AUDIT_LOG is forbidden in production");
+    }
     cachedTailHash = hash;
     return record;
   }
