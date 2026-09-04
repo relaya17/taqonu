@@ -1,12 +1,19 @@
 /**
  * Atlas self-audit (DEF-000) — detect and propose, never auto-apply.
  */
-import { agentMayExecute } from "@atlas/shared";
+import {
+  agentMayExecute,
+  FABRIC_AGENT_CATALOG,
+  FABRIC_AGENT_IDS,
+  PRODUCTION_IMPLEMENTED_TOOLS,
+} from "@atlas/shared";
 import { controlPlaneToken } from "../control-plane-auth.js";
 import { listRegisteredApplications } from "./application-registry.js";
 import { listRegisteredAgents } from "./agent-registry.js";
 import {
+  getAuditEntryCount,
   listApprovalRecords,
+  listAuditEntries,
   verifyAuditChain,
 } from "./governance-state.js";
 
@@ -24,6 +31,172 @@ export interface SelfAuditReport {
   readonly generatedAt: string;
   readonly workflow: "observe-diagnose-propose-approve-apply-verify-audit";
   readonly findings: readonly SelfAuditFinding[];
+}
+
+function finding(
+  id: string,
+  severity: SelfAuditFinding["severity"],
+  title: string,
+  evidence: string,
+  recommendation: string,
+): SelfAuditFinding {
+  return { id, severity, title, evidence, recommendation, autoApply: false };
+}
+
+export function catalogToolNames(): readonly string[] {
+  const names = new Set<string>();
+  for (const id of FABRIC_AGENT_IDS) {
+    for (const tool of FABRIC_AGENT_CATALOG[id].allowedTools) {
+      names.add(tool);
+    }
+  }
+  return [...names].sort();
+}
+
+export function detectCatalogRegistrationDrift(): SelfAuditFinding {
+  const catalog = new Set(catalogToolNames());
+  const unimplementedExpected = PRODUCTION_IMPLEMENTED_TOOLS.filter((tool) => !catalog.has(tool));
+  if (unimplementedExpected.length > 0) {
+    return finding(
+      "catalog-registration-drift",
+      "HIGH",
+      "Production-registered tool is absent from the Fabric catalog",
+      `tools=${unimplementedExpected.join(", ")}`,
+      "Do not register a production tool that no catalog agent is allowed to invoke.",
+    );
+  }
+  return finding(
+    "catalog-registration-aligned",
+    "INFO",
+    "Production implemented tools are granted in the Fabric catalog",
+    `production=${PRODUCTION_IMPLEMENTED_TOOLS.join(", ")}`,
+    "Keep startup registration aligned with this closed list. Catalog names outside it stay fail-closed.",
+  );
+}
+
+export function detectPolicyWithoutImplementation(): SelfAuditFinding {
+  const catalog = catalogToolNames();
+  const unimplemented = catalog.filter(
+    (tool) => !(PRODUCTION_IMPLEMENTED_TOOLS as readonly string[]).includes(tool),
+  );
+  return finding(
+    "policy-without-implementation",
+    "INFO",
+    "Catalog tools without a production implementation remain fail-closed",
+    unimplemented.length > 0
+      ? `unregisteredCatalogTools=${unimplemented.join(", ")}`
+      : "every catalog tool has a production implementation",
+    "A catalog grant is not execution authority. executeTool denies policy-without-implementation.",
+  );
+}
+
+export function detectCpApiStatusEnforcementDrift(): SelfAuditFinding {
+  const agents = listRegisteredAgents();
+  const halted = agents.filter((agent) => !agentMayExecute(agent.status));
+  const apiUrl = process.env["ATLAS_API_URL"]?.trim() ?? "";
+  if (halted.length === 0) {
+    return finding(
+      "cp-api-status-aligned",
+      "INFO",
+      "No non-executable Control Plane overlay is currently applied",
+      `oversightAgents=${agents.length}; ATLAS_API_URL=${apiUrl ? "set" : "unset"}`,
+      "API resolveGovernedAgentIdentity must keep consulting GET /api/v1/agents/:id.",
+    );
+  }
+  return finding(
+    "cp-api-status-mismatch",
+    "MEDIUM",
+    "Control Plane overlay blocks execution; API must not default those agents to ACTIVE",
+    `halted=${halted.map((agent) => `${agent.agentId}=${agent.status}`).join(", ")}; ATLAS_API_URL=${apiUrl ? "set" : "unset"}`,
+    "Keep the overlay. API executeGovernedAction denies non-executable runtimeStatus. Do not invent a second authorization system.",
+  );
+}
+
+export function detectMissingAuditEvidence(): SelfAuditFinding {
+  const chain = verifyAuditChain();
+  const count = getAuditEntryCount();
+  if (!chain.ok || count === 0) {
+    return finding(
+      "missing-audit-evidence",
+      count === 0 ? "MEDIUM" : "HIGH",
+      "Control Plane observational audit evidence is missing or inconsistent",
+      `count=${count}; ok=${String(chain.ok)}; note=${chain.note}; error=${chain.error ?? "none"}`,
+      "Treat apps/api NDJSON as the system of record. Do not rewrite CP hashes into a second SoR.",
+    );
+  }
+  return finding(
+    "audit-evidence-present",
+    "INFO",
+    "Control Plane observational audit has entries",
+    `count=${count}; canonical=false`,
+    "Keep importing CP hashes into the API chain. Do not treat this trail as canonical.",
+  );
+}
+
+export function detectVerificationGaps(): SelfAuditFinding {
+  const gateway = listAuditEntries({ type: "gateway." });
+  const verified = listAuditEntries({ type: "verification.completed" });
+  const executedLike = gateway.filter((entry) => entry.result === "SUCCESS");
+  if (executedLike.length > 0 && verified.length === 0) {
+    return finding(
+      "verification-gap",
+      "MEDIUM",
+      "Gateway success entries exist without a matching verification.completed observation",
+      `gatewaySuccess=${executedLike.length}; verificationCompleted=${verified.length}`,
+      "ALLOW is not VERIFIED. Keep world-state verification on the API fulfill hop.",
+    );
+  }
+  return finding(
+    "verification-observations-present",
+    "INFO",
+    "No unmatched gateway-success / verification observation gap detected",
+    `gatewayEntries=${gateway.length}; verificationCompleted=${verified.length}`,
+    "Continue treating executed:true as insufficient for verified:true.",
+  );
+}
+
+export function detectGovernanceStateInconsistency(): SelfAuditFinding {
+  const pending = listApprovalRecords({ status: "PENDING" });
+  const now = Date.now();
+  const expiredPending = pending.filter((record) => Date.parse(record.expiresAt) < now);
+  if (expiredPending.length > 0) {
+    return finding(
+      "governance-state-inconsistency",
+      "MEDIUM",
+      "PENDING Control Plane approval records are already past expiresAt",
+      `expiredPending=${expiredPending.map((record) => record.id).join(", ")}`,
+      "Investigate. Self-audit must not expire or consume these records.",
+    );
+  }
+  return finding(
+    "governance-state-consistent",
+    "INFO",
+    "No expired-but-PENDING Control Plane approval records detected",
+    `pending=${pending.length}`,
+    "Live approvals remain on the API store. This trail is observational.",
+  );
+}
+
+export function detectRuntimeConfigDrift(): SelfAuditFinding {
+  const production = process.env["NODE_ENV"] === "production";
+  const apiUrl = process.env["ATLAS_API_URL"]?.trim() ?? "";
+  const token = controlPlaneToken();
+  if (production && (!apiUrl || !token)) {
+    return finding(
+      "runtime-config-drift",
+      "CRITICAL",
+      "Production Control Plane is missing API handoff configuration",
+      `NODE_ENV=production; ATLAS_API_URL=${apiUrl ? "set" : "unset"}; token=${token ? "set" : "unset"}`,
+      "Set ATLAS_API_URL and ATLAS_CONTROL_PLANE_TOKEN. Missing config must fail closed, not execute locally.",
+    );
+  }
+  return finding(
+    "runtime-config-bound",
+    "INFO",
+    "Runtime Control Plane API handoff configuration is present or this is non-production",
+    `NODE_ENV=${process.env["NODE_ENV"] ?? "unset"}; ATLAS_API_URL=${apiUrl ? "set" : "unset"}`,
+    "Do not add a distributed worker or Redis because this hop is unset.",
+  );
 }
 
 export function runSelfAudit(): SelfAuditReport {
@@ -165,6 +338,14 @@ export function runSelfAudit(): SelfAuditReport {
       "Quarantine CODE_ENGINEER (and other oversight ids) on CP when execution must stop. Do not merge Fabric into the oversight list.",
     autoApply: false,
   });
+
+  findings.push(detectCatalogRegistrationDrift());
+  findings.push(detectPolicyWithoutImplementation());
+  findings.push(detectCpApiStatusEnforcementDrift());
+  findings.push(detectMissingAuditEvidence());
+  findings.push(detectVerificationGaps());
+  findings.push(detectGovernanceStateInconsistency());
+  findings.push(detectRuntimeConfigDrift());
 
   return {
     systemId: "DEF-000",
