@@ -250,7 +250,7 @@ export function runSelfAudit(): SelfAuditReport {
     severity: "INFO",
     title: "Control Plane browser MFA uses tenant TOTP; service bearers use rotation",
     evidence:
-      "Privileged browser login on Control and Admin completes existing /auth/mfa/verify. HMAC reauth tickets remain one-shot and are not TOTP. Service bearers accept current plus ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS.",
+      "Privileged browser login completes /auth/mfa/verify. Production or ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA=1 refuses gateway/ops and agent-control from a password-only session. HMAC reauth tickets remain one-shot and are not TOTP. Service bearers accept current plus PREVIOUS and are not TOTP-bound.",
     recommendation:
       "Keep production private; rotate with PREVIOUS overlapping current; do not put TOTP on machine bearers.",
     autoApply: false,

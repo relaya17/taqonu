@@ -150,7 +150,10 @@ async function requestHandler(
         );
         return;
       }
-      res.setHeader("Set-Cookie", issueControlBrowserSession(session.role, session.subject));
+      res.setHeader(
+        "Set-Cookie",
+        issueControlBrowserSession(session.role, session.subject, { mfaSatisfied: true }),
+      );
       res.writeHead(303, { Location: "/dashboard" });
       res.end();
       return;
@@ -164,7 +167,10 @@ async function requestHandler(
       html(res, loginHtml("", { mfaToken: result.mfaToken, email: credentials.email }));
       return;
     }
-    res.setHeader("Set-Cookie", issueControlBrowserSession(result.role, result.subject));
+    res.setHeader(
+      "Set-Cookie",
+      issueControlBrowserSession(result.role, result.subject, { mfaSatisfied: false }),
+    );
     res.writeHead(303, { Location: "/dashboard" });
     res.end();
     return;

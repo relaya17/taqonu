@@ -169,6 +169,13 @@ export function isSensitiveControlMutation(pathname: string, method: string): bo
   );
 }
 
+export function browserPrivilegedMfaRequired(): boolean {
+  return (
+    process.env["NODE_ENV"] === "production" ||
+    process.env["ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA"] === "1"
+  );
+}
+
 /** Test hook retained so existing suites can reset per-case state. */
 export function resetPrincipalRoleForTests(): void {
   /* request-scoped WeakMap — nothing process-global to clear */
@@ -202,6 +209,18 @@ export function authorizeControlPlaneRequest(
         json(res, { error: "Control Plane origin verification failed" }, 403);
         return false;
       }
+    }
+    if (
+      browserPrivilegedMfaRequired() &&
+      isSensitiveControlMutation(pathname, method) &&
+      !browserSession.mfaSatisfied
+    ) {
+      json(
+        res,
+        { error: "Control Plane privileged mutation requires an MFA-satisfied browser session" },
+        403,
+      );
+      return false;
     }
     bindPrincipalRole(req, browserSession.role);
     return true;

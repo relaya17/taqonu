@@ -52,6 +52,7 @@ describe("Control Plane auth (ADR-021)", () => {
     delete process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN;
     delete process.env.ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS;
     delete process.env.NODE_ENV;
+    delete process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA;
     resetConsumedReauthTicketsForTests();
     resetPrincipalRoleForTests();
   });
@@ -97,7 +98,11 @@ describe("Control Plane auth (ADR-021)", () => {
     const pair = issueControlBrowserSession("OWNER", "owner-1").split(";")[0]!;
     const request = fakeReq();
     request.headers.cookie = pair;
-    expect(readControlBrowserSession(request)).toEqual({ role: "OWNER", subject: "owner-1" });
+    expect(readControlBrowserSession(request)).toEqual({
+      role: "OWNER",
+      subject: "owner-1",
+      mfaSatisfied: false,
+    });
     expect(authorizeControlPlaneRequest(request, fakeRes(), "/dashboard")).toBe(true);
     expect(resolveControlPlanePrincipal(request).role).toBe("OWNER");
 
@@ -246,5 +251,52 @@ describe("Control Plane auth (ADR-021)", () => {
     expect(() => issueControlBrowserSession("OWNER", "dev-owner")).toThrow(
       "ATLAS_CONTROL_PLANE_TOKEN is required",
     );
+  });
+
+  it("refuses privileged browser mutations without MFA when required", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA = "1";
+    const cookie = issueControlBrowserSession("OWNER", "owner-1", { mfaSatisfied: false })
+      .split(";")[0]!;
+    const req = {
+      method: "POST",
+      headers: {
+        cookie: cookie,
+        origin: "http://127.0.0.1:3100",
+        host: "127.0.0.1:3100",
+      },
+      socket: { remoteAddress: "127.0.0.1" },
+    } as IncomingMessage;
+    const res = fakeRes();
+    expect(authorizeControlPlaneRequest(req, res, "/api/v1/gateway/ops")).toBe(false);
+    expect(res.status).toBe(403);
+    expect(res.body).toMatch(/MFA-satisfied/);
+  });
+
+  it("allows privileged browser mutations after MFA-satisfied session", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA = "1";
+    const cookie = issueControlBrowserSession("OWNER", "owner-1", { mfaSatisfied: true })
+      .split(";")[0]!;
+    const req = {
+      method: "POST",
+      headers: {
+        cookie: cookie,
+        origin: "http://127.0.0.1:3100",
+        host: "127.0.0.1:3100",
+      },
+      socket: { remoteAddress: "127.0.0.1" },
+    } as IncomingMessage;
+    expect(authorizeControlPlaneRequest(req, fakeRes(), "/api/v1/gateway/ops")).toBe(true);
+  });
+
+  it("does not bind MFA to machine bearer tokens", () => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+    process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA = "1";
+    const req = {
+      ...fakeReq("Bearer unit-test-token-value"),
+      method: "POST",
+    } as IncomingMessage;
+    expect(authorizeControlPlaneRequest(req, fakeRes(), "/api/v1/gateway/ops")).toBe(true);
   });
 });

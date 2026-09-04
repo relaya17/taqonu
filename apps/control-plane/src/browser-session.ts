@@ -33,11 +33,17 @@ function sign(payload: string, key: string): string {
 export function issueControlBrowserSession(
   role: ControlBrowserRole,
   subject: string,
+  options: { readonly mfaSatisfied?: boolean } = {},
 ): string {
   const key = secret();
   if (!key) throw new Error("ATLAS_CONTROL_PLANE_TOKEN is required");
   const payload = Buffer.from(
-    JSON.stringify({ role, subject, expiresAt: Date.now() + MAX_AGE_SECONDS * 1000 }),
+    JSON.stringify({
+      role,
+      subject,
+      mfaSatisfied: options.mfaSatisfied === true,
+      expiresAt: Date.now() + MAX_AGE_SECONDS * 1000,
+    }),
   ).toString("base64url");
   const secure = process.env["NODE_ENV"] === "production" ? "; Secure" : "";
   return `${COOKIE_NAME}=${payload}.${sign(payload, key)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${MAX_AGE_SECONDS}${secure}`;
@@ -50,7 +56,11 @@ export function clearControlBrowserSession(): string {
 
 export function readControlBrowserSession(
   req: IncomingMessage,
-): { readonly role: ControlBrowserRole; readonly subject: string } | null {
+): {
+  readonly role: ControlBrowserRole;
+  readonly subject: string;
+  readonly mfaSatisfied: boolean;
+} | null {
   const keys = verificationSecrets();
   const cookie = req.headers.cookie;
   if (keys.length === 0 || typeof cookie !== "string") return null;
@@ -76,6 +86,7 @@ export function readControlBrowserSession(
       role?: string;
       subject?: string;
       expiresAt?: number;
+      mfaSatisfied?: boolean;
     };
     if (
       (parsed.role !== "OPERATOR" && parsed.role !== "OWNER") ||
@@ -85,7 +96,11 @@ export function readControlBrowserSession(
     ) {
       return null;
     }
-    return { role: parsed.role, subject: parsed.subject };
+    return {
+      role: parsed.role,
+      subject: parsed.subject,
+      mfaSatisfied: parsed.mfaSatisfied === true,
+    };
   } catch {
     return null;
   }
