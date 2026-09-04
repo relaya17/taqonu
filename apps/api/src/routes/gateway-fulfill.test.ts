@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import type { AuthUser } from "@atlas/shared";
+import { ATLAS_SELF_SYSTEM_ID, type AuthUser } from "@atlas/shared";
 import { registerTool, resetToolRegistryForTests } from "@atlas/agent-core";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-gw-fulfill-route-"));
@@ -153,6 +153,74 @@ describe("POST /api/v1/gateway/fulfill", () => {
     const body = res.json() as { principalId: string };
     expect(body.principalId).toBe(ownerUser().id);
     expect(body.principalId).not.toBe("99999999-9999-4999-8999-999999999999");
+  });
+});
+
+describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
+  const prevToken = process.env.ATLAS_CONTROL_PLANE_TOKEN;
+
+  beforeEach(() => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = "cp-fulfill-token";
+    getRequestUser.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    if (prevToken === undefined) delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+    else process.env.ATLAS_CONTROL_PLANE_TOKEN = prevToken;
+  });
+
+  it("accepts a valid CP token for Atlas-self and still uses executeGovernedAction", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "ok",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: { authorization: "Bearer cp-fulfill-token" },
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      executed: boolean;
+      toolName: string;
+      principalId: string;
+    };
+    expect(body.toolName).toBe("analyze_repo");
+    expect(body.executed).toBe(true);
+    expect(body.principalId).toBe(ATLAS_SELF_SYSTEM_ID);
+  });
+
+  it("rejects a CP token for a non-Atlas-self application", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: { authorization: "Bearer cp-fulfill-token" },
+      payload: {
+        applicationId: "hotel-os",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("rejects an invalid CP token without a user session", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: { authorization: "Bearer wrong-token" },
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(401);
   });
 });
 

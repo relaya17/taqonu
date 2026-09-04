@@ -189,7 +189,8 @@ export function controlOperationalDomainContracts(): readonly ControlDomainContr
       route: "POST /api/v1/gateway/ops",
       notes: [
         "ALLOW writes hand off as HANDED_OFF_GOVERNED. Control does not run tools.",
-        "The CP → /api/v1/gateway/fulfill hop is not a live production path yet.",
+        "Atlas-self (def-000) ALLOW writes call POST /api/v1/gateway/fulfill fail-closed.",
+        "Other applications remain receipt-only. Unreachable API does not execute locally.",
       ],
     },
     {

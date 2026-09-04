@@ -26,6 +26,17 @@ import {
 } from "./governed-lifecycle.js";
 import type { AuthenticatedAgentIdentity } from "./agent-runtime-authz.js";
 
+export function isControlPlaneServiceAuthorization(
+  authorizationHeader: string | undefined,
+): boolean {
+  try {
+    requireControlPlaneService(authorizationHeader);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function requireControlPlaneService(authorizationHeader: string | undefined): void {
   const expected = process.env.ATLAS_CONTROL_PLANE_TOKEN?.trim() ?? "";
   if (!expected) {

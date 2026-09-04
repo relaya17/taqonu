@@ -1,8 +1,26 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import {
+  AtlasError,
+  ATLAS_SELF_APPLICATION_ID,
+  ATLAS_SELF_SYSTEM_ID,
+} from "@atlas/shared";
 import { requireOperator } from "../middleware/auth-guards.js";
 import { findRepoRoot } from "../services/repo-root.js";
 import { fulfillGatewayHandoff } from "../services/gateway-fulfillment.js";
+import { isControlPlaneServiceAuthorization } from "../services/governed-lifecycle-handoff.js";
+
+function controlPlaneFulfillOwner(applicationId: string): string {
+  if (applicationId !== ATLAS_SELF_APPLICATION_ID) {
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Control Plane gateway fulfill hop is Atlas-self (def-000) only",
+      { statusCode: 403 },
+    );
+  }
+  // executeGovernedAction audit requires a UUID ownerId; cp:service is not a UUID.
+  return ATLAS_SELF_SYSTEM_ID;
+}
 
 const bodySchema = z.object({
   applicationId: z.string().trim().min(1),
@@ -17,17 +35,22 @@ const bodySchema = z.object({
 });
 
 /**
- * Operator-only hop: Control Plane ALLOW + handoff → executeGovernedAction.
+ * Operator session or Control Plane SERVICE bearer → fulfillGatewayHandoff.
  * The body cannot name a tool; mapping is fabric-catalog only.
+ * CP SERVICE is Atlas-self (def-000) only. Control Plane does not run tools.
  */
 export async function registerGatewayFulfillRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/gateway/fulfill", async (request) => {
-    const user = await requireOperator(app, request);
     const body = bodySchema.parse(request.body ?? {});
+    const sessionOwnerId = isControlPlaneServiceAuthorization(
+      request.headers.authorization,
+    )
+      ? controlPlaneFulfillOwner(body.applicationId)
+      : (await requireOperator(app, request)).id;
     return fulfillGatewayHandoff({
-      sessionOwnerId: user.id,
+      sessionOwnerId,
       applicationId: body.applicationId,
       agentId: body.agentId,
       operation: body.operation,

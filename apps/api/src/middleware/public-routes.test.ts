@@ -12,6 +12,7 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     expect(isPublicAtlasRoute("POST", "/api/v1/governance/lifecycle/handoff")).toBe(
       true,
     );
+    expect(isPublicAtlasRoute("POST", "/api/v1/gateway/fulfill")).toBe(true);
     expect(isPublicAtlasRoute("POST", "/api/v1/approvals/verify-atlas-self")).toBe(
       true,
     );

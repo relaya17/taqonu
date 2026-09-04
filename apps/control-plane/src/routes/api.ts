@@ -405,7 +405,7 @@ export function createApiRouter(): Router {
     const principal = resolveControlPlanePrincipal();
     const boundEvidenceIds = stringArray(record["boundEvidenceIds"]);
     const conflictingClaimIds = stringArray(record["conflictingClaimIds"]);
-    const evaluation = dispatchGatewayOperation({
+    const evaluation = await dispatchGatewayOperation({
       actorId: principal.id,
       actorKind: principal.actorKind,
       applicationId,

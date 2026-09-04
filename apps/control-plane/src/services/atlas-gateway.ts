@@ -23,7 +23,9 @@ import {
   hashReceiptArtifact,
   newReceiptIds,
   type ExecutionReceipt,
+  type ReceiptVerificationVerdict,
 } from "./execution-receipt.js";
+import { callAtlasApi } from "./lifecycle-handoff.js";
 
 export const GATEWAY_OPERATIONS = [
   "inspect",
@@ -252,7 +254,20 @@ function observeApplication(applicationId: string): Record<string, unknown> | nu
   };
 }
 
-function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation): GatewayEvaluation {
+function asReceiptVerdict(value: unknown): ReceiptVerificationVerdict | null {
+  if (
+    value === "VERIFIED" ||
+    value === "FAILED" ||
+    value === "PARTIAL" ||
+    value === "INCONCLUSIVE" ||
+    value === "BLOCKED"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+async function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation): Promise<GatewayEvaluation> {
   const ids = newReceiptIds();
   if (isReadLike(input.operation)) {
     const observation = observeApplication(input.applicationId);
@@ -289,29 +304,119 @@ function fulfillAllow(input: GatewayRequest, evaluation: GatewayEvaluation): Gat
     return { ...evaluation, executed: receipt.executed, receipt };
   }
 
+  const governedHandoff = mapControlPlaneHandoff(input.operation, input.agentId);
+  const artifactHash = hashReceiptArtifact({
+    applicationId: input.applicationId,
+    operation: input.operation,
+    agentId: input.agentId ?? null,
+  });
+
+  if (input.applicationId !== ATLAS_SELF_APPLICATION_ID) {
+    const receipt: ExecutionReceipt = {
+      receiptId: ids.receiptId,
+      requestId: ids.requestId,
+      applicationId: input.applicationId,
+      operation: input.operation,
+      agentId: input.agentId ?? null,
+      decision: "ALLOW",
+      executed: false,
+      executionKind: "HANDED_OFF_GOVERNED",
+      observation: null,
+      verification: {
+        verdict: "INCONCLUSIVE",
+        detail:
+          "Handed off to executeGovernedAction in apps/api — Control Plane does not run tools. HTTP fulfill hop is Atlas-self only.",
+      },
+      artifactHash,
+      governedHandoff,
+    };
+    return { ...evaluation, executed: false, receipt };
+  }
+
+  if (!input.agentId) {
+    const receipt: ExecutionReceipt = {
+      receiptId: ids.receiptId,
+      requestId: ids.requestId,
+      applicationId: input.applicationId,
+      operation: input.operation,
+      agentId: null,
+      decision: "ALLOW",
+      executed: false,
+      executionKind: "HANDED_OFF_GOVERNED",
+      observation: null,
+      verification: {
+        verdict: "FAILED",
+        detail: "Gateway fulfill handoff failed closed: agentId is required",
+      },
+      artifactHash,
+      governedHandoff,
+    };
+    return { ...evaluation, executed: false, receipt };
+  }
+
+  const api = await callAtlasApi("/api/v1/gateway/fulfill", {
+    method: "POST",
+    body: {
+      applicationId: input.applicationId,
+      agentId: input.agentId,
+      operation: input.operation,
+    },
+  });
+
+  if (!api.ok) {
+    const receipt: ExecutionReceipt = {
+      receiptId: ids.receiptId,
+      requestId: ids.requestId,
+      applicationId: input.applicationId,
+      operation: input.operation,
+      agentId: input.agentId,
+      decision: "ALLOW",
+      executed: false,
+      executionKind: "HANDED_OFF_GOVERNED",
+      observation: null,
+      verification: {
+        verdict: "FAILED",
+        detail: `Gateway fulfill handoff failed closed: ${api.reason}`,
+      },
+      artifactHash,
+      governedHandoff,
+    };
+    return { ...evaluation, executed: false, receipt };
+  }
+
+  const body = (api.body ?? {}) as {
+    readonly executed?: unknown;
+    readonly verificationVerdict?: unknown;
+    readonly verificationDetail?: unknown;
+    readonly observation?: unknown;
+  };
+  const executed = body.executed === true;
   const receipt: ExecutionReceipt = {
     receiptId: ids.receiptId,
     requestId: ids.requestId,
     applicationId: input.applicationId,
     operation: input.operation,
-    agentId: input.agentId ?? null,
+    agentId: input.agentId,
     decision: "ALLOW",
-    executed: false,
+    executed,
     executionKind: "HANDED_OFF_GOVERNED",
-    observation: null,
+    observation:
+      body.observation && typeof body.observation === "object"
+        ? (body.observation as Record<string, unknown>)
+        : null,
     verification: {
-      verdict: "INCONCLUSIVE",
+      verdict:
+        asReceiptVerdict(body.verificationVerdict) ??
+        (executed ? "INCONCLUSIVE" : "INCONCLUSIVE"),
       detail:
-        "Handed off to executeGovernedAction in apps/api — Control Plane does not run tools",
+        typeof body.verificationDetail === "string"
+          ? body.verificationDetail
+          : "API gateway fulfill completed — Control Plane did not run tools",
     },
-    artifactHash: hashReceiptArtifact({
-      applicationId: input.applicationId,
-      operation: input.operation,
-      agentId: input.agentId ?? null,
-    }),
-    governedHandoff: mapControlPlaneHandoff(input.operation, input.agentId),
+    artifactHash,
+    governedHandoff,
   };
-  return { ...evaluation, executed: false, receipt };
+  return { ...evaluation, executed, receipt };
 }
 
 export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation {
@@ -402,10 +507,10 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
   return { ...base, receipt: emptyReceipt(input, base) };
 }
 
-export function dispatchGatewayOperation(input: GatewayRequest): GatewayEvaluation {
+export async function dispatchGatewayOperation(input: GatewayRequest): Promise<GatewayEvaluation> {
   let evaluation = evaluateGatewayRequest(input);
   if (evaluation.decision === "ALLOW") {
-    evaluation = fulfillAllow(input, evaluation);
+    evaluation = await fulfillAllow(input, evaluation);
   }
   nextAudit({
     timestamp: new Date().toISOString(),

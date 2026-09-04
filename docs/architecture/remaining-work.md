@@ -28,7 +28,11 @@ Honest remaining gaps (not a missing executor):
 
 ## 02 GATEWAY COMPLETION
 Evaluate + handoff exist. Control does not run tools. See commit `e7773e0`.
-**Honest gap:** `fulfillAllow` does not call tenant `POST /api/v1/gateway/fulfill`.
+**Atlas-self write hop (2026-09-04):** `fulfillAllow` now calls tenant
+`POST /api/v1/gateway/fulfill` for ALLOW write-like ops on `def-000`, fail-closed,
+via the existing CP SERVICE bearer (`callAtlasApi`). Control Plane still does
+not run tools. Non-`def-000` applications remain receipt-only (no HTTP fulfill).
+Execution on ingest is still NOT IMPLEMENTED.
 Phase 2 (2026-09-02) added Control operational contracts
 (`GET /api/v1/operational-foundation`, empty `GET /api/v1/processes`).
 Phase 3 (2026-09-02) added the first sibling ingress: HMAC
