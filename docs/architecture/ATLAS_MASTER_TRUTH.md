@@ -1581,3 +1581,38 @@ parse errors in any new or modified file. No local Postgres, Docker, or
 Supabase CLI was available to execute the paired SQL test files. See the
 report for whether the implementation commit was pushed and what, if
 anything, GitHub Actions CI reported.
+
+**Closure addendum (2026-09-05): P0.1 governed-execution.ts integration test coverage.**
+A full P0/P0.1 closure reconciliation found one genuine, addressable gap:
+`governed-execution-receipt.ts` (the repository) and
+`governed-execution-receipt-persist.ts` (the persist wrapper) each already
+had thorough unit coverage of every claim/finalize outcome, but the actual
+integration/branching logic added to
+`apps/api/src/services/governed-execution.ts` for this item
+(`claimDurableGovernedExecution`, `finalizeDurableGovernedExecution`,
+`decodeGovernedExecutionOutcome`, and the `CLAIMED`/`REPLAY_EXECUTED`/
+`ARTIFACT_MISMATCH`/`IN_FLIGHT_OUTCOME_UNKNOWN`/`DEGRADE_TO_MEMORY`/
+`NOT_CONFIGURED` branches inside `finishGovernedExecution`) had none: every
+existing test in `governed-execution.test.ts` runs with no live Supabase
+configured, so that code only ever exercised its `NOT_CONFIGURED` fallback.
+A new `describe("P0.1 -- durable no-approval execution receipt
+(governed-execution.ts integration)", ...)` block was added to that file,
+mocking `claimGovernedExecutionReceipt`, `finalizeGovernedExecutionReceipt`,
+and `persistAuditLogToSupabase` (all three imported from `@atlas/database`)
+so every branch is driven directly and deterministically, with no real
+network I/O; `isLiveSupabase` itself is left real (a pure, I/O-free
+function) so the "configured" gate behaves exactly as in production. The
+new cases cover: CLAIMED (executes once, finalizes before the canonical
+audit write, reports `auditStatus` honestly); REPLAY_EXECUTED (does not
+execute again, re-attempts the canonical audit); REPLAY_EXECUTED with an
+undecodable stored outcome (refuses rather than fabricating a result);
+ARTIFACT_MISMATCH and IN_FLIGHT_OUTCOME_UNKNOWN (both refuse without
+executing); DEGRADE_TO_MEMORY (a failed claim on a non-Vercel-production
+runtime falls through and still executes, exactly like the pre-P0.1
+behavior); the Vercel-production fail-closed throw, both when the receipt
+store is unconfigured and when the claim call itself fails; and a
+regression check that approval-gated actions (`approvalRequestId` set)
+never invoke the durable-claim path at all. This closes the only
+identified unit-test gap in the P0.1 implementation; it does not change
+real-Postgres or production verification status, which remain as described
+above and in the accompanying closure report.

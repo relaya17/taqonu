@@ -30,6 +30,12 @@ import {
 } from "./governed-execution.js";
 import { resetGovernedClaimStartsForTests } from "./governed-claimed-execution.js";
 import { listGovernanceDecisions } from "./governance-decision.js";
+import {
+  claimGovernedExecutionReceipt,
+  finalizeGovernedExecutionReceipt,
+  persistAuditLogToSupabase,
+  type GovernedExecutionReceiptRow,
+} from "@atlas/database";
 
 // `resolveAgentIdentity` (called by this file's own `identity()` helper)
 // now calls `assertGovernedProjectExists`, which reads `osStore.getProject`.
@@ -42,6 +48,24 @@ vi.mock("../store/os-store.js", () => ({
     getProject: (id: string) => getProject(id),
   },
 }));
+
+// P0.1 -- the durable no-approval execution-receipt integration inside
+// governed-execution.ts (claimDurableGovernedExecution /
+// finalizeDurableGovernedExecution) is exercised below by mocking its two
+// direct @atlas/database dependencies plus the audit path's own Supabase
+// writer (persistAuditLogToSupabase) -- never real network. isLiveSupabase
+// itself is left real (it is a pure, I/O-free function) so
+// getGovernedExecutionReceiptEnv()'s "configured" check behaves exactly as
+// in production for a given set of SUPABASE_* env vars.
+vi.mock("@atlas/database", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@atlas/database")>();
+  return {
+    ...actual,
+    claimGovernedExecutionReceipt: vi.fn(),
+    finalizeGovernedExecutionReceipt: vi.fn(),
+    persistAuditLogToSupabase: vi.fn(),
+  };
+});
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
@@ -764,6 +788,318 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, ARTIFACT),
     );
     expect(result.artifactHash).not.toBe(knowledgeBindingHash());
+  });
+
+  describe("P0.1 -- durable no-approval execution receipt (governed-execution.ts integration)", () => {
+    const LIVE_ENV = {
+      SUPABASE_URL: "http://127.0.0.1:54321",
+      SUPABASE_ANON_KEY: "test-anon-key-not-a-real-value-00000",
+      SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real-00000",
+    };
+
+    const mockedClaim = vi.mocked(claimGovernedExecutionReceipt);
+    const mockedFinalize = vi.mocked(finalizeGovernedExecutionReceipt);
+    const mockedPersistAudit = vi.mocked(persistAuditLogToSupabase);
+
+    let originalEnv: Record<string, string | undefined>;
+
+    function fakeReceiptRow(
+      overrides: Partial<GovernedExecutionReceiptRow> = {},
+    ): GovernedExecutionReceiptRow {
+      return {
+        id: "77777777-7777-4777-8777-777777777777",
+        idempotencyKey: "gov-durable-test",
+        ownerId: null,
+        projectId: null,
+        entityType: "DOCUMENT",
+        action: "READ",
+        artifactHash: "irrelevant-for-decode",
+        status: "STARTED",
+        outcome: null,
+        startedAt: "2026-09-05T00:00:00.000Z",
+        finalizedAt: null,
+        createdAt: "2026-09-05T00:00:00.000Z",
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      originalEnv = {
+        SUPABASE_URL: process.env.SUPABASE_URL,
+        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        VERCEL: process.env.VERCEL,
+        NODE_ENV: process.env.NODE_ENV,
+      };
+      delete process.env.SUPABASE_URL;
+      delete process.env.SUPABASE_ANON_KEY;
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      delete process.env.VERCEL;
+
+      mockedClaim.mockReset();
+      mockedFinalize.mockReset();
+      mockedPersistAudit.mockReset();
+      // No real Postgres in this unit-test environment: the canonical audit
+      // write always degrades to the NDJSON secondary here, exactly like the
+      // real "Postgres configured but failing" production case.
+      mockedPersistAudit.mockResolvedValue({
+        ok: false,
+        reason: "WRITE_FAILED",
+        error: "unit test: no real Postgres available",
+      });
+      mockedFinalize.mockResolvedValue({ ok: true, row: null });
+    });
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it("CLAIMED: durably claims, executes exactly once, and finalizes before auditing", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({ ok: true, claim: { kind: "CLAIMED", row: fakeReceiptRow() } });
+
+      const result = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-claimed" }));
+
+      expect(result.status).toBe("EXECUTED");
+      expect(runs).toBe(1);
+      expect(mockedClaim).toHaveBeenCalledTimes(1);
+      expect(mockedFinalize).toHaveBeenCalledTimes(1);
+      expect(mockedFinalize.mock.calls[0]?.[1]).toMatchObject({
+        idempotencyKey: "gov-p01-claimed",
+        status: "EXECUTED",
+      });
+      // DURABLE FINALIZE must happen before CANONICAL AUDIT (see the
+      // block comment above claimDurableGovernedExecution in
+      // governed-execution.ts).
+      expect(mockedFinalize.mock.invocationCallOrder[0]).toBeLessThan(
+        mockedPersistAudit.mock.invocationCallOrder[0] ?? Infinity,
+      );
+      if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
+      expect(result.auditStatus).toBe("degraded");
+    });
+
+    it("REPLAY_EXECUTED: returns the durable outcome without executing again, and re-attempts the canonical audit", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({
+        ok: true,
+        claim: {
+          kind: "REPLAY_EXECUTED",
+          row: fakeReceiptRow({
+            status: "EXECUTED",
+            outcome: { stage: "EXECUTION", status: "EXECUTED", output: "cached output" },
+          }),
+        },
+      });
+
+      const result = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-replay" }));
+
+      expect(runs).toBe(0);
+      expect(mockedFinalize).not.toHaveBeenCalled();
+      expect(mockedPersistAudit).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("EXECUTED");
+      if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
+      expect(result.output).toBe("cached output");
+      expect(result.auditStatus).toBe("degraded");
+    });
+
+    it("REPLAY_EXECUTED with an undecodable stored outcome refuses rather than fabricating a result", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({
+        ok: true,
+        claim: {
+          kind: "REPLAY_EXECUTED",
+          row: fakeReceiptRow({ status: "EXECUTED", outcome: { garbage: true } }),
+        },
+      });
+
+      const result = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-replay-bad" }));
+
+      expect(runs).toBe(0);
+      expect(result.status).toBe("FAILED");
+      if (result.status !== "FAILED") throw new Error("expected FAILED");
+      expect(result.reason).toMatch(/OUTCOME_UNKNOWN/);
+    });
+
+    it("ARTIFACT_MISMATCH: refuses without executing the tool", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({
+        ok: true,
+        claim: { kind: "ARTIFACT_MISMATCH", row: fakeReceiptRow() },
+      });
+
+      const result = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-mismatch" }));
+
+      expect(runs).toBe(0);
+      expect(mockedFinalize).not.toHaveBeenCalled();
+      expect(result.status).toBe("FAILED");
+      if (result.status !== "FAILED") throw new Error("expected FAILED");
+      expect(result.reason).toMatch(/idempotency key reused with a different artifact/);
+    });
+
+    it("IN_FLIGHT_OUTCOME_UNKNOWN: refuses without executing or guessing the outcome", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({
+        ok: true,
+        claim: { kind: "IN_FLIGHT_OUTCOME_UNKNOWN", row: fakeReceiptRow() },
+      });
+
+      const result = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-inflight" }));
+
+      expect(runs).toBe(0);
+      expect(mockedFinalize).not.toHaveBeenCalled();
+      expect(result.status).toBe("FAILED");
+      if (result.status !== "FAILED") throw new Error("expected FAILED");
+      expect(result.reason).toMatch(/OUTCOME_UNKNOWN/);
+    });
+
+    it("DEGRADE_TO_MEMORY: a failed durable claim on a non-Vercel-production runtime falls through and still executes", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      delete process.env.VERCEL;
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({
+        ok: false,
+        reason: "WRITE_FAILED",
+        error: "simulated Postgres outage",
+      });
+
+      const result = await executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-degrade" }));
+
+      expect(result.status).toBe("EXECUTED");
+      expect(runs).toBe(1);
+      // No durable receipt was ever claimed, so there is nothing to finalize.
+      expect(mockedFinalize).not.toHaveBeenCalled();
+    });
+
+    it("Vercel production with no durable claim store configured fails closed before executing", async () => {
+      process.env.VERCEL = "1";
+      process.env.NODE_ENV = "production";
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+
+      await expect(
+        executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-vercel-not-configured" })),
+      ).rejects.toThrow(/Vercel production runtime/);
+      expect(runs).toBe(0);
+      expect(mockedClaim).not.toHaveBeenCalled();
+    });
+
+    it("Vercel production with a failing durable claim store fails closed before executing", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      process.env.VERCEL = "1";
+      process.env.NODE_ENV = "production";
+      let runs = 0;
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          runs += 1;
+          return "observation: answer = 42";
+        },
+      });
+      mockedClaim.mockResolvedValue({
+        ok: false,
+        reason: "WRITE_FAILED",
+        error: "simulated Postgres outage",
+      });
+
+      await expect(
+        executeGovernedAction(baseRequest({ idempotencyKey: "gov-p01-vercel-claim-failed" })),
+      ).rejects.toThrow(/Vercel production runtime/);
+      expect(runs).toBe(0);
+      expect(mockedFinalize).not.toHaveBeenCalled();
+    });
+
+    it("does not affect approval-gated actions: durable claim is never invoked when approvalRequestId is set", async () => {
+      Object.assign(process.env, LIVE_ENV);
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => "observation: answer = 42",
+      });
+      const approved = await createApprovalRequest({
+        entityType: "DOCUMENT",
+        action: "READ",
+        requestedBy: "RESEARCHER",
+        reason: "p0.1 regression: approval path must stay untouched",
+        artifactHash: knowledgeBindingHash(),
+      });
+      await decideApprovalRequest(approved.id, {
+        decidedBy: OWNER_A,
+        approve: true,
+        decisionReason: "ok",
+      });
+
+      const result = await executeGovernedAction(
+        baseRequest({ idempotencyKey: "gov-p01-approved", approvalRequestId: approved.id }),
+      );
+
+      expect(result.status).toBe("EXECUTED");
+      expect(mockedClaim).not.toHaveBeenCalled();
+      expect(mockedFinalize).not.toHaveBeenCalled();
+    });
   });
 });
 
