@@ -28,7 +28,7 @@ import {
   type ScenarioEvidence,
   type ScenarioVerdict,
 } from "@atlas/synthetic-universe";
-import { appendUnifiedAuditEntry } from "./audit-log.js";
+import { appendUnifiedCanonicalAuditEntry } from "./audit-log.js";
 import { persistGovernanceDecision } from "./governance-decision.js";
 
 export interface SyntheticScenarioRunResponse {
@@ -46,11 +46,11 @@ export interface SyntheticScenarioRunResponse {
   readonly realExternalExecuted: false;
 }
 
-export function runSyntheticScenarioForAtlas(input: {
+export async function runSyntheticScenarioForAtlas(input: {
   readonly user: AuthUser;
   readonly scenarioId: string;
   readonly tenantId: string;
-}): SyntheticScenarioRunResponse {
+}): Promise<SyntheticScenarioRunResponse> {
   let scenario;
   try {
     scenario = resolveRegisteredScenario(input.scenarioId, input.tenantId);
@@ -67,7 +67,7 @@ export function runSyntheticScenarioForAtlas(input: {
   }
 
   const evidence = result.evidence;
-  persistCanonicalAudit({
+  await persistCanonicalAudit({
     user: input.user,
     evidence,
     verdict: result.verdict,
@@ -89,13 +89,13 @@ export function runSyntheticScenarioForAtlas(input: {
   };
 }
 
-function persistCanonicalAudit(input: {
+async function persistCanonicalAudit(input: {
   readonly user: AuthUser;
   readonly evidence: ScenarioEvidence;
   readonly verdict: ScenarioVerdict;
-}): void {
+}): Promise<void> {
   for (const entry of input.evidence.audit) {
-    appendUnifiedAuditEntry({
+    await appendUnifiedCanonicalAuditEntry({
       ...entry,
       actorId: input.user.id,
       actorKind: "USER",
@@ -110,7 +110,7 @@ function persistCanonicalAudit(input: {
       },
     });
   }
-  appendUnifiedAuditEntry({
+  await appendUnifiedCanonicalAuditEntry({
     type: "synthetic.scenario.run",
     toolName: null,
     entityType: "RECORD",
@@ -180,11 +180,11 @@ export interface SyntheticClosedLoopResponse {
   readonly realExternalExecuted: false;
 }
 
-export function runSyntheticClosedLoopForAtlas(input: {
+export async function runSyntheticClosedLoopForAtlas(input: {
   readonly user: AuthUser;
   readonly scenarioId: string;
   readonly tenantId: string;
-}): SyntheticClosedLoopResponse {
+}): Promise<SyntheticClosedLoopResponse> {
   let scenario;
   try {
     scenario = resolveRegisteredScenario(input.scenarioId, input.tenantId);
@@ -199,27 +199,27 @@ export function runSyntheticClosedLoopForAtlas(input: {
     throw asAtlasError(error);
   }
 
-  persistCanonicalAudit({
+  await persistCanonicalAudit({
     user: input.user,
     evidence: loop.failureRun.evidence,
     verdict: loop.failureRun.verdict,
   });
   if (loop.recoveryRun) {
-    persistCanonicalAudit({
+    await persistCanonicalAudit({
       user: input.user,
       evidence: loop.recoveryRun.evidence,
       verdict: loop.recoveryRun.verdict,
     });
   }
 
-  const governanceDecision = persistClosedLoopGovernance({
+  const governanceDecision = await persistClosedLoopGovernance({
     user: input.user,
     scenarioId: scenario.id,
     tenantId: scenario.tenantId,
     loop,
   });
 
-  appendUnifiedAuditEntry({
+  await appendUnifiedCanonicalAuditEntry({
     type: "synthetic.closed_loop",
     toolName: null,
     entityType: loop.governance?.entityType ?? "RECORD",
@@ -287,12 +287,12 @@ export function runSyntheticClosedLoopForAtlas(input: {
   };
 }
 
-function persistClosedLoopGovernance(input: {
+async function persistClosedLoopGovernance(input: {
   readonly user: AuthUser;
   readonly scenarioId: string;
   readonly tenantId: string;
   readonly loop: ClosedLoopResult;
-}): GovernanceDecision | null {
+}): Promise<GovernanceDecision | null> {
   if (process.env.ATLAS_SKIP_AUDIT_LOG === "1") return null;
   const loop = input.loop;
   const stage =
@@ -321,7 +321,7 @@ function persistClosedLoopGovernance(input: {
     )
     .digest("hex");
 
-  return persistGovernanceDecision({
+  return await persistGovernanceDecision({
     schemaVersion: "1.0.0",
     recordType: "governance.decision",
     id: randomUUID(),

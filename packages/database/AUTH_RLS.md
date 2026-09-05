@@ -13,10 +13,41 @@ Local `osStore` remains primary **persistence** for product state. Supabase is o
 | Load recovery | Parse primary; on corrupt/missing fall back to `.bak` |
 | Heartbeat backups | Optional: `ATLAS_STORE_BACKUP_INTERVAL_MS` copies into `.atlas/store-backups/` (retain `ATLAS_STORE_BACKUP_KEEP`, default 5) |
 | Cloud dual-write (when live) | **projects**, **memories**, **knowledge_chunks**, **decisions**, **account_plans** (tenantSubscriptions) |
+| Canonical audit (when live) | **audit_logs** — different from the row above: governed-action audit (`apps/api/src/services/audit-log.ts`'s `appendCanonicalAuditEntry`) treats Postgres as canonical, not best-effort, and fails closed on a Vercel-production write failure instead of silently falling back to local disk. See "Canonical audit persistence (P0, 2026-09-05)" below. |
 | QA patterns | Persist in local store meta (`qa.portfolioPatterns`); cross-project lessons also dual-write as portfolio memories |
 | Startup hydrate | If local store is essentially empty and Supabase is live, API startup pulls projects/memories/decisions/account_plans (`tryFetchCloudDurabilityBundle` → `hydrateOsStoreFromCloudIfEmpty`) |
 
-HA path beyond MVP: managed Postgres PITR + multi-AZ, object-store snapshots of `.atlas/`, and promote cloud to source-of-truth (local becomes cache).
+HA path beyond MVP: managed Postgres PITR + multi-AZ, object-store snapshots of `.atlas/`, and promote cloud to source-of-truth (local becomes cache). The audit_logs canonicalization below is a first, narrower instance of that same direction, scoped to governed-action audit only.
+
+## Canonical audit persistence (P0, 2026-09-05)
+
+Unlike every row in the table above, governed-action audit evidence is not
+best-effort dual-write: `public.audit_logs` (schema in
+`supabase/migrations/20260811000000_init.sql`, extended by
+`20260905000000_audit_logs_canonical_chain.sql`) is canonical whenever live
+Supabase credentials are configured (`isLiveSupabase`), with the local
+NDJSON file (`.atlas/audit/audit.ndjson`) kept as a secondary/resilience
+copy, not the other way around. `seq`/`prev_hash`/`hash` are assigned
+server-side by a `BEFORE INSERT` trigger holding a lock on a singleton
+"chain tip" row, so concurrent writers cannot race the way the NDJSON
+file's read-last-line-then-append pattern could.
+
+Failure semantics (see `docs/architecture/ATLAS_MASTER_TRUTH.md` section 65
+for the full write-up): a Postgres write failure on Vercel production
+fails closed (throws — a governed action must not report success without
+canonical audit evidence); the same failure on the private VM, with the
+NDJSON secondary write succeeding, degrades explicitly instead (the event
+is still durably recorded, just not in the canonical store). Postgres not
+configured and not Vercel-production behaves exactly as before this
+change: NDJSON-only, no throw.
+
+Scope: only the governed-execution (`governed-execution.ts`) and
+synthetic-universe governance (`synthetic-universe-run.ts`) audit paths go
+through the canonical writer today. `audit-bridge.ts`, `os-store.ts`'s
+internal `appendAudit`, and the remaining `appendUnifiedAuditEntry` call
+sites elsewhere in the codebase are unchanged (NDJSON-only), a named,
+deliberate scope boundary — not every governed-action-adjacent audit call
+site was converted in this pass.
 
 ## Identity + roles — Auth is source of truth when live (2026-08-12)
 

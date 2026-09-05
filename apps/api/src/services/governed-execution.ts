@@ -29,7 +29,7 @@ import {
   type GovernanceDecision,
   type GovernanceDecisionInput,
 } from "@atlas/shared";
-import { appendUnifiedAuditEntry } from "./audit-log.js";
+import { appendUnifiedCanonicalAuditEntry } from "./audit-log.js";
 import {
   enforceAgentToolAuthorization,
   type AuthenticatedAgentIdentity,
@@ -438,15 +438,25 @@ function buildGovernanceDecision(
   };
 }
 
-/** Single audit helper so no refusal path can silently skip the trail. */
-function auditOutcome(
+/**
+ * Single audit helper so no refusal path can silently skip the trail.
+ *
+ * Async (P0 persistence fix): both the unified audit entry and the
+ * governance decision now go through the canonical Postgres+NDJSON
+ * dual-write path (see apps/api/src/services/audit-log.ts,
+ * appendCanonicalAuditEntry / appendUnifiedCanonicalAuditEntry). This is
+ * the single choke point every governed action passes through, so making
+ * it async and awaited here is what makes the fail-closed/degrade policy
+ * actually apply to every governed action rather than only some.
+ */
+async function auditOutcome(
   request: GovernedExecutionRequest,
   artifactHash: string,
   outcome: GovernedExecutionOutcome,
   context: GovernanceAuditContext = EMPTY_GOVERNANCE_AUDIT_CONTEXT,
   canonicalTarget?: CanonicalTarget,
-): void {
-  appendUnifiedAuditEntry({
+): Promise<void> {
+  await appendUnifiedCanonicalAuditEntry({
     type: request.routeLabel,
     actorId: request.identity.agentId,
     actorKind: "AGENT",
@@ -473,7 +483,7 @@ function auditOutcome(
     projectId: request.identity.projectId,
   });
 
-  persistGovernanceDecision(buildGovernanceDecision(request, artifactHash, outcome, context));
+  await persistGovernanceDecision(buildGovernanceDecision(request, artifactHash, outcome, context));
 }
 
 /**
@@ -496,7 +506,7 @@ export async function executeGovernedAction(
       status: "DENIED",
       reason: `Agent "${request.identity.agentId}" is not executable (runtimeStatus=${runtimeStatus})`,
     };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    await auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
   }
 
@@ -514,7 +524,7 @@ export async function executeGovernedAction(
       status: "DENIED",
       reason: `Excessive delegation depth hops=${delegationHopCount} exceeds ${MAX_DELEGATION_HOP_COUNT}`,
     };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    await auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
   }
 
@@ -531,7 +541,7 @@ export async function executeGovernedAction(
       status: "DENIED",
       reason: err instanceof Error ? err.message : String(err),
     };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    await auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
   }
 
@@ -543,7 +553,7 @@ export async function executeGovernedAction(
       reason:
         "entityType and action must both be omitted or both be supplied as a matching assertion of the tool's canonical operation",
     };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    await auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
   }
   const assertedPair =
@@ -560,7 +570,7 @@ export async function executeGovernedAction(
       status: "DENIED",
       reason: canonical.reason,
     };
-    auditOutcome(request, computeArtifactHash(request.artifact), outcome);
+    await auditOutcome(request, computeArtifactHash(request.artifact), outcome);
     return outcome;
   }
   const governedRequest: GovernedExecutionRequest = {
@@ -588,7 +598,7 @@ export async function executeGovernedAction(
           status: "FAILED",
           reason: sanitizeErrorMessage(extracted.reason),
         };
-    auditOutcome(governedRequest, computeArtifactHash(governedRequest.artifact), outcome);
+    await auditOutcome(governedRequest, computeArtifactHash(governedRequest.artifact), outcome);
     return outcome;
   }
 
@@ -602,7 +612,7 @@ export async function executeGovernedAction(
       status: "FAILED",
       reason: sanitizeErrorMessage(err instanceof Error ? err.message : String(err)),
     };
-    auditOutcome(governedRequest, computeArtifactHash(governedRequest.artifact), outcome);
+    await auditOutcome(governedRequest, computeArtifactHash(governedRequest.artifact), outcome);
     return outcome;
   }
 
@@ -617,7 +627,7 @@ export async function executeGovernedAction(
             status: "FAILED",
             reason: "idempotency key reused with a different artifact",
           };
-          auditOutcome(
+          await auditOutcome(
             governedRequest,
             artifactHash,
             outcome,
@@ -724,7 +734,7 @@ export async function executeGovernedAction(
     };
   }
 
-  auditOutcome(governedRequest, artifactHash, outcome, { gate, approval }, extracted.target);
+  await auditOutcome(governedRequest, artifactHash, outcome, { gate, approval }, extracted.target);
   if (governedRequest.idempotencyKey && outcome.status === "EXECUTED") {
     governedIdempotency.set(governedRequest.idempotencyKey, { artifactHash, outcome });
     persistGovernedIdempotency();

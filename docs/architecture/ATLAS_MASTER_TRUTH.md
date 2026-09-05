@@ -1329,3 +1329,95 @@ execute, not for Atlas-self private-plane production.
 
 
 
+## 65. P0 Persistence Implementation (2026-09-05)
+
+**Scope:** implementation of the P0 blocker identified in the prior
+read-only "P0 Production Persistence Architecture Decision" audit —
+canonical audit persistence writes only to local NDJSON
+(`.atlas/audit/audit.ndjson`), which does not durably survive on Vercel's
+ephemeral/read-only serverless filesystem. Approved architecture: **Option
+B — Supabase/Postgres canonical audit persistence + local NDJSON secondary
+resilience buffer.** Nothing else (VM provisioning, Cloud DR, release
+signing, pentest, ADR-022, Admin, customer readiness) is in scope for this
+item.
+
+**Before state:** `public.audit_logs` existed (migration
+`20260811000000_init.sql`) with RLS enabled, zero policies, and zero
+application writers. `apps/api/src/services/audit-log.ts` wrote the entire
+canonical/governance audit trail to the NDJSON file only, using a
+synchronous read-last-line-then-append hash chain safe only for a single
+process.
+
+**After state:**
+- `supabase/migrations/20260905000000_audit_logs_canonical_chain.sql` adds
+  `seq` (bigserial ordering column), `prev_hash`, `hash` to
+  `public.audit_logs`; a singleton `public.audit_logs_chain_tip` table; a
+  `BEFORE INSERT` trigger (`audit_logs_chain_before_insert`) that computes
+  the hash chain while holding a row lock on the tip row, so concurrent
+  Vercel invocations cannot race the way the file-based read-then-append
+  pattern could; and one new `audit_logs_owner_select` SELECT-only RLS
+  policy (mirrors the existing `domain_events_owner_select` convention —
+  writes remain service-role only, no INSERT/UPDATE/DELETE policy is
+  added). This is additive only; no existing table, column, or row is
+  removed or rewritten.
+- `packages/database/src/repositories/audit-log.ts` adds a minimal
+  `AuditLogRepository` (`append`, `getById`, `verifyChain`), following the
+  existing `DecisionRepository`/`MemoryRepository` convention.
+- `packages/database/src/audit-log-persist.ts` adds
+  `tryPersistAuditLogToSupabase(env, entry, options)`, following the
+  `decision-persist.ts` / `memory-persist.ts` `resolveClient` +
+  `isLiveSupabase` convention, but — unlike those best-effort wrappers —
+  it can report failure back to the caller so the caller can decide
+  fail-closed vs. degrade (audit persistence has different integrity
+  requirements than the existing dual-write entities).
+- `apps/api/src/services/audit-log.ts` adds an async
+  `appendCanonicalAuditEntry` that writes Postgres first (canonical) and
+  then the local NDJSON file (secondary), implementing the failure-mode
+  table below. The existing synchronous `appendAuditLogLine` /
+  `appendUnifiedAuditEntry` are unchanged for their current (non-governed,
+  out-of-scope) callers, preserving backward compatibility.
+- `apps/api/src/services/governance-decision.ts`'s
+  `persistGovernanceDecision` becomes async and routes through
+  `appendCanonicalAuditEntry`, keyed by the decision's own (pre-existing,
+  required) `id` field for idempotency, so a governance decision can no
+  longer report success while its canonical audit evidence failed to
+  persist per policy.
+- `apps/api/src/services/governed-execution.ts`'s `auditOutcome` and
+  `apps/api/src/services/synthetic-universe-run.ts`'s audit/governance
+  helpers become async and are awaited at every call site within those two
+  files (verified individually, call-site by call-site, to already be
+  inside async function bodies).
+- `scripts/environment-gate.ts` adds a real round-trip
+  write-then-read-then-delete probe against `audit_logs` (a
+  safely-identifiable, self-cleaning temporary record), replacing the prior
+  check that only confirmed `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`
+  looked configured.
+
+**Deliberate scope boundary (documented, not an oversight):**
+`apps/api/src/services/audit-bridge.ts` and `apps/api/src/store/os-store.ts`
+`appendAudit()` are unchanged — they are Control-Plane-import and
+general internal-bookkeeping paths respectively, not the governed-action
+audit path this P0 targets. Roughly thirty other `appendUnifiedAuditEntry`
+call sites across the codebase continue to call the existing synchronous
+function un-awaited (TypeScript permits this; it is not a compile error)
+and so still get a best-effort Postgres write but without synchronous
+fail-closed enforcement. Making every one of those call sites fail-closed
+is a larger, separately-verifiable change and is intentionally left for a
+follow-up P1/P2 item rather than attempted without test/build execution
+available in this environment.
+
+**owner_id:** always inserted as `NULL` in this pass (the real value, when
+known, is preserved inside the `payload` jsonb column) to avoid a
+foreign-key failure — and therefore a false fail-closed rejection of a
+legitimate governed action — for system/synthetic-tenant actions that have
+no corresponding `auth.users` row. Documented as a conscious simplification
+with a named follow-up, not an oversight.
+
+**Environment constraints (confirmed by direct testing, not assumed):**
+this device-bridge shell has no working `pnpm` (its `.pnpm` store contains
+only Windows `esbuild` binaries, no linux-x64 build), so no local
+`vitest`/`tsc`/build could be executed for this change, and outbound HTTPS
+is blocked (`curl` to both the deployed Vercel URL and `https://example.com`
+returns `403 from proxy after CONNECT`), so no live production round-trip
+could be captured either. Both are reported honestly in the implementation
+report rather than fabricated.
