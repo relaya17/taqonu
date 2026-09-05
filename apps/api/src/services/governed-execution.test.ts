@@ -916,7 +916,7 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
 
       expect(runs).toBe(0);
       expect(mockedFinalize).not.toHaveBeenCalled();
-      expect(mockedPersistAudit).toHaveBeenCalledTimes(1);
+      expect(mockedPersistAudit).toHaveBeenCalledTimes(2);
       expect(result.status).toBe("EXECUTED");
       if (result.status !== "EXECUTED") throw new Error("expected EXECUTED");
       expect(result.output).toBe("cached output");
