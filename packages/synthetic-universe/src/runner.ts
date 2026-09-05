@@ -590,7 +590,7 @@ function decideVerdict(
   scenario: ScenarioDefinition,
   assertions: readonly { readonly passed: boolean }[],
   process: ProcessVerification,
-  failures: readonly string[],
+  _failures: readonly string[],
 ): ScenarioVerdict {
   if (scenario.failureInjection === "TEST-010") return "CONTAINED";
   if (scenario.failureInjection === "TEST-007" || scenario.actorId === "UNAUTHORIZED_AGENT") {
