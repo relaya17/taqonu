@@ -244,7 +244,7 @@ export function restoreCanonicalAuditFromReplica(input: {
   const restoredChecksum = sha256File(restoredPath);
   const verified = verifyAuditLogChainAt(restoredPath);
   let ok = verified.ok;
-  let status = verified.status;
+  let status: string = verified.status;
   let error = verified.error;
   if (replicaChecksum !== restoredChecksum) {
     ok = false;
