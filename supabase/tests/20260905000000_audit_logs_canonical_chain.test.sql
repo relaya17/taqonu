@@ -16,8 +16,21 @@
 -- it is always safe to run against a real (even non-disposable) dev
 -- database -- nothing it does is retained.
 --
+-- P0 CORRECTION (2026-09-05): the migration's chain trigger moved from
+-- BEFORE INSERT to AFTER INSERT (see the migration file's header comment
+-- for the full root cause). Scenario 6 below is the new, decisive
+-- regression test for exactly the bug that correction fixes: appending the
+-- same id twice must not advance the chain tip on the second (discarded)
+-- attempt. Scenarios 1-3 needed no logic change, only re-confirmation that
+-- a post-insert SELECT (which is how this script and the real repository
+-- both observe the chain values -- see AuditLogRepository.append(), which
+-- now always re-reads by id) still sees the AFTER trigger's fully-applied
+-- result.
+--
 -- Covers:
---   1. First insert chains from GENESIS; seq/prev_hash/hash populated.
+--   1. First insert chains from GENESIS; seq/prev_hash/hash populated
+--      (observed via a post-insert SELECT, not the INSERT's own RETURNING --
+--      an AFTER trigger's effects are never visible in RETURNING).
 --   2. Second insert chains from the first row's hash (not GENESIS again) --
 --      this is the property that makes the chain tamper-evident; true
 --      concurrent-session locking (two backends racing the same tip row)
@@ -29,6 +42,8 @@
 --   5. RLS: no INSERT policy exists for anon/authenticated -- only a
 --      service-role (RLS-bypassing) connection can insert, exactly like
 --      domain_events.
+--   6. Duplicate append (ON CONFLICT DO NOTHING) does NOT advance the chain
+--      tip -- the regression test for the BEFORE/AFTER INSERT correction.
 
 begin;
 
@@ -83,6 +98,71 @@ begin
   end if;
   raise notice 'PASS 2/3: second insert chains from the first row''s hash, not GENESIS again, and both hashes are independently reproducible';
   raise notice 'NOTE: true concurrent-session locking of the chain tip (two backends racing) is NOT exercised by this single-session script -- it is a hand-traced property of the trigger''s `for update` row lock, not a machine-verified one. Flag for a real multi-connection load test before treating concurrency safety as proven.';
+end;
+$$;
+
+-- ===================================================================
+-- 6. Duplicate append does NOT advance the chain tip (P0 correction
+-- regression test). This is the exact bug: a BEFORE INSERT trigger would
+-- have advanced audit_logs_chain_tip for the row below even though
+-- ON CONFLICT DO NOTHING discards it. An AFTER INSERT trigger must not
+-- fire for a discarded row at all.
+-- ===================================================================
+do $$
+declare
+  v_owner uuid; v_id uuid := gen_random_uuid();
+  v_tip_before text; v_tip_after_first text; v_tip_after_duplicate text;
+  v_row record; v_row_after_duplicate record;
+begin
+  select owner_id into v_owner from pg_temp.new_owner();
+
+  select tip_hash into v_tip_before from public.audit_logs_chain_tip where id = true;
+
+  insert into public.audit_logs (id, owner_id, action, entity_type, entity_id, payload)
+    values (v_id, v_owner, 'test.action.dup', 'RECORD', null, '{"n":"dup"}'::jsonb)
+    on conflict (id) do nothing;
+  select tip_hash into v_tip_after_first from public.audit_logs_chain_tip where id = true;
+  select * into v_row from public.audit_logs where id = v_id;
+
+  if v_tip_after_first = v_tip_before then
+    raise exception 'FAIL 6: tip did not advance on the genuine first insert (trigger did not fire at all)';
+  end if;
+  if v_row.hash is null or v_row.hash <> v_tip_after_first then
+    raise exception 'FAIL 6: first insert''s row.hash (%) does not match the tip after it (%)', v_row.hash, v_tip_after_first;
+  end if;
+
+  -- Retry with the SAME id -- ON CONFLICT DO NOTHING must discard this row
+  -- entirely, and the AFTER trigger must therefore never fire for it.
+  insert into public.audit_logs (id, owner_id, action, entity_type, entity_id, payload)
+    values (v_id, v_owner, 'test.action.dup', 'RECORD', null, '{"n":"dup-retry-should-be-ignored"}'::jsonb)
+    on conflict (id) do nothing;
+  select tip_hash into v_tip_after_duplicate from public.audit_logs_chain_tip where id = true;
+  select * into v_row_after_duplicate from public.audit_logs where id = v_id;
+
+  if v_tip_after_duplicate <> v_tip_after_first then
+    raise exception 'FAIL 6: chain tip advanced on a duplicate/idempotent-retry insert (% -> %) -- this is exactly the corrected bug', v_tip_after_first, v_tip_after_duplicate;
+  end if;
+  if v_row_after_duplicate.payload->>'n' <> 'dup' then
+    raise exception 'FAIL 6: the duplicate insert''s payload overwrote the original row -- ON CONFLICT DO NOTHING should have discarded it entirely';
+  end if;
+
+  -- A genuinely new row after the duplicate attempt must chain from the
+  -- FIRST insert's hash, not from any phantom value the duplicate might
+  -- have produced.
+  declare
+    v_id2 uuid := gen_random_uuid();
+    v_row2 record;
+  begin
+    insert into public.audit_logs (id, owner_id, action, entity_type, entity_id, payload)
+      values (v_id2, v_owner, 'test.action.after-dup', 'RECORD', null, '{"n":"after-dup"}'::jsonb)
+      on conflict (id) do nothing;
+    select * into v_row2 from public.audit_logs where id = v_id2;
+    if v_row2.prev_hash <> v_row.hash then
+      raise exception 'FAIL 6: row after the duplicate attempt chains from % instead of the first insert''s hash %', v_row2.prev_hash, v_row.hash;
+    end if;
+  end;
+
+  raise notice 'PASS 6: duplicate/idempotent-retry insert does not advance the chain tip and does not corrupt subsequent linkage';
 end;
 $$;
 

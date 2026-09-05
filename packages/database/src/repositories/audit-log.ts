@@ -49,39 +49,42 @@ export class AuditLogRepository {
    * Insert one audit event, idempotent on `id`. A retry of the same
    * governed action (same id) must not produce a second chained row —
    * `ignoreDuplicates` makes Postgres/PostgREST silently skip the insert on
-   * conflict, and this method then fetches and returns the row that was
-   * actually persisted the first time, so a caller can never tell the
-   * difference between "first write" and "idempotent retry" except via the
-   * returned row's own seq/hash being unchanged.
+   * conflict, so a caller can never tell "first write" apart from
+   * "idempotent retry" except via the returned row's own seq/hash being
+   * unchanged.
+   *
+   * P0 correction (2026-09-05): `seq`/`prev_hash`/`hash` are populated by
+   * an AFTER INSERT trigger (moved from BEFORE INSERT — see the migration
+   * file for why), which means the INSERT statement's own RETURNING
+   * projection never reflects them (AFTER triggers run after RETURNING is
+   * evaluated). This method therefore never relies on the upsert's
+   * response body — it always re-reads the row by id afterward, which
+   * also means the same code path serves both "genuinely inserted" and
+   * "conflicted with an existing row" without needing to branch on what
+   * the upsert returned.
    */
   async append(entry: AuditLogAppendInput): Promise<AuditLogRow> {
-    const { data, error } = await this.client
-      .from("audit_logs")
-      .upsert(
-        {
-          id: entry.id,
-          owner_id: entry.ownerId,
-          action: entry.action,
-          entity_type: entry.entityType,
-          entity_id: entry.entityId,
-          payload: entry.payload,
-        },
-        { onConflict: "id", ignoreDuplicates: true },
-      )
-      .select("*");
+    const { error } = await this.client.from("audit_logs").upsert(
+      {
+        id: entry.id,
+        owner_id: entry.ownerId,
+        action: entry.action,
+        entity_type: entry.entityType,
+        entity_id: entry.entityId,
+        payload: entry.payload,
+      },
+      { onConflict: "id", ignoreDuplicates: true },
+    );
 
     if (error) throw error;
-    if (data && data.length > 0 && data[0]) {
-      return mapAuditLogRow(data[0]);
-    }
 
-    const existing = await this.getById(entry.id);
-    if (!existing) {
+    const row = await this.getById(entry.id);
+    if (!row) {
       throw new Error(
-        `audit_logs upsert for id=${entry.id} reported a conflict (no row returned) but no existing row was found by id`,
+        `audit_logs upsert for id=${entry.id} reported success but the row could not be read back by id`,
       );
     }
-    return existing;
+    return row;
   }
 
   async getById(id: string): Promise<AuditLogRow | null> {

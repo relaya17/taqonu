@@ -1421,3 +1421,163 @@ is blocked (`curl` to both the deployed Vercel URL and `https://example.com`
 returns `403 from proxy after CONNECT`), so no live production round-trip
 could be captured either. Both are reported honestly in the implementation
 report rather than fabricated.
+
+## 66. P0 Correction (2026-09-05)
+
+**Scope:** two items, both explicitly owner-authorized after a two-stage
+read-only review ("P0 VERIFICATION GATE & INDEPENDENT ENGINEERING PLAN",
+then "P0 CORRECTION DESIGN GATE") of the section 65 implementation. P0.2
+(expanding canonical audit to the ~30 remaining `appendUnifiedAuditEntry`
+call sites named in section 65's scope boundary) is explicitly NOT part of
+this item and remains a separately tracked follow-up.
+
+**Issue A — hash-chain trigger timing bug (found in review, corrected here).**
+`audit_logs_chain_before_insert` (section 65) ran as a `BEFORE INSERT`
+trigger. Postgres fires `BEFORE ROW` triggers — and any side effect they
+perform, such as this trigger's write to `audit_logs_chain_tip` — even for
+a row that `ON CONFLICT DO NOTHING` ultimately discards; only `AFTER ROW`
+triggers are guaranteed not to fire for a discarded row (the same
+documented mechanism that causes serial/bigserial "gaps"). Consequence: a
+retried `AuditLogRepository.append()` call for an id that already existed
+(the intended, documented idempotent-retry path) would have silently
+advanced the chain tip a second time using the retried payload, corrupting
+the very tamper-evidence property the chain exists for.
+
+*Correction* (`supabase/migrations/20260905000000_audit_logs_canonical_chain.sql`):
+the trigger function and trigger were dropped and recreated as
+`audit_logs_chain_after_insert`, an `AFTER INSERT ... FOR EACH ROW` trigger.
+No other column, index, or policy in that migration changed; no historical
+data is rewritten (there was none — the migration had never been applied
+to a real database). A 14-dimension comparison against a `SECURITY
+DEFINER` RPC alternative (atomicity, concurrency, duplicate inserts,
+rollback, RLS, PostgREST/Supabase behavior, observability, operational
+simplicity, maintainability, failure modes, verification, future
+migrations, compatibility with `AuditLogRepository`, and diff size) was
+presented to the owner, who approved the `AFTER INSERT` trigger — it keeps
+the existing seq/prev_hash/hash design and the existing repository's public
+shape, and avoids introducing an RPC surface with no evidenced need.
+
+Because an `AFTER INSERT` trigger's effects are never visible in that same
+`INSERT ... RETURNING` statement's own response, `AuditLogRepository.append()`
+(`packages/database/src/repositories/audit-log.ts`) was changed to always
+re-read the row by id after the upsert, rather than branching on the
+upsert's own returned data — this also simplifies the method, since the
+same read-back code path now serves both "genuinely inserted" and
+"conflicted with an existing row." `audit-log.test.ts` was updated to mock
+an empty-body upsert response followed by a separate read-back, and a new
+scenario 6 was added to
+`supabase/tests/20260905000000_audit_logs_canonical_chain.test.sql`
+asserting a duplicate append does not advance the tip and that a
+genuinely-new row after it still chains from the correct prior hash.
+
+**Issue B / P0.1 — no durable execution-safety receipt for the no-approval
+path (found in review, closed here).** Governed actions that redeem an
+approval already have a fully durable Postgres claim → execute → finalize
+state machine (`public.approval_requests`, via
+`apps/api/src/services/governed-claimed-execution.ts` — confirmed
+unaffected by, and requiring no change for, this item). Governed actions
+with no `approvalRequestId` had no equivalent: their only protection
+against a retry executing the real action twice was the in-process
+`governedIdempotency` `Map`, persisted to `.atlas/governed-idempotency.json`
+via the same `findRepoRoot()` helper that resolves to `process.cwd()` under
+`process.env.VERCEL` — the identical ephemeral-Vercel-filesystem durability
+gap section 65 closed for audit evidence, here for execution safety
+instead.
+
+*Table-choice decision.* `public.tool_calls` was considered and rejected:
+its `run_id` is `not null references agent_runs(id)`, and
+`agent_runs.owner_id` is in turn `not null references auth.users(id)` —
+reusing it would force fabricating a real-Auth-user-owned `agent_runs` row
+for every low-risk, no-approval governed action, reintroducing the exact
+FK hazard section 65 already solved for `audit_logs` via a nullable,
+always-NULL `owner_id`. A new, narrow, service-role-only table was created
+instead: `public.governed_execution_receipts`
+(`supabase/migrations/20260905030000_governed_execution_receipts.sql`),
+RLS enabled with zero policies (matching the `tool_calls`/`agent_steps`/
+`security_events` convention), `owner_id` nullable and always inserted as
+`NULL` for the same reason section 65's `audit_logs.owner_id` is (the
+governed-execution identity's `ownerId` is not guaranteed to correspond to
+a real `auth.users` row), and `project_id` as `text` rather than `uuid` —
+unlike `tool_calls.project_id` — because the governed-execution identity's
+`projectId` is checked for existence against the in-memory/JSON-file
+`osStore`, not against `public.projects`, and is not guaranteed to be a
+real UUID.
+
+*Semantics.* `idempotency_key` carries a unique index; claiming is a plain
+`insert ... on conflict (idempotency_key) do nothing` (deliberately no
+trigger on this table, unlike `audit_logs`, avoiding any chance of an
+Issue-A-class bug here). Finalizing is a conditional
+`update ... where idempotency_key = $1 and status = 'STARTED'`, race-safe
+by construction. `status` reuses the existing `OUTCOME_UNKNOWN` recovery
+vocabulary from the approval lifecycle rather than inventing a new one, per
+the owner's explicit instruction; this pass does not itself write
+`OUTCOME_UNKNOWN` — a row stuck in `STARTED` (crash between claim and
+finalize) is read back as an in-flight/unknown state by the claim path
+(`IN_FLIGHT_OUTCOME_UNKNOWN`) and conservatively refused rather than
+reconciled — reconciliation is a named, out-of-scope follow-up, not a
+silently-dropped requirement.
+
+*Implementation.* `packages/database/src/repositories/governed-execution-receipt.ts`
+(`GovernedExecutionReceiptRepository`: `claim`, `finalize`,
+`getByIdempotencyKey`) and `packages/database/src/governed-execution-receipt-persist.ts`
+(`claimGovernedExecutionReceipt`, `finalizeGovernedExecutionReceipt` —
+following `audit-log-persist.ts`'s always-report-failure convention, not
+the older best-effort wrappers) are new, exported from
+`packages/database/src/index.ts`. `apps/api/src/services/governed-execution.ts`
+integrates them inside `finishGovernedExecution`, strictly for the branch
+where `approvalRequestId === undefined` and an `idempotencyKey` is
+supplied: **DURABLE CLAIM → REAL EXECUTION → DURABLE FINALIZE → CANONICAL
+AUDIT**. Finalize is ordered before the canonical audit write so that, if
+canonical audit persistence then fails on a Vercel production runtime
+(`auditOutcome` / `appendCanonicalAuditEntry` throw, per section 65's
+existing fail-closed behavior), the durable receipt already reflects the
+true outcome and a retry replays it instead of executing the real action
+again. `GovernedExecutionOutcome`'s `EXECUTED` variant gained an optional
+`auditStatus?: "confirmed" | "degraded"` field, set from the canonical
+audit write's own result, so a replayed outcome (or a degraded one) is
+reported honestly rather than silently implying audit evidence exists when
+it does not.
+
+*Failure/degrade semantics (mirrors section 65's audit fail-closed
+convention for the same platform constraint):* Vercel production with no
+live/working durable claim store → **fail closed before executing** —
+refuses the action outright, never falls back to the in-memory mechanism.
+Non-Vercel-production with Postgres configured but failing → **degrades**
+to the pre-existing `governedIdempotency` Map/file mechanism (unchanged
+from section 65's status quo for this path). No live Supabase configured
+and not Vercel production → **unchanged existing behavior**, matching
+every existing test (no live Supabase, `NODE_ENV="test"`).
+
+**Approval-gated actions are untouched.** The entire block above is gated
+on `approvalRequestId === undefined`; `runGovernedClaimedExecution` and
+`governed-claimed-execution.ts` were read in full and confirmed to need no
+change.
+
+**Known, documented trade-off (not fixed in this pass):** a replayed
+outcome re-invokes `auditOutcome`, which calls
+`appendUnifiedCanonicalAuditEntry` with a fresh, randomly-generated audit
+entry id each time (this pass does not thread a stable id through for
+replay dedup). A governed action replayed N times can therefore produce N
+corroborating `audit_logs` rows for the same real execution, not one — this
+is redundancy, not fabrication or tamper (each row honestly reports the
+same real, already-happened outcome), but it was judged out of scope here
+because giving it a stable id would change `auditOutcome`'s general id
+semantics for every caller, not just this one path, which is exactly the
+kind of unrelated, broader change this item's authorization excluded.
+Flagged as a candidate follow-up, not a silently accepted defect.
+
+**Verification status:** see the P0 Correction + P0.1 Implementation report
+delivered alongside this section for the full, itemized verification
+ladder (build/typecheck, unit tests, real-Postgres integration, CI, and
+production) — summarized here only to the extent needed for future
+readers of this document: this environment's `node_modules` remained
+unusable for a full local `tsc`/`vitest` run even after a controlled,
+CI-identical recovery attempt (`CI=true pnpm install --frozen-lockfile`,
+matching `.github/workflows/ci.yml` exactly) was directly attempted and
+did not complete within this device-bridge shell's per-call time budget;
+a syntax-only check (via a separately-installed, non-workspace TypeScript
+compiler, `--noResolve`, filtering to TS1xxx/parse errors only) found no
+parse errors in any new or modified file. No local Postgres, Docker, or
+Supabase CLI was available to execute the paired SQL test files. See the
+report for whether the implementation commit was pushed and what, if
+anything, GitHub Actions CI reported.

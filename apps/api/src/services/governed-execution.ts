@@ -29,7 +29,16 @@ import {
   type GovernanceDecision,
   type GovernanceDecisionInput,
 } from "@atlas/shared";
-import { appendUnifiedCanonicalAuditEntry } from "./audit-log.js";
+import {
+  appendUnifiedCanonicalAuditEntry,
+  type CanonicalAuditWriteResult,
+} from "./audit-log.js";
+import {
+  claimGovernedExecutionReceipt,
+  finalizeGovernedExecutionReceipt,
+  isLiveSupabase,
+  type GovernedExecutionReceiptStoreEnv,
+} from "@atlas/database";
 import {
   enforceAgentToolAuthorization,
   type AuthenticatedAgentIdentity,
@@ -98,6 +107,21 @@ export type GovernedExecutionOutcome =
       readonly status: "EXECUTED";
       readonly artifactHash: string;
       readonly output: string;
+      /**
+       * P0.1 -- honest, best-effort report of canonical audit durability
+       * for THIS outcome: "confirmed" when appendCanonicalAuditEntry wrote
+       * to its canonical store (Postgres, or NDJSON when Postgres is not
+       * configured and this is not Vercel production); "degraded" when
+       * Postgres failed and the NDJSON secondary caught it (see
+       * CanonicalAuditWriteResult.degraded in ./audit-log.ts). Never
+       * fabricated -- when canonical audit fails outright on a Vercel
+       * production runtime, auditOutcome throws instead of returning an
+       * outcome with this field set, exactly like the original P0
+       * fail-closed behavior. Optional only because outcomes are also
+       * constructed, pre-audit, at other points in this file before this
+       * field is known.
+       */
+      readonly auditStatus?: "confirmed" | "degraded";
     };
 
 export interface GovernedExecutionRequest {
@@ -309,6 +333,206 @@ export function reloadGovernedIdempotencyForTests(): void {
   loadGovernedIdempotency();
 }
 
+/**
+ * ---------------------------------------------------------------------
+ * P0.1 -- durable claim/finalize for the NO-APPROVAL execution path
+ * (Correction Design Gate, Issue B; see
+ * docs/architecture/ATLAS_MASTER_TRUTH.md section 66 for the full design
+ * write-up).
+ * ---------------------------------------------------------------------
+ *
+ * Approval-gated actions already have a fully durable Postgres claim/
+ * finalize state machine (public.approval_requests, via
+ * runGovernedClaimedExecution / governed-claimed-execution.ts) -- nothing
+ * below applies to them. This block exists ONLY for governed actions with
+ * no approvalRequestId, where runGovernedClaimedExecution's executeOnce
+ * would otherwise run with no protection beyond the in-process
+ * `governedIdempotency` Map/file above -- which has the identical
+ * ephemeral-Vercel-filesystem durability gap the original P0 fix closed
+ * for audit evidence, but here for execution safety instead.
+ *
+ * Sequence: DURABLE CLAIM -> REAL EXECUTION -> DURABLE FINALIZE ->
+ * CANONICAL AUDIT. Finalize is deliberately ordered before the canonical
+ * audit write (see finishGovernedExecution below): if canonical audit
+ * persistence then fails on a Vercel production runtime, auditOutcome
+ * throws (fail-closed, exactly like the original P0 behavior) -- but by
+ * that point the durable receipt already reflects the true outcome, so a
+ * retry will replay it instead of executing the real action again.
+ */
+
+/**
+ * Same VERCEL + NODE_ENV=production condition audit-log.ts's
+ * isVercelProduction() uses, duplicated locally rather than exported
+ * cross-file: this is a one-line, environment-only check, and importing it
+ * would couple this file's execution-safety logic to audit-log.ts's public
+ * surface for no real reuse benefit.
+ */
+function isVercelProductionRuntime(): boolean {
+  return Boolean(process.env.VERCEL) && process.env.NODE_ENV === "production";
+}
+
+/**
+ * Same presence-vs-liveness gate as audit-log.ts's getSupabaseEnvFromProcess
+ * -- see that function's comment for why `isLiveSupabase` (not mere
+ * presence of SUPABASE_* env vars) is required: every existing
+ * .env/.env.example ships a `replace-me` placeholder service role key, and
+ * treating that as "configured" would misroute every existing test into
+ * the fail-closed/degrade branches instead of the intended unchanged
+ * (NOT_CONFIGURED) branch.
+ */
+function getGovernedExecutionReceiptEnv(): GovernedExecutionReceiptStoreEnv | null {
+  const url = process.env.SUPABASE_URL?.trim();
+  const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !anonKey || !serviceRoleKey) return null;
+  const env: GovernedExecutionReceiptStoreEnv = {
+    SUPABASE_URL: url,
+    SUPABASE_ANON_KEY: anonKey,
+    SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+  };
+  if (!isLiveSupabase(env)) return null;
+  return env;
+}
+
+/**
+ * Only two states are actually reachable: appendCanonicalAuditEntry either
+ * writes to a canonical store (Postgres, or NDJSON when Postgres is not
+ * configured and this is not Vercel production) and returns normally, or
+ * it throws (fail-closed on Vercel production, or both stores failed).
+ * There is no reachable "wrote nothing but didn't throw" case, so this
+ * never needs a third "unconfirmed" value.
+ */
+function canonicalAuditStatus(write: CanonicalAuditWriteResult): "confirmed" | "degraded" {
+  return write.degraded ? "degraded" : "confirmed";
+}
+
+type DurableClaimOutcome =
+  /** Won the claim; caller must execute, then finalize. */
+  | { readonly kind: "CLAIMED" }
+  /** A durable EXECUTED receipt already exists -- do not execute again. */
+  | { readonly kind: "REPLAY"; readonly outcome: GovernedExecutionOutcome }
+  /** Same idempotency key, different artifact -- refuse, mirrors the in-memory check above. */
+  | { readonly kind: "ARTIFACT_MISMATCH" }
+  /** A receipt is STARTED elsewhere (in flight or crashed) -- refuse rather than guess. */
+  | { readonly kind: "IN_FLIGHT" }
+  /** Postgres is down and this is not Vercel production -- degrade to the in-memory/file mechanism. */
+  | { readonly kind: "DEGRADE_TO_MEMORY" }
+  /** No live Supabase configured and this is not Vercel production -- unchanged existing behavior. */
+  | { readonly kind: "NOT_CONFIGURED" };
+
+/**
+ * Reconstruct a GovernedExecutionOutcome from a durable receipt's stored
+ * `outcome` jsonb. Deliberately conservative: any shape mismatch is treated
+ * as undecodable rather than partially trusted, because the only two things
+ * a caller can safely do with a REPLAY are "return this exact prior result"
+ * or "refuse" -- never fabricate a result from a malformed record.
+ */
+function decodeGovernedExecutionOutcome(
+  raw: Record<string, unknown> | null,
+  artifactHash: string,
+): GovernedExecutionOutcome | null {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.stage === "EXECUTION" && raw.status === "EXECUTED" && typeof raw.output === "string") {
+    return { stage: "EXECUTION", status: "EXECUTED", artifactHash, output: raw.output };
+  }
+  return null;
+}
+
+/**
+ * Attempt the durable claim. Throws (fail-closed, refusing to execute the
+ * action at all) only on a Vercel production runtime with no live/working
+ * Postgres claim store -- mirroring appendCanonicalAuditEntry's existing
+ * fail-closed convention for the exact same platform constraint. Every
+ * other environment either proceeds durably (CLAIMED/REPLAY/
+ * ARTIFACT_MISMATCH/IN_FLIGHT) or degrades to the pre-existing in-memory
+ * mechanism (DEGRADE_TO_MEMORY/NOT_CONFIGURED) -- full backward
+ * compatibility with every existing test, which runs with no live
+ * Supabase configured and NODE_ENV="test".
+ */
+async function claimDurableGovernedExecution(input: {
+  readonly idempotencyKey: string;
+  readonly artifactHash: string;
+  readonly ownerId: string | null;
+  readonly projectId: string | null;
+  readonly entityType: string;
+  readonly action: string;
+}): Promise<DurableClaimOutcome> {
+  const vercelProd = isVercelProductionRuntime();
+  const env = getGovernedExecutionReceiptEnv();
+
+  if (!env) {
+    if (vercelProd) {
+      throw new Error(
+        "Durable governed-execution receipt persistence (Supabase) is not configured on a Vercel production runtime -- refusing to execute this no-approval governed action (fail closed).",
+      );
+    }
+    return { kind: "NOT_CONFIGURED" };
+  }
+
+  const result = await claimGovernedExecutionReceipt(env, {
+    id: randomUUID(),
+    idempotencyKey: input.idempotencyKey,
+    ownerId: input.ownerId,
+    projectId: input.projectId,
+    entityType: input.entityType,
+    action: input.action,
+    artifactHash: input.artifactHash,
+  });
+
+  if (!result.ok) {
+    if (vercelProd) {
+      throw new Error(
+        `Durable governed-execution receipt claim (Supabase) failed on a Vercel production runtime -- refusing to execute this no-approval governed action (fail closed). Cause: ${result.error ?? result.reason}`,
+      );
+    }
+    return { kind: "DEGRADE_TO_MEMORY" };
+  }
+
+  const claim = result.claim;
+  if (claim.kind === "CLAIMED") return { kind: "CLAIMED" };
+  if (claim.kind === "ARTIFACT_MISMATCH") return { kind: "ARTIFACT_MISMATCH" };
+  if (claim.kind === "IN_FLIGHT_OUTCOME_UNKNOWN") return { kind: "IN_FLIGHT" };
+
+  // REPLAY_EXECUTED
+  const outcome = decodeGovernedExecutionOutcome(claim.row.outcome, claim.row.artifactHash);
+  if (!outcome) {
+    if (vercelProd) {
+      throw new Error(
+        "Durable governed-execution receipt is marked EXECUTED but its stored outcome could not be decoded -- refusing to execute again or fabricate a result (fail closed).",
+      );
+    }
+    return { kind: "IN_FLIGHT" };
+  }
+  return { kind: "REPLAY", outcome };
+}
+
+/**
+ * Best-effort finalize. Deliberately NEVER throws: by the time this is
+ * called the real action has already run (or genuinely failed), and that
+ * fact must reach the original caller regardless of whether this durable
+ * bookkeeping step itself succeeds. A finalize failure leaves the receipt
+ * stuck in STARTED, which is safe, not silent: any future retry of the
+ * same idempotency key will see IN_FLIGHT and refuse to execute again
+ * (see claimDurableGovernedExecution) rather than risk a double
+ * execution. Reconciling a stuck STARTED row is intentionally out of scope
+ * for this pass (reuses the existing OUTCOME_UNKNOWN vocabulary as a
+ * description of that state, not a new mechanism -- see the P0.1
+ * migration's header comment).
+ */
+async function finalizeDurableGovernedExecution(input: {
+  readonly idempotencyKey: string;
+  readonly status: "EXECUTED" | "FAILED";
+  readonly outcome: GovernedExecutionOutcome;
+}): Promise<void> {
+  const env = getGovernedExecutionReceiptEnv();
+  if (!env) return;
+  await finalizeGovernedExecutionReceipt(env, {
+    idempotencyKey: input.idempotencyKey,
+    status: input.status,
+    outcome: input.outcome as unknown as Record<string, unknown>,
+  });
+}
+
 interface GovernanceAuditContext {
   readonly gate: DispatchAgentActionResult | undefined;
   readonly approval: ApprovalRequest | undefined;
@@ -455,8 +679,8 @@ async function auditOutcome(
   outcome: GovernedExecutionOutcome,
   context: GovernanceAuditContext = EMPTY_GOVERNANCE_AUDIT_CONTEXT,
   canonicalTarget?: CanonicalTarget,
-): Promise<void> {
-  await appendUnifiedCanonicalAuditEntry({
+): Promise<CanonicalAuditWriteResult> {
+  const auditWrite = await appendUnifiedCanonicalAuditEntry({
     type: request.routeLabel,
     actorId: request.identity.agentId,
     actorKind: "AGENT",
@@ -484,6 +708,7 @@ async function auditOutcome(
   });
 
   await persistGovernanceDecision(buildGovernanceDecision(request, artifactHash, outcome, context));
+  return auditWrite;
 }
 
 /**
@@ -640,6 +865,90 @@ export async function executeGovernedAction(
       }
     }
 
+    // P0.1: durable claim for the NO-APPROVAL execution path only --
+    // approval-gated actions keep their existing, already-durable
+    // approval_requests-based protection untouched (see the block comment
+    // above claimDurableGovernedExecution).
+    let durableClaim: DurableClaimOutcome | null = null;
+    if (governedRequest.idempotencyKey && governedRequest.approvalRequestId === undefined) {
+      durableClaim = await claimDurableGovernedExecution({
+        idempotencyKey: governedRequest.idempotencyKey,
+        artifactHash,
+        // Always null, matching appendCanonicalAuditEntry's documented
+        // owner_id decision in audit-log.ts: governedRequest.identity.
+        // ownerId is not guaranteed to be a real auth.users row (system/
+        // synthetic-tenant governed actions have no such user) --
+        // reusing it here would risk the exact same
+        // governed_execution_receipts.owner_id FK failure that fix
+        // already avoided for audit_logs.
+        ownerId: null,
+        projectId: governedRequest.identity.projectId,
+        entityType: canonical.entityType,
+        action: canonical.action,
+      });
+
+      if (durableClaim.kind === "ARTIFACT_MISMATCH") {
+        const outcome: GovernedExecutionOutcome = {
+          stage: "EXECUTION",
+          status: "FAILED",
+          reason: "idempotency key reused with a different artifact",
+        };
+        await auditOutcome(
+          governedRequest,
+          artifactHash,
+          outcome,
+          EMPTY_GOVERNANCE_AUDIT_CONTEXT,
+          extracted.target,
+        );
+        return outcome;
+      }
+
+      if (durableClaim.kind === "IN_FLIGHT") {
+        const outcome: GovernedExecutionOutcome = {
+          stage: "EXECUTION",
+          status: "FAILED",
+          reason:
+            "a prior execution attempt for this idempotency key is still in flight or crashed before it could be finalized (OUTCOME_UNKNOWN) -- refusing to execute again until it is resolved",
+        };
+        await auditOutcome(
+          governedRequest,
+          artifactHash,
+          outcome,
+          EMPTY_GOVERNANCE_AUDIT_CONTEXT,
+          extracted.target,
+        );
+        return outcome;
+      }
+
+      if (durableClaim.kind === "REPLAY") {
+        // Durable EXECUTED receipt already exists: do not execute the real
+        // action again. Still re-attempt the canonical audit write -- if
+        // the original attempt's canonical audit write had failed or
+        // degraded, this is a self-healing opportunity -- and always
+        // report the current audit status honestly rather than assuming
+        // the original attempt's audit succeeded.
+        const replayOutcome = durableClaim.outcome;
+        const auditWrite = await auditOutcome(
+          governedRequest,
+          artifactHash,
+          replayOutcome,
+          EMPTY_GOVERNANCE_AUDIT_CONTEXT,
+          extracted.target,
+        );
+        const finalOutcome: GovernedExecutionOutcome =
+          replayOutcome.status === "EXECUTED"
+            ? { ...replayOutcome, auditStatus: canonicalAuditStatus(auditWrite) }
+            : replayOutcome;
+        governedIdempotency.set(governedRequest.idempotencyKey, {
+          artifactHash,
+          outcome: finalOutcome,
+        });
+        persistGovernedIdempotency();
+        return finalOutcome;
+      }
+      // CLAIMED, DEGRADE_TO_MEMORY, or NOT_CONFIGURED: fall through and execute below.
+    }
+
   const helper = await runGovernedClaimedExecution({
     executorId: governedRequest.identity.agentId,
     actor: {
@@ -734,7 +1043,18 @@ export async function executeGovernedAction(
     };
   }
 
-  await auditOutcome(governedRequest, artifactHash, outcome, { gate, approval }, extracted.target);
+  if (durableClaim?.kind === "CLAIMED" && governedRequest.idempotencyKey) {
+    await finalizeDurableGovernedExecution({
+      idempotencyKey: governedRequest.idempotencyKey,
+      status: outcome.status === "EXECUTED" ? "EXECUTED" : "FAILED",
+      outcome,
+    });
+  }
+
+  const auditWrite = await auditOutcome(governedRequest, artifactHash, outcome, { gate, approval }, extracted.target);
+  if (outcome.status === "EXECUTED") {
+    outcome = { ...outcome, auditStatus: canonicalAuditStatus(auditWrite) };
+  }
   if (governedRequest.idempotencyKey && outcome.status === "EXECUTED") {
     governedIdempotency.set(governedRequest.idempotencyKey, { artifactHash, outcome });
     persistGovernedIdempotency();

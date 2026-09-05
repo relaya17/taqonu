@@ -42,17 +42,28 @@ describe("AuditLogRepository", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("append() inserts owner_id/action/entity columns and returns the server-assigned seq/prev_hash/hash", async () => {
+  it("append() inserts owner_id/action/entity columns, then always re-reads the row by id (AFTER INSERT trigger values are never in the upsert's own response)", async () => {
     const requests: { url: string; body: unknown }[] = [];
+    let getByIdCalls = 0;
     globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
       const urlStr = String(url);
       const body = init?.body ? JSON.parse(String(init.body)) : null;
       requests.push({ url: urlStr, body });
       if (urlStr.includes("/rest/v1/audit_logs")) {
-        return new Response(JSON.stringify([serverRow()]), {
-          status: 201,
-          headers: { "content-type": "application/json" },
-        });
+        if (urlStr.includes("id=eq.")) {
+          getByIdCalls += 1;
+          // The AFTER INSERT trigger has already run by the time this
+          // follow-up SELECT executes, so prev_hash/hash are populated here
+          // even though the preceding upsert's own response never carries
+          // them.
+          return new Response(JSON.stringify(serverRow()), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        // Plain upsert with no .select() chained -- PostgREST returns an
+        // empty body by default (no return=representation requested).
+        return new Response("", { status: 201, headers: { "content-type": "application/json" } });
       }
       return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
     }) as unknown as typeof fetch;
@@ -60,38 +71,42 @@ describe("AuditLogRepository", () => {
     const repo = new AuditLogRepository(makeClient());
     const result = await repo.append(sampleEntry);
 
+    expect(getByIdCalls).toBe(1);
     expect(result.id).toBe(sampleEntry.id);
     expect(result.seq).toBe(1);
     expect(result.prevHash).toBe("GENESIS");
     expect(result.hash).toBe("abc123");
 
-    const insertCall = requests.find((r) => r.url.includes("/rest/v1/audit_logs"));
+    const insertCall = requests.find(
+      (r) => r.url.includes("/rest/v1/audit_logs") && !r.url.includes("id=eq."),
+    );
     const insertedRow = insertCall?.body as Record<string, unknown>;
     expect(insertedRow.owner_id).toBeNull();
     expect(insertedRow.action).toBe(sampleEntry.action);
     expect(insertedRow.entity_type).toBe(sampleEntry.entityType);
     // The client must never send seq/prev_hash/hash itself -- those are
-    // server-assigned by the audit_logs_chain_before_insert trigger.
+    // server-assigned by the audit_logs_chain_after_insert trigger.
     expect(insertedRow.seq).toBeUndefined();
     expect(insertedRow.prev_hash).toBeUndefined();
     expect(insertedRow.hash).toBeUndefined();
   });
 
-  it("append() on a duplicate id (ignored by ON CONFLICT) fetches and returns the already-persisted row instead of throwing", async () => {
+  it("append() on a duplicate id (ignored by ON CONFLICT) reads back the already-persisted row instead of throwing, and the AFTER INSERT trigger never fired a second time", async () => {
     let upsertCalls = 0;
     globalThis.fetch = vi.fn(async (url: unknown) => {
       const urlStr = String(url);
       if (urlStr.includes("/rest/v1/audit_logs")) {
         if (urlStr.includes("id=eq.")) {
-          // getById fallback lookup
+          // Unchanged from the first (genuine) insert -- proves the
+          // duplicate attempt did not advance the chain.
           return new Response(JSON.stringify(serverRow()), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
         }
         upsertCalls += 1;
-        // ignoreDuplicates -> PostgREST returns no rows for the conflicting insert
-        return new Response("[]", { status: 201, headers: { "content-type": "application/json" } });
+        // ON CONFLICT DO NOTHING -> empty body regardless of conflict.
+        return new Response("", { status: 201, headers: { "content-type": "application/json" } });
       }
       return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
     }) as unknown as typeof fetch;
