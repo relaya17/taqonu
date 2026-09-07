@@ -5,6 +5,12 @@
 # Read-only. Proves the private plane is running AND still private, and that
 # the migration did not disturb the completed Atlas system.
 #
+# Runs deploy/validate-production-env.sh FIRST (static, pre-startup checks:
+# file permissions/ownership, duplicate variables, token relationships,
+# URL correctness) before any of the live/post-startup checks below, so a
+# configuration problem is reported once, by the one script that owns that
+# check, rather than re-implemented here.
+#
 # Usage:  sudo ./verify.sh
 #
 set -uo pipefail
@@ -24,6 +30,22 @@ section() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" 2>/dev/null || echo 000; }
 
 CP_TOKEN="$(grep -sE '^ATLAS_CONTROL_PLANE_TOKEN=' "$ATLAS_ETC/control-plane.env" | cut -d= -f2- || true)"
+
+section "0. Static production environment validation (pre-startup)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VALIDATOR="$SCRIPT_DIR/validate-production-env.sh"
+if [[ -x "$VALIDATOR" ]]; then
+  VALIDATE_RC=0
+  "$VALIDATOR" || VALIDATE_RC=$?
+  case "$VALIDATE_RC" in
+    0) ok "deploy/validate-production-env.sh: READY (see full output above)" ;;
+    1) bad "deploy/validate-production-env.sh: BLOCKED — a locally-fixable misconfiguration exists (see BLOCKED lines above)" ;;
+    2) skip "deploy/validate-production-env.sh: REQUIRES OWNER INPUT — external values (Vercel/Supabase) are still missing (see OWNER lines above); this alone does not fail verify.sh, since it does not indicate the running services are misbehaving, only that some inputs are incomplete" ;;
+    *) bad "deploy/validate-production-env.sh exited with unexpected code $VALIDATE_RC" ;;
+  esac
+else
+  skip "deploy/validate-production-env.sh not found or not executable at $VALIDATOR"
+fi
 
 section "1. Runtime"
 NODE_MAJOR="$(node -v 2>/dev/null | cut -c2- | cut -d. -f1 || echo 0)"
@@ -99,12 +121,11 @@ else
   skip "Tailscale IPv4 not available"
 fi
 
-for f in control-plane admin worker; do
-  perms="$(stat -c '%a' "$ATLAS_ETC/$f.env" 2>/dev/null || echo missing)"
-  [[ "$perms" == "640" || "$perms" == "600" ]] \
-    && ok "$f.env permissions are $perms" \
-    || bad "$f.env permissions are $perms — expected 640 or 600"
-done
+# NOTE: env-file permission/ownership checks used to be re-implemented here.
+# They are now covered by deploy/validate-production-env.sh in section "0."
+# above (which also checks ownership, not just mode, plus duplicates and
+# token relationships that this loop never could) — removed from here to
+# avoid two sources of truth for the same check.
 
 # packages/config loads /opt/atlas/.env (override:false) and then
 # /opt/atlas/apps/api/.env with override:TRUE. A stray file at either path

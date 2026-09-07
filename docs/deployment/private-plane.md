@@ -38,6 +38,11 @@ run in the wrong place. Fixing them means moving the app, not changing the code.
   - 1 vCPU / 2 GB is enough if you build in CI and ship artifacts
 - A Tailscale account (free tier is sufficient)
 - SSH access to the VM
+- Values only you can supply — this migration's scripts will never invent
+  them (see [External values you must supply](#external-values-you-must-supply)):
+  the real production `WEB_ORIGIN` and `ATLAS_API_URL` (your `apps/web` /
+  `apps/api` Vercel URLs) and your Supabase project's `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `DATABASE_URL`.
 
 Runtime pinned by the repo: **Node 22** (`engines: { node: ">=22" }`) and
 **pnpm 10.28.2** (`packageManager` in the root `package.json`).
@@ -58,31 +63,100 @@ sudo /tmp/atlas-bootstrap/deploy/bootstrap.sh
 `bootstrap.sh` is idempotent and never overwrites an existing `/etc/atlas/*.env`.
 It installs Node and pnpm, creates the `atlas` service account, clones to
 `/opt/atlas`, builds only the three private apps, installs the systemd units,
-writes the nginx config bound to your Tailscale IP, and locks the firewall down
-to `deny incoming`.
+writes the nginx config bound to your Tailscale IP, locks the firewall down to
+`deny incoming`, then runs the full pipeline below and ends with an explicit
+**READY / BLOCKED / REQUIRES OWNER INPUT** verdict.
 
-It deliberately leaves the services **stopped** until you supply configuration.
+It deliberately leaves the services **stopped** until that verdict is READY.
 
-### Fill in configuration
+### What bootstrap.sh does with your env files, step by step
+
+1. **Preflight** — installs packages, Node, pnpm, Tailscale (section 1).
+2. **Env files created from template, never overwritten** — the first run
+   copies `deploy/env/*.env.example` to `/etc/atlas/*.env` with every value
+   blank; a later run leaves an existing file untouched, in full.
+3. **Auto-fill safely-generatable secrets** (`deploy/generate-tokens.sh`) —
+   fills `ATLAS_CONTROL_PLANE_TOKEN` and `ATLAS_CONTROL_PLANE_OWNER_TOKEN` in
+   `control-plane.env` (guaranteed distinct), `ENCRYPTION_KEY` and
+   `COOKIE_SECRET` in `worker.env`, and copies the operator token into
+   `admin.env` — but **only ever into a line that is present and empty**.
+   It never overwrites a value that is already set: rotating an existing
+   token is a separate, explicit action (see
+   [Rotating a token](#rotating-a-token)), never something a script does for
+   you silently. Safe to re-run any time — a fully-configured install is
+   always a no-op here.
+4. **External dependency check / security validation / explicit startup
+   gate** (`deploy/validate-production-env.sh`) — the single authoritative
+   check, run automatically at the end of `bootstrap.sh` and again by
+   `verify.sh`. See [Validate before starting](#validate-before-starting).
+
+### External values you must supply
+
+Nothing in this repository can generate or guess these — they come from
+Vercel and Supabase, or from you directly. `deploy/validate-production-env.sh`
+reports each one as **REQUIRES OWNER INPUT**, never as a silent default,
+until it is filled in:
+
+| Variable | File | Where it comes from |
+| --- | --- | --- |
+| `WEB_ORIGIN` | `control-plane.env` | your `apps/web` production URL/domain on Vercel |
+| `ATLAS_API_URL` | `control-plane.env` | your `apps/api` production URL on Vercel — **never** `http://127.0.0.1:3100`; that is the Control Plane's own loopback address, not the API |
+| `DATABASE_URL` | `worker.env` | your database connection string |
+| `SUPABASE_URL` | `worker.env` | your Supabase project |
+| `SUPABASE_ANON_KEY` | `worker.env` | your Supabase project |
+| `SUPABASE_SERVICE_ROLE_KEY` | `worker.env` | your Supabase project |
+
+Edit these by hand:
 
 ```bash
 sudo -e /etc/atlas/control-plane.env
-sudo -e /etc/atlas/admin.env
 sudo -e /etc/atlas/worker.env
 ```
 
-Generate tokens with `openssl rand -base64 48`. Two rules:
+Everything else in those two files, plus all of `admin.env`, is either
+auto-filled by `deploy/generate-tokens.sh` in step 3 above or has a safe
+built-in default (`APP_NAME`, `PRODUCT_CODENAME`, `ATLAS_QUEUE_PATH`,
+`ATLAS_REPO_ROOT`, `ATLAS_CP_AUDIT_SYNC`) — you should rarely need `nano` for
+anything beyond the table above.
 
-- `ATLAS_CONTROL_PLANE_TOKEN` (OPERATOR) and `ATLAS_CONTROL_PLANE_OWNER_TOKEN`
-  (OWNER) must be **different** values.
-- `ATLAS_CONTROL_PLANE_TOKEN` must be **identical** in `control-plane.env` and
-  `admin.env`.
-- Rotation: set the new current token, keep the retiring value in
-  `ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS` (and
-  `ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS` when rotating the owner secret)
-  on Control, Admin, and the tenant API. Restart those processes, then
-  remove PREVIOUS after every process has the new current. Do not leave
-  PREVIOUS set indefinitely.
+### Validate before starting
+
+```bash
+sudo /opt/atlas/deploy/validate-production-env.sh
+```
+
+This is the single authoritative gate `bootstrap.sh` and `verify.sh` both
+call. It never prints a secret value — only `PRESENT` / `EMPTY` / `MATCH` /
+`MISMATCH` / `DUPLICATE` against a variable **name**, and it exits with one
+of three codes:
+
+| Exit | Verdict | Meaning |
+| --- | --- | --- |
+| `0` | **READY** | Every check passed. Safe to start services. |
+| `1` | **BLOCKED** | A locally-fixable problem exists: a duplicate variable, bad file permissions/ownership, an operator token equal to the owner token, an admin token that doesn't match the Control Plane's, or a malformed/loopback URL where a public one is required. None of these need external input — fix them and re-run. |
+| `2` | **REQUIRES OWNER INPUT** | Everything locally checkable is correct. The only gaps left are the external values in the table above. |
+
+It also cross-checks the nginx auth snippet
+(`/etc/nginx/snippets/atlas-admin-auth.conf`) against the operator token, so a
+stale bearer header there is caught before you rely on the Owner UI.
+
+Run `deploy/validate-production-env.test.sh` after changing the validator
+itself — it exercises all of the cases above (and more) against disposable,
+fake fixture values, never real secrets.
+
+### Rotating a token
+
+`deploy/generate-tokens.sh` will never do this for you — rotation is a
+deliberate, explicit action with restart/coordination steps, not something
+that should ever happen as a side effect of re-running a provisioning script:
+
+1. Set the new current token, keeping the retiring value in
+   `ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS` (and
+   `ATLAS_CONTROL_PLANE_OWNER_TOKEN_PREVIOUS` when rotating the owner secret)
+   on Control, Admin, and the tenant API.
+2. Restart those processes.
+3. Once every process has the new current value, remove `_PREVIOUS`. Do not
+   leave it set indefinitely.
 
 Then put the same operator token into the nginx snippet:
 
@@ -93,6 +167,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Do not use the literal placeholder `12345678901234567890123456789012` for
 `ENCRYPTION_KEY` or `COOKIE_SECRET`; `assertNotExampleSecrets()` rejects it.
+(`deploy/generate-tokens.sh` never produces this value.)
 
 ### A dotenv file outranks systemd
 
@@ -107,10 +182,21 @@ fails the run if either appears.
 
 ### Start
 
+Only once `deploy/validate-production-env.sh` (or `bootstrap.sh`'s own final
+report) says **READY**:
+
 ```bash
 sudo systemctl enable --now atlas-control-plane atlas-admin atlas-worker
 sudo /opt/atlas/deploy/verify.sh
 ```
+
+Startup order, and what to do if one step fails: validate env → validate
+nginx (`nginx -t`) → start Control Plane → confirm it answers
+`/api/v1/status` → start Admin → confirm it answers → start Worker → confirm
+its unit stays active. If any step fails, stop and read that unit's journal
+(`journalctl -u <unit> -n 50`) rather than starting the next one — a failure
+at one layer (e.g. Control Plane refusing to bind because `ATLAS_API_URL` is
+still loopback) will otherwise cascade into confusing failures at the next.
 
 ### Update later
 
@@ -118,6 +204,31 @@ sudo /opt/atlas/deploy/verify.sh
 sudo /opt/atlas/deploy/bootstrap.sh --update
 sudo systemctl restart atlas-control-plane atlas-admin atlas-worker
 ```
+
+---
+
+## Recovering from a failed or partial deployment
+
+`bootstrap.sh` is safe to re-run at any point — every step in it is
+idempotent (packages are only installed if missing, source is pulled not
+re-cloned, env files and the nginx snippet are never overwritten once they
+exist, secrets are only ever filled into an empty line). If a run fails
+partway through:
+
+1. Re-run `sudo /opt/atlas/deploy/bootstrap.sh` — it picks up from wherever
+   it left off rather than starting over.
+2. If the failure was in the build step, check `pnpm install` / `turbo run
+   build` output directly; nothing downstream (env files, secrets, systemd,
+   nginx) is touched until the build succeeds.
+3. If services were already started and are now unhealthy after a config
+   change, `sudo systemctl stop atlas-control-plane atlas-admin
+   atlas-worker`, fix the flagged `.env` file, re-run
+   `deploy/validate-production-env.sh` until it says READY, then start again
+   in the order under [Start](#start).
+4. `/etc/atlas/*.env` and `/etc/nginx/snippets/atlas-admin-auth.conf` are
+   the only state this migration asks you to hand-edit. Back them up before
+   any manual change you're unsure about — there is no automatic backup
+   mechanism for them beyond your own copy.
 
 ---
 
@@ -194,7 +305,22 @@ canonical hash-chain. Outbound HTTPS needs no inbound rule. Set
 
 ## Verification checklist
 
-`deploy/verify.sh` automates all of these. Run it after every deployment.
+`deploy/verify.sh` automates all of these. Run it after every deployment. Its
+first section (`0. Static production environment validation`) is
+`deploy/validate-production-env.sh` — everything below that was previously a
+second, separately-maintained implementation of the permission/ownership
+checks; that duplication has been removed, and `verify.sh` now delegates to
+the one script that owns those checks.
+
+### Static, pre-startup (deploy/validate-production-env.sh)
+- [ ] No duplicate variable definitions in any of the three env files
+- [ ] `/etc/atlas/*.env` are mode `640` or `600`, owned `root:atlas`
+- [ ] `ATLAS_CONTROL_PLANE_TOKEN` ≠ `ATLAS_CONTROL_PLANE_OWNER_TOKEN`
+- [ ] Admin's `ATLAS_CONTROL_PLANE_TOKEN` matches Control Plane's exactly
+- [ ] `WEB_ORIGIN` and `ATLAS_API_URL` are non-loopback `https://` URLs
+- [ ] `ATLAS_CONTROL_PLANE_URL` in `admin.env` is loopback `http://127.0.0.1:<port>`
+- [ ] Worker's secrets pass the real `@atlas/config` `loadServerEnv()` check
+- [ ] nginx auth snippet's bearer token matches the current operator token
 
 ### Runtime
 - [ ] Node ≥ 22
@@ -217,7 +343,6 @@ canonical hash-chain. Outbound HTTPS needs no inbound rule. Set
 - [ ] nginx bound to the Tailscale IP, never `0.0.0.0`
 - [ ] `ufw` default is deny-incoming
 - [ ] The URL is unreachable from a device outside the tailnet
-- [ ] `/etc/atlas/*.env` are mode `640` or `600`
 - [ ] No `/opt/atlas/.env` or `/opt/atlas/apps/api/.env` outranking systemd
 
 ### Completed system undisturbed
@@ -308,3 +433,9 @@ work and is out of scope for this migration.
 
 - [ADR-021 — Private-by-default and a separate Atlas Control Plane](../adr/ADR-021-private-by-default-control-plane.md)
 - [`deploy/`](../../deploy/) — systemd units, nginx config, env templates, scripts
+- `deploy/validate-production-env.sh` — the authoritative READY / BLOCKED /
+  REQUIRES OWNER INPUT gate, run by both `bootstrap.sh` and `verify.sh`
+- `deploy/validate-production-env.test.sh` — its self-test suite (disposable
+  fixtures, no real secrets)
+- `deploy/generate-tokens.sh` — safe, non-rotating generator for the secrets
+  Atlas can create itself

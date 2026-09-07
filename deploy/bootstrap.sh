@@ -8,6 +8,13 @@
 #
 # Idempotent. Never overwrites an existing /etc/atlas/*.env.
 #
+# Pipeline: packages -> service account -> source -> build -> env files ->
+# auto-fill safely-generatable secrets (never rotates) -> systemd units ->
+# nginx (validate, never reload here) -> firewall -> explicit startup gate
+# (deploy/validate-production-env.sh — READY / BLOCKED / REQUIRES OWNER
+# INPUT). Services are left stopped either way; starting them is always a
+# separate, explicit step reported at the end.
+#
 # Usage:
 #   sudo ./bootstrap.sh              # full provision
 #   sudo ./bootstrap.sh --update     # pull + rebuild + restart only
@@ -101,6 +108,21 @@ for svc in control-plane admin worker; do
   fi
 done
 
+# ── 5b. Auto-fill safely-generatable secrets (never rotates) ──────────────
+# Control Plane's operator/owner tokens and the worker's ENCRYPTION_KEY /
+# COOKIE_SECRET are values Atlas itself can generate securely (openssl rand)
+# — there is no reason to make an operator hand-type them with nano. Values
+# that must come from an external system (WEB_ORIGIN, ATLAS_API_URL,
+# Supabase credentials) are never touched here; deploy/generate-tokens.sh
+# only ever fills a line that is present and empty, and never overwrites an
+# existing value, so this is safe to run on every bootstrap/--update pass,
+# including against an already-configured install (always a no-op there).
+log "Auto-filling safely-generatable secrets (control-plane tokens, worker crypto keys)"
+if ! "$ATLAS_ROOT/deploy/generate-tokens.sh" \
+    "$ATLAS_ETC/control-plane.env" "$ATLAS_ETC/admin.env" "$ATLAS_ETC/worker.env"; then
+  warn "deploy/generate-tokens.sh reported one or more problems (see above) — these need manual attention (e.g. a duplicate or missing variable line) before services can start. The validation gate at the end of this script restates what's left."
+fi
+
 # ── 6. systemd units ──────────────────────────────────────────────────────
 log "Installing systemd units"
 for unit in "${SERVICES[@]}"; do
@@ -133,6 +155,10 @@ EOF
     chmod 0600 "$snippet"
     warn "Created ${snippet} — replace __TOKEN__ before using the Owner UI."
   fi
+  # Validate BEFORE this script (or the operator) ever reloads nginx.
+  # Deliberately does NOT call `systemctl reload nginx` itself anywhere —
+  # reload stays an explicit, separate operator step (reported below) that
+  # only happens after `nginx -t` has already passed here.
   nginx -t
 fi
 
@@ -145,20 +171,68 @@ ufw allow 41641/udp        comment 'Tailscale'
 ufw --force enable
 ufw status verbose
 
-# ── 9. Report ─────────────────────────────────────────────────────────────
+# ── 9. Explicit startup gate ───────────────────────────────────────────────
+# Services are never started by this script. This is the single authoritative
+# READY / BLOCKED / REQUIRES OWNER INPUT signal an operator needs before
+# deciding whether `systemctl enable --now` is safe to run.
+log "Running production environment validation (deploy/validate-production-env.sh)"
+VALIDATE_RC=0
+"$ATLAS_ROOT/deploy/validate-production-env.sh" \
+  "$ATLAS_ETC/control-plane.env" "$ATLAS_ETC/admin.env" "$ATLAS_ETC/worker.env" \
+  || VALIDATE_RC=$?
+
 cat <<EOF
 
-Bootstrap complete.
+Bootstrap complete. Services are installed but NOT started.
+EOF
 
-Services are installed but NOT started. Before starting:
+case "$VALIDATE_RC" in
+  0)
+    cat <<EOF
 
-  1. Fill in ${ATLAS_ETC}/control-plane.env, admin.env, worker.env
-  2. Put the real token in /etc/nginx/snippets/atlas-admin-auth.conf
+VERDICT: READY — every check above passed. To start:
+
+  1. Put the current ATLAS_CONTROL_PLANE_TOKEN value from
+     ${ATLAS_ETC}/control-plane.env into
+     /etc/nginx/snippets/atlas-admin-auth.conf (replace __TOKEN__ — this one
+     file is nginx config, not a service env file, so generate-tokens.sh
+     deliberately does not touch it)
+  2. sudo nginx -t && sudo systemctl reload nginx
   3. sudo systemctl enable --now ${SERVICES[*]}
-  4. sudo systemctl reload nginx
-  5. sudo ${ATLAS_ROOT}/deploy/verify.sh
+  4. sudo ${ATLAS_ROOT}/deploy/verify.sh
+EOF
+    ;;
+  1)
+    cat <<EOF
 
-Owner UI (over Tailscale only): http://${TS_IP:-<tailscale-ip>}:8443/
+VERDICT: BLOCKED — one or more locally-fixable misconfigurations exist (see
+the BLOCKED lines in the validation output above: duplicate variables, bad
+file permissions, mismatched or identical tokens, a malformed or loopback
+URL where a public one is required). None of these need external input. Fix
+them, then re-run:
+  sudo ${ATLAS_ROOT}/deploy/validate-production-env.sh
+EOF
+    ;;
+  2)
+    cat <<EOF
+
+VERDICT: REQUIRES OWNER INPUT — everything locally checkable is correct. The
+remaining gaps (see OWNER lines above) are external values this script
+cannot generate or guess — typically WEB_ORIGIN and ATLAS_API_URL (the real
+production apps/web and apps/api URLs on Vercel) and the Supabase
+credentials. Fill those into ${ATLAS_ETC}/control-plane.env and
+${ATLAS_ETC}/worker.env, then re-run:
+  sudo ${ATLAS_ROOT}/deploy/validate-production-env.sh
+EOF
+    ;;
+  *)
+    warn "deploy/validate-production-env.sh exited with unexpected code $VALIDATE_RC — treat as BLOCKED and investigate before starting services."
+    ;;
+esac
+
+cat <<EOF
+
+Owner UI (over Tailscale only, once started): http://${TS_IP:-<tailscale-ip>}:8443/
 
 Not deployed here by design: apps/web and apps/api live on Vercel (ADR-021).
 EOF
