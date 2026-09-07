@@ -58,6 +58,10 @@ const { registerFilesystemTools, resetToolRegistryForTests } = await import(
   "@atlas/agent-core"
 );
 const { computeGovernedBindingHash } = await import("../services/governed-execution.js");
+const { osStore } = await import("../store/os-store.js");
+const { bindProjectOwner, getProjectOwnerId } = await import(
+  "../services/project-access.js"
+);
 
 let app: FastifyInstance;
 
@@ -72,6 +76,27 @@ const OWNER_A: AuthUser = {
 };
 
 const OWNER_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+/** Creates a real project in the store, optionally pre-bound to an owner. */
+function makeProject(ownerId: string | null): string {
+  osStore.ensureLoaded();
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  osStore.upsertProject({
+    id,
+    slug: `proj-${id.slice(0, 8)}`,
+    name: "Test Project",
+    description: null,
+    status: "ACTIVE",
+    techStack: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (ownerId) {
+    bindProjectOwner(id, ownerId, "bound_on_create");
+  }
+  return id;
+}
 
 /**
  * DOCUMENT.READ is the entity/action pair the gate's own suite uses for its
@@ -314,5 +339,119 @@ describe("POST /api/v1/agents/tool-execute", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().agentId).toBe("RESEARCHER");
     expect(res.json().output).toBe(FIXTURE);
+  });
+});
+
+/**
+ * F-04 remediation (P3 least-privilege / effective-scope audit): before this
+ * fix, `resolveGovernedAgentIdentity` only verified the named `projectId`
+ * EXISTS (`assertGovernedProjectExists`), never that the authenticated
+ * caller owns it -- any signed-in "user"-role caller (this route uses
+ * `requireSignedInForWrite`, not an operator gate) could name any existing
+ * project and have every downstream governance decision / audit entry
+ * attributed to it. The fix reuses `assertProjectWriteAccess` (the same
+ * ownership write-gate every other project-scoped write route already
+ * uses) BEFORE an identity is ever built.
+ */
+describe("F-04 least-privilege project scope on POST /api/v1/agents/tool-execute", () => {
+  it("authorized actor: 200s when the caller owns the named project", async () => {
+    const projectId = makeProject(OWNER_A.id);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ projectId }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("EXECUTED");
+  });
+
+  it("claims an unowned named project for the caller on first touch, then executes (existing valid behavior preserved)", async () => {
+    const projectId = makeProject(null);
+    expect(getProjectOwnerId(projectId)).toBeNull();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ projectId }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(getProjectOwnerId(projectId)).toBe(OWNER_A.id);
+  });
+
+  it("unauthorized actor: 403s against a project owned by someone else, before any tool executes (cross-project isolation)", async () => {
+    const projectId = makeProject(OWNER_B_ID);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ projectId }),
+    });
+    expect(res.statusCode).toBe(403);
+    const json = res.json();
+    expect(json.error.code).toBe("FORBIDDEN");
+    expect(json.error.message).toMatch(/do not own this project/);
+    // Denial happened before identity/execution -- no EXECUTED-shaped body.
+    expect(json.status).toBeUndefined();
+  });
+
+  it("a nonexistent project remains correctly rejected (404), not silently treated as ownable", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ projectId: crypto.randomUUID() }),
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
+  });
+
+  it("F-01: forbidden-tool denial still fires even against a project the caller legitimately owns", async () => {
+    const projectId = makeProject(OWNER_A.id);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ projectId, toolName: "propose_patch" }),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/allowedTools/);
+  });
+
+  it("F-02: cross-tenant payload impersonation is still refused even when the named project is owned by the caller", async () => {
+    const projectId = makeProject(OWNER_A.id);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ projectId, payload: { targetOwnerId: OWNER_B_ID } }),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/cross-tenant/);
+  });
+
+  it("F-03: the agentDispatch kill switch still blocks tool-execute for an owned project (real runtime check, not inferred)", async () => {
+    const projectId = makeProject(OWNER_A.id);
+    const ORIGINAL_ENV = process.env.ATLAS_KILL_SWITCHES;
+    process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/agents/tool-execute",
+        payload: body({ projectId }),
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.message).toMatch(/Kill switch "agentDispatch" is active/);
+    } finally {
+      if (ORIGINAL_ENV === undefined) {
+        delete process.env.ATLAS_KILL_SWITCHES;
+      } else {
+        process.env.ATLAS_KILL_SWITCHES = ORIGINAL_ENV;
+      }
+    }
+  });
+
+  it("a null/omitted projectId (system/tenant-scoped agent work) is unaffected by the ownership gate", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body(),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("EXECUTED");
   });
 });

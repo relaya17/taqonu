@@ -1,9 +1,18 @@
-import {
-  approvalRequestSchema,
-  isAtlasSelfApprovalContext,
-  type ApprovalRequest,
-} from "@atlas/shared";
+import { approvalRequestSchema, type ApprovalRequest } from "@atlas/shared";
 import type { LiveApprovalRpcClient } from "./live-approval-requests.js";
+
+/**
+ * Universal separation-of-duties check: the identity that decides (approves
+ * or rejects) an approval request, or claims it as a live human, can never
+ * be the same identity that requested it -- for ANY approval, not only
+ * Atlas's own self-audit ones. Compares the authoritative `requestedBy` /
+ * `decidedBy` fields (never a display name or other mutable metadata), and
+ * trims + case-folds first so a whitespace or casing difference cannot be
+ * used to slip an otherwise-identical identity past the check.
+ */
+function isSelfApproval(decidedBy: string, requestedBy: string): boolean {
+  return decidedBy.trim().toLowerCase() === requestedBy.trim().toLowerCase();
+}
 
 /**
  * Isolated in-process RPC backend for tests only.
@@ -111,13 +120,19 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
         `Approval request ${id} has already been decided (status=${existing.status})`,
       );
     }
-    const decidedBy = String(args["p_decided_by"] ?? "");
-    if (
-      isAtlasSelfApprovalContext(existing.context) &&
-      decidedBy === existing.requestedBy
-    ) {
+    if (existing.expiresAt !== null && Date.parse(existing.expiresAt) <= Date.now()) {
       throw new Error(
-        `Approval request ${id} was requested by ${existing.requestedBy} -- separation of duties forbids the same identity from also deciding an Atlas-self approval`,
+        `Approval request ${id} expired at ${existing.expiresAt} and can no longer authorize an action`,
+      );
+    }
+    const decidedBy = String(args["p_decided_by"] ?? "");
+    // Universal Self-Approval Prevention: this used to be gated to Atlas's
+    // own self-audit context (`isAtlasSelfApprovalContext`). It now applies
+    // to every approval request -- the requester of ANY governed action must
+    // never be the one who approves or rejects it.
+    if (isSelfApproval(decidedBy, existing.requestedBy)) {
+      throw new Error(
+        `Approval request ${id} was requested by ${existing.requestedBy} -- separation of duties forbids the same identity from also deciding it`,
       );
     }
     const updated = approvalRequestSchema.parse({
@@ -262,7 +277,7 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
         `Approval request ${id} authorizes action ${existing.action}, not ${action}`,
       );
     }
-    if (decidedBy === existing.requestedBy) {
+    if (isSelfApproval(decidedBy, existing.requestedBy)) {
       throw new Error(
         `Approval request ${id} was requested by ${existing.requestedBy} -- separation of duties forbids the same identity from also being the live human who decides and claims it`,
       );

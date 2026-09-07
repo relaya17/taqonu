@@ -218,6 +218,11 @@ describe("atlas-self-governance", () => {
       })).reason,
     ).toBe("DENIED");
 
+    // `decide` now refuses an already-expired PENDING request, so a fixture
+    // that is APPROVED yet expired has to get there by approving while still
+    // valid and letting it expire afterward -- exercising this suite's own
+    // `evaluateStoredAtlasSelfControlApproval` expiry check independently of
+    // decide/consume/claim.
     const expired = await mintAtlasSelfApproval({
       entityType: "CONFIGURATION",
       action: "UPDATE",
@@ -226,13 +231,14 @@ describe("atlas-self-governance", () => {
       route: "agents.control",
       artifactHash: atlasSelfControlArtifactHash("CODE_ENGINEER", "disable"),
       extraContext: { agentId: "CODE_ENGINEER", controlAction: "disable" },
-      expiresAt: "2020-01-01T00:00:00.000Z",
+      expiresAt: new Date(Date.now() + 200).toISOString(),
     });
     await decideApprovalRequest(expired.id, {
       decidedBy: "77777777-7777-4777-8777-777777777777",
       approve: true,
       decisionReason: "late",
     });
+    await new Promise((resolve) => setTimeout(resolve, 250));
     expect(
       (await verifyAtlasSelfControlApproval(expired.id, {
         agentId: "CODE_ENGINEER",

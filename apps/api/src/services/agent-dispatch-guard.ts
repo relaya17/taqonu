@@ -3,8 +3,10 @@ import {
   bucketForRiskScore,
   computeActionRiskScore,
   explainRiskScore,
+  firstActiveKillSwitch,
   type BusinessEntityType,
   type EntityAction,
+  type KillSwitchCategory,
   type RiskBucket,
 } from "@atlas/agent-core";
 import {
@@ -18,6 +20,11 @@ import {
 } from "@atlas/shared";
 import { appendUnifiedAuditEntry } from "./audit-log.js";
 import { createApprovalRequest } from "./approvals.js";
+import {
+  detectRepeatedViolations,
+  type BehavioralOutcomeRecord,
+  type RepeatedViolationResult,
+} from "./behavioral-monitor.js";
 
 /**
  * Missing sibling to `enforceEntityWrite` (`risk-audit.ts`), for the actor
@@ -121,6 +128,7 @@ export interface DispatchAgentActionOptions {
     | "QUARANTINED"
     | "SUSPENDED"
     | "DEGRADED"
+    | "RETIRED"
     | "UNKNOWN";
   /** Agent A → B hops. Each hop floors to approval; never inherits unlimited authority. */
   readonly delegationHopCount?: number;
@@ -136,6 +144,26 @@ export interface DispatchAgentActionOptions {
    * Absent → current behavior. Present but mismatched → DENIED (fail closed).
    */
   readonly claimedApproval?: ApprovalRequest;
+  /**
+   * Additional kill-switch categories this action should be gated on (e.g.
+   * "payments" for a commission payout). `"agentDispatch"` — the master
+   * switch — is always checked regardless of this option. See
+   * `@atlas/agent-core`'s `kill-switches.ts`.
+   */
+  readonly killSwitchCategories?: readonly KillSwitchCategory[];
+
+  /**
+   * F-07 (behavioral monitoring). The caller's own recent, already-scoped
+   * outcome history for THIS agent (optionally further scoped by
+   * `projectId`), if the caller has one available -- e.g. a slice of
+   * `listUnifiedAuditEntries({ actorId: actor.agentId })`. Absent or empty
+   * -- the default for every existing call site -- is IDENTICAL to
+   * pre-F-07 behavior: no behavioral floor is ever applied unless the
+   * caller explicitly opts in by supplying history. This function never
+   * fetches its own history and never reaches outside the inputs it is
+   * given. See `behavioral-monitor.ts`'s `detectRepeatedViolations`.
+   */
+  readonly recentOutcomes?: readonly BehavioralOutcomeRecord[];
 }
 
 export interface DispatchGovernanceEvaluation {
@@ -155,6 +183,7 @@ export interface DispatchGovernanceEvaluation {
       readonly untrustedSource: boolean;
       readonly automationActor: boolean;
       readonly delegation: boolean;
+      readonly behavioralPattern: boolean;
     };
   };
 }
@@ -201,6 +230,7 @@ export function unevaluatedGovernanceEvaluation(
         untrustedSource: false,
         automationActor: false,
         delegation: false,
+        behavioralPattern: false,
       },
     },
   };
@@ -352,6 +382,40 @@ export async function dispatchAgentAction(
   const { actor, entityType, action, routeLabel, sourceContext } = options;
   const policyLabel = `${entityType}.${action}`;
   const { input: auditInput, correlationId } = auditRequestBinding(options);
+
+  // Kill switch: checked before anything else, including policy/risk. This
+  // is an operator emergency stop, not an ordinary governance decision --
+  // see `firstActiveKillSwitch` in `@atlas/agent-core`.
+  const killSwitch = firstActiveKillSwitch(options.killSwitchCategories ?? []);
+  if (killSwitch !== null) {
+    const reason = `Kill switch "${killSwitch.category}" is active -- agent/automation dispatch is denied`;
+    appendUnifiedAuditEntry({
+      type: routeLabel,
+      actorId: actor.agentId,
+      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
+      agentId: actor.agentId,
+      reason,
+      input: auditInput,
+      output: { killSwitchCategory: killSwitch.category },
+      policy: policyLabel,
+      risk: "CRITICAL",
+      approval: "REJECTED",
+      result: "FAILURE",
+      decision: "DENY",
+      entityType,
+      action,
+      projectId: options.projectId ?? null,
+      ownerId: actor.onBehalfOfUserId,
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      blockedAt: "KILL_SWITCH",
+    });
+    return {
+      decision: "DENIED",
+      reason,
+      evaluation: unevaluatedGovernanceEvaluation("DENIED", reason),
+    };
+  }
+
   const hops = effectiveDelegationHopCount({
     ...(options.delegationHopCount !== undefined
       ? { delegationHopCount: options.delegationHopCount }
@@ -492,7 +556,17 @@ export async function dispatchAgentAction(
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
       delegationHopCount: hops,
-      blockedAt: "POLICY",
+      // Universal Permanent Prohibition (FORBIDDEN) is a categorically
+      // different kind of denial from an ordinary policy/mode/write-gate
+      // rejection: it can never be resolved by presenting an approval,
+      // Dual Control, or a live-human claim, whereas "POLICY" denials
+      // otherwise could be (wrong mode, write-gate closed, etc., are
+      // circumstantial). `entityAuthz.forbidden` is the single
+      // authoritative flag threaded straight from `EntityPolicy.forbidden`
+      // through `authorizeEntityAction`, so an auditor can distinguish
+      // "not authorized yet" from "can never be authorized" on this one
+      // audit entry without cross-referencing anything else.
+      blockedAt: entityAuthz.forbidden ? "FORBIDDEN" : "POLICY",
     });
     return {
       decision: "DENIED",
@@ -529,9 +603,35 @@ export async function dispatchAgentAction(
   const automationFloored = floorBucketForAutomationActor(rawBucket, actor.kind, action);
   const delegationFloored =
     hops > 0 ? stricterBucket(rawBucket, "APPROVAL") : rawBucket;
+
+  // F-07 (behavioral monitoring): floors to at least APPROVAL when this
+  // agent's own recent (caller-supplied) history shows a repeated
+  // governance-violation pattern (see `detectRepeatedViolations`). Wrapped
+  // so ANY failure here -- a malformed record, an unexpected shape --
+  // degrades to "no behavioral floor", i.e. exactly today's pre-F-07
+  // enforcement, and NEVER to granting extra authority: every other floor
+  // and the underlying policy/risk decision above are computed completely
+  // independently of this block and remain fully authoritative regardless
+  // of what happens here. This classification never executes, approves, or
+  // mutates anything by itself.
+  let behavioralPattern: RepeatedViolationResult | null = null;
+  try {
+    if (options.recentOutcomes && options.recentOutcomes.length > 0) {
+      const classification = detectRepeatedViolations(actor.agentId, options.recentOutcomes, {
+        projectId: options.projectId ?? null,
+      });
+      if (classification.status === "VIOLATION_PATTERN_DETECTED") {
+        behavioralPattern = classification;
+      }
+    }
+  } catch {
+    behavioralPattern = null;
+  }
+  const behavioralFloored = behavioralPattern ? stricterBucket(rawBucket, "APPROVAL") : rawBucket;
+
   const bucket = stricterBucket(
-    stricterBucket(untrustedFloored, automationFloored),
-    delegationFloored,
+    stricterBucket(stricterBucket(untrustedFloored, automationFloored), delegationFloored),
+    behavioralFloored,
   );
   const riskLevel = BUCKET_TO_AUDIT_RISK[bucket];
   const evaluation: DispatchGovernanceEvaluation = {
@@ -552,6 +652,7 @@ export async function dispatchAgentAction(
         automationActor:
           actor.kind === "AUTOMATION" && AUTOMATION_FLOORED_ACTIONS.has(action),
         delegation: hops > 0,
+        behavioralPattern: behavioralPattern !== null,
       },
     },
   };
@@ -601,7 +702,15 @@ export async function dispatchAgentAction(
       agentId: actor.agentId,
       reason: explanation.factors.join("; "),
       input: auditInput,
-      output: { approvalRequestId: approvalRequest.id },
+      output: {
+        approvalRequestId: approvalRequest.id,
+        // F-07 evidence linkage: when this hold was caused (in whole or in
+        // part) by a detected repeated-violation pattern, the finding that
+        // triggered it is recorded on this SAME durable, hash-chained audit
+        // entry -- not a separate, unlinked store -- so the behavioral
+        // finding and its execution/audit evidence are the same record.
+        ...(behavioralPattern ? { behavioralPattern } : {}),
+      },
       policy: policyLabel,
       risk: riskLevel,
       approval: "PENDING",
@@ -642,7 +751,7 @@ export async function dispatchAgentAction(
     agentId: actor.agentId,
     reason: explanation.factors.join("; "),
     input: auditInput,
-    output: {},
+    output: behavioralPattern ? { behavioralPattern } : {},
     policy: policyLabel,
     risk: riskLevel,
     approval: "NOT_REQUIRED",

@@ -109,6 +109,9 @@ describe("evaluateOperatingCycle", () => {
     expect(agentMayExecute("DISABLED")).toBe(false);
     expect(agentMayExecute("SUSPENDED")).toBe(false);
     expect(agentMayExecute("QUARANTINED")).toBe(false);
+    // F-08 (lifecycle governance): a retired agent -- the lifecycle model's
+    // final state beyond REVOKED -- must never be executable either.
+    expect(agentMayExecute("RETIRED")).toBe(false);
     expect(agentMayExecute("UNKNOWN")).toBe(false);
   });
 });

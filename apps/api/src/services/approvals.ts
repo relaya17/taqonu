@@ -130,13 +130,51 @@ function inferRisk(entityType: string, action: string): "LOW" | "MEDIUM" | "HIGH
   return entityType === "CONFIGURATION" ? "MEDIUM" : "LOW";
 }
 
+/**
+ * Default approval-expiration policy. An approval request with no
+ * caller-supplied `expiresAt` would otherwise sit PENDING forever -- no
+ * code path ever revisits it. This assigns a configurable default so every
+ * approval request created through this service eventually expires on its
+ * own, matching the strongest existing portfolio implementation (CaseFlow's
+ * 24h automatic expiry).
+ *
+ * Configuration: `ATLAS_APPROVAL_EXPIRATION_HOURS` -- a positive number of
+ * hours. Falls back to 24h when unset, non-numeric, or non-positive.
+ *
+ * A caller that explicitly passes `expiresAt: null` opts a specific request
+ * OUT of expiration -- the schema's own documented meaning of null (see
+ * `approval-request.schema.ts`) -- and that explicit choice is preserved.
+ * Only an omitted (`undefined`) `expiresAt` receives this default.
+ */
+const APPROVAL_EXPIRATION_ENV_VAR = "ATLAS_APPROVAL_EXPIRATION_HOURS";
+const DEFAULT_APPROVAL_EXPIRATION_HOURS = 24;
+
+function configuredApprovalExpirationHours(): number {
+  const raw = process.env[APPROVAL_EXPIRATION_ENV_VAR];
+  const parsed = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_APPROVAL_EXPIRATION_HOURS;
+}
+
+/** The `expiresAt` policy applied when a caller does not supply one. Exported for tests. */
+export function defaultApprovalExpiresAt(now: Date = new Date()): string {
+  return new Date(
+    now.getTime() + configuredApprovalExpirationHours() * 60 * 60 * 1000,
+  ).toISOString();
+}
+
 /** Creates a new PENDING approval request and writes a unified audit entry. */
 export async function createApprovalRequest(
   input: CreateApprovalRequestInput,
 ): Promise<ApprovalRequest> {
+  const inputWithExpiration: CreateApprovalRequestInput =
+    input.expiresAt === undefined
+      ? { ...input, expiresAt: defaultApprovalExpiresAt() }
+      : input;
   let request: ApprovalRequest;
   try {
-    request = await requireStore().create(input);
+    request = await requireStore().create(inputWithExpiration);
   } catch (error) {
     rethrowStoreError(error);
   }
@@ -214,6 +252,11 @@ export async function decideApprovalRequest(
       entityType: updated.entityType,
       action: updated.action,
       approve: input.approve,
+      // Dual Control evidence: the decider is already `actorId` above: this
+      // also names the requester on the SAME audit entry, so an auditor can
+      // confirm separation of duties (requestedBy !== actorId) without
+      // cross-referencing a second record.
+      requestedBy: updated.requestedBy,
     },
     output: { status: updated.status },
     policy: `${updated.entityType}.${updated.action}`,

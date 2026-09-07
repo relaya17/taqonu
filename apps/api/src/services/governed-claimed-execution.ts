@@ -98,6 +98,7 @@ export interface RunGovernedClaimedExecutionInput<T> {
     | "QUARANTINED"
     | "SUSPENDED"
     | "DEGRADED"
+    | "RETIRED"
     | "UNKNOWN";
   readonly delegationHopCount?: number;
   readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";

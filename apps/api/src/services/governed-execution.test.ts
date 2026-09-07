@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -265,19 +265,24 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
 
   // ── ATTACK 5: expired approval ────────────────────────────────────────
   it("BLOCKS an expired approval", async () => {
+    // `decide` now refuses an already-expired PENDING request outright, so
+    // to exercise this suite's own defense-in-depth at the
+    // `executeGovernedAction` layer, approve while still valid and let it
+    // expire before execution is attempted.
     const approved = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "stale sign-off",
       artifactHash: knowledgeBindingHash(),
-      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      expiresAt: new Date(Date.now() + 200).toISOString(),
     });
     await decideApprovalRequest(approved.id, {
       decidedBy: OWNER_A,
       approve: true,
       decisionReason: "ok",
     });
+    await new Promise((resolve) => setTimeout(resolve, 250));
 
     const result = await executeGovernedAction(
       baseRequest({ approvalRequestId: approved.id }),
@@ -772,6 +777,37 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
     expect(verification.intact).toBe(true);
     expect(verification.firstInvalidEventId).toBeNull();
     expect(verification.entriesChecked).toBeGreaterThan(0);
+  });
+
+  // F-06 (tamper-evident evidence / real runtime evidence test). The test
+  // above proves the real production path (executeGovernedAction) produces
+  // a chain that verifies VALID. This test proves the other half: that a
+  // real, production-generated entry -- not a hand-built fixture -- is
+  // actually caught by the real verifier when someone edits it after the
+  // fact. Without this, "the chain verifies" would only ever have been
+  // demonstrated on synthetic entries built directly with
+  // appendAuditLogLine/appendUnifiedAuditEntry in audit-log.test.ts.
+  it("F-06: tampering the real audit trail produced by executeGovernedAction is caught by the real verifier -- not just a synthetic-fixture property", async () => {
+    const result = await executeGovernedAction(baseRequest());
+    expect(result.status).toBe("EXECUTED");
+    expect(verifyAuditChain().intact).toBe(true);
+
+    const logFile = join(dir, "audit.ndjson");
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((l) => l.trim());
+    const lastIndex = lines.length - 1;
+    const lastLine = lines[lastIndex];
+    if (!lastLine) throw new Error("expected at least one real audit line");
+    const parsed = JSON.parse(lastLine) as { payload: Record<string, unknown> };
+    // Forge the real, production-generated entry's recorded result -- the
+    // kind of after-the-fact cover-up F-06's tamper-evidence exists to
+    // catch -- without touching its stored hash.
+    parsed.payload.result = parsed.payload.result === "SUCCESS" ? "FAILURE" : "SUCCESS";
+    lines[lastIndex] = JSON.stringify(parsed);
+    writeFileSync(logFile, `${lines.join("\n")}\n`, "utf8");
+
+    const verification = verifyAuditChain();
+    expect(verification.intact).toBe(false);
+    expect(verification.status).toBe("BROKEN");
   });
 
   it("EXECUTES fs.read_file under the path-kind binding hash (AUTO, no occupancy)", async () => {

@@ -174,12 +174,16 @@ describe("governance adversarial suite", () => {
   });
 
   it("refuses an expired approval", async () => {
+    // `decide` now refuses an already-expired PENDING request outright, so
+    // this approves while still valid and lets it expire before execution
+    // is attempted -- still exercising this suite's own defense-in-depth at
+    // `executeGovernedAction`.
     const created = await createApprovalRequest({
       entityType: "DOCUMENT",
       action: "READ",
       requestedBy: "RESEARCHER",
       reason: "expired adversarial",
-      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      expiresAt: new Date(Date.now() + 200).toISOString(),
     });
     const { decideApprovalRequest } = await import("../services/approvals.js");
     await decideApprovalRequest(created.id, {
@@ -187,6 +191,7 @@ describe("governance adversarial suite", () => {
       approve: true,
       decisionReason: "ok",
     });
+    await new Promise((resolve) => setTimeout(resolve, 250));
     const result = await executeGovernedAction(request({ approvalRequestId: created.id }));
     expect(result.status).not.toBe("EXECUTED");
   });

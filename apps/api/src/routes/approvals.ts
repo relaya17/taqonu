@@ -35,6 +35,7 @@ const atlasSelfControlActionSchema = z.enum([
   "disable",
   "quarantine",
   "revoke",
+  "retire",
 ]);
 
 const atlasSelfControlBindSchema = z.object({

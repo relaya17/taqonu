@@ -30,6 +30,7 @@ import {
   type ToolExecutionPayload,
 } from "../services/agent-runtime-authz.js";
 import { findRepoRoot } from "../services/repo-root.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
 import { lookupControlPlaneAgentRuntimeStatus } from "../services/control-plane-bridge.js";
 import {
@@ -459,6 +460,20 @@ export async function registerAgentFabricRoutes(
   app.post("/api/v1/agents/tool-execute", async (request, reply) => {
     const user = await requireSignedInForWrite(app, request);
     const body = toolExecuteBodySchema.parse(request.body);
+
+    // F-04 (least privilege / effective scope): an agent must not be able
+    // to operate against a project merely because the project exists --
+    // the effective authorization scope must correspond to a project the
+    // authenticated caller actually owns (or may claim/administer). Reuses
+    // the exact ownership write-gate every other project-scoped write route
+    // already uses: signed-in + ownership match, first-touch claim on an
+    // unowned project, admin/control-plane bypass. Runs BEFORE identity
+    // resolution below, so a non-owned target project never reaches
+    // `resolveGovernedAgentIdentity` and is never attributed an
+    // AuthenticatedAgentIdentity/authorityScope at all.
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    }
 
     // Resolve identity from the session, not the body. The body names the
     // fabricAgentId but must not be able to override the ownerId.

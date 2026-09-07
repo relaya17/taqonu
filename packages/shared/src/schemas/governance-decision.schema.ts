@@ -56,6 +56,10 @@ export const governanceDecisionSchema = z.object({
       untrustedSource: z.boolean(),
       automationActor: z.boolean(),
       delegation: z.boolean(),
+      // F-07 (behavioral monitoring). Defaulted so every existing caller
+      // that predates this floor (e.g. synthetic-universe-run.ts, which
+      // never applies it) keeps validating unchanged.
+      behavioralPattern: z.boolean().default(false),
     }),
   }),
   approval: z.object({

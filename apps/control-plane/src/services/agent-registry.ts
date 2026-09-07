@@ -25,6 +25,7 @@ export type AgentStatus =
   | "QUARANTINED"
   | "SUSPENDED"
   | "DEGRADED"
+  | "RETIRED"
   | "UNKNOWN";
 
 /** Capability strings are explicit — an agent is never "admin". */

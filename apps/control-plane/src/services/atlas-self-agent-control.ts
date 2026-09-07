@@ -11,7 +11,7 @@ import {
   ATLAS_SELF_TENANT_ID,
 } from "@atlas/shared";
 import { evaluateOperatingCycle } from "./operating-cycle.js";
-import { setAgentRuntimeStatus, type AgentStatus } from "./agent-registry.js";
+import { getRegisteredAgent, setAgentRuntimeStatus, type AgentStatus } from "./agent-registry.js";
 import { appendAuditEntry } from "./governance-state.js";
 import { callAtlasApi } from "./lifecycle-handoff.js";
 
@@ -21,6 +21,7 @@ export const AGENT_CONTROL_ACTIONS = [
   "disable",
   "quarantine",
   "revoke",
+  "retire",
 ] as const;
 
 export type AgentControlAction = (typeof AGENT_CONTROL_ACTIONS)[number];
@@ -31,7 +32,23 @@ const STATUS_MAP: Record<AgentControlAction, AgentStatus> = {
   disable: "DISABLED",
   quarantine: "QUARANTINED",
   revoke: "REVOKED",
+  retire: "RETIRED",
 };
+
+/**
+ * F-08 (lifecycle governance). REVOKED and RETIRED are terminal: once an
+ * agent lands in either state, no further transition through this function
+ * is permitted -- not even a "resume", and not even a re-application of the
+ * same terminal action. A revoked/retired agent must not regain authority
+ * merely by changing a status field, and this check runs AFTER independent
+ * approval has already been verified above, so a valid approval cannot
+ * override it either. This is deliberately the strict reading: the
+ * lifecycle model's REVOKED -> RETIRED arrow is not honored as a further
+ * transition here (RETIRED is reached only directly, from a
+ * non-terminal state) -- the safer, more conservative interpretation for a
+ * security control is that "terminal" means no further transitions at all.
+ */
+const TERMINAL_STATUSES: ReadonlySet<AgentStatus> = new Set(["REVOKED", "RETIRED"]);
 
 export function isAgentControlAction(value: string): value is AgentControlAction {
   return (AGENT_CONTROL_ACTIONS as readonly string[]).includes(value);
@@ -156,6 +173,38 @@ export function applyAtlasSelfAgentControl(input: {
       executed: false,
       verified: false,
       reason: cycle.reason,
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+    };
+  }
+
+  const currentStatus = getRegisteredAgent(input.agentId)?.status;
+  if (currentStatus !== undefined && TERMINAL_STATUSES.has(currentStatus)) {
+    appendAuditEntry({
+      seq: Date.now(),
+      timestamp: new Date().toISOString(),
+      type: "atlas-self.agent.control",
+      actorId: input.actorId,
+      actorKind: "SYSTEM",
+      reason:
+        `Agent "${input.agentId}" is ${currentStatus} -- a terminal lifecycle ` +
+        `state. Action "${input.action}" was refused: no transition out of a ` +
+        "terminal state is permitted, regardless of approval.",
+      policy: "CONFIGURATION.UPDATE",
+      risk: "CRITICAL",
+      approval: "APPROVED",
+      result: "FAILURE",
+      ownerId: input.actorId,
+      projectId: ATLAS_SELF_PROJECT_ID,
+      hash: `atlas-self-control-${Date.now()}`,
+      prevHash: "000",
+    });
+    return {
+      decision: "DENY",
+      executed: false,
+      verified: false,
+      reason:
+        `Agent "${input.agentId}" is ${currentStatus} -- a terminal lifecycle ` +
+        "state and cannot be changed by any subsequent transition",
       applicationId: ATLAS_SELF_APPLICATION_ID,
     };
   }

@@ -11,7 +11,10 @@ import {
   getRegisteredAgent,
   resetAgentRuntimeForTests,
 } from "./agent-registry.js";
-import { resetGovernanceStateForTests } from "./governance-state.js";
+import {
+  listAuditEntries,
+  resetGovernanceStateForTests,
+} from "./governance-state.js";
 
 describe("Atlas-self agent control", () => {
   beforeEach(() => {
@@ -86,6 +89,92 @@ describe("Atlas-self agent control", () => {
     expect(applied.verified).toBe(false);
     expect(applied.applicationId).toBe("def-000");
     expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("PAUSED");
+  });
+
+  /**
+   * F-08 (lifecycle governance). REVOKED/RETIRED must be terminal: a
+   * revoked or retired agent must not regain authority merely by a later
+   * status-changing action, even one carrying a freshly, independently
+   * verified approval.
+   */
+  it("test 7 / test 6: revocation invalidates execution, and REVOKED is terminal -- a later, independently-approved resume does not resurrect it", () => {
+    const revoked = applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "RESEARCHER",
+      action: "revoke",
+      reason: "compromised credentials",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(revoked.decision).toBe("ALLOW");
+    expect(revoked.executed).toBe(true);
+    expect(getRegisteredAgent("RESEARCHER")?.status).toBe("REVOKED");
+
+    // A second, independently-approved request -- not a replay of the first,
+    // a fresh approval -- still cannot move a REVOKED agent anywhere.
+    const resurrection = applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "RESEARCHER",
+      action: "resume",
+      reason: "attempted resurrection",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "33333333-3333-4333-8333-333333333333",
+    });
+    expect(resurrection.decision).toBe("DENY");
+    expect(resurrection.executed).toBe(false);
+    expect(getRegisteredAgent("RESEARCHER")?.status).toBe("REVOKED");
+
+    // Test 9/10 (evidence): the refusal itself is durably recorded.
+    const entries = listAuditEntries({ actorId: "cp:service" });
+    const refusal = entries.find((e) =>
+      e.reason.includes('Action "resume" was refused'),
+    );
+    expect(refusal).toBeDefined();
+    expect(refusal?.result).toBe("FAILURE");
+  });
+
+  it("test 8: retirement prevents further governed execution and is itself terminal", () => {
+    const retired = applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "ARCHITECT",
+      action: "retire",
+      reason: "end of life",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "44444444-4444-4444-8444-444444444444",
+    });
+    expect(retired.decision).toBe("ALLOW");
+    expect(retired.executed).toBe(true);
+    expect(getRegisteredAgent("ARCHITECT")?.status).toBe("RETIRED");
+
+    const reactivate = applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "ARCHITECT",
+      action: "resume",
+      reason: "attempted reactivation of a retired agent",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "55555555-5555-4555-8555-555555555555",
+    });
+    expect(reactivate.decision).toBe("DENY");
+    expect(getRegisteredAgent("ARCHITECT")?.status).toBe("RETIRED");
+  });
+
+  it("test 11: cross-agent isolation -- revoking one agent never changes another agent's status", () => {
+    applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "SECURITY",
+      action: "revoke",
+      reason: "isolation check",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "66666666-6666-4666-8666-666666666666",
+    });
+    expect(getRegisteredAgent("SECURITY")?.status).toBe("REVOKED");
+    expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("ACTIVE");
+    expect(getRegisteredAgent("DEVOPS")?.status).toBe("ACTIVE");
   });
 });
 

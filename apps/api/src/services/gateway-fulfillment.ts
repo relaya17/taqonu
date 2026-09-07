@@ -52,7 +52,10 @@ export interface GatewayHandoff {
     | "QUARANTINED"
     | "SUSPENDED"
     | "DEGRADED"
+    | "RETIRED"
     | "UNKNOWN";
+  /** F-02 Phase 2, Gap 2 -- see `resolveGovernedAgentIdentity`. */
+  readonly requireVerifiedRuntimeStatus?: boolean;
 }
 
 export interface GatewayFulfillmentResult {
@@ -124,6 +127,9 @@ export async function fulfillGatewayHandoff(
     trustLevel: "FULL",
     ...(handoff.agentRuntimeStatus !== undefined
       ? { runtimeStatus: handoff.agentRuntimeStatus }
+      : {}),
+    ...(handoff.requireVerifiedRuntimeStatus !== undefined
+      ? { requireVerifiedRuntimeStatus: handoff.requireVerifiedRuntimeStatus }
       : {}),
   });
 

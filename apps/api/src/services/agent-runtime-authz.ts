@@ -70,6 +70,7 @@ export interface AuthenticatedAgentIdentity {
     | "QUARANTINED"
     | "SUSPENDED"
     | "DEGRADED"
+    | "RETIRED"
     | "UNKNOWN";
 }
 
@@ -126,6 +127,7 @@ export function resolveAgentIdentity(input: {
     | "QUARANTINED"
     | "SUSPENDED"
     | "DEGRADED"
+    | "RETIRED"
     | "UNKNOWN";
 }): AuthenticatedAgentIdentity {
   if (!(FABRIC_AGENT_IDS as readonly string[]).includes(input.fabricAgentId)) {
@@ -172,6 +174,16 @@ export async function resolveGovernedAgentIdentity(input: {
   readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
   /** Overlay already read from CP (e.g. gateway fulfill body from SERVICE hop). */
   readonly runtimeStatus?: AuthenticatedAgentIdentity["runtimeStatus"];
+  /**
+   * F-02 Phase 2, Gap 2. When true, a caller that supplied no explicit
+   * `runtimeStatus` AND for whom Control Plane produced no status either
+   * (not configured, or configured but unavailable) must NOT silently
+   * default to ACTIVE for this security-sensitive path -- it resolves to
+   * "UNKNOWN" instead, which `agentMayExecute` already treats as
+   * non-executable. Every existing caller omits this flag and keeps
+   * today's unconditional ACTIVE default; it is opt-in per call site.
+   */
+  readonly requireVerifiedRuntimeStatus?: boolean;
 }): Promise<AuthenticatedAgentIdentity> {
   const lookup = await lookupControlPlaneAgentRuntimeStatus(input.fabricAgentId);
   const fromLookup = lookup.configured ? lookup.status : undefined;
@@ -183,7 +195,9 @@ export async function resolveGovernedAgentIdentity(input: {
     ...(input.trustLevel !== undefined ? { trustLevel: input.trustLevel } : {}),
     runtimeStatus: overlayPresent
       ? combineAgentRuntimeStatus(input.runtimeStatus, fromLookup)
-      : "ACTIVE",
+      : input.requireVerifiedRuntimeStatus === true
+        ? "UNKNOWN"
+        : "ACTIVE",
   });
 }
 

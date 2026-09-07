@@ -174,6 +174,7 @@ export interface GovernedExecutionRequest {
     | "QUARANTINED"
     | "SUSPENDED"
     | "DEGRADED"
+    | "RETIRED"
     | "UNKNOWN";
   /**
    * Delegation hop count for authority attenuation.

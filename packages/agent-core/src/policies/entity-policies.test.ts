@@ -3,7 +3,32 @@ import {
   DEFAULT_ENTITY_POLICIES,
   authorizeEntityAction,
   getEntityPolicy,
+  type BusinessEntityType,
+  type EntityAction,
 } from "./entity-policies.js";
+
+/**
+ * `DEFAULT_ENTITY_POLICIES` is the single live, exported policy table --
+ * every one of Atlas's ~40 route call sites and the full agent-dispatch
+ * pipeline read from this exact object via `getEntityPolicy`. Flipping one
+ * entry's `forbidden` flag for the duration of a callback and always
+ * restoring it afterward (via `finally`, so a throwing assertion can never
+ * leave a later test looking at a mutated table) exercises the REAL
+ * production lookup path, not a mock or an injected override.
+ */
+function withForbidden<T>(
+  entityType: BusinessEntityType,
+  action: EntityAction,
+  fn: () => T,
+): T {
+  const original = DEFAULT_ENTITY_POLICIES[entityType][action];
+  DEFAULT_ENTITY_POLICIES[entityType][action] = { ...original, forbidden: true };
+  try {
+    return fn();
+  } finally {
+    DEFAULT_ENTITY_POLICIES[entityType][action] = original;
+  }
+}
 
 describe("entity policies", () => {
   it("finds a known low-risk read policy", () => {
@@ -146,5 +171,99 @@ describe("authorizeEntityAction", () => {
         DEFAULT_ENTITY_POLICIES.CUSTOMER.READ.risk,
       );
     }
+  });
+});
+
+describe("authorizeEntityAction: Universal Permanent Prohibition (FORBIDDEN)", () => {
+  const ENTITY = "CONFIGURATION" as const;
+  const ACTION = "EXECUTE" as const;
+
+  it("denies a FORBIDDEN action with no approval at all", () => {
+    withForbidden(ENTITY, ACTION, () => {
+      const result = authorizeEntityAction(ENTITY, ACTION, {
+        mode: "WRITE",
+        writeGateOpen: true,
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision === "DENIED") {
+        expect(result.forbidden).toBe(true);
+        expect(result.reason).toMatch(/permanently forbidden/);
+      }
+    });
+  });
+
+  it("denies a FORBIDDEN action even with a valid approval presented (approved: true) -- the exact shape `enforceEntityWrite`'s self-approved-write pattern and a Dual-Control-approved decide() both arrive as", () => {
+    withForbidden(ENTITY, ACTION, () => {
+      const result = authorizeEntityAction(ENTITY, ACTION, {
+        mode: "WRITE",
+        writeGateOpen: true,
+        approved: true,
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision === "DENIED") {
+        expect(result.forbidden).toBe(true);
+      }
+    });
+  });
+
+  it("takes precedence over every other authorization branch (PLAN mode, which would otherwise yield APPROVAL_REQUIRED)", () => {
+    withForbidden(ENTITY, ACTION, () => {
+      const result = authorizeEntityAction(ENTITY, ACTION, { mode: "PLAN" });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision === "DENIED") {
+        expect(result.forbidden).toBe(true);
+      }
+    });
+  });
+
+  it("takes precedence even over a closed write gate -- FORBIDDEN is reported as the reason, not the write-gate check", () => {
+    withForbidden(ENTITY, ACTION, () => {
+      const result = authorizeEntityAction(ENTITY, ACTION, {
+        mode: "WRITE",
+        writeGateOpen: false,
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision === "DENIED") {
+        expect(result.forbidden).toBe(true);
+        expect(result.reason).toMatch(/permanently forbidden/);
+      }
+    });
+  });
+
+  it("does not mark an ordinary DENIED (e.g. write gate closed on a non-forbidden policy) as `forbidden`", () => {
+    const result = authorizeEntityAction(ENTITY, ACTION, {
+      mode: "WRITE",
+      writeGateOpen: false,
+    });
+    expect(result.decision).toBe("DENIED");
+    if (result.decision === "DENIED") {
+      expect(result.forbidden).toBeUndefined();
+    }
+  });
+
+  it("a policy without `forbidden` set behaves exactly as before (non-FORBIDDEN actions retain existing behavior)", () => {
+    const readResult = authorizeEntityAction("CUSTOMER", "READ", { mode: "READ" });
+    expect(readResult.decision).toBe("ALLOWED");
+    const financialResult = authorizeEntityAction("FINANCIAL_TRANSACTION", "EXECUTE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+    });
+    expect(financialResult.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("every default policy in the live table is non-forbidden today -- this capability changes no existing entity/action's behavior", () => {
+    for (const actions of Object.values(DEFAULT_ENTITY_POLICIES)) {
+      for (const policy of Object.values(actions)) {
+        expect(policy.forbidden).toBe(false);
+      }
+    }
+  });
+
+  it("the mutation helper always restores the original policy, even after a FORBIDDEN assertion runs", () => {
+    const before = DEFAULT_ENTITY_POLICIES[ENTITY][ACTION];
+    withForbidden(ENTITY, ACTION, () => {
+      expect(DEFAULT_ENTITY_POLICIES[ENTITY][ACTION].forbidden).toBe(true);
+    });
+    expect(DEFAULT_ENTITY_POLICIES[ENTITY][ACTION]).toEqual(before);
   });
 });

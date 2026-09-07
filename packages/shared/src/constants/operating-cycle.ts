@@ -47,6 +47,7 @@ export const AGENT_RUNTIME_CONTROLS = [
   "QUARANTINED",
   "SUSPENDED",
   "DEGRADED",
+  "RETIRED",
   "UNKNOWN",
 ] as const;
 
@@ -69,6 +70,7 @@ const NON_EXECUTABLE: ReadonlySet<AgentRuntimeControl> = new Set([
   "REVOKED",
   "QUARANTINED",
   "SUSPENDED",
+  "RETIRED",
   "UNKNOWN",
 ]);
 

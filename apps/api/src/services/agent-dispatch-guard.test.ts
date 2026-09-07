@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { setAuditLogPathForTests, listUnifiedAuditEntries } from "./audit-log.js";
+import {
+  setAuditLogPathForTests,
+  listUnifiedAuditEntries,
+  verifyAuditLogChain,
+} from "./audit-log.js";
 import {
   claimApprovalRequest,
   claimApprovalRequestAsLiveHuman,
@@ -284,6 +288,14 @@ describe("dispatchAgentAction", () => {
 
   const ARTIFACT_HASH = "a".repeat(64);
 
+  // Universal Self-Approval Prevention: `decidedBy` here must be an
+  // identity independent of BOTH `AGENT_ID` (the default `requestedBy`) and
+  // `USER_ID` (which test "6" deliberately overrides `requestedBy` to, in
+  // order to exercise the requester/executor mismatch check below) -- so
+  // this helper's own decide() call never collides with the invariant
+  // regardless of which identity a caller presents as the requester.
+  const INDEPENDENT_DECIDER_ID = "66666666-6666-4666-8666-666666666666";
+
   async function claimedMatchingCreate(overrides: {
     entityType?: string;
     action?: string;
@@ -300,7 +312,7 @@ describe("dispatchAgentAction", () => {
         : { artifactHash: ARTIFACT_HASH }),
     });
     await decideApprovalRequest(created.id, {
-      decidedBy: USER_ID,
+      decidedBy: INDEPENDENT_DECIDER_ID,
       approve: true,
       decisionReason: "ok",
     });
@@ -582,5 +594,380 @@ describe("dispatchAgentAction", () => {
     } as DispatchAgentActionOptions & { approved: boolean };
     const result = await dispatchAgentAction(forged);
     expect(result.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  describe("kill switch", () => {
+    const ORIGINAL_ENV = process.env.ATLAS_KILL_SWITCHES;
+
+    afterEach(() => {
+      if (ORIGINAL_ENV === undefined) {
+        delete process.env.ATLAS_KILL_SWITCHES;
+      } else {
+        process.env.ATLAS_KILL_SWITCHES = ORIGINAL_ENV;
+      }
+    });
+
+    it("denies an otherwise-ALLOWED action when the agentDispatch master switch is active, before policy/risk ever run", async () => {
+      process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.master",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/Kill switch "agentDispatch" is active/);
+      expect(result.evaluation.risk.status).toBe("NOT_EVALUATED");
+
+      const [entry] = listUnifiedAuditEntries();
+      expect(entry?.decision).toBe("DENY");
+      expect(entry?.blockedAt).toBe("KILL_SWITCH");
+      expect(entry?.risk).toBe("CRITICAL");
+    });
+
+    it("does not deny when only an unrelated category is active", async () => {
+      process.env.ATLAS_KILL_SWITCHES = "payments";
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.unrelated",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+      });
+      expect(result.decision).toBe("ALLOWED");
+    });
+
+    it("denies when the caller declares a category (e.g. payments) that is active, even though agentDispatch itself is not", async () => {
+      process.env.ATLAS_KILL_SWITCHES = "payments";
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.declared-category",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+        killSwitchCategories: ["payments"],
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/Kill switch "payments" is active/);
+    });
+  });
+
+  it("9. audit/evidence: the \"approval.requested\" audit entry and the stored approval record both carry the same real, non-null expiresAt", async () => {
+    delete process.env.ATLAS_APPROVAL_EXPIRATION_HOURS;
+    const before = Date.now();
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "DELETE",
+      routeLabel: "test.agent.expiration-evidence",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+    });
+    const after = Date.now();
+
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+    if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+
+    // The stored approval record is what a later decide/consume/claim call
+    // is actually checked against -- this IS the enforcement evidence.
+    const stored = await getApprovalRequest(result.approvalRequestId);
+    expect(stored?.expiresAt).not.toBeNull();
+    const expiresAtMs = Date.parse(stored?.expiresAt as string);
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+    expect(expiresAtMs).toBeGreaterThanOrEqual(before + twentyFourHoursMs);
+    expect(expiresAtMs).toBeLessThanOrEqual(after + twentyFourHoursMs);
+
+    // The audit trail corroborates it independently: `createApprovalRequest`
+    // writes its own "approval.requested" entry carrying the very same
+    // (post-default) expiresAt, so an auditor never has to trust the live
+    // row alone.
+    const requestedEntry = listUnifiedAuditEntries().find(
+      (e) => e.type === "approval.requested" && e.input["approvalId"] === result.approvalRequestId,
+    );
+    expect(requestedEntry).toBeDefined();
+    expect(requestedEntry?.input["expiresAt"]).toBe(stored?.expiresAt);
+  });
+
+  it("10. audit/evidence: the \"approval.decided\" entry records both the original requester and the deciding approver, and the requester cannot decide their own dispatch-generated approval", async () => {
+    const dispatchResult = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "DELETE",
+      routeLabel: "test.agent.dual-control-evidence",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+    });
+    expect(dispatchResult.decision).toBe("APPROVAL_REQUIRED");
+    if (dispatchResult.decision !== "APPROVAL_REQUIRED") {
+      throw new Error("expected APPROVAL_REQUIRED");
+    }
+
+    const stored = await getApprovalRequest(dispatchResult.approvalRequestId);
+    const requester = stored?.requestedBy as string;
+    expect(requester).toBeTruthy();
+
+    // The requester cannot decide their own dispatch-generated approval --
+    // proves the invariant is wired through the full dispatch -> approval
+    // lifecycle, not only through direct createApprovalRequest() calls made
+    // straight from a test.
+    await expect(
+      decideApprovalRequest(dispatchResult.approvalRequestId, {
+        decidedBy: requester,
+        approve: true,
+        decisionReason: "self sign-off attempt through the dispatch path",
+      }),
+    ).rejects.toThrow(/separation of duties/);
+    expect((await getApprovalRequest(dispatchResult.approvalRequestId))?.status).toBe("PENDING");
+
+    const independentApprover = "human-reviewer-dual-control";
+    const decided = await decideApprovalRequest(dispatchResult.approvalRequestId, {
+      decidedBy: independentApprover,
+      approve: true,
+      decisionReason: "independent review",
+    });
+    expect(decided.status).toBe("APPROVED");
+
+    // The audit trail is the evidence an auditor actually relies on: the
+    // SAME "approval.decided" entry must name both identities, so
+    // separation of duties can be confirmed without cross-referencing a
+    // second record.
+    const decidedEntry = listUnifiedAuditEntries().find(
+      (e) =>
+        e.type === "approval.decided" &&
+        e.input["approvalId"] === dispatchResult.approvalRequestId,
+    );
+    expect(decidedEntry).toBeDefined();
+    expect(decidedEntry?.actorId).toBe(independentApprover);
+    expect(decidedEntry?.input["requestedBy"]).toBe(requester);
+    expect(decidedEntry?.input["requestedBy"]).not.toBe(decidedEntry?.actorId);
+  });
+
+  /**
+   * F-07 (continuous agent verification / behavioral monitoring).
+   *
+   * `recentOutcomes` is an opt-in field: every test above this point never
+   * sets it, so those tests are themselves the regression proof that
+   * omitting it is byte-for-byte identical to pre-F-07 behavior (the guard
+   * only runs `detectRepeatedViolations` when `recentOutcomes` is present
+   * AND non-empty). The tests below exercise the new, additive behavior
+   * directly -- mirroring the exact style of the untrusted-source/
+   * automation floor tests above, since this is the same kind of floor.
+   */
+  function violationRecord(agentId: string, projectId: string | null = null) {
+    return { agentId, projectId, result: "FAILURE" as const, decision: "DENY" as const };
+  }
+  function successRecord(agentId: string, projectId: string | null = null) {
+    return { agentId, projectId, result: "SUCCESS" as const, decision: "ALLOW" as const };
+  }
+
+  it("behavioral floor -- scenario 1 (normal behavior): a clean violation-free history never floors an otherwise-AUTO action", async () => {
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.clean",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      recentOutcomes: Array.from({ length: 10 }, () => successRecord(AGENT_ID, PROJECT)),
+    });
+
+    expect(result.decision).toBe("ALLOWED");
+    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(result.evaluation.risk.floors.behavioralPattern).toBe(false);
+  });
+
+  it("behavioral floor -- scenario 2 (repeated violation): floors an otherwise-AUTO action to APPROVAL once this agent's own recent history shows a repeated governance-violation pattern", async () => {
+    const recentOutcomes = [
+      ...Array.from({ length: 5 }, () => successRecord(AGENT_ID, PROJECT)),
+      // 3 real governance denials (DENY + FAILURE) for THIS agent -- at the
+      // detector's default pattern threshold.
+      violationRecord(AGENT_ID, PROJECT),
+      violationRecord(AGENT_ID, PROJECT),
+      violationRecord(AGENT_ID, PROJECT),
+    ];
+
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.pattern",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      confidence: 1,
+      evidenceCount: 10,
+      recentOutcomes,
+    });
+
+    // Same entity/action/trust/confidence as the plain ALLOWED test at the
+    // top of this file, which resolves AUTO/AUTO_LOG -- the ONLY difference
+    // here is the supplied violation history, isolating the floor exactly
+    // as the untrusted-source/automation floor tests do above.
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+    if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+    expect(result.bucket).toBe("APPROVAL");
+    expect(result.evaluation.risk.floors.behavioralPattern).toBe(true);
+  });
+
+  it("behavioral floor -- scenario 5 (evidence linkage): the finding that caused the hold is recorded on the SAME durable audit entry, not a separate store", async () => {
+    const recentOutcomes = Array.from({ length: 6 }, () => violationRecord(AGENT_ID, PROJECT));
+
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.evidence-linkage",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      confidence: 1,
+      evidenceCount: 10,
+      recentOutcomes,
+    });
+
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+    const entry = listUnifiedAuditEntries().find(
+      (e) => e.type === "test.behavioral.evidence-linkage",
+    );
+    expect(entry).toBeDefined();
+    const behavioralPattern = entry?.output["behavioralPattern"] as
+      | { status?: string; violationCount?: number }
+      | undefined;
+    expect(behavioralPattern?.status).toBe("VIOLATION_PATTERN_DETECTED");
+    expect(behavioralPattern?.violationCount).toBe(6);
+  });
+
+  it("behavioral floor -- scenario 6 (false-positive resistance): repeated SUCCESSes, however many, never trigger the floor", async () => {
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.repeated-success",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      recentOutcomes: Array.from({ length: 50 }, () => successRecord(AGENT_ID, PROJECT)),
+    });
+
+    expect(result.decision).toBe("ALLOWED");
+    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(result.evaluation.risk.floors.behavioralPattern).toBe(false);
+  });
+
+  it("behavioral floor -- scenario 8 (cross-agent isolation): another agent's repeated violations never floor THIS agent's dispatch", async () => {
+    const OTHER_AGENT = "agent-fabric-other";
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.cross-agent",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      recentOutcomes: Array.from({ length: 10 }, () => violationRecord(OTHER_AGENT, PROJECT)),
+    });
+
+    expect(result.decision).toBe("ALLOWED");
+    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(result.evaluation.risk.floors.behavioralPattern).toBe(false);
+  });
+
+  it("behavioral floor -- scenario 9 (cross-project isolation): the same agent's repeated violations in a DIFFERENT project never floor this project's dispatch", async () => {
+    const OTHER_PROJECT = "44444444-4444-4444-8444-444444444444";
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.cross-project",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      recentOutcomes: Array.from({ length: 10 }, () => violationRecord(AGENT_ID, OTHER_PROJECT)),
+    });
+
+    expect(result.decision).toBe("ALLOWED");
+    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(result.evaluation.risk.floors.behavioralPattern).toBe(false);
+  });
+
+  it("behavioral floor -- scenario 7 (fail-safe / backward compatibility): an explicitly empty recentOutcomes array behaves identically to omitting it entirely", async () => {
+    const withEmpty = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.empty-recent-outcomes",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      recentOutcomes: [],
+    });
+
+    expect(withEmpty.decision).toBe("ALLOWED");
+    if (withEmpty.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(withEmpty.evaluation.risk.floors.behavioralPattern).toBe(false);
+
+    // Never grants MORE authority either: a real, unrelated denial elsewhere
+    // in the same options object cannot be papered over by this floor --
+    // the untrusted-source floor above still fires independently regardless
+    // of what recentOutcomes says.
+    const untrustedStillFloors = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.untrusted-still-floors",
+      sourceContext: { origin: "external_ingested", trustLevel: "untrusted" },
+      projectId: PROJECT,
+      confidence: 1,
+      evidenceCount: 10,
+      recentOutcomes: Array.from({ length: 10 }, () => successRecord(AGENT_ID, PROJECT)),
+    });
+    expect(untrustedStillFloors.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("behavioral floor -- scenario 10 (tamper resistance via F-06): forging the recorded behavioralPattern finding breaks the real hash chain", async () => {
+    const recentOutcomes = Array.from({ length: 6 }, () => violationRecord(AGENT_ID, PROJECT));
+
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.behavioral.tamper-resistance",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      confidence: 1,
+      evidenceCount: 10,
+      recentOutcomes,
+    });
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+
+    // The behavioral finding is not a parallel, unlinked record -- it was
+    // written into the SAME NDJSON file that appendAuditLogLine hash-chains
+    // for every other F-01..F-06 audit entry (appendUnifiedAuditEntry is a
+    // thin wrapper over appendAuditLogLine -- see audit-log.ts). So the same
+    // F-06 tamper-evidence that protects e.g. a recorded execution result
+    // protects this finding too, with no bespoke wiring required.
+    expect(verifyAuditLogChain().ok).toBe(true);
+
+    const logFile = join(dir, "audit.ndjson");
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((l) => l.trim());
+    const lastIndex = lines.length - 1;
+    const lastLine = lines[lastIndex];
+    if (!lastLine) throw new Error("expected at least one real audit line");
+    const parsed = JSON.parse(lastLine) as {
+      payload: { output: { behavioralPattern?: { violationCount?: number } } };
+    };
+    expect(parsed.payload.output.behavioralPattern).toBeDefined();
+    // Forge the recorded finding itself -- e.g. an attempt to quietly shrink
+    // the violation count after the fact -- without touching the stored hash.
+    parsed.payload.output.behavioralPattern = {
+      ...parsed.payload.output.behavioralPattern,
+      violationCount: 0,
+    };
+    lines[lastIndex] = JSON.stringify(parsed);
+    writeFileSync(logFile, `${lines.join("\n")}\n`, "utf8");
+
+    const verification = verifyAuditLogChain();
+    expect(verification.ok).toBe(false);
+    expect(verification.status).toBe("BROKEN");
   });
 });

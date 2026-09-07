@@ -56,6 +56,27 @@ export type EntityPolicy = {
   readonly action: EntityAction;
   readonly risk: ToolRisk;
   readonly requiresApproval: boolean;
+  /**
+   * Universal Permanent Prohibition (FORBIDDEN): when true, this
+   * entity/action combination has NO execution path at all -- not "needs
+   * a stricter approval", not "needs Dual Control", not "needs a live
+   * human" -- it is structurally non-executable. `authorizeEntityAction`
+   * checks this before it ever looks at `agentContext.approved`, before
+   * the write-gate check, before `requiresApproval`, so no approval
+   * (an ordinary `decide()`, an independent Dual-Control-approved
+   * `decide()`, or a live-human `claimAsLiveHuman()`) can ever satisfy
+   * it. This is the single authoritative representation of "permanently
+   * prohibited" in Atlas -- deliberately NOT a second, independent
+   * `RiskBucket` value (`RiskBucket` in `risk-score.ts` is a *derived*,
+   * per-request numeric classification computed from confidence/evidence/
+   * trust-level signals, not a static declaration of an entity/action's
+   * intrinsic properties; `EntityPolicy` already IS that static
+   * declaration) -- so there is exactly one place this fact lives and no
+   * way for two representations of the same fact to drift apart.
+   * Defaults to `false` for every existing policy; introducing this
+   * field changes no existing behavior.
+   */
+  readonly forbidden?: boolean;
 };
 
 function policy(
@@ -63,8 +84,9 @@ function policy(
   action: EntityAction,
   risk: ToolRisk,
   requiresApproval: boolean,
+  forbidden = false,
 ): EntityPolicy {
-  return { entityType, action, risk, requiresApproval };
+  return { entityType, action, risk, requiresApproval, forbidden };
 }
 
 /**
@@ -183,7 +205,7 @@ export type EntityAgentContext = {
  */
 export type EntityAuthorizationDecision =
   | { readonly decision: "ALLOWED"; readonly policy: EntityPolicy }
-  | { readonly decision: "DENIED"; readonly reason: string }
+  | { readonly decision: "DENIED"; readonly reason: string; readonly forbidden?: true }
   | { readonly decision: "APPROVAL_REQUIRED"; readonly policy: EntityPolicy };
 
 const READ_LIKE_MODES: ReadonlySet<AgentMode> = new Set([
@@ -228,6 +250,25 @@ export function authorizeEntityAction(
     return {
       decision: "DENIED",
       reason: `Unknown entity action: ${entityType}.${action}`,
+    };
+  }
+
+  // Universal Permanent Prohibition (FORBIDDEN) -- see `EntityPolicy.forbidden`
+  // above. This MUST run before every other check in this function: before
+  // mode checks, before the write-gate check, before `requiresApproval`,
+  // and critically before `agentContext.approved` is ever consulted below.
+  // A forbidden policy has no execution path -- nothing past this point
+  // may ever turn it into ALLOWED or APPROVAL_REQUIRED, regardless of what
+  // the caller passes as `approved` (an ordinary decide(), an
+  // independent Dual-Control-approved decide(), or a live-human
+  // claimAsLiveHuman() all arrive here as `approved: true` from the same
+  // upstream call sites -- this check is unconditional and precedes all
+  // of them).
+  if (policy.forbidden === true) {
+    return {
+      decision: "DENIED",
+      reason: `${entityType}.${action} is permanently forbidden and cannot be authorized by any approval, Dual Control, or live-human decision`,
+      forbidden: true,
     };
   }
 

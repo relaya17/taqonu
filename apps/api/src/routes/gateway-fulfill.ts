@@ -74,6 +74,14 @@ export async function registerGatewayFulfillRoutes(
       ...(isCpService && body.agentRuntimeStatus
         ? { agentRuntimeStatus: body.agentRuntimeStatus }
         : {}),
+      // F-02 Phase 2, Gap 2. The CP-SERVICE hop is the one governed
+      // execution path whose identity comes from Control Plane rather than
+      // a signed-in operator session -- so it is the one caller that must
+      // not silently fall back to ACTIVE when CP supplies no runtime
+      // status (not configured, or configured but unavailable). An
+      // operator-session request keeps today's unconditional ACTIVE
+      // default (isCpService is false, this is always false for it).
+      requireVerifiedRuntimeStatus: isCpService,
     });
   });
 }

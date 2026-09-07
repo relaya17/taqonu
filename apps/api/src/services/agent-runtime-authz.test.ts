@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // `resolveAgentIdentity` now calls `assertGovernedProjectExists`, which
 // reads `osStore.getProject`. Mocked the same way `project-access.test.ts`
@@ -14,6 +14,7 @@ vi.mock("../store/os-store.js", () => ({
 const {
   enforceAgentToolAuthorization,
   resolveAgentIdentity,
+  resolveGovernedAgentIdentity,
 } = await import("./agent-runtime-authz.js");
 type AuthenticatedAgentIdentity = ReturnType<typeof resolveAgentIdentity>;
 
@@ -305,5 +306,60 @@ describe("P0.2 — tool authorization enforces the EXISTING catalog", () => {
         requestedTool: "exfiltrate",
       }),
     ).toThrow(/explicitly forbidden/);
+  });
+});
+
+describe("F-02 Phase 2, Gap 2 — resolveGovernedAgentIdentity requireVerifiedRuntimeStatus", () => {
+  const prevUrl = process.env.ATLAS_CONTROL_PLANE_URL;
+
+  beforeEach(() => {
+    // No Control Plane configured for any test in this block -- the
+    // exact condition the fix targets.
+    delete process.env.ATLAS_CONTROL_PLANE_URL;
+  });
+
+  afterEach(() => {
+    if (prevUrl === undefined) delete process.env.ATLAS_CONTROL_PLANE_URL;
+    else process.env.ATLAS_CONTROL_PLANE_URL = prevUrl;
+  });
+
+  it("resolves UNKNOWN (fail closed) when requireVerifiedRuntimeStatus is true, CP is not configured, and no override is supplied", async () => {
+    const resolved = await resolveGovernedAgentIdentity({
+      fabricAgentId: "CODE_ENGINEER",
+      sessionOwnerId: OWNER_A,
+      projectId: PROJECT_A,
+      requireVerifiedRuntimeStatus: true,
+    });
+    expect(resolved.runtimeStatus).toBe("UNKNOWN");
+  });
+
+  it("still resolves ACTIVE when requireVerifiedRuntimeStatus is omitted (every existing caller, unchanged)", async () => {
+    const resolved = await resolveGovernedAgentIdentity({
+      fabricAgentId: "CODE_ENGINEER",
+      sessionOwnerId: OWNER_A,
+      projectId: PROJECT_A,
+    });
+    expect(resolved.runtimeStatus).toBe("ACTIVE");
+  });
+
+  it("still resolves ACTIVE when requireVerifiedRuntimeStatus is explicitly false", async () => {
+    const resolved = await resolveGovernedAgentIdentity({
+      fabricAgentId: "CODE_ENGINEER",
+      sessionOwnerId: OWNER_A,
+      projectId: PROJECT_A,
+      requireVerifiedRuntimeStatus: false,
+    });
+    expect(resolved.runtimeStatus).toBe("ACTIVE");
+  });
+
+  it("an explicit runtimeStatus override still takes effect even when requireVerifiedRuntimeStatus is true (overlayPresent path is unaffected)", async () => {
+    const resolved = await resolveGovernedAgentIdentity({
+      fabricAgentId: "CODE_ENGINEER",
+      sessionOwnerId: OWNER_A,
+      projectId: PROJECT_A,
+      requireVerifiedRuntimeStatus: true,
+      runtimeStatus: "QUARANTINED",
+    });
+    expect(resolved.runtimeStatus).toBe("QUARANTINED");
   });
 });

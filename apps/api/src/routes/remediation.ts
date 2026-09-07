@@ -5,11 +5,13 @@ import {
   approvePatchSchema,
   uuidSchema,
 } from "@atlas/shared";
-import { authorizeEntityAction } from "@atlas/agent-core";
+import { firstActiveKillSwitch } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";
+import { enforceEntityWrite } from "../services/risk-audit.js";
+import { appendUnifiedAuditEntry } from "../services/audit-log.js";
 import {
   approvePatchArtifact,
   applyApprovedPatch,
@@ -23,6 +25,68 @@ import {
   verifyAppliedRemediation,
 } from "../services/remediation-pipeline.js";
 import { isAutoApplyEligiblePatch } from "@atlas/code-intelligence";
+
+/**
+ * F-03 remediation (P3 governance-boundary audit): `/drafts/:id/apply` and
+ * `/auto-apply-low` used to call `authorizeEntityAction` directly, which
+ * bypassed `firstActiveKillSwitch` (the operator emergency stop every other
+ * governed write path checks), the canonical Unified Audit Log entry for
+ * the *authorization decision* itself (only the execution outcome was ever
+ * audited, via `patch-write.ts`'s `osStore.appendAudit` + domain event),
+ * and the numeric risk-engine scoring `enforceEntityWrite` also provides.
+ *
+ * This restores that coverage using only existing, proven primitives — no
+ * new governance abstraction:
+ *  - `firstActiveKillSwitch()` is the exact function `dispatchAgentAction`
+ *    (`agent-dispatch-guard.ts`) checks first, before any policy/risk
+ *    evaluation. Called with no extra categories, it still always checks
+ *    the `"agentDispatch"` master switch (see `kill-switches.ts`'s own
+ *    doc comment on `firstActiveKillSwitch`).
+ *  - `enforceEntityWrite` (`risk-audit.ts`) is the correct helper for this
+ *    actor shape — not `dispatchAgentAction`, which is built for AGENT/
+ *    AUTOMATION actors whose approval comes from a claimed `ApprovalRequest`
+ *    record. Both remediation routes are signed-in-human-initiated writes
+ *    (`requireSignedInForWrite`) whose approval signal is the caller's own
+ *    prior action (`assertPatchApprovedForApply`'s check that a human
+ *    already approved this exact patch via `/approve`, or the `enabled
+ *    flag for auto-apply-low) — exactly `enforceEntityWrite`'s documented
+ *    "self-approved write" contract, and exactly what `approved: true` /
+ *    `approved: enabled` already meant at both removed call sites (by the
+ *    time `/auto-apply-low` reaches this point, `enabled` is always `true`
+ *    — the route already threw 403 above otherwise — so `enforceEntityWrite`
+ *    hardcoding `approved: true` internally changes nothing observable).
+ *
+ * Kill-switch denials are audited here in the same DENIED shape
+ * `enforceEntityWrite` itself uses for a policy denial, so both failure
+ * modes land in the canonical hash-chained log with a consistent shape.
+ */
+function assertRemediationNotKillSwitched(input: {
+  readonly entityType: "DOCUMENT";
+  readonly action: "EXECUTE";
+  readonly routeLabel: string;
+  readonly actorId: string;
+  readonly projectId: string | null;
+  readonly input: Record<string, unknown>;
+}): void {
+  const killSwitch = firstActiveKillSwitch();
+  if (killSwitch === null) return;
+  const reason = `Kill switch "${killSwitch.category}" is active -- agent/automation dispatch is denied`;
+  appendUnifiedAuditEntry({
+    type: input.routeLabel,
+    actorId: input.actorId,
+    actorKind: "USER",
+    reason,
+    input: input.input,
+    output: { killSwitchCategory: killSwitch.category },
+    policy: `${input.entityType}.${input.action}`,
+    risk: "CRITICAL",
+    approval: "REJECTED",
+    result: "FAILURE",
+    projectId: input.projectId,
+    ownerId: input.actorId,
+  });
+  throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+}
 
 /**
  * Approval-gated AUTO_FIX remediation path — reuses the patch pipeline.
@@ -112,18 +176,22 @@ export async function registerRemediationRoutes(
     // rather than being manufactured here. Safe/idempotent to call before
     // `applyApprovedPatch` also calls it internally.
     assertPatchApprovedForApply(existing);
-    const entityAuthz = authorizeEntityAction("DOCUMENT", "EXECUTE", {
-      mode: "WRITE",
-      writeGateOpen: true,
-      approved: true,
+    assertRemediationNotKillSwitched({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      routeLabel: "remediation.drafts.apply",
+      actorId: user.id,
+      projectId: existing.projectId,
+      input: { patchId: existing.id },
     });
-    if (entityAuthz.decision !== "ALLOWED") {
-      const reason =
-        entityAuthz.decision === "DENIED"
-          ? entityAuthz.reason
-          : "remediation.drafts.apply (DOCUMENT.EXECUTE) was not ALLOWED.";
-      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
-    }
+    enforceEntityWrite({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      routeLabel: "remediation.drafts.apply",
+      actorId: user.id,
+      projectId: existing.projectId,
+      input: { patchId: existing.id },
+    });
 
     return applyApprovedPatch({
       existing,
@@ -228,21 +296,36 @@ export async function registerRemediationRoutes(
     // ENTITY-LEVEL gate: `enabled` above is exactly the "a human already
     // established explicit authorization for LOW auto-apply" signal
     // (ATLAS_AUTO_APPLY_LOW env flag or an explicit body.force + WRITE
-    // session), so it is reused directly as `approved` here rather than
-    // re-deriving a separate signal — auto-apply is irreversible and
-    // agent-triggered, exactly what the entity-policy layer exists to gate.
-    const entityAuthz = authorizeEntityAction("DOCUMENT", "EXECUTE", {
-      mode: "WRITE",
-      writeGateOpen: true,
-      approved: enabled,
+    // session) -- auto-apply is irreversible and agent-triggered, exactly
+    // what the entity-policy layer exists to gate. `enabled` is always
+    // `true` by this point (the route already threw 403 above otherwise),
+    // exactly matching `enforceEntityWrite`'s hardcoded `approved: true`
+    // "self-approved write" contract -- see `assertRemediationNotKillSwitched`'s
+    // doc comment above for why this, not `dispatchAgentAction`, is correct.
+    assertRemediationNotKillSwitched({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      routeLabel: "remediation.auto-apply-low",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+      input: {
+        projectId: body.projectId ?? null,
+        force: Boolean(body.force),
+        patchIds: body.patchIds ?? null,
+      },
     });
-    if (entityAuthz.decision !== "ALLOWED") {
-      const reason =
-        entityAuthz.decision === "DENIED"
-          ? entityAuthz.reason
-          : "remediation.auto-apply-low (DOCUMENT.EXECUTE) was not ALLOWED.";
-      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
-    }
+    enforceEntityWrite({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      routeLabel: "remediation.auto-apply-low",
+      actorId: user.id,
+      projectId: body.projectId ?? null,
+      input: {
+        projectId: body.projectId ?? null,
+        force: Boolean(body.force),
+        patchIds: body.patchIds ?? null,
+      },
+    });
 
     let patches = osStore
       .listPatches(body.projectId ?? undefined)

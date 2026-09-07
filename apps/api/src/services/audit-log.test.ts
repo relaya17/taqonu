@@ -80,6 +80,77 @@ describe("append-only audit log", () => {
     expect(verifyAuditLogChain().status).toBe("BROKEN");
   });
 
+  // F-06 (tamper-evident evidence). The test above proves a corrupted
+  // `hash` field is caught, but that is the narrowest possible forgery. A
+  // real attacker editing audit history has three more realistic moves:
+  // (1) edit the recorded content but forget to recompute the hash, (2)
+  // splice out / relink an entry via `prevHash` without touching any
+  // entry's own hash, and (3) reorder otherwise-untouched, individually
+  // valid entries. `verifyAuditLogChainAt` already checks both `prevHash`
+  // linkage and the payload hash on every line (see audit-log.ts) -- these
+  // three tests are new coverage proving each of those attacks is actually
+  // caught, not just the single-field-hash-overwrite case above.
+
+  it("F-06: detects a forged payload field even when the stored hash is left untouched (attacker edits content but forgets to recompute the hash)", () => {
+    appendAuditLogLine({ type: "agent.run.completed", runId: "r1", result: "FAILURE" });
+    appendAuditLogLine({ type: "agents.plan", planId: "p1" });
+    expect(verifyAuditLogChain().status).toBe("VALID");
+
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((l) => l.trim());
+    const first = JSON.parse(lines[0] ?? "{}") as { payload: Record<string, unknown> };
+    // Forge the outcome of a governed action from FAILURE to SUCCESS
+    // without touching `hash` -- the realistic attack (hide a denial after
+    // the fact), not the synthetic "corrupt the hash itself" case above.
+    first.payload.result = "SUCCESS";
+    lines[0] = JSON.stringify(first);
+    writeFileSync(logFile, `${lines.join("\n")}\n`, "utf8");
+
+    const verification = verifyAuditLogChain();
+    expect(verification.ok).toBe(false);
+    expect(verification.status).toBe("BROKEN");
+  });
+
+  it("F-06: detects a broken prevHash link (a later entry no longer chains from the entry that actually precedes it)", () => {
+    appendAuditLogLine({ type: "agent.run.completed", runId: "r1" });
+    appendAuditLogLine({ type: "agents.plan", planId: "p1" });
+    appendAuditLogLine({ type: "agents.plan", planId: "p2" });
+    expect(verifyAuditLogChain().status).toBe("VALID");
+
+    // Simulate deleting an entry from the middle of the log by re-linking
+    // the next entry straight to GENESIS instead of the hash of the entry
+    // that actually preceded it. That entry's own hash is left untouched,
+    // so a check that only recomputes each entry's own hash in isolation
+    // would miss this; the chain-linkage check must catch it instead.
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((l) => l.trim());
+    const second = JSON.parse(lines[1] ?? "{}") as { prevHash?: string };
+    second.prevHash = AUDIT_GENESIS_HASH;
+    lines[1] = JSON.stringify(second);
+    writeFileSync(logFile, `${lines.join("\n")}\n`, "utf8");
+
+    const verification = verifyAuditLogChain();
+    expect(verification.ok).toBe(false);
+    expect(verification.status).toBe("BROKEN");
+  });
+
+  it("F-06: detects a reordered chain (two internally-valid entries swapped) -- reordering is a distinct attack from corrupting any single entry", () => {
+    appendAuditLogLine({ type: "agent.run.completed", runId: "r1" });
+    appendAuditLogLine({ type: "agents.plan", planId: "p1" });
+    expect(verifyAuditLogChain().status).toBe("VALID");
+
+    // Each line, taken on its own, is still a perfectly well-formed,
+    // correctly-hashed entry -- only the ORDER is wrong. A verifier that
+    // checked "is every hash internally correct" without also checking
+    // "does each entry chain from the one immediately before it" would
+    // wrongly accept this.
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((l) => l.trim());
+    const reordered = [lines[1], lines[0]].filter((l): l is string => !!l);
+    writeFileSync(logFile, `${reordered.join("\n")}\n`, "utf8");
+
+    const verification = verifyAuditLogChain();
+    expect(verification.ok).toBe(false);
+    expect(verification.status).toBe("BROKEN");
+  });
+
   it("continues the chain after process restart (tail hash from file)", () => {
     const first = appendAuditLogLine({ type: "agents.dispatch", id: "d1" });
     // Drop in-memory cache as if the process restarted

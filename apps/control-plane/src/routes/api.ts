@@ -478,7 +478,7 @@ export function createApiRouter(): Router {
     const rawAction = record["action"];
     const action = typeof rawAction === "string" ? rawAction : "";
     if (!isAgentControlAction(action)) {
-      json(res, { error: "action must be pause|resume|disable|quarantine|revoke" }, 400);
+      json(res, { error: "action must be pause|resume|disable|quarantine|revoke|retire" }, 400);
       return;
     }
     const principal = resolveControlPlanePrincipal(req);

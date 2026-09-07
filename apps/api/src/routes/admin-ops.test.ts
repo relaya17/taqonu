@@ -88,8 +88,13 @@ describe("POST /api/v1/admin/automation/run-checks", () => {
     });
     const { approvalId } = requested.json();
 
+    // Universal Self-Approval Prevention: the requester (adminUser(), via
+    // getRequestUser()) can no longer also be the decider, for ANY
+    // approval, not only Atlas-self ones. A second, independent approver
+    // identity is used here -- this test is about the HUMAN_ONLY
+    // retry-burns-the-claim behavior below, not about self-approval.
     await decideApprovalRequest(approvalId, {
-      decidedBy: adminUser().id,
+      decidedBy: "99999999-9999-4999-8999-999999999999",
       approve: true,
       decisionReason: "approved for test",
     });

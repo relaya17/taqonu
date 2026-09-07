@@ -1,6 +1,7 @@
 export * from "./policies/tool-policies.js";
 export * from "./policies/authorization.js";
 export * from "./policies/entity-policies.js";
+export * from "./policies/kill-switches.js";
 export * from "./policies/risk-score.js";
 export * from "./verifier/self-check.js";
 export * from "./secrets/detector.js";

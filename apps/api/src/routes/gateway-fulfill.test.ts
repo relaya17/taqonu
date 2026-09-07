@@ -186,6 +186,7 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
         applicationId: "def-000",
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
+        agentRuntimeStatus: "ACTIVE",
       },
     });
     expect(res.statusCode).toBe(200);
@@ -216,6 +217,7 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
         applicationId: "def-000",
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
+        agentRuntimeStatus: "ACTIVE",
       },
     });
     expect(res.statusCode).toBe(200);
@@ -277,9 +279,35 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
         applicationId: "def-000",
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
+        agentRuntimeStatus: "ACTIVE",
       },
     });
     expect(res.statusCode).toBe(200);
+  });
+
+  it("F-02 Phase 2 Gap 2: fails closed when the CP-SERVICE hop supplies no runtime status and Control Plane is not otherwise configured", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "ok",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/gateway/fulfill",
+      headers: { authorization: "Bearer cp-fulfill-token" },
+      payload: {
+        applicationId: "def-000",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      executed: boolean;
+      outcome: { status: string; reason: string };
+    };
+    expect(body.executed).toBe(false);
+    expect(body.outcome.status).toBe("DENIED");
+    expect(body.outcome.reason).toMatch(/UNKNOWN/);
   });
 
   it("rejects an invalid CP token without a user session", async () => {

@@ -9,6 +9,7 @@ process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 
 const {
   claimApprovalRequest,
+  claimApprovalRequestAsLiveHuman,
   clearLiveApprovalStoreForTests,
   configureLiveApprovalStore,
   consumeApprovalRequest,
@@ -211,7 +212,11 @@ describe("approval ↔ artifact binding (P0 governance)", () => {
   });
 
   it("REFUSES an expired approval", async () => {
-    const id = await approvedRequest(null, new Date(Date.now() - 1_000).toISOString());
+    // `decide` itself now refuses an already-expired PENDING request (see
+    // "approval expiration" tests), so to exercise consume's own expiry
+    // check this approves while still valid and lets it expire afterward.
+    const id = await approvedRequest(null, new Date(Date.now() + 200).toISOString());
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await expect(consumeApprovalRequest(id)).rejects.toThrow(/expired at/);
   });
 
@@ -221,7 +226,10 @@ describe("approval ↔ artifact binding (P0 governance)", () => {
   });
 
   it("checks expiry BEFORE artifact binding (an expired approval is unusable either way)", async () => {
-    const id = await approvedRequest("sha256:abc123", new Date(Date.now() - 1_000).toISOString());
+    // Same reasoning as "REFUSES an expired approval" above: approve while
+    // still valid, then let it expire before consuming.
+    const id = await approvedRequest("sha256:abc123", new Date(Date.now() + 200).toISOString());
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await expect(consumeApprovalRequest(id, { artifactHash: "sha256:abc123" })).rejects.toThrow(/expired at/);
   });
 });
@@ -383,7 +391,13 @@ describe("approval revocation — revocation beats approval", () => {
   });
 
   it("checks revocation BEFORE expiry (a revoked approval never reports as merely expired)", async () => {
-    const id = await approved({ expiresAt: new Date(Date.now() - 1_000).toISOString() });
+    // `decide` now refuses an already-expired PENDING request, so this
+    // approves while still valid, lets it expire, and only then revokes --
+    // `revoke` itself does not check expiry, so this still reaches consume
+    // with an APPROVED-but-expired-and-now-REVOKED row, which is exactly
+    // what the test needs.
+    const id = await approved({ expiresAt: new Date(Date.now() + 200).toISOString() });
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await revokeApprovalRequest(id, { revokedBy: "human-2", reason: "withdrawn" });
     await expect(consumeApprovalRequest(id)).rejects.toThrow(/REVOKED/);
   });
@@ -705,9 +719,12 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
       }),
     ).rejects.toThrow(/authorizes artifact/);
 
+    // `decide` now refuses an already-expired PENDING request, so this
+    // approves while still valid and lets it expire before claiming.
     const expired = await approve({
-      expiresAt: new Date(Date.now() - 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 200).toISOString(),
     });
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await expect(claimApprovalRequest(expired.id, matching)).rejects.toThrow(/expired at/);
 
     const revoked = await approve({ reason: "revoke-then-claim" });
@@ -886,5 +903,373 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
         reason: "down",
       }),
     ).rejects.toThrow(/connection refused|unavailable/i);
+  });
+});
+
+describe("approval expiration", () => {
+  const ENV_VAR = "ATLAS_APPROVAL_EXPIRATION_HOURS";
+  const ORIGINAL_ENV = process.env[ENV_VAR];
+
+  beforeEach(() => {
+    resetApprovalsForTests();
+  });
+
+  afterEach(() => {
+    resetApprovalsForTests();
+    if (ORIGINAL_ENV === undefined) {
+      delete process.env[ENV_VAR];
+    } else {
+      process.env[ENV_VAR] = ORIGINAL_ENV;
+    }
+  });
+
+  it("1. assigns a default expiresAt (~24h out) when the caller supplies none", async () => {
+    delete process.env[ENV_VAR];
+    const before = Date.now();
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "no expiry supplied",
+    });
+    const after = Date.now();
+
+    expect(request.expiresAt).not.toBeNull();
+    const expiresAtMs = Date.parse(request.expiresAt as string);
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+    // Bracketed by [before, after] + 24h, rather than an exact match, so the
+    // test is not flaky against the few milliseconds createApprovalRequest
+    // itself takes to run.
+    expect(expiresAtMs).toBeGreaterThanOrEqual(before + twentyFourHoursMs);
+    expect(expiresAtMs).toBeLessThanOrEqual(after + twentyFourHoursMs);
+  });
+
+  it("7a. honors ATLAS_APPROVAL_EXPIRATION_HOURS when configured", async () => {
+    process.env[ENV_VAR] = "2";
+    const before = Date.now();
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "2-hour policy",
+    });
+    const twoHoursMs = 2 * 60 * 60 * 1000;
+    const expiresAtMs = Date.parse(request.expiresAt as string);
+    expect(expiresAtMs).toBeGreaterThanOrEqual(before + twoHoursMs);
+    expect(expiresAtMs).toBeLessThanOrEqual(before + twoHoursMs + 5_000);
+  });
+
+  it("7b. falls back to the 24h default for a non-numeric or non-positive env value", async () => {
+    for (const bad of ["not-a-number", "0", "-5"]) {
+      process.env[ENV_VAR] = bad;
+      const before = Date.now();
+      const request = await createApprovalRequest({
+        entityType: "CONFIGURATION",
+        action: "EXECUTE",
+        requestedBy: "user-1",
+        reason: `bad env value: ${bad}`,
+      });
+      const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+      const expiresAtMs = Date.parse(request.expiresAt as string);
+      expect(expiresAtMs).toBeGreaterThanOrEqual(before + twentyFourHoursMs);
+    }
+  });
+
+  it("7c. preserves an explicit expiresAt instead of overriding it with the default", async () => {
+    const explicit = new Date(Date.now() + 60_000).toISOString();
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "explicit short expiry",
+      expiresAt: explicit,
+    });
+    expect(request.expiresAt).toBe(explicit);
+  });
+
+  it("7d. preserves an explicit expiresAt: null as a deliberate no-expiry opt-out", async () => {
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "explicit no-expiry",
+      expiresAt: null,
+    });
+    expect(request.expiresAt).toBeNull();
+  });
+
+  it("2. a PENDING request well before its expiry can still be decided and consumed normally", async () => {
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "normal path",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    const decided = await decideApprovalRequest(request.id, {
+      decidedBy: "human-1",
+      approve: true,
+      decisionReason: "fine",
+    });
+    expect(decided.status).toBe("APPROVED");
+    const consumed = await consumeApprovalRequest(request.id);
+    expect(consumed.status).toBe("CONSUMED");
+  });
+
+  it("3. a PENDING request past its expiry cannot be decided (approved or rejected)", async () => {
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "will expire before decision",
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+    await expect(
+      decideApprovalRequest(request.id, {
+        decidedBy: "human-1",
+        approve: true,
+        decisionReason: "too late",
+      }),
+    ).rejects.toThrow(/expired at/);
+    // Rejecting an expired request is refused the same way as approving one
+    // -- expiry blocks the decision itself, not just a favorable outcome.
+    await expect(
+      decideApprovalRequest(request.id, {
+        decidedBy: "human-1",
+        approve: false,
+        decisionReason: "too late",
+      }),
+    ).rejects.toThrow(/expired at/);
+    expect((await getApprovalRequest(request.id))?.status).toBe("PENDING");
+  });
+
+  it("4/5. an expired APPROVED request cannot be executed through consume OR claim -- no bypass route", async () => {
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "approve now, expire before use",
+      expiresAt: new Date(Date.now() + 200).toISOString(),
+    });
+    await decideApprovalRequest(request.id, {
+      decidedBy: "human-1",
+      approve: true,
+      decisionReason: "fine for now",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    await expect(consumeApprovalRequest(request.id)).rejects.toThrow(/expired at/);
+    await expect(
+      claimApprovalRequest(request.id, {
+        entityType: request.entityType,
+        action: request.action,
+        executorId: request.requestedBy,
+      }),
+    ).rejects.toThrow(/expired at/);
+  });
+
+  it("8. boundary: expiresAt exactly equal to now is already expired (uses <=, not <)", async () => {
+    const now = new Date();
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "boundary check",
+      expiresAt: now.toISOString(),
+    });
+    // Simulate the clock having reached exactly expiresAt.
+    const realNow = Date.now;
+    Date.now = () => now.getTime();
+    try {
+      await expect(
+        decideApprovalRequest(request.id, {
+          decidedBy: "human-1",
+          approve: true,
+          decisionReason: "at the boundary",
+        }),
+      ).rejects.toThrow(/expired at/);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("6. existing non-expired approval flows are unaffected: decide -> claim -> mark started -> finalize", async () => {
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-alpha",
+      reason: "full regression path",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    await decideApprovalRequest(request.id, {
+      decidedBy: "human-1",
+      approve: true,
+      decisionReason: "fine",
+    });
+    const claimed = await claimApprovalRequest(request.id, {
+      entityType: request.entityType,
+      action: request.action,
+      executorId: request.requestedBy,
+    });
+    expect(claimed.status).toBe("CLAIMED");
+    const started = await markApprovalExecutionStarted(
+      claimed.id,
+      claimed.liveExecutionId as string,
+    );
+    expect(started.executionStartedAt).not.toBeNull();
+    const finalized = await finalizeApprovalRequest(claimed.id, {
+      liveExecutionId: claimed.liveExecutionId as string,
+      outcome: "FULFILLED",
+      outputEvidence: "done",
+    });
+    expect(finalized.status).toBe("FULFILLED");
+  });
+});
+
+describe("universal self-approval prevention (Dual Control)", () => {
+  beforeEach(() => {
+    resetApprovalsForTests();
+  });
+
+  afterEach(() => {
+    resetApprovalsForTests();
+  });
+
+  it("1/negative-boundary. requester cannot approve their own request", async () => {
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "agent-solo",
+      reason: "self-approval attempt",
+    });
+    await expect(
+      decideApprovalRequest(request.id, {
+        decidedBy: "agent-solo",
+        approve: true,
+        decisionReason: "approving my own request",
+      }),
+    ).rejects.toThrow(/separation of duties/);
+    expect((await getApprovalRequest(request.id))?.status).toBe("PENDING");
+  });
+
+  it("requester cannot reject their own request either -- the rule blocks the decision, not just a favorable outcome", async () => {
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "agent-solo",
+      reason: "self-rejection attempt",
+    });
+    await expect(
+      decideApprovalRequest(request.id, {
+        decidedBy: "agent-solo",
+        approve: false,
+        decisionReason: "rejecting my own request",
+      }),
+    ).rejects.toThrow(/separation of duties/);
+  });
+
+  it("2/positive-boundary. a different, independent approver MAY decide the same request", async () => {
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "agent-solo",
+      reason: "normal path",
+    });
+    const decided = await decideApprovalRequest(request.id, {
+      decidedBy: "human-reviewer",
+      approve: true,
+      decisionReason: "looks fine",
+    });
+    expect(decided.status).toBe("APPROVED");
+    expect(decided.decidedBy).toBe("human-reviewer");
+  });
+
+  it("7. equivalent/malformed identity representations cannot bypass the invariant (case and whitespace)", async () => {
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "Agent-Seven",
+      reason: "casing/whitespace bypass attempt",
+    });
+    await expect(
+      decideApprovalRequest(request.id, {
+        decidedBy: "  agent-seven  ",
+        approve: true,
+        decisionReason: "same identity, different casing/whitespace",
+      }),
+    ).rejects.toThrow(/separation of duties/);
+    expect((await getApprovalRequest(request.id))?.status).toBe("PENDING");
+  });
+
+  it("3. requester cannot approve through the alternate live-human claim path either", async () => {
+    const request = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "DELETE",
+      requestedBy: "agent-solo",
+      reason: "alternate-path self-approval attempt",
+    });
+    await expect(
+      claimApprovalRequestAsLiveHuman(request.id, {
+        entityType: "DOCUMENT",
+        action: "DELETE",
+        decidedBy: "agent-solo",
+        decisionReason: "trying to claim my own request as the live human",
+      }),
+    ).rejects.toThrow(/separation of duties/);
+    expect((await getApprovalRequest(request.id))?.status).toBe("PENDING");
+  });
+
+  it("a genuinely different live human CAN claim directly through the alternate path", async () => {
+    const request = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "DELETE",
+      requestedBy: "agent-solo",
+      reason: "normal live-human path",
+    });
+    const claimed = await claimApprovalRequestAsLiveHuman(request.id, {
+      entityType: "DOCUMENT",
+      action: "DELETE",
+      decidedBy: "human-reviewer",
+      decisionReason: "verified live",
+    });
+    expect(claimed.status).toBe("CLAIMED");
+    expect(claimed.claimedBy).toBe("human-reviewer");
+  });
+
+  it("8. existing valid approval flows remain functional end-to-end with an independent approver", async () => {
+    const request = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "agent-solo",
+      reason: "full regression path",
+    });
+    await decideApprovalRequest(request.id, {
+      decidedBy: "human-reviewer",
+      approve: true,
+      decisionReason: "fine",
+    });
+    const consumed = await consumeApprovalRequest(request.id);
+    expect(consumed.status).toBe("CONSUMED");
+  });
+
+  it("Atlas-self approvals remain blocked -- now via the same universal check rather than a DEF-000-only special case", async () => {
+    // Regression guard for the removal of the old `isAtlasSelfApprovalContext`
+    // gate: an Atlas-self approval (applicationId "def-000") with
+    // decidedBy === requestedBy must still be refused, exactly as before,
+    // just enforced by the same unconditional rule as every other approval.
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "UPDATE",
+      requestedBy: "cp:service",
+      reason: "atlas-self, still blocked",
+      context: { applicationId: "def-000" },
+    });
+    await expect(
+      decideApprovalRequest(request.id, {
+        decidedBy: "cp:service",
+        approve: true,
+        decisionReason: "self-approving atlas-self work",
+      }),
+    ).rejects.toThrow(/separation of duties/);
   });
 });

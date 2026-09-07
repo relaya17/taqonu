@@ -197,8 +197,12 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
       "original content",
     );
 
+    // Universal Self-Approval Prevention: the requester (testUser(), via
+    // getRequestUser()) can no longer also be the decider. A second,
+    // independent approver identity is used here -- this test is about the
+    // HUMAN_ONLY retry-burns-the-claim behavior below, not self-approval.
     await decideApprovalRequest(firstBody.approvalId, {
-      decidedBy: testUser().id,
+      decidedBy: "99999999-9999-4999-8999-999999999999",
       approve: true,
       decisionReason: "approved for test",
     });
@@ -372,8 +376,10 @@ describe("POST /api/v1/code/patches/:id/rollback", async () => {
       "modified content",
     );
 
+    // Universal Self-Approval Prevention: same reasoning as the apply test
+    // above -- a second, independent approver identity is required now.
     await decideApprovalRequest(firstBody.approvalId, {
-      decidedBy: testUser().id,
+      decidedBy: "99999999-9999-4999-8999-999999999999",
       approve: true,
       decisionReason: "approved rollback for test",
     });

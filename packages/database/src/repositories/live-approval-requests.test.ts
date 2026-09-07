@@ -63,6 +63,55 @@ describe("LiveApprovalRequestRepository", () => {
     ).toBe("REJECTED");
   });
 
+  it("rejects an ordinary (non-Atlas-self) self-approval at decide() -- proves the invariant is enforced at the live repository/RPC boundary itself, not only in the application service layer", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await repository.create({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "solo-agent",
+      reason: "ordinary self-approval attempt at the repository layer",
+    });
+    await expect(
+      repository.decide(created.id, {
+        decidedBy: "solo-agent",
+        approve: true,
+        decisionReason: "self sign-off",
+      }),
+    ).rejects.toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/separation of duties/i),
+    });
+    expect((await repository.get(created.id))?.status).toBe("PENDING");
+
+    const decided = await repository.decide(created.id, {
+      decidedBy: "independent-reviewer",
+      approve: true,
+      decisionReason: "independent review",
+    });
+    expect(decided.status).toBe("APPROVED");
+  });
+
+  it("identity comparison at decide() is authoritative: trims and case-folds so an equivalent identity cannot bypass the invariant via whitespace or casing", async () => {
+    const { repository } = repositoryFromClient();
+    const created = await repository.create({
+      entityType: "RECORD",
+      action: "UPDATE",
+      requestedBy: "Solo-Agent",
+      reason: "casing/whitespace bypass attempt at the repository layer",
+    });
+    await expect(
+      repository.decide(created.id, {
+        decidedBy: "  solo-agent  ",
+        approve: true,
+        decisionReason: "same identity, different casing/whitespace",
+      }),
+    ).rejects.toMatchObject({
+      kind: "CONFLICT",
+      message: expect.stringMatching(/separation of duties/i),
+    });
+    expect((await repository.get(created.id))?.status).toBe("PENDING");
+  });
+
   it("revokes PENDING and APPROVED, and refuses CONSUMED", async () => {
     const { repository } = repositoryFromClient();
     const pending = await repository.create({
@@ -175,12 +224,18 @@ describe("LiveApprovalRequestRepository", () => {
       reason: "expired",
       expiresAt: new Date(Date.now() - 1000).toISOString(),
     });
-    await repository.decide(expired.id, {
-      decidedBy: "admin-1",
-      approve: true,
-      decisionReason: "ok",
-    });
-    await expect(repository.consume(expired.id)).rejects.toThrow(/expired at/);
+    // Approval Expiration hardening: `decide` now refuses an already-expired
+    // PENDING request outright -- it can no longer be approved into an
+    // APPROVED row at all, closing the gap where consume/claim used to be
+    // the only enforcement points.
+    await expect(
+      repository.decide(expired.id, {
+        decidedBy: "admin-1",
+        approve: true,
+        decisionReason: "ok",
+      }),
+    ).rejects.toThrow(/expired at/);
+    expect((await repository.get(expired.id))?.status).toBe("PENDING");
     await expect(
       repository.decide("00000000-0000-4000-8000-000000000000", {
         decidedBy: "admin-1",
@@ -382,10 +437,16 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
 
   it("rejects expired, revoked, and missing claims", async () => {
     const { repository } = repositoryFromClient();
-    const expired = await approve(repository, {
-      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    // An approval already expired before it is even decided is now refused
+    // at `decide` itself (see "refuses expired and missing approvals"
+    // above), so `claim` can no longer be reached through that route. What
+    // remains reachable -- and still must be blocked -- is an approval that
+    // was APPROVED while still valid and then expires before it is claimed.
+    const expiringSoon = await approve(repository, {
+      expiresAt: new Date(Date.now() + 200).toISOString(),
     });
-    await expect(repository.claim(expired.id, matching)).rejects.toThrow(/expired at/);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await expect(repository.claim(expiringSoon.id, matching)).rejects.toThrow(/expired at/);
 
     const approved = await approve(repository, { reason: "revoke-then-claim" });
     await repository.revoke(approved.id, { revokedBy: "human-1", reason: "withdrawn" });
