@@ -12,6 +12,8 @@ Full guide: [`docs/deployment/private-plane.md`](../docs/deployment/private-plan
 | `validate-production-env.sh` | The authoritative environment gate. Static, read-only, secret-safe. Exit `0`=READY, `1`=BLOCKED (fixable locally), `2`=REQUIRES OWNER INPUT (external value missing). Run by both `bootstrap.sh` and `verify.sh`; safe to run standalone at any time. |
 | `validate-production-env.test.sh` | Self-test suite for the validator above — disposable fixture env files, never real secrets. Run after changing the validator. |
 | `verify.sh` | Read-only post-deployment checks (runs the validator first, then live/runtime checks). Exits non-zero on failure. |
+| `reconcile-production-vm.sh` | Read-only-by-default reconciliation for an **already-bootstrapped** VM. `--check` (default) never mutates anything; `--repair` runs the two whitelisted safe repairs only if the repository gate passes; `--start` only starts services once every gate is satisfied. See the guide's [Reconciling an already-bootstrapped VM](../docs/deployment/private-plane.md#reconciling-an-already-bootstrapped-vm). |
+| `reconcile-production-vm.test.sh` | Self-test suite for the script above — disposable fixture repo/env/nginx/systemd, stub `nginx`/`tailscale`/`ufw`/`ss`/`systemctl`, never touches the real system. |
 | `systemd/atlas-control-plane.service` | Control Plane on `127.0.0.1:3100` |
 | `systemd/atlas-admin.service` | Atlas Admin on `127.0.0.1:3200` |
 | `systemd/atlas-worker.service` | Worker loop, no HTTP surface |

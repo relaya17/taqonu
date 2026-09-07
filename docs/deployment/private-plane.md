@@ -232,6 +232,65 @@ partway through:
 
 ---
 
+## Reconciling an already-bootstrapped VM
+
+`deploy/bootstrap.sh` is for first provisioning (or a `--update` pull). Once a
+VM has already been bootstrapped and may have services intentionally stopped
+(e.g. while external values are still being filled in), use
+`deploy/reconcile-production-vm.sh` instead of re-running bootstrap blindly —
+it inspects the current state against the finalized repository tooling rather
+than reinstalling anything.
+
+It has three modes, never combined:
+
+```bash
+sudo bash deploy/reconcile-production-vm.sh --check    # default; strictly read-only
+sudo bash deploy/reconcile-production-vm.sh --repair   # + the two whitelisted safe repairs
+sudo bash deploy/reconcile-production-vm.sh --start    # + the startup sequence, gate-permitting
+```
+
+`--check` (the default with no flag) inspects everything — repository
+version, env files, nginx, systemd, network, build artifacts — and mutates
+nothing: not `/etc/atlas`, not nginx, not systemd, not the repository.
+
+`--repair` does everything `--check` does, plus (only if the repository
+version gate passes) runs `deploy/generate-tokens.sh` and corrects env-file
+permissions/ownership — never starts, reloads, or enables anything, and
+takes a non-secret backup manifest first (see below). If the checkout on the
+VM is missing, dirty, or does not contain the expected commit, `--repair`
+refuses to touch anything: no token generation, no `chmod`/`chown`. Fix the
+repository first.
+
+`--start` re-runs the full read-only check and, only if every gate is
+satisfied (installation, configuration, and network all `PASS`), starts
+`atlas-control-plane` → verify → `atlas-admin` → verify → `atlas-worker` →
+verify, stopping immediately and reporting on the first failure. It never
+repairs; run `--repair` first if `--check` reports anything fixable locally.
+
+It prints a machine-readable summary block at the end (`REPO_STATUS=`,
+`ENV_STATUS=`, `TOKEN_ACTION=`, `NGINX_CONFIG_STATUS=`,
+`NGINX_LISTENER_STATUS=`, `SYSTEMD_STATUS=`, `NETWORK_STATUS=`,
+`BUILD_STATUS=`, `INSTALLATION_STATUS=`, `CONFIGURATION_STATUS=`,
+`RUNTIME_STATUS=`, `STARTUP_READINESS=`, `MISSING_VARIABLES=`,
+`ERROR_CODES=`, `OVERALL_STATUS=`), and never prints a secret value — token
+actions are reported as `KEEP_EXISTING` / `GENERATE_MISSING` / `NO_ACTION`
+against a variable **name**, exactly like `generate-tokens.sh` itself. A
+missing service listener before `--start` has ever run is reported as
+`EXPECTED_INACTIVE`, not a failure — it is only treated as a failure if it is
+still missing once `--start` has actually attempted to bring it up.
+
+Its `--repair`-mode backup writes a `manifest.json` alongside the byte-for-byte
+env/nginx-snippet copies, listing only the UTC timestamp, hostname,
+repository HEAD/branch, and each backed-up file's path/permissions/owner —
+never file content, never a secret.
+
+Run `deploy/reconcile-production-vm.test.sh` after changing this script — it
+exercises the repository gate, both check/repair modes, the URL and token
+edge cases, the listener-vs-mode distinction, and idempotency against
+disposable fixtures, never the real system.
+
+---
+
 ## Accessing the Owner UI
 
 ```
@@ -439,3 +498,8 @@ work and is out of scope for this migration.
   fixtures, no real secrets)
 - `deploy/generate-tokens.sh` — safe, non-rotating generator for the secrets
   Atlas can create itself
+- `deploy/reconcile-production-vm.sh` — read-only-by-default reconciliation
+  for an already-bootstrapped VM; see
+  [Reconciling an already-bootstrapped VM](#reconciling-an-already-bootstrapped-vm)
+- `deploy/reconcile-production-vm.test.sh` — its self-test suite (disposable
+  fixtures, no real secrets)
