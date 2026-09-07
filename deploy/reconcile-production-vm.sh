@@ -9,16 +9,28 @@
 #              repairs (deploy/generate-tokens.sh, env-file permission/
 #              ownership correction) -- ONLY if the repository gate passes.
 #              Never starts/reloads/enables anything.
-#   --start    Re-runs the full read-only check. Only if every gate is
+#   --start    Re-runs the full read-only check. PRE-START checks never
+#              require the services this run may be about to start to
+#              already be listening (that would be a startup deadlock) --
+#              a service's own port not yet being up is EXPECTED_INACTIVE
+#              in every mode, including --start. Only if every gate is
 #              satisfied does it start atlas-control-plane -> verify health
 #              -> atlas-admin -> verify health -> atlas-worker -> verify
 #              health, stopping immediately and reporting on the first
-#              failure. Never repairs; run --repair first if needed.
+#              failure. Only once the start sequence itself completes does
+#              a dedicated POST-START check re-verify, for real, that
+#              3100/3200/8443 came up loopback/tailnet-only and that the
+#              Control Plane answers a live health check -- that is the
+#              only point in this script allowed to call a missing
+#              listener a failure. Never repairs; run --repair first if
+#              needed.
 #
 # Order, always: preflight -> repository gate -> [backup + safe repair,
 # --repair only] -> baseline validation -> [safe repair] -> final
-# validation -> nginx/systemd/network/build verification -> readiness
-# decision -> [start sequence, --start only].
+# validation -> nginx/systemd/network/build verification (pre-start only --
+# never requires the target services to already be listening) -> readiness
+# decision -> [start sequence, --start only] -> [post-start verification,
+# --start only, only after a successful start sequence].
 #
 # SECRET SAFETY (see section H of the accompanying report for the full
 # audit): no .env file is ever cat'd, echoed, or diffed here -- every check
@@ -424,10 +436,17 @@ fi
 NGINX_CONFIG_STATUS=$([[ "$NGINX_CONFIG_OK" -eq 1 ]] && echo "PASS" || echo "BLOCKED")
 [[ "$NGINX_CONFIG_STATUS" == "BLOCKED" ]] && add_error "NGINX_VALIDATION_FAILED"
 
-# Listener state is reported SEPARATELY from config validity: a missing
-# listener before any start attempt is the expected, normal pre-start state
-# (per the directive's "known VM state": services intentionally not
-# started) -- it must never be silently folded into a bare PASS/FAIL.
+# Listener state is reported SEPARATELY from config validity, and is a
+# PRE-START check: it must NEVER require the service this run may be about
+# to start to already be listening -- that would be a startup deadlock
+# (--start refusing to start nginx's upstream because the thing it hasn't
+# started yet isn't listening). So a missing listener here is
+# EXPECTED_INACTIVE in EVERY mode, including --start, never a failure. A
+# real problem (bound to a public interface) is still BLOCKED regardless of
+# mode -- that's true whether or not anything has been started yet. Whether
+# the listener actually comes up once startup is attempted is verified for
+# real, after the fact, by section 13's POST-START VERIFICATION -- the only
+# place in this script allowed to treat "not listening" as a failure.
 if command -v ss >/dev/null 2>&1 && [[ -n "$TS_IP" ]]; then
   if ss -ltnH "sport = :8443" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
     blocked "nginx :8443 is bound to a public interface."
@@ -436,12 +455,8 @@ if command -v ss >/dev/null 2>&1 && [[ -n "$TS_IP" ]]; then
   elif ss -ltnH "sport = :8443" 2>/dev/null | grep -q "$TS_IP"; then
     pass "nginx :8443 is listening on the Tailscale IP."
     NGINX_LISTENER_STATUS="PASS"
-  elif [[ "$MODE" == "start" ]]; then
-    fail "nginx :8443 has no listener even though --start requires one."
-    NGINX_LISTENER_STATUS="FAIL"
-    add_error "NGINX_VALIDATION_FAILED"
   else
-    expinact "nginx :8443 has no listener yet -- expected pre-start, not a failure."
+    expinact "nginx :8443 has no listener yet -- expected pre-start, not a failure (verified for real after startup, in --start mode)."
     NGINX_LISTENER_STATUS="EXPECTED_INACTIVE"
   fi
 else
@@ -522,6 +537,14 @@ else
   NET_OK=0
 fi
 
+# Same pre-start principle as section 7's nginx listener check: 3100/3200
+# are bound by the very services this run may be about to start, so
+# requiring them to already be listening here would be a startup deadlock.
+# Not listening yet is EXPECTED_INACTIVE in every mode, including --start;
+# a public bind is still BLOCKED regardless of mode, since that is a real
+# security problem whenever it's true, started or not. Section 13's
+# POST-START VERIFICATION re-checks these for real once startup has
+# actually been attempted.
 if command -v ss >/dev/null 2>&1; then
   for port in 3100 3200; do
     if ss -ltnH "sport = :$port" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
@@ -529,11 +552,8 @@ if command -v ss >/dev/null 2>&1; then
       NET_OK=0
     elif ss -ltnH "sport = :$port" 2>/dev/null | grep -q '127.0.0.1'; then
       pass "port $port is loopback-only."
-    elif [[ "$MODE" == "start" ]]; then
-      fail "port $port has no listener even though --start requires one."
-      NET_OK=0
     else
-      expinact "nothing listening on port $port yet -- expected pre-start."
+      expinact "nothing listening on port $port yet -- expected pre-start (verified for real after startup, in --start mode)."
     fi
   done
 else
@@ -643,7 +663,85 @@ if [[ "$MODE" == "start" ]]; then
 else
   notrun "start sequence skipped -- only runs in --start mode."
 fi
-RUNTIME_STATUS=$([[ "$MODE" == "start" && "$SERVICE_START_ERROR" -eq 0 && "$STARTUP_READINESS" == "PASS" ]] && echo "PASS" || echo "$RUNTIME_STATUS")
+
+# ===========================================================================
+section "13. POST-START VERIFICATION (--start only, only once the start sequence itself completed)"
+# ===========================================================================
+# This is the ONLY place in this script allowed to treat "not listening" as
+# a failure -- because it is the only point where the services have
+# actually been asked to start. systemd reporting a unit "active" is not
+# proof it did its job: the process can come up and still never bind its
+# port (wrong config picked up at runtime, a crash loop that briefly looks
+# active, etc.), so this re-checks the real, external evidence -- the
+# listeners and a live HTTP call -- independently of systemd's own opinion.
+POST_START_STATUS="NOT_RUN"
+if [[ "$MODE" == "start" && "$SERVICE_START_ERROR" -eq 0 ]]; then
+  POST_OK=1
+
+  for unit in "${SERVICES[@]}"; do
+    if systemctl is-active --quiet "$unit"; then
+      pass "$unit: still active post-start."
+    else
+      fail "$unit: was reported active during startup but is not active now."
+      POST_OK=0
+      add_error "SERVICE_START_FAILED"
+    fi
+  done
+
+  for port in 3100 3200; do
+    if ss -ltnH "sport = :$port" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
+      fail "port $port is bound to a public interface after startup."
+      POST_OK=0
+      add_error "NETWORK_VALIDATION_FAILED"
+    elif ss -ltnH "sport = :$port" 2>/dev/null | grep -q '127.0.0.1'; then
+      pass "port $port is listening, loopback-only, post-start."
+    else
+      fail "port $port is still not listening after startup -- the unit is active but never bound its port. journalctl -u <unit> -n 50 for detail."
+      POST_OK=0
+      add_error "SERVICE_START_FAILED"
+    fi
+  done
+
+  if [[ -n "$TS_IP" ]]; then
+    if ss -ltnH "sport = :8443" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
+      fail "nginx :8443 is bound to a public interface after startup."
+      POST_OK=0
+      add_error "NGINX_VALIDATION_FAILED"
+    elif ss -ltnH "sport = :8443" 2>/dev/null | grep -q "$TS_IP"; then
+      pass "nginx :8443 is listening on the Tailscale IP, post-start."
+    else
+      fail "nginx :8443 is still not listening after startup."
+      POST_OK=0
+      add_error "NGINX_VALIDATION_FAILED"
+    fi
+  else
+    notrun "nginx :8443 post-start check skipped -- no Tailscale IPv4 available."
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    HEALTH_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3100/api/v1/status 2>/dev/null || echo 000)"
+    if [[ "$HEALTH_CODE" == "200" ]]; then
+      pass "Control Plane /api/v1/status answered 200 post-start."
+    else
+      fail "Control Plane /api/v1/status returned $HEALTH_CODE post-start (expected 200)."
+      POST_OK=0
+      add_error "SERVICE_START_FAILED"
+    fi
+  else
+    notrun "health check skipped -- 'curl' not available."
+  fi
+
+  POST_START_STATUS=$([[ "$POST_OK" -eq 1 ]] && echo "PASS" || echo "FAIL")
+elif [[ "$MODE" == "start" ]]; then
+  notrun "post-start verification skipped -- the start sequence itself did not complete (see section 12)."
+else
+  notrun "post-start verification skipped -- only runs in --start mode."
+fi
+
+# RUNTIME_STATUS is only ever PASS in --start mode, and only once BOTH
+# systemd and the post-start listener/health checks above agree the
+# service is genuinely up -- not merely "systemd says active."
+RUNTIME_STATUS=$([[ "$MODE" == "start" && "$POST_START_STATUS" == "PASS" ]] && echo "PASS" || echo "$RUNTIME_STATUS")
 
 # ===========================================================================
 section "SUMMARY"
@@ -655,7 +753,7 @@ elif [[ "$OVERALL_SEV" -ge 4 ]]; then
   OVERALL_STATUS="BLOCKED"
 elif [[ "$OVERALL_SEV" -ge 3 ]]; then
   OVERALL_STATUS="REQUIRES_OWNER_INPUT"
-elif [[ "$MODE" == "start" && "$SERVICE_START_ERROR" -eq 1 ]]; then
+elif [[ "$MODE" == "start" && ( "$SERVICE_START_ERROR" -eq 1 || "$POST_START_STATUS" == "FAIL" ) ]]; then
   OVERALL_STATUS="BLOCKED"
 else
   OVERALL_STATUS="READY_FOR_START"
@@ -688,6 +786,7 @@ INSTALLATION_STATUS=$INSTALLATION_STATUS
 CONFIGURATION_STATUS=$CONFIGURATION_STATUS
 RUNTIME_STATUS=$RUNTIME_STATUS
 STARTUP_READINESS=$STARTUP_READINESS
+POST_START_STATUS=$POST_START_STATUS
 MISSING_VARIABLES=$MISSING_JOINED
 ERROR_CODES=$ERR_JOINED
 OVERALL_STATUS=$OVERALL_STATUS

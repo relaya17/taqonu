@@ -267,17 +267,30 @@ satisfied (installation, configuration, and network all `PASS`), starts
 verify, stopping immediately and reporting on the first failure. It never
 repairs; run `--repair` first if `--check` reports anything fixable locally.
 
+**Pre-start checks never require the services this run is about to start to
+already be listening** — that would be a startup deadlock (`--start`
+refusing to start a service because the port it hasn't bound *yet* isn't
+bound). A service's own port not being up before startup is
+`EXPECTED_INACTIVE` in every mode, including `--start`; a real problem (a
+port already bound to a public interface) is still a pre-start `BLOCKED`
+regardless of mode. Once the start sequence itself completes, a dedicated
+**post-start verification** step re-checks — for real, against the live
+system, independent of what `systemctl` itself claims — that `:3100`,
+`:3200`, and `:8443` actually came up loopback/tailnet-only, and that the
+Control Plane answers a live `/api/v1/status` health check. That post-start
+step is the only place in the script allowed to call a missing listener a
+failure; if it fails, `POST_START_STATUS=FAIL` and `OVERALL_STATUS` is
+never `READY_FOR_START`.
+
 It prints a machine-readable summary block at the end (`REPO_STATUS=`,
 `ENV_STATUS=`, `TOKEN_ACTION=`, `NGINX_CONFIG_STATUS=`,
 `NGINX_LISTENER_STATUS=`, `SYSTEMD_STATUS=`, `NETWORK_STATUS=`,
 `BUILD_STATUS=`, `INSTALLATION_STATUS=`, `CONFIGURATION_STATUS=`,
-`RUNTIME_STATUS=`, `STARTUP_READINESS=`, `MISSING_VARIABLES=`,
-`ERROR_CODES=`, `OVERALL_STATUS=`), and never prints a secret value — token
-actions are reported as `KEEP_EXISTING` / `GENERATE_MISSING` / `NO_ACTION`
-against a variable **name**, exactly like `generate-tokens.sh` itself. A
-missing service listener before `--start` has ever run is reported as
-`EXPECTED_INACTIVE`, not a failure — it is only treated as a failure if it is
-still missing once `--start` has actually attempted to bring it up.
+`RUNTIME_STATUS=`, `STARTUP_READINESS=`, `POST_START_STATUS=`,
+`MISSING_VARIABLES=`, `ERROR_CODES=`, `OVERALL_STATUS=`), and never prints a
+secret value — token actions are reported as `KEEP_EXISTING` /
+`GENERATE_MISSING` / `NO_ACTION` against a variable **name**, exactly like
+`generate-tokens.sh` itself.
 
 Its `--repair`-mode backup writes a `manifest.json` alongside the byte-for-byte
 env/nginx-snippet copies, listing only the UTC timestamp, hostname,
@@ -286,8 +299,10 @@ never file content, never a secret.
 
 Run `deploy/reconcile-production-vm.test.sh` after changing this script — it
 exercises the repository gate, both check/repair modes, the URL and token
-edge cases, the listener-vs-mode distinction, and idempotency against
-disposable fixtures, never the real system.
+edge cases, the pre-start/post-start listener split (including a genuine
+`--start` from a fully cold state, and a service that reports active but
+never binds its port), service-start-failure ordering, and idempotency
+against disposable fixtures, never the real system.
 
 ---
 
