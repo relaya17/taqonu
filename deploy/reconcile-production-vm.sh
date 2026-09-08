@@ -400,14 +400,19 @@ if [[ -n "$TS_IP" && -f "$NGINX_SITE" ]]; then
     NGINX_CONFIG_OK=0
   fi
 fi
-if [[ -f "$NGINX_SITE" ]] && grep -qE '0\.0\.0\.0|listen[[:space:]]+443|listen[[:space:]]+80[^0-9]' "$NGINX_SITE" 2>/dev/null; then
+# Comment lines are excluded first so a documentation/warning comment
+# (e.g. "# NEVER change listen to 0.0.0.0") can never trip this check --
+# only real, uncommented directives count.
+if [[ -f "$NGINX_SITE" ]] && grep -vE '^[[:space:]]*#' "$NGINX_SITE" 2>/dev/null | grep -qE '0\.0\.0\.0|listen[[:space:]]+443|listen[[:space:]]+80[^0-9]'; then
   blocked "site config appears to bind a public interface or port 80/443."
   NGINX_CONFIG_OK=0
 fi
 
 if [[ -f "$NGINX_SNIPPET" ]]; then
   # Pattern match only -- never reads the real token into a variable.
-  if grep -q '__TOKEN__' "$NGINX_SNIPPET" 2>/dev/null; then
+  # Comment lines are excluded first so a documentation/warning comment
+  # that merely mentions __TOKEN__ can never trip this check.
+  if grep -vE '^[[:space:]]*#' "$NGINX_SNIPPET" 2>/dev/null | grep -q '__TOKEN__'; then
     ownerin "nginx auth snippet still has the __TOKEN__ placeholder."
     NGINX_CONFIG_OK=0
   else
@@ -448,16 +453,30 @@ NGINX_CONFIG_STATUS=$([[ "$NGINX_CONFIG_OK" -eq 1 ]] && echo "PASS" || echo "BLO
 # real, after the fact, by section 13's POST-START VERIFICATION -- the only
 # place in this script allowed to treat "not listening" as a failure.
 if command -v ss >/dev/null 2>&1 && [[ -n "$TS_IP" ]]; then
-  if ss -ltnH "sport = :8443" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
-    blocked "nginx :8443 is bound to a public interface."
+  # Extract ONLY the local-address:port field -- never grep the whole
+  # line. ss always prints the generic peer-address placeholder
+  # "0.0.0.0:*" for every LISTEN socket regardless of what it is
+  # actually bound to; grepping the whole line for "0.0.0.0:" previously
+  # false-positived on that placeholder even when the real local bind
+  # address was Tailscale-only. Picking the first whitespace-separated
+  # field that contains a colon works whether ss prints its full
+  # State/Recv-Q/Send-Q/Local/Peer/Process columns or just the bare
+  # local address (as the test fixture's stub does).
+  NGINX_8443_LOCAL_ADDR="$(ss -ltnH "sport = :8443" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i ~ /:/) {print $i; exit}}' | head -n1)"
+  if [[ -z "$NGINX_8443_LOCAL_ADDR" ]]; then
+    expinact "nginx :8443 has no listener yet -- expected pre-start, not a failure (verified for real after startup, in --start mode)."
+    NGINX_LISTENER_STATUS="EXPECTED_INACTIVE"
+  elif [[ "$NGINX_8443_LOCAL_ADDR" == 0.0.0.0:* || "$NGINX_8443_LOCAL_ADDR" == \[::\]:* ]]; then
+    blocked "nginx :8443 is bound to a public interface ($NGINX_8443_LOCAL_ADDR)."
     NGINX_LISTENER_STATUS="BLOCKED"
     add_error "NGINX_VALIDATION_FAILED"
-  elif ss -ltnH "sport = :8443" 2>/dev/null | grep -q "$TS_IP"; then
+  elif [[ "$NGINX_8443_LOCAL_ADDR" == "$TS_IP:8443" ]]; then
     pass "nginx :8443 is listening on the Tailscale IP."
     NGINX_LISTENER_STATUS="PASS"
   else
-    expinact "nginx :8443 has no listener yet -- expected pre-start, not a failure (verified for real after startup, in --start mode)."
-    NGINX_LISTENER_STATUS="EXPECTED_INACTIVE"
+    blocked "nginx :8443 is listening on an unexpected address ($NGINX_8443_LOCAL_ADDR) -- neither the Tailscale IP nor a public pattern. Review manually."
+    NGINX_LISTENER_STATUS="BLOCKED"
+    add_error "NGINX_VALIDATION_FAILED"
   fi
 else
   notrun "listener check skipped ('ss' or Tailscale IP unavailable)."
@@ -547,13 +566,19 @@ fi
 # actually been attempted.
 if command -v ss >/dev/null 2>&1; then
   for port in 3100 3200; do
-    if ss -ltnH "sport = :$port" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
-      blocked "port $port is bound to a public interface."
+    # Same local-address-only extraction as the nginx :8443 check above
+    # -- see that comment for why grepping the whole ss line is unsafe.
+    PORT_LOCAL_ADDR="$(ss -ltnH "sport = :$port" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i ~ /:/) {print $i; exit}}' | head -n1)"
+    if [[ -z "$PORT_LOCAL_ADDR" ]]; then
+      expinact "nothing listening on port $port yet -- expected pre-start (verified for real after startup, in --start mode)."
+    elif [[ "$PORT_LOCAL_ADDR" == 0.0.0.0:* || "$PORT_LOCAL_ADDR" == \[::\]:* ]]; then
+      blocked "port $port is bound to a public interface ($PORT_LOCAL_ADDR)."
       NET_OK=0
-    elif ss -ltnH "sport = :$port" 2>/dev/null | grep -q '127.0.0.1'; then
+    elif [[ "$PORT_LOCAL_ADDR" == 127.0.0.1:* ]]; then
       pass "port $port is loopback-only."
     else
-      expinact "nothing listening on port $port yet -- expected pre-start (verified for real after startup, in --start mode)."
+      blocked "port $port is bound to an unexpected address ($PORT_LOCAL_ADDR) -- neither loopback nor a public pattern. Review manually."
+      NET_OK=0
     fi
   done
 else
@@ -689,12 +714,17 @@ if [[ "$MODE" == "start" && "$SERVICE_START_ERROR" -eq 0 ]]; then
   done
 
   for port in 3100 3200; do
-    if ss -ltnH "sport = :$port" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
-      fail "port $port is bound to a public interface after startup."
+    POST_PORT_LOCAL_ADDR="$(ss -ltnH "sport = :$port" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i ~ /:/) {print $i; exit}}' | head -n1)"
+    if [[ "$POST_PORT_LOCAL_ADDR" == 0.0.0.0:* || "$POST_PORT_LOCAL_ADDR" == \[::\]:* ]]; then
+      fail "port $port is bound to a public interface after startup ($POST_PORT_LOCAL_ADDR)."
       POST_OK=0
       add_error "NETWORK_VALIDATION_FAILED"
-    elif ss -ltnH "sport = :$port" 2>/dev/null | grep -q '127.0.0.1'; then
+    elif [[ "$POST_PORT_LOCAL_ADDR" == 127.0.0.1:* ]]; then
       pass "port $port is listening, loopback-only, post-start."
+    elif [[ -n "$POST_PORT_LOCAL_ADDR" ]]; then
+      fail "port $port is bound to an unexpected address ($POST_PORT_LOCAL_ADDR) post-start -- neither loopback nor a public pattern. Review manually."
+      POST_OK=0
+      add_error "NETWORK_VALIDATION_FAILED"
     else
       fail "port $port is still not listening after startup -- the unit is active but never bound its port. journalctl -u <unit> -n 50 for detail."
       POST_OK=0
@@ -703,12 +733,17 @@ if [[ "$MODE" == "start" && "$SERVICE_START_ERROR" -eq 0 ]]; then
   done
 
   if [[ -n "$TS_IP" ]]; then
-    if ss -ltnH "sport = :8443" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
-      fail "nginx :8443 is bound to a public interface after startup."
+    POST_8443_LOCAL_ADDR="$(ss -ltnH "sport = :8443" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i ~ /:/) {print $i; exit}}' | head -n1)"
+    if [[ "$POST_8443_LOCAL_ADDR" == 0.0.0.0:* || "$POST_8443_LOCAL_ADDR" == \[::\]:* ]]; then
+      fail "nginx :8443 is bound to a public interface after startup ($POST_8443_LOCAL_ADDR)."
       POST_OK=0
       add_error "NGINX_VALIDATION_FAILED"
-    elif ss -ltnH "sport = :8443" 2>/dev/null | grep -q "$TS_IP"; then
+    elif [[ "$POST_8443_LOCAL_ADDR" == "$TS_IP:8443" ]]; then
       pass "nginx :8443 is listening on the Tailscale IP, post-start."
+    elif [[ -n "$POST_8443_LOCAL_ADDR" ]]; then
+      fail "nginx :8443 is bound to an unexpected address ($POST_8443_LOCAL_ADDR) post-start -- neither the Tailscale IP nor a public pattern. Review manually."
+      POST_OK=0
+      add_error "NGINX_VALIDATION_FAILED"
     else
       fail "nginx :8443 is still not listening after startup."
       POST_OK=0
