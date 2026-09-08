@@ -283,7 +283,11 @@ section "5b. nginx auth snippet — must carry the same operator token"
 # production behavior.
 NGINX_SNIPPET="${ATLAS_NGINX_SNIPPET:-/etc/nginx/snippets/atlas-admin-auth.conf}"
 if [[ -f "$NGINX_SNIPPET" ]]; then
-  if grep -q '__TOKEN__' "$NGINX_SNIPPET" 2>/dev/null; then
+  # Comment lines are excluded first so a documentation/instructional
+  # comment that merely mentions __TOKEN__ (e.g. "# Replace __TOKEN__
+  # with ...") can never trip this check -- only a real, uncommented
+  # directive that still has the literal placeholder should.
+  if grep -vE '^[[:space:]]*#' "$NGINX_SNIPPET" 2>/dev/null | grep -q '__TOKEN__'; then
     blocked "nginx auth snippet still has the __TOKEN__ placeholder -- replace it with the operator token, then 'nginx -t' and reload."
   else
     # Captured via command substitution (which strips the trailing newline
