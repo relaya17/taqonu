@@ -82,12 +82,20 @@ const COOKIE = "atlas_session";
 const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 14;
 
 function sessionCookie(token: string, maxAgeSec: number): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
+  // Web (taqonu-web.vercel.app) and API (taqonu-api.vercel.app) are different
+  // sites, so a cross-site fetch("...", { credentials: "include" }) call
+  // will NOT attach a SameSite=Lax cookie -- only SameSite=None does, and
+  // None requires Secure. Local dev (same-origin/proxied, plain http) keeps
+  // Lax so the cookie still works without HTTPS.
+  const isProd = process.env.NODE_ENV === "production";
+  const sameSite = isProd ? "SameSite=None; Secure" : "SameSite=Lax";
+  return `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; ${sameSite}; Max-Age=${maxAgeSec}`;
 }
 
 function clearCookie(): string {
-  return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const isProd = process.env.NODE_ENV === "production";
+  const sameSite = isProd ? "SameSite=None; Secure" : "SameSite=Lax";
+  return `${COOKIE}=; Path=/; HttpOnly; ${sameSite}; Max-Age=0`;
 }
 
 function clientMeta(request: FastifyRequest): {

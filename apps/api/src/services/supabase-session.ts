@@ -240,13 +240,17 @@ function toSession(session: {
 }
 
 export function serializeSupabaseSessionCookie(session: SupabaseUserSession): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  // See sessionCookie() in routes/auth.ts for why prod needs SameSite=None.
+  const isProd = process.env.NODE_ENV === "production";
+  const sameSite = isProd ? "SameSite=None; Secure" : "SameSite=Lax";
   const payload = encodeURIComponent(JSON.stringify(session));
-  return `${COOKIE}=${payload}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}${secure}`;
+  return `${COOKIE}=${payload}; Path=/; HttpOnly; ${sameSite}; Max-Age=${60 * 60 * 24 * 14}`;
 }
 
 export function clearSupabaseSessionCookie(): string {
-  return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const isProd = process.env.NODE_ENV === "production";
+  const sameSite = isProd ? "SameSite=None; Secure" : "SameSite=Lax";
+  return `${COOKIE}=; Path=/; HttpOnly; ${sameSite}; Max-Age=0`;
 }
 
 export function readSupabaseSessionCookie(
