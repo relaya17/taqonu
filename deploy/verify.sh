@@ -95,12 +95,23 @@ fi
 
 section "5. Private-by-default (ADR-021)"
 for port in 3100 3200; do
-  if ss -ltnH "sport = :$port" 2>/dev/null | grep -qE '0\.0\.0\.0:|\[::\]:'; then
-    bad "port $port is bound to a public interface"
-  elif ss -ltnH "sport = :$port" 2>/dev/null | grep -q '127.0.0.1'; then
+  # Extract ONLY the local-address:port field -- never grep the whole `ss`
+  # line. ss always prints the generic peer-address placeholder
+  # "0.0.0.0:*" for every LISTEN socket regardless of what it is actually
+  # bound to, which previously made this false-positive "public interface"
+  # on a correctly loopback-only listener (same root cause as the nginx
+  # :8443 bug already fixed in reconcile-production-vm.sh). Picking the
+  # first whitespace-separated field that contains a colon works
+  # regardless of exactly how many columns ss prints.
+  PORT_LOCAL_ADDR="$(ss -ltnH "sport = :$port" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i ~ /:/) {print $i; exit}}' | head -n1)"
+  if [[ -z "$PORT_LOCAL_ADDR" ]]; then
+    bad "nothing is listening on port $port"
+  elif [[ "$PORT_LOCAL_ADDR" == 0.0.0.0:* || "$PORT_LOCAL_ADDR" == \[::\]:* ]]; then
+    bad "port $port is bound to a public interface ($PORT_LOCAL_ADDR)"
+  elif [[ "$PORT_LOCAL_ADDR" == 127.0.0.1:* ]]; then
     ok "port $port is loopback-only"
   else
-    bad "nothing is listening on port $port"
+    bad "port $port is bound to an unexpected address ($PORT_LOCAL_ADDR) -- neither loopback nor a public pattern. Review manually."
   fi
 done
 
