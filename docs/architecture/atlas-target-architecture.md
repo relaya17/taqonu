@@ -60,7 +60,7 @@ Atlas observes and governs **from the outside**. It is not “an AI wired into e
 
 | Origin | App | Default port |
 | --- | --- | --- |
-| Developer / user-plane UI (includes Studio) | `apps/web` | `:3000` |
+| User-plane product UI — the Atlas/Taqonu application itself (includes Studio as a developer-facing capability) | `apps/web` | `:3000` |
 | Tenant API | `apps/api` | `:4000` |
 | Atlas Control | `apps/control-plane` | `:3100` |
 | Atlas Admin | `apps/admin` | `:3200` |
@@ -724,7 +724,7 @@ Inspected read-only. Documentation is **not** treated as implementation.
 
 | Surface | Implementation | Port |
 | --- | --- | --- |
-| Studio + rest of developer UI | `apps/web` | 3000 |
+| Atlas/Taqonu product UI, incl. Studio (developer-facing capability) | `apps/web` | 3000 |
 | Tenant API, Fabric execution, Studio APIs, memory, patches | `apps/api` | 4000 |
 | Control | `apps/control-plane` | 3100 |
 | Atlas Admin (platform supervisor) | `apps/admin` | 3200 |
