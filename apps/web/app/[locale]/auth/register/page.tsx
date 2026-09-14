@@ -50,7 +50,10 @@ export default function RegisterPage() {
     onSuccess: () => {
       // Hard navigation, not router.push()+router.refresh() -- see the
       // identical fix and explanation in auth/login/page.tsx.
-      window.location.href = "/";
+      // Target `/${locale}`, not bare "/": middleware.ts redirects bare
+      // "/" unconditionally to "/he/welcome" regardless of session state --
+      // see the matching fix + comment in auth/login/page.tsx.
+      window.location.href = `/${locale}`;
     },
   });
 

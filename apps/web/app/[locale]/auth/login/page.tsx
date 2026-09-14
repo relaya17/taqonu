@@ -47,13 +47,18 @@ export default function LoginPage() {
     onSuccess: () => {
       // Hard navigation, not router.push()+router.refresh(): the two client
       // calls race (refresh() re-fetches the *current* route's server data
-      // before push()'s navigation to "/" has settled), which was landing
-      // the user back on this login page with the form reset instead of
-      // logged in. A full navigation reloads "/" fresh -- cookie, RSC
-      // payload, and the sidebar's auth-session query all read the new
-      // session with no race. Matches logout()'s existing pattern in
-      // components/layout/AppShell.tsx.
-      window.location.href = "/";
+      // before push()'s navigation has settled), which was landing the user
+      // back on this login page with the form reset instead of logged in.
+      // Target `/${locale}`, not bare "/": middleware.ts redirects bare "/"
+      // unconditionally to "/he/welcome" (the public marketing page) --
+      // that redirect doesn't look at the session cookie at all, so a hard
+      // nav to "/" bounced a freshly-logged-in user straight back out to
+      // the marketing page instead of the dashboard. `/${locale}` is the
+      // actual dashboard route (see middleware.ts's own comment: "Dashboard
+      // stays at /he"). Matches logout()'s existing pattern in
+      // components/layout/AppShell.tsx, which navigates to
+      // `/${locale}/auth/login` for the same reason.
+      window.location.href = `/${locale}`;
     },
   });
 
