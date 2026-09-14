@@ -229,7 +229,8 @@
       "checks": "Checks"
     },
     "checksTab": {
-      "observer": "Observer"
+      "observer": "Observer",
+      "sentinel": "Security"
     }
   },
   "contract": {

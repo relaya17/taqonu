@@ -28,6 +28,7 @@ import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { ChatPanel } from "@/components/studio/ChatPanel";
 import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
 import { ObserverPanel } from "@/components/studio/ObserverPanel";
+import { SentinelPanel } from "@/components/studio/SentinelPanel";
 
 interface Project {
   id: string;
@@ -104,10 +105,10 @@ function isStudioTab(value: string | null): value is StudioTab {
 }
 
 /** Sub-tabs inside "Checks" — one ops page migrates in per rollout step. */
-type ChecksSubTab = "observer";
-const CHECKS_SUB_TABS: ChecksSubTab[] = ["observer"];
+type ChecksSubTab = "observer" | "sentinel";
+const CHECKS_SUB_TABS: ChecksSubTab[] = ["observer", "sentinel"];
 function isChecksSubTab(value: string | null): value is ChecksSubTab {
-  return value === "observer";
+  return value === "observer" || value === "sentinel";
 }
 
 function TreeBranch({
@@ -925,6 +926,9 @@ export default function StudioPage() {
             </Tabs>
             {checksTab === "observer" ? (
               <ObserverPanel projectId={projectId} embedded />
+            ) : null}
+            {checksTab === "sentinel" ? (
+              <SentinelPanel projectId={projectId} embedded />
             ) : null}
           </Stack>
         ) : (

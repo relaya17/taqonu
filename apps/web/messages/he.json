@@ -283,7 +283,8 @@
       "checks": "בדיקות"
     },
     "checksTab": {
-      "observer": "צופה"
+      "observer": "צופה",
+      "sentinel": "בדיקת אבטחה"
     }
   },
   "auth": {

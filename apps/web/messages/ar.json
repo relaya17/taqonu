@@ -229,7 +229,8 @@
       "checks": "الفحوصات"
     },
     "checksTab": {
-      "observer": "المراقب"
+      "observer": "المراقب",
+      "sentinel": "الأمان"
     }
   },
   "contract": {
