@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { Link, useRouter } from "@/i18n/routing";
+import { Link } from "@/i18n/routing";
 import { apiGet, apiPost, downloadVerifiedSourcesPack, ADMIN_LOGIN_PATH } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
@@ -32,7 +32,6 @@ interface AuthSession {
 export default function LoginPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
-  const router = useRouter();
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
   const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
   const [oauthError, setOauthError] = useState<string | null>(null);
@@ -46,8 +45,15 @@ export default function LoginPage() {
     mutationFn: () =>
       apiPost<AuthSession>("/api/v1/auth/login", { email, password }),
     onSuccess: () => {
-      router.push("/");
-      router.refresh();
+      // Hard navigation, not router.push()+router.refresh(): the two client
+      // calls race (refresh() re-fetches the *current* route's server data
+      // before push()'s navigation to "/" has settled), which was landing
+      // the user back on this login page with the form reset instead of
+      // logged in. A full navigation reloads "/" fresh -- cookie, RSC
+      // payload, and the sidebar's auth-session query all read the new
+      // session with no race. Matches logout()'s existing pattern in
+      // components/layout/AppShell.tsx.
+      window.location.href = "/";
     },
   });
 
