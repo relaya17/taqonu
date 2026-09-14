@@ -54,7 +54,7 @@
     "theme": "ערכת נושא",
     "opsGroup": "מעקב בלוח בקרה",
     "buildGroup": "בנייה",
-    "workspaceGroup": "סביבת עבודה"
+    "workspaceGroup": "כלים ומשאבים"
   },
   "legalMedia": {
     "title": "תדרוך לעורך דין הייטק",
@@ -275,7 +275,12 @@
     "cloning": "משכפל…",
     "cloneDone": "הוצע Patch לשכפול.",
     "catalog": "מופת",
-    "personalExemplars": "אישי"
+    "personalExemplars": "אישי",
+    "tab": {
+      "files": "קבצים",
+      "chat": "שיח עם הסוכן",
+      "cloud": "ענן וכלים"
+    }
   },
   "auth": {
     "login": "התחברות",

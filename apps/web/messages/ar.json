@@ -54,7 +54,7 @@
     "theme": "المظهر",
     "opsGroup": "متابعة لوحة التحكم",
     "buildGroup": "البناء",
-    "workspaceGroup": "مساحة العمل"
+    "workspaceGroup": "الأدوات والموارد"
   },
   "a11y": {
     "skipToContent": "تخطَّ إلى المحتوى",
@@ -221,7 +221,12 @@
     "cloning": "جارٍ الاستنساخ…",
     "cloneDone": "تم اقتراح Patch للاستنساخ.",
     "catalog": "النموذج",
-    "personalExemplars": "شخصي"
+    "personalExemplars": "شخصي",
+    "tab": {
+      "files": "الملفات",
+      "chat": "محادثة الوكيل",
+      "cloud": "السحابة والأدوات"
+    }
   },
   "contract": {
     "title": "عقد البنية",

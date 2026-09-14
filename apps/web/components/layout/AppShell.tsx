@@ -135,7 +135,7 @@ const NAV_GROUPS: readonly {
     id: "build",
     labelKey: "buildGroup",
     collapsedByDefault: true,
-    items: ["studio", "workbench", "agents", "experts"],
+    items: ["studio", "agents", "experts"],
   },
   {
     id: "workspace",

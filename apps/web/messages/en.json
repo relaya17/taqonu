@@ -54,7 +54,7 @@
     "theme": "Theme",
     "opsGroup": "Dashboard tracking",
     "buildGroup": "Build",
-    "workspaceGroup": "Workspace"
+    "workspaceGroup": "Tools & Resources"
   },
   "a11y": {
     "skipToContent": "Skip to content",
@@ -221,7 +221,12 @@
     "cloning": "Cloning…",
     "cloneDone": "Clone Patch proposed.",
     "catalog": "Exemplar",
-    "personalExemplars": "personal"
+    "personalExemplars": "personal",
+    "tab": {
+      "files": "Files",
+      "chat": "Agent chat",
+      "cloud": "Cloud & Tools"
+    }
   },
   "contract": {
     "title": "Architecture Contract",

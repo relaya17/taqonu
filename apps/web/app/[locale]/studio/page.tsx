@@ -12,6 +12,8 @@ import {
   ListItemText,
   MenuItem,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -19,9 +21,12 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/routing";
+import { useSearchParams } from "next/navigation";
+import { Link, usePathname, useRouter } from "@/i18n/routing";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import { ChatPanel } from "@/components/studio/ChatPanel";
+import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
 
 interface Project {
   id: string;
@@ -88,6 +93,12 @@ interface CloneResult {
 
 type StudioIntent = "propose" | "remind" | "summary";
 const ASK_MODES = ["fix", "generate", "implement", "refactor", "secure"] as const;
+
+type StudioTab = "files" | "chat" | "cloud";
+const STUDIO_TABS: StudioTab[] = ["files", "chat", "cloud"];
+function isStudioTab(value: string | null): value is StudioTab {
+  return value === "files" || value === "chat" || value === "cloud";
+}
 
 function TreeBranch({
   node,
@@ -159,6 +170,25 @@ function TreeBranch({
 
 export default function StudioPage() {
   const t = useTranslations("studio");
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const [tab, setTab] = useState<StudioTab>(
+    isStudioTab(tabFromUrl) ? tabFromUrl : "files",
+  );
+
+  useEffect(() => {
+    if (isStudioTab(tabFromUrl) && tabFromUrl !== tab) {
+      setTab(tabFromUrl);
+    }
+  }, [tabFromUrl, tab]);
+
+  const selectTab = (next: StudioTab) => {
+    setTab(next);
+    router.replace(`${pathname}?tab=${next}`);
+  };
 
   const [projectId, setProjectId] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -390,6 +420,28 @@ export default function StudioPage() {
         <Alert severity="info">{t("pickProject")}</Alert>
       ) : null}
 
+      <Tabs
+        value={tab}
+        onChange={(_, v: StudioTab) => selectTab(v)}
+        sx={{
+          borderBottom: panelBorder,
+          minHeight: 40,
+          "& .MuiTab-root": {
+            color: "rgba(232,234,238,0.65)",
+            minHeight: 40,
+            textTransform: "none",
+          },
+          "& .Mui-selected": { color: "#EEEEF0 !important" },
+          "& .MuiTabs-indicator": { bgcolor: "#9A9EA8" },
+        }}
+      >
+        {STUDIO_TABS.map((id) => (
+          <Tab key={id} value={id} label={t(`tab.${id}`)} />
+        ))}
+      </Tabs>
+
+      {tab === "files" ? (
+        <>
       {treeQuery.isError ? (
         <Alert severity="error">{(treeQuery.error as Error).message}</Alert>
       ) : null}
@@ -809,6 +861,18 @@ export default function StudioPage() {
           </Stack>
         </Box>
       ) : null}
+        </>
+      ) : null}
+
+      {tab === "chat" ? (
+        projectId ? (
+          <ChatPanel projectId={projectId} selectedPath={selectedPath} embedded />
+        ) : (
+          <Alert severity="info">{t("pickProject")}</Alert>
+        )
+      ) : null}
+
+      {tab === "cloud" ? <CloudToolsPanel embedded /> : null}
     </Stack>
     </Box>
   );
