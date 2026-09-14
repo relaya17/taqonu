@@ -13,7 +13,9 @@ const tmpDir = mkdtempSync(join(tmpdir(), "atlas-central-opinion-test-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 
-const { syncProcessAuditToMemory } = await import("./central-opinion.js");
+const { syncProcessAuditToMemory, buildCentralOpinion, rememberProcessAuditId } =
+  await import("./central-opinion.js");
+const { osStore } = await import("../store/os-store.js");
 
 afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
@@ -97,5 +99,81 @@ describe("syncProcessAuditToMemory", () => {
     expect(memory.statement).toContain("minor styling issue");
     expect(memory.statement).toContain(`auditId=${audit.id}`);
     expect(memory.statement).not.toContain("[REDACTED_SECRET]");
+  });
+});
+
+describe("buildCentralOpinion", () => {
+  function persistAudit(doc: ProcessAuditDocument) {
+    osStore.setMeta(`qa.processAudit.${doc.id}`, JSON.stringify(doc));
+    rememberProcessAuditId(doc.id);
+  }
+
+  function makeProject() {
+    osStore.ensureLoaded();
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    osStore.upsertProject({
+      id,
+      slug: `proj-${id.slice(0, 8)}`,
+      name: "Central Opinion Test Project",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    return id;
+  }
+
+  it("reflects only the most recent audit, not a worst-ever verdict across history", () => {
+    const projectId = makeProject();
+
+    // Older run: NO_GO with a blocker that has since been fixed.
+    const older = makeAudit({
+      projectId,
+      verdict: "NO_GO",
+      verdictReason: "Old run — since fixed.",
+      items: [
+        {
+          id: crypto.randomUUID(),
+          kind: "BLOCKER",
+          gateId: null,
+          dimension: "RBAC",
+          severity: "CRITICAL",
+          title: "Old blocker that was fixed",
+          detail: "n/a",
+          expected: null,
+          actual: null,
+          specialist: null,
+          epistemicState: "INFERRED",
+          evidenceNotes: [],
+          recommendedNext: null,
+        },
+      ],
+    });
+    persistAudit(older);
+
+    // Newer run: clean GO, no findings.
+    const newer = makeAudit({
+      projectId,
+      verdict: "GO",
+      verdictReason: "Re-audit after the fix — clean.",
+      items: [],
+    });
+    persistAudit(newer);
+
+    const opinion = buildCentralOpinion(projectId);
+
+    // The fix: verdict follows the latest run (GO), not the worst one ever
+    // seen (NO_GO from the older run) — no permanent ratchet.
+    expect(opinion.verdict).toBe("GO");
+    // The old, already-fixed blocker must not resurface as a current finding.
+    expect(
+      opinion.findings.some((f) => f.title === "Old blocker that was fixed"),
+    ).toBe(false);
+    // Full history stays available for anyone who wants the trend.
+    expect(opinion.processAuditIds).toEqual(
+      expect.arrayContaining([older.id, newer.id]),
+    );
   });
 });

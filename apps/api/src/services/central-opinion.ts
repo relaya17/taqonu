@@ -157,19 +157,6 @@ export function resolveProjectReachability(projectId: string): ProjectReachabili
   };
 }
 
-function worstVerdict(
-  a: ProcessVerdict | "INSUFFICIENT_EVIDENCE",
-  b: ProcessVerdict,
-): ProcessVerdict | "INSUFFICIENT_EVIDENCE" {
-  const rank = {
-    NO_GO: 3,
-    CONDITIONAL_GO: 2,
-    GO: 1,
-    INSUFFICIENT_EVIDENCE: 0,
-  } as const;
-  return rank[b] >= rank[a] ? b : a;
-}
-
 /** Persist process-audit outcome into Memory so the companion can remind later. */
 export function syncProcessAuditToMemory(doc: ProcessAuditDocument): Memory {
   const now = new Date().toISOString();
@@ -254,15 +241,29 @@ export function buildCentralOpinion(projectId: string): CentralOpinion {
   const reminders = listManagerPartnerReminders(projectId);
   const now = new Date().toISOString();
 
-  let verdict: ProcessVerdict | "INSUFFICIENT_EVIDENCE" = "INSUFFICIENT_EVIDENCE";
+  // `audits` is every stored E2E run for this project (rememberProcessAuditId
+  // prepends new ids, so audits[0] is the most recent) -- up to 50 of them.
+  // This used to fold every one of them into one opinion: `worstVerdict`
+  // reduced over the whole list (so a single historical NO_GO pinned the
+  // opinion at NO_GO forever, even after a later clean re-run) and every
+  // audit's blockers/defects were flattened into one `findings` array with
+  // no indication that some came from an old run on a different code state.
+  // A defect a user already fixed would keep showing up as if it were still
+  // open. The central opinion should reflect the CURRENT state -- the most
+  // recent run -- not a worst-case-ever ratchet across history. Past runs
+  // stay visible via `processAuditIds` (all of them, oldest to newest) for
+  // anyone who wants the trend; they no longer silently become "current"
+  // findings.
+  const latestAudit = audits[0] ?? null;
+  const verdict: ProcessVerdict | "INSUFFICIENT_EVIDENCE" =
+    latestAudit?.verdict ?? "INSUFFICIENT_EVIDENCE";
   const findings: CentralOpinion["findings"] = [];
 
-  for (const audit of audits) {
-    verdict = worstVerdict(verdict, audit.verdict);
-    for (const item of audit.items) {
+  if (latestAudit) {
+    for (const item of latestAudit.items) {
       if (item.kind === "BLOCKER" || item.kind === "DEFECT") {
         findings.push({
-          source: `E2E:${audit.id.slice(0, 8)}`,
+          source: `E2E:${latestAudit.id.slice(0, 8)}`,
           severity: item.severity,
           title: item.title,
         });
