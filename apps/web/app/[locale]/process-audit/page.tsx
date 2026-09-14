@@ -22,6 +22,28 @@ interface Project {
   workspaceRoot?: string | null;
 }
 
+/**
+ * Mirrors packages/shared/src/schemas/process-audit.schema.ts's
+ * processAuditItemSchema. `sections.blockers`/`defects` (below) are a
+ * flattened `[SEVERITY] title` string per item -- convenient for a quick
+ * list, but they drop `epistemicState`/`expected`/`actual`, which is
+ * exactly the distinction between "we proved this fails" and "we could not
+ * find evidence it was tested" (ADR-014: "never silently merge
+ * categories"). Render blockers/defects from `items` instead of
+ * `sections` so that distinction reaches the screen.
+ */
+interface ProcessAuditItem {
+  id: string;
+  kind: "BLOCKER" | "DEFECT" | "FUTURE_CHECK" | "RECOMMENDATION" | string;
+  severity: string;
+  title: string;
+  detail: string;
+  expected: string | null;
+  actual: string | null;
+  epistemicState: string;
+  recommendedNext: string | null;
+}
+
 interface ProcessAuditDocument {
   id: string;
   appProfile: string;
@@ -29,6 +51,7 @@ interface ProcessAuditDocument {
   verdict: "GO" | "CONDITIONAL_GO" | "NO_GO";
   verdictReason: string;
   specialistsEngaged: string[];
+  items: ProcessAuditItem[];
   sections: {
     executiveSummary: string;
     defects: string[];
@@ -40,6 +63,14 @@ interface ProcessAuditDocument {
   syncedMemoryId?: string;
   note?: string;
 }
+
+/** Short, plain-language gloss for each epistemicState value this audit actually emits. */
+const EPISTEMIC_STATE_KEYS: Record<string, string> = {
+  OBSERVED: "epistemic_OBSERVED",
+  INFERRED: "epistemic_INFERRED",
+  PROPOSED: "epistemic_PROPOSED",
+  UNKNOWN: "epistemic_UNKNOWN",
+};
 
 interface Reachability {
   overall: "READY" | "PARTIAL" | "BLOCKED";
@@ -326,27 +357,38 @@ export default function ProcessAuditPage() {
             ) : null}
           </Alert>
 
-          {doc.sections.blockers.length > 0 ? (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="overline">{t("blockers")}</Typography>
-              {doc.sections.blockers.map((b) => (
-                <Typography key={b} variant="body2">
-                  • {b}
+          {(["BLOCKER", "DEFECT"] as const).map((kind) => {
+            const rows = (doc.items ?? []).filter((i) => i.kind === kind);
+            if (rows.length === 0) return null;
+            return (
+              <Box key={kind} sx={{ mb: 2 }}>
+                <Typography variant="overline">
+                  {t(kind === "BLOCKER" ? "blockers" : "defects")}
                 </Typography>
-              ))}
-            </Box>
-          ) : null}
-
-          {doc.sections.defects.length > 0 ? (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="overline">{t("defects")}</Typography>
-              {doc.sections.defects.map((d) => (
-                <Typography key={d} variant="body2">
-                  • {d}
-                </Typography>
-              ))}
-            </Box>
-          ) : null}
+                <Stack spacing={1} sx={{ mt: 0.5 }}>
+                  {rows.map((item) => (
+                    <Box key={item.id}>
+                      <Typography variant="body2">
+                        • [{item.severity}] {item.title}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", ml: 2 }}
+                      >
+                        {t("evidenceState")}:{" "}
+                        {t(
+                          EPISTEMIC_STATE_KEYS[item.epistemicState] ??
+                            "epistemic_UNKNOWN",
+                        )}
+                        {item.actual ? ` — ${t("actualLabel")}: ${item.actual}` : ""}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            );
+          })}
 
           {doc.sections.recommendations.length > 0 ? (
             <Box sx={{ mb: 2 }}>

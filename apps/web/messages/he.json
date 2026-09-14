@@ -1005,6 +1005,12 @@
     "verdict_NO_GO": "NO-GO — חסום",
     "blockers": "חוסמים",
     "defects": "ליקויים",
+    "evidenceState": "מצב ראיות",
+    "actualLabel": "בפועל",
+    "epistemic_OBSERVED": "נצפה בפועל",
+    "epistemic_INFERRED": "לא הוכח ישירות (הוסק מסריקה)",
+    "epistemic_PROPOSED": "מוצע (טרם אומת)",
+    "epistemic_UNKNOWN": "לא ידוע",
     "recommendations": "המלצות",
     "copyReport": "העתק דוח מלא"
   },

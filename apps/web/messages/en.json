@@ -961,6 +961,12 @@
     "verdict_NO_GO": "NO-GO",
     "blockers": "Blockers",
     "defects": "Defects",
+    "evidenceState": "Evidence status",
+    "actualLabel": "Actual",
+    "epistemic_OBSERVED": "Observed directly",
+    "epistemic_INFERRED": "Not directly evidenced (inferred from scan)",
+    "epistemic_PROPOSED": "Proposed (not yet verified)",
+    "epistemic_UNKNOWN": "Unknown",
     "recommendations": "Recommendations",
     "copyReport": "Copy full report"
   },

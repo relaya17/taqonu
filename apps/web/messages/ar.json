@@ -961,6 +961,12 @@
     "verdict_NO_GO": "NO-GO",
     "blockers": "العوائق",
     "defects": "العيوب",
+    "evidenceState": "حالة الأدلة",
+    "actualLabel": "الفعلي",
+    "epistemic_OBSERVED": "لوحظ فعلياً",
+    "epistemic_INFERRED": "غير مثبت مباشرة (مُستدل من الفحص)",
+    "epistemic_PROPOSED": "مقترح (لم يُتحقق بعد)",
+    "epistemic_UNKNOWN": "غير معروف",
     "recommendations": "توصيات",
     "copyReport": "نسخ التقرير الكامل"
   },
