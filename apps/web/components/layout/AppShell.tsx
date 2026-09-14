@@ -233,6 +233,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isMarketing =
     pathname === "/welcome" || pathname.startsWith("/welcome/");
   const showUpgradeCta = planQuery.data?.tier === "free";
+  // The desktop sidebar lists internal product pages (systems, projects,
+  // audit, health...). Showing it -- open, by default -- on /auth/login,
+  // /auth/register etc. let a signed-out visitor see and click into the
+  // full internal nav before authenticating. Defaults to hidden while
+  // meQuery is still loading, not just once it confirms "not signed in".
+  const isAuthed = Boolean(meQuery.data?.user);
 
   const logout = async () => {
     await apiPost("/api/v1/auth/logout", {});
@@ -844,7 +850,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         sx={{
           display: {
             xs: "none",
-            md: navCollapsed ? "none" : "block",
+            md: navCollapsed || !isAuthed ? "none" : "block",
           },
           width: DRAWER_WIDTH,
           flexShrink: 0,
@@ -866,7 +872,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           minWidth: 0,
           width: {
             xs: "100%",
-            md: navCollapsed ? "100%" : `calc(100% - ${DRAWER_WIDTH}px)`,
+            md:
+              navCollapsed || !isAuthed
+                ? "100%"
+                : `calc(100% - ${DRAWER_WIDTH}px)`,
           },
           maxWidth: "100%",
           overflowX: "clip",
@@ -932,9 +941,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-expanded={navOpen}
               aria-controls={navId}
               sx={{
+                // Hidden while signed out: it only opens the internal nav
+                // drawer, which has nothing for an unauthenticated visitor
+                // (see the matching isAuthed gate on the desktop drawer
+                // above -- this is the same fix for the mobile entry point).
                 display: {
-                  xs: "inline-flex",
-                  md: navCollapsed ? "inline-flex" : "none",
+                  xs: isAuthed ? "inline-flex" : "none",
+                  md: navCollapsed && isAuthed ? "inline-flex" : "none",
                 },
               }}
             >
