@@ -179,10 +179,12 @@
     "askHelp": "Only the agent adds or changes code. Choose propose, reminder, or summary — you Approve Apply.",
     "intentLabel": "Studio intent",
     "intentPropose": "Agent add / change",
+    "intentLoop": "Run Engineering Loop",
     "intentRemind": "Reminder",
     "intentSummary": "Continue summary",
     "intentHelp": {
       "propose": "Only the agent drafts add/change as a Patch. You Approve & Apply on Patches.",
+      "loop": "Runs the full engineering pipeline (evidence, impact, checks, expert review, risk) against this project's linked workspace, then pauses for your approval before anything is applied.",
       "remind": "Saves a reminder to Memory for later — no disk write.",
       "summary": "Saves your customer continue-brief to Memory for the next build session."
     },
@@ -201,6 +203,20 @@
     "summaryLabel": "Continue summary for the customer",
     "summaryPlaceholder": "What we finished, what the customer wants next, blockers…",
     "ask": "Ask agent",
+    "runLoop": "Run Engineering Loop",
+    "loopRunning": "Running engineering loop…",
+    "loopNoRoot": "This project has no linked workspace folder yet.",
+    "loopStatusLabel": "Loop status",
+    "loopRiskLabel": "Risk",
+    "loopStatusValue": {
+      "RUNNING": "Running",
+      "AWAITING_APPROVAL": "Awaiting your approval",
+      "PASSED": "Passed (no patch to apply)",
+      "FAILED": "Failed",
+      "BLOCKED": "Blocked (security check)",
+      "APPLIED": "Applied"
+    },
+    "loopPatchHint": "A patch was proposed and is awaiting approval.",
     "saveRemind": "Save reminder",
     "saveSummary": "Save summary",
     "asking": "Working…",

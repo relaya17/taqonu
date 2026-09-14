@@ -1,10 +1,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import type { AtlasEvalSuiteRun, AuthUser, EngineeringLoopRun } from "@atlas/shared";
-import { atlasProofReportSchema } from "@atlas/shared";
+import type {
+  AtlasEvalSuiteRun,
+  AuthUser,
+  EngineeringLoopRun,
+  PatchArtifact,
+} from "@atlas/shared";
+import { atlasProofReportSchema, patchArtifactSchema } from "@atlas/shared";
 
 // Isolate the singleton osStore before it's ever imported/loaded (same
 // pattern as conflicts.test.ts / db-feeds.test.ts).
@@ -39,6 +44,15 @@ const { registerEngineeringLoopRoutes } = await import("./engineering-loop.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
 const { bindProjectOwner } = await import("../services/project-access.js");
+const { resetApprovalsForTests } = await import("../services/approvals-test-store.js");
+const { createApprovalRequest } = await import("../services/approvals.js");
+
+// Item 1 (governed engineering-loop apply) needs a real, isolated approval
+// backend -- the default (unconfigured) live approval store throws. The
+// existing three /approve tests below never reach this code (blocked by
+// auth/policy checks first), so this is additive, not a behavior change
+// for them.
+resetApprovalsForTests();
 
 function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
   return {
@@ -333,6 +347,128 @@ describe("POST /api/v1/engineering/loop/:id/approve", () => {
       payload: { approvedBy: "owner" },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("POST /api/v1/engineering/loop/:id/approve -- governed apply (Item 1)", () => {
+  /**
+   * Seeds a loop run + its proposed patch + a PENDING ApprovalRequest,
+   * mirroring exactly what POST /api/v1/engineering/loop now persists at
+   * AWAITING_APPROVAL -- without running the real (slow) 14-stage pipeline,
+   * matching this file's existing makeLoopRun() convention.
+   */
+  async function makeLoopRunWithPatch(
+    projectId: string | null,
+  ): Promise<{ run: EngineeringLoopRun; patch: PatchArtifact; workspaceRoot: string }> {
+    osStore.ensureLoaded();
+    const now = new Date().toISOString();
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "atlas-engineering-loop-apply-"));
+    const patchId = crypto.randomUUID();
+    const patch = patchArtifactSchema.parse({
+      id: patchId,
+      projectId,
+      title: "Add test file",
+      reason: "test fixture",
+      mode: "fix",
+      status: "AWAITING_APPROVAL",
+      risk: "LOW",
+      baseCommit: null,
+      targetBranch: null,
+      filesChanged: [
+        { path: "loop-apply-test.txt", action: "add", summary: "add file", afterContent: "hello" },
+      ],
+      evidenceIds: [],
+      claimIds: [],
+      expectedImpact: "none",
+      tests: [],
+      evaluationSummary: "",
+      approvals: [],
+      appliedAt: null,
+      verifiedAt: null,
+      rollbackRef: null,
+      rollbackSnapshot: [],
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "engineering-loop",
+      epistemicState: "PROPOSED",
+      confidence: 0.55,
+      authorityHint: "LLM_INFERENCE",
+    });
+    osStore.upsertPatch(patch);
+
+    const approvalRequest = await createApprovalRequest({
+      entityType: "DOCUMENT",
+      action: "EXECUTE",
+      requestedBy: "engineering-loop",
+      reason: "test fixture apply",
+      context: { patchId },
+    });
+
+    const run: EngineeringLoopRun = {
+      id: crypto.randomUUID(),
+      projectId,
+      projectSlug: null,
+      workspaceRoot,
+      userRequest: "add a test file",
+      actionKind: "fix",
+      mode: "fix",
+      status: "AWAITING_APPROVAL",
+      stages: [],
+      patchId,
+      approvalRequestId: approvalRequest.id,
+      risk: "LOW",
+      decisionId: null,
+      plainLanguageSummary: "seed",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+    };
+    osStore.upsertLoopRun(run);
+    return { run, patch, workspaceRoot };
+  }
+
+  it("claims the pre-existing approval request and executes through dispatchAgentAction() (no direct applyPatchFiles bypass)", async () => {
+    const owner = signedInUser();
+    const { run } = await makeLoopRunWithPatch(null);
+    getRequestUser.mockReturnValue(owner);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/engineering/loop/${run.id}/approve`,
+      payload: { approvedBy: owner.email },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as EngineeringLoopRun;
+    expect(body.status).toBe("APPLIED");
+
+    // The real DOCUMENT.EXECUTE governance check ran (not just the route's
+    // own self-approved RECORD.EXECUTE gate) -- proof the apply step now
+    // goes through the shared entity-policy chokepoint.
+    expect(authorizeEntityActionMock).toHaveBeenCalledWith(
+      "DOCUMENT",
+      "EXECUTE",
+      expect.objectContaining({ approved: true }),
+    );
+
+    const storedPatch = osStore.getPatch(run.patchId!);
+    expect(storedPatch?.status).toBe("APPLIED");
+  });
+
+  it("fails closed when the loop run has no approval request (pre-migration run)", async () => {
+    const owner = signedInUser();
+    const { run } = await makeLoopRunWithPatch(null);
+    const legacyRun: EngineeringLoopRun = { ...run, approvalRequestId: null };
+    osStore.upsertLoopRun(legacyRun);
+    getRequestUser.mockReturnValue(owner);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/engineering/loop/${legacyRun.id}/approve`,
+      payload: { approvedBy: owner.email },
+    });
+
+    expect(res.statusCode).toBe(400);
   });
 });
 

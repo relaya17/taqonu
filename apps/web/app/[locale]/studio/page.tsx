@@ -24,6 +24,7 @@ import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Link, usePathname, useRouter } from "@/i18n/routing";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { ChatPanel } from "@/components/studio/ChatPanel";
 import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
@@ -93,7 +94,7 @@ interface CloneResult {
   patch: { id: string } | null;
 }
 
-type StudioIntent = "propose" | "remind" | "summary";
+type StudioIntent = "propose" | "loop" | "remind" | "summary";
 const ASK_MODES = ["fix", "generate", "implement", "refactor", "secure"] as const;
 
 type StudioTab = "files" | "chat" | "cloud" | "checks";
@@ -309,6 +310,27 @@ export default function StudioPage() {
       }),
   });
 
+  // Invokes the existing Engineering Loop (packages/engineering-loop via
+  // POST /api/v1/engineering/loop) with the actual selected project's real,
+  // linked workspaceRoot -- never a fallback. The surrounding panel only
+  // renders when hasRoot is true (see the `projectId && hasRoot` gate
+  // below), so this mutation cannot fire without a real linked folder; the
+  // explicit check here is defense in depth, not the only guard.
+  const runLoop = useMutation({
+    mutationFn: () => {
+      if (!selectedProject?.workspaceRoot) {
+        throw new Error(t("loopNoRoot"));
+      }
+      return apiPost<EngineeringLoopRun>("/api/v1/engineering/loop", {
+        workspaceRoot: selectedProject.workspaceRoot,
+        userRequest: instruction,
+        projectId,
+        projectSlug: selectedProject.slug,
+        mode: modeAsk,
+      });
+    },
+  });
+
   const saveNote = useMutation({
     mutationFn: async () => {
       const focus = selectedPath ? ` [${selectedPath}]` : "";
@@ -332,16 +354,23 @@ export default function StudioPage() {
 
   const submit = () => {
     if (intent === "propose") propose.mutate();
+    else if (intent === "loop") runLoop.mutate();
     else saveNote.mutate();
   };
 
-  const busy = propose.isPending || saveNote.isPending;
+  const busy = propose.isPending || runLoop.isPending || saveNote.isPending;
   const resultNote =
     intent === "propose"
       ? propose.data?.note
-      : saveNote.isSuccess
-        ? t(intent === "remind" ? "remindSaved" : "summarySaved")
-        : null;
+      : intent === "loop"
+        ? runLoop.data
+          ? `${t("loopStatusLabel")}: ${t(`loopStatusValue.${runLoop.data.status}`)}${
+              runLoop.data.risk ? ` · ${t("loopRiskLabel")}: ${runLoop.data.risk}` : ""
+            }`
+          : null
+        : saveNote.isSuccess
+          ? t(intent === "remind" ? "remindSaved" : "summarySaved")
+          : null;
 
   return (
     <Box
@@ -663,6 +692,7 @@ export default function StudioPage() {
                   if (v) {
                     setIntent(v);
                     propose.reset();
+                    runLoop.reset();
                     saveNote.reset();
                   }
                 }}
@@ -670,6 +700,7 @@ export default function StudioPage() {
                 aria-label={t("intentLabel")}
               >
                 <ToggleButton value="propose">{t("intentPropose")}</ToggleButton>
+                <ToggleButton value="loop">{t("intentLoop")}</ToggleButton>
                 <ToggleButton value="remind">{t("intentRemind")}</ToggleButton>
                 <ToggleButton value="summary">{t("intentSummary")}</ToggleButton>
               </ToggleButtonGroup>
@@ -683,7 +714,7 @@ export default function StudioPage() {
                 spacing={1.5}
                 sx={{ mt: 1.75 }}
               >
-                {intent === "propose" ? (
+                {intent === "propose" || intent === "loop" ? (
                   <TextField
                     select
                     size="small"
@@ -704,10 +735,10 @@ export default function StudioPage() {
                 <TextField
                   size="small"
                   fullWidth
-                  multiline={intent !== "propose"}
-                  minRows={intent === "propose" ? 1 : 2}
+                  multiline={intent !== "propose" && intent !== "loop"}
+                  minRows={intent === "propose" || intent === "loop" ? 1 : 2}
                   label={
-                    intent === "propose"
+                    intent === "propose" || intent === "loop"
                       ? t("instruction")
                       : intent === "remind"
                         ? t("remindLabel")
@@ -716,7 +747,7 @@ export default function StudioPage() {
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
                   placeholder={
-                    intent === "propose"
+                    intent === "propose" || intent === "loop"
                       ? t("instructionPlaceholder")
                       : intent === "remind"
                         ? t("remindPlaceholder")
@@ -725,31 +756,40 @@ export default function StudioPage() {
                 />
                 <Button
                   variant="contained"
-                  disabled={busy || instruction.trim().length < 3}
+                  disabled={
+                    busy ||
+                    instruction.trim().length < 3 ||
+                    (intent === "loop" && !hasRoot)
+                  }
                   onClick={submit}
                   sx={{ whiteSpace: "nowrap", alignSelf: { sm: "flex-start" } }}
                 >
                   {busy
-                    ? t("asking")
+                    ? intent === "loop"
+                      ? t("loopRunning")
+                      : t("asking")
                     : intent === "propose"
                       ? t("ask")
-                      : intent === "remind"
-                        ? t("saveRemind")
-                        : t("saveSummary")}
+                      : intent === "loop"
+                        ? t("runLoop")
+                        : intent === "remind"
+                          ? t("saveRemind")
+                          : t("saveSummary")}
                 </Button>
               </Stack>
 
-              {(propose.isError || saveNote.isError) && (
+              {(propose.isError || runLoop.isError || saveNote.isError) && (
                 <Alert severity="error" sx={{ mt: 1.5 }}>
                   {(
-                    (propose.error || saveNote.error) as Error
+                    (propose.error || runLoop.error || saveNote.error) as Error
                   ).message}
                 </Alert>
               )}
               {resultNote ? (
                 <Alert
                   severity={
-                    intent === "propose" && !propose.data?.patch
+                    (intent === "propose" && !propose.data?.patch) ||
+                    (intent === "loop" && runLoop.data?.status !== "APPLIED")
                       ? "info"
                       : "success"
                   }
@@ -771,7 +811,22 @@ export default function StudioPage() {
                       </Button>
                     </Box>
                   ) : null}
-                  {intent !== "propose" ? (
+                  {intent === "loop" && runLoop.data?.patchId ? (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" sx={{ display: "block", mb: 0.5 }}>
+                        {t("loopPatchHint")}
+                      </Typography>
+                      <Button
+                        component={Link}
+                        href="/patches"
+                        size="small"
+                        variant="outlined"
+                      >
+                        {t("openPatches")}
+                      </Button>
+                    </Box>
+                  ) : null}
+                  {intent !== "propose" && intent !== "loop" ? (
                     <Box sx={{ mt: 1 }}>
                       <Button
                         component={Link}

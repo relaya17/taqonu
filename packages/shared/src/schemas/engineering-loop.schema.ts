@@ -60,6 +60,8 @@ export const engineeringLoopRunSchema = z.object({
   ]),
   stages: z.array(loopStageResultSchema),
   patchId: uuidSchema.nullable(),
+  /** Governance ApprovalRequest created when the run reaches AWAITING_APPROVAL, claimed by /approve. */
+  approvalRequestId: uuidSchema.nullable().default(null),
   risk: patchRiskSchema.nullable(),
   decisionId: uuidSchema.nullable(),
   plainLanguageSummary: z.string().max(8000),

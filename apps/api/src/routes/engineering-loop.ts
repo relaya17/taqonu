@@ -28,9 +28,11 @@ import {
   runEngineeringLoop,
   summarizeProofMetrics,
 } from "@atlas/engineering-loop";
-import { applyPatchFiles } from "@atlas/code-intelligence";
 import { tryPersistDecisionToSupabase } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
+import { createApprovalRequest } from "../services/approvals.js";
+import { runLiveHumanDecisionExecution } from "../services/live-human-execution.js";
+import { applyApprovedPatch } from "../services/patch-write.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
@@ -170,7 +172,28 @@ export async function registerEngineeringLoopRoutes(
       }
     }
 
-    const stored = { ...loop, patchId };
+    let approvalRequestId: string | null = null;
+    if (patchId) {
+      const approvalRequest = await createApprovalRequest({
+        entityType: "DOCUMENT",
+        action: "EXECUTE",
+        // Requester is the loop's own agent identity, never the human user —
+        // the human is the DECIDER (see /approve below), not the requester.
+        // This keeps the two roles distinct on the audit trail and satisfies
+        // the AGENT-actor claim contract (executorId === requestedBy).
+        requestedBy: "engineering-loop",
+        reason: `Apply engineering loop patch for: ${loop.userRequest.slice(0, 200)}`,
+        context: {
+          loopId: loop.id,
+          patchId,
+          projectId: body.projectId ?? null,
+          workspaceRoot,
+        },
+      });
+      approvalRequestId = approvalRequest.id;
+    }
+
+    const stored = { ...loop, patchId, approvalRequestId };
     osStore.upsertLoopRun(stored);
     appendDomainEvent({
       type: "agent.run.completed",
@@ -246,37 +269,77 @@ export async function registerEngineeringLoopRoutes(
       });
       osStore.upsertPatch(approved);
 
-      const applied = applyPatchFiles(
-        existing.workspaceRoot,
-        approved.filesChanged.map((f) => {
-          const change: {
-            path: string;
-            action: "add" | "modify" | "delete";
-            summary: string;
-            afterContent?: string;
-            unifiedDiff?: string;
-          } = {
-            path: f.path,
-            action: f.action,
-            summary: f.summary,
-          };
-          if (f.afterContent !== undefined) change.afterContent = f.afterContent;
-          if (f.unifiedDiff !== undefined) change.unifiedDiff = f.unifiedDiff;
-          return change;
-        }),
-      );
+      if (!existing.approvalRequestId) {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "Loop run has no approval request to claim (started before governed apply was wired in — re-run the loop)",
+        );
+      }
 
-      const appliedPatch = patchArtifactSchema.parse({
-        ...approved,
-        status: "APPLIED",
-        appliedAt: now,
-        updatedAt: now,
-        evaluationSummary: [
-          approved.evaluationSummary ?? "",
-          `Applied files: ${applied.applied.join(", ")}`,
-        ].join("\n"),
+      // DOCUMENT.EXECUTE's default risk score (HIGH_RISK_WRITE base + no
+      // confidence/evidenceCount signal on this call shape) lands in the
+      // HUMAN_ONLY bucket -- which an AGENT-kind claim can never satisfy,
+      // by design (see agent-dispatch-guard.ts's needsApproval check).
+      // The live, freshly-authenticated human clicking Approve IS the
+      // genuinely-live decision that bucket requires, so this uses the
+      // dedicated live-human path (live-human-execution.ts) instead of a
+      // separate decide-then-claim pair: one atomic PENDING -> CLAIMED
+      // transition, decidedBy = user.id. Separation of duties
+      // (decidedBy !== requestedBy) holds because the request was created
+      // with requestedBy: "engineering-loop" (the agent), never the human.
+      const helper = await runLiveHumanDecisionExecution({
+        approvalId: existing.approvalRequestId,
+        deciderId: user.id,
+        decisionReason: body.note ?? "loop approve",
+        entityType: "DOCUMENT",
+        action: "EXECUTE",
+        requestId: request.id,
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        ...(existing.projectId ? { projectId: existing.projectId } : {}),
+        routeLabel: "engineering.loop.approve.apply",
+        dispatchInput: { loopId: existing.id, patchId: approved.id },
+        executeOnce: async () => {
+          try {
+            const value = applyApprovedPatch({
+              existing: approved,
+              user,
+              bodyWorkspaceRoot: existing.workspaceRoot,
+            });
+            return {
+              kind: "SUCCESS" as const,
+              value,
+              outputEvidence: JSON.stringify({
+                status: value.patch.status,
+                applied: value.apply.applied,
+              }),
+            };
+          } catch (error) {
+            return {
+              kind: "FAILURE" as const,
+              reason: error instanceof Error ? error.message : String(error),
+            };
+          }
+        },
       });
-      osStore.upsertPatch(appliedPatch);
+
+      if (helper.status === "APPROVAL_REQUIRED") {
+        return reply.status(202).send({
+          status: "APPROVAL_REQUIRED",
+          approvalRequestId: helper.approvalRequestId,
+          message: helper.reason,
+        });
+      }
+      if (helper.status !== "EXECUTED") {
+        const reason = "reason" in helper ? helper.reason : "governed execution failed";
+        const statusCode =
+          helper.status === "OUTCOME_UNKNOWN" || helper.status === "FINALIZE_INCOMPLETE"
+            ? 409
+            : 403;
+        throw new AtlasError("FORBIDDEN", reason, { statusCode });
+      }
+
+      const appliedPatch = helper.value.patch;
+      const applied = helper.value.apply;
 
       if (existing.projectId) {
         const evidence = parseEvidenceRecord({
