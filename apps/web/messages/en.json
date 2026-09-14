@@ -225,7 +225,11 @@
     "tab": {
       "files": "Files",
       "chat": "Agent chat",
-      "cloud": "Cloud & Tools"
+      "cloud": "Cloud & Tools",
+      "checks": "Checks"
+    },
+    "checksTab": {
+      "observer": "Observer"
     }
   },
   "contract": {

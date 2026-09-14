@@ -27,6 +27,7 @@ import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { ChatPanel } from "@/components/studio/ChatPanel";
 import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
+import { ObserverPanel } from "@/components/studio/ObserverPanel";
 
 interface Project {
   id: string;
@@ -94,10 +95,19 @@ interface CloneResult {
 type StudioIntent = "propose" | "remind" | "summary";
 const ASK_MODES = ["fix", "generate", "implement", "refactor", "secure"] as const;
 
-type StudioTab = "files" | "chat" | "cloud";
-const STUDIO_TABS: StudioTab[] = ["files", "chat", "cloud"];
+type StudioTab = "files" | "chat" | "cloud" | "checks";
+const STUDIO_TABS: StudioTab[] = ["files", "chat", "cloud", "checks"];
 function isStudioTab(value: string | null): value is StudioTab {
-  return value === "files" || value === "chat" || value === "cloud";
+  return (
+    value === "files" || value === "chat" || value === "cloud" || value === "checks"
+  );
+}
+
+/** Sub-tabs inside "Checks" — one ops page migrates in per rollout step. */
+type ChecksSubTab = "observer";
+const CHECKS_SUB_TABS: ChecksSubTab[] = ["observer"];
+function isChecksSubTab(value: string | null): value is ChecksSubTab {
+  return value === "observer";
 }
 
 function TreeBranch({
@@ -188,6 +198,22 @@ export default function StudioPage() {
   const selectTab = (next: StudioTab) => {
     setTab(next);
     router.replace(`${pathname}?tab=${next}`);
+  };
+
+  const checkFromUrl = searchParams.get("check");
+  const [checksTab, setChecksTab] = useState<ChecksSubTab>(
+    isChecksSubTab(checkFromUrl) ? checkFromUrl : "observer",
+  );
+
+  useEffect(() => {
+    if (isChecksSubTab(checkFromUrl) && checkFromUrl !== checksTab) {
+      setChecksTab(checkFromUrl);
+    }
+  }, [checkFromUrl, checksTab]);
+
+  const selectChecksTab = (next: ChecksSubTab) => {
+    setChecksTab(next);
+    router.replace(`${pathname}?tab=checks&check=${next}`);
   };
 
   const [projectId, setProjectId] = useState("");
@@ -873,6 +899,38 @@ export default function StudioPage() {
       ) : null}
 
       {tab === "cloud" ? <CloudToolsPanel embedded /> : null}
+
+      {tab === "checks" ? (
+        projectId ? (
+          <Stack spacing={2}>
+            <Tabs
+              value={checksTab}
+              onChange={(_, v: ChecksSubTab) => selectChecksTab(v)}
+              sx={{
+                borderBottom: panelBorder,
+                minHeight: 36,
+                "& .MuiTab-root": {
+                  color: "rgba(232,234,238,0.6)",
+                  minHeight: 36,
+                  textTransform: "none",
+                  fontSize: 13,
+                },
+                "& .Mui-selected": { color: "#EEEEF0 !important" },
+                "& .MuiTabs-indicator": { bgcolor: "#9A9EA8" },
+              }}
+            >
+              {CHECKS_SUB_TABS.map((id) => (
+                <Tab key={id} value={id} label={t(`checksTab.${id}`)} />
+              ))}
+            </Tabs>
+            {checksTab === "observer" ? (
+              <ObserverPanel projectId={projectId} embedded />
+            ) : null}
+          </Stack>
+        ) : (
+          <Alert severity="info">{t("pickProject")}</Alert>
+        )
+      ) : null}
     </Stack>
     </Box>
   );

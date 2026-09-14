@@ -129,7 +129,7 @@ const NAV_GROUPS: readonly {
   {
     id: "ops",
     labelKey: "opsGroup",
-    items: ["truth", "health", "readiness", "qa", "processAudit", "observer", "sentinel"],
+    items: ["truth", "health", "readiness", "qa", "processAudit", "sentinel"],
   },
   {
     id: "build",
