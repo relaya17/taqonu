@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { Link, useRouter } from "@/i18n/routing";
+import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
@@ -27,7 +27,6 @@ interface AuthProviders {
 export default function RegisterPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
-  const router = useRouter();
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
   const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
   const [displayName, setDisplayName] = useState(
@@ -49,8 +48,9 @@ export default function RegisterPage() {
         locale,
       }),
     onSuccess: () => {
-      router.push("/");
-      router.refresh();
+      // Hard navigation, not router.push()+router.refresh() -- see the
+      // identical fix and explanation in auth/login/page.tsx.
+      window.location.href = "/";
     },
   });
 

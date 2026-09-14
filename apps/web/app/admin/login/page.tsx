@@ -11,12 +11,10 @@ import {
   Divider,
 } from "@mui/material";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { apiPost, downloadVerifiedSourcesPack } from "@/lib/api";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
   const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
 
@@ -30,8 +28,9 @@ export default function AdminLoginPage() {
       if (data.user.role !== "admin" && data.user.role !== "owner") {
         throw new Error("החשבון אינו אדמין — השתמשו בהתחברות הרגילה");
       }
-      router.push("/admin");
-      router.refresh();
+      // Hard navigation, not router.push()+router.refresh() -- see the
+      // identical fix and explanation in auth/login/page.tsx.
+      window.location.href = "/admin";
     },
   });
 
