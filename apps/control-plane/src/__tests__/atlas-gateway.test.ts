@@ -162,10 +162,64 @@ describe("Atlas Gateway", () => {
     expect(result.decision).toBe("ALLOW");
     expect(result.executed).toBe(false);
     expect(result.receipt?.executionKind).toBe("HANDED_OFF_GOVERNED");
-    expect(result.receipt?.governedHandoff?.toolName).toBe("analyze_repo");
+    // Step 3 addendum fix: request_agent_run is real execution, RECORD.EXECUTE
+    // (matching the same cell ci.run_tests/ci.run_typecheck/ci.run_lint use in
+    // DEFAULT_TOOL_POLICIES for "trigger a run") -- it must never fall through
+    // to the DOCUMENT.READ/analyze_repo default.
+    expect(result.receipt?.governedHandoff?.entityType).toBe("RECORD");
+    expect(result.receipt?.governedHandoff?.action).toBe("EXECUTE");
+    expect(result.receipt?.governedHandoff?.toolName).toBe("request_agent_run");
+    expect(result.receipt?.governedHandoff?.toolName).not.toBe("analyze_repo");
     expect(result.receipt?.governedHandoff?.toolName).not.toBe("fs.read_file");
     expect(result.receipt?.verification.verdict).toBe("FAILED");
     expect(result.receipt?.verification.detail).toMatch(/failed closed/i);
+  });
+
+  it("Step 3 addendum: request_test no longer falls through to DOCUMENT.READ -- it is an explicit RECORD.READ classification matching QA_ENGINEER's own \"test.read\" capability", async () => {
+    const result = await dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "request_test",
+      agentId: "QA_ENGINEER",
+      reason: "approved test run",
+      independentApprovalVerified: true,
+      verificationPlanPresent: true,
+    });
+    expect(result.decision).toBe("ALLOW");
+    expect(result.receipt?.executionKind).toBe("HANDED_OFF_GOVERNED");
+    expect(result.receipt?.governedHandoff?.entityType).toBe("RECORD");
+    expect(result.receipt?.governedHandoff?.action).toBe("READ");
+    expect(result.receipt?.governedHandoff?.toolName).toBe("request_test");
+    expect(result.receipt?.governedHandoff?.toolName).not.toBe("analyze_repo");
+  });
+
+  it("Step 3 addendum: request_verify no longer falls through to DOCUMENT.READ -- it is an explicit RECORD.CREATE classification matching QA_ENGINEER's own \"finding.create\" capability", async () => {
+    const result = await dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "request_verify",
+      agentId: "QA_ENGINEER",
+      reason: "approved verification",
+      independentApprovalVerified: true,
+      verificationPlanPresent: true,
+    });
+    expect(result.decision).toBe("ALLOW");
+    expect(result.receipt?.executionKind).toBe("HANDED_OFF_GOVERNED");
+    expect(result.receipt?.governedHandoff?.entityType).toBe("RECORD");
+    expect(result.receipt?.governedHandoff?.action).toBe("CREATE");
+    expect(result.receipt?.governedHandoff?.toolName).toBe("request_verify");
+    expect(result.receipt?.governedHandoff?.toolName).not.toBe("analyze_repo");
+  });
+
+  it("Step 3 addendum: enforcement remains fail-closed -- an unknown operation is still denied before any governedHandoff classification is reached (no new bypass)", () => {
+    const result = evaluateGatewayRequest({
+      actorId: "owner",
+      applicationId: "def-000",
+      operation: "not_a_real_operation",
+      reason: "probe",
+    });
+    expect(result.decision).toBe("DENY");
+    expect(result.executed).toBe(false);
   });
 
   it("denies an unknown application at IDENTITY", () => {
@@ -286,7 +340,10 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     expect(result.decision).toBe("ALLOW");
     expect(result.executed).toBe(true);
     expect(result.receipt?.executionKind).toBe("HANDED_OFF_GOVERNED");
-    expect(result.receipt?.governedHandoff?.toolName).toBe("analyze_repo");
+    // Same Step 3 addendum fix: allowedWrite's operation is request_agent_run.
+    expect(result.receipt?.governedHandoff?.entityType).toBe("RECORD");
+    expect(result.receipt?.governedHandoff?.action).toBe("EXECUTE");
+    expect(result.receipt?.governedHandoff?.toolName).toBe("request_agent_run");
     expect(result.receipt?.verification.detail).toMatch(/fulfillGatewayHandoff/);
     expect(fetchMock).toHaveBeenCalledOnce();
   });

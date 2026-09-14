@@ -178,6 +178,81 @@ describe("dispatchAgentAction", () => {
     expect(result.bucket).toBe("AUTO");
   });
 
+  it("DEGRADED floor does not apply to READ: a DEGRADED agent's READ can still reach ALLOWED/AUTO when the raw score justifies it", async () => {
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.degraded.record.read",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      agentRuntimeStatus: "DEGRADED",
+      confidence: 1,
+      evidenceCount: 10,
+    });
+
+    expect(result.decision).toBe("ALLOWED");
+    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(result.bucket).toBe("AUTO");
+    expect(result.evaluation.risk.floors.degradedAgent).toBe(false);
+  });
+
+  it("DEGRADED floor: CREATE on a normally-AUTO-eligible entity is floored to APPROVAL for a DEGRADED agent, even trusted with high confidence/evidence", async () => {
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "test.degraded.record.create",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      agentRuntimeStatus: "DEGRADED",
+      confidence: 1,
+      evidenceCount: 10,
+      projectId: PROJECT,
+    });
+
+    expect(result.decision).toBe("APPROVAL_REQUIRED");
+    if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+    expect(result.bucket).not.toBe("AUTO");
+    expect(result.bucket).not.toBe("AUTO_LOG");
+    expect(result.evaluation.risk.floors.degradedAgent).toBe(true);
+  });
+
+  it("DEGRADED floor: a HEALTHY (non-DEGRADED) agent's identical CREATE is unaffected -- the floor is keyed on runtime status, not action alone", async () => {
+    const result = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "test.healthy.record.create",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      agentRuntimeStatus: "ACTIVE",
+      confidence: 1,
+      evidenceCount: 10,
+      projectId: PROJECT,
+    });
+
+    expect(result.decision).toBe("ALLOWED");
+    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(result.evaluation.risk.floors.degradedAgent).toBe(false);
+  });
+
+  it.each(["UPDATE", "DELETE", "EXECUTE"] as const)(
+    "DEGRADED floor: %s dispatches by a DEGRADED agent record the floor as engaged (defense in depth, even where entity policy alone already requires approval)",
+    async (action) => {
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action,
+        routeLabel: `test.degraded.record.${action.toLowerCase()}`,
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        agentRuntimeStatus: "DEGRADED",
+        projectId: PROJECT,
+      });
+
+      expect(result.decision).toBe("APPROVAL_REQUIRED");
+      if (result.decision !== "APPROVAL_REQUIRED") throw new Error("expected APPROVAL_REQUIRED");
+      expect(result.evaluation.risk.floors.degradedAgent).toBe(true);
+    },
+  );
+
   it("APPROVAL_REQUIRED creates a real, retrievable approval request via approvals.ts", async () => {
     const result = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },

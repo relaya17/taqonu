@@ -161,6 +161,16 @@ function isReadLike(operation: string): boolean {
  * Keep aligned with `mapGatewayHandoff` in packages/shared.
  * Copied so this process stays free of a compile-time shared coupling.
  * Must use fabric catalog names — never Control Plane `fs.read_file` aliases.
+ *
+ * Every `GatewayOperation` must be classified explicitly here -- this is a
+ * receipt/contract field (`ExecutionReceipt.governedHandoff`), not itself an
+ * enforcement point (real enforcement is `executeGovernedAction` in apps/api,
+ * via the static, fail-closed `DEFAULT_TOOL_POLICIES` table), but a silent
+ * fallthrough to DOCUMENT.READ still misrepresents what was actually
+ * requested on that receipt. Confirmed Step 3 addendum finding: this
+ * previously fell through to DOCUMENT.READ for every operation except
+ * `request_remediation` and a RESEARCHER-agent call, including
+ * `request_agent_run`/`request_test`/`request_verify`.
  */
 function mapControlPlaneHandoff(
   operation: string,
@@ -169,9 +179,31 @@ function mapControlPlaneHandoff(
   if (operation === "request_remediation") {
     return { entityType: "RECORD", action: "UPDATE", toolName: "propose_patch" };
   }
+  // Starting an agent run is execution, matching the same RECORD.EXECUTE
+  // cell `ci.run_tests`/`ci.run_typecheck`/`ci.run_lint` already use in
+  // `DEFAULT_TOOL_POLICIES` for "trigger a run".
+  if (operation === "request_agent_run") {
+    return { entityType: "RECORD", action: "EXECUTE", toolName: "request_agent_run" };
+  }
+  // `requiredCapability("request_test")` is "test.read" (below) -- this
+  // operation's own co-located capability name is the clearest first-party
+  // evidence of its real semantics: requesting/reading test status, not
+  // triggering a new run. Made an explicit case (not a silent default) so
+  // the classification is a reasoned choice, not a fallthrough.
+  if (operation === "request_test") {
+    return { entityType: "RECORD", action: "READ", toolName: "request_test" };
+  }
+  // `requiredCapability("request_verify")` is "finding.create" -- verifying
+  // produces a new finding record, a real CREATE-shaped side effect.
+  if (operation === "request_verify") {
+    return { entityType: "RECORD", action: "CREATE", toolName: "request_verify" };
+  }
   if (agentId === "RESEARCHER") {
     return { entityType: "DOCUMENT", action: "READ", toolName: "knowledge_search" };
   }
+  // Remaining operations (`inspect`, `diagnose`, `retrieve_health`,
+  // `retrieve_findings`) are read-like per `isReadLike()` above -- DOCUMENT.READ
+  // is their correct, intentional classification, not a fallback.
   return { entityType: "DOCUMENT", action: "READ", toolName: "analyze_repo" };
 }
 

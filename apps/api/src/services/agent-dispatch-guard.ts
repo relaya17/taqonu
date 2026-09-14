@@ -184,6 +184,7 @@ export interface DispatchGovernanceEvaluation {
       readonly automationActor: boolean;
       readonly delegation: boolean;
       readonly behavioralPattern: boolean;
+      readonly degradedAgent: boolean;
     };
   };
 }
@@ -231,6 +232,7 @@ export function unevaluatedGovernanceEvaluation(
         automationActor: false,
         delegation: false,
         behavioralPattern: false,
+        degradedAgent: false,
       },
     },
   };
@@ -302,6 +304,47 @@ function floorBucketForAutomationActor(
 ): RiskBucket {
   if (actorKind !== "AUTOMATION") return bucket;
   if (!AUTOMATION_FLOORED_ACTIONS.has(action)) return bucket;
+  return stricterBucket(bucket, "APPROVAL");
+}
+
+/**
+ * DEGRADED-floored actions: the mutating/executing quadruplet. READ is
+ * deliberately excluded -- it is the one EntityAction with no
+ * `requiresApproval: true` cell anywhere in `DEFAULT_ENTITY_POLICIES`, and
+ * it is the RESEARCHER agent's core evidence-gathering function
+ * (`governed-knowledge-retrieval.ts`). Flooring READ would block a
+ * degraded agent from the one activity that most helps it behave safely --
+ * "reduced confidence" should mean more scrutiny on what it changes, not
+ * less ability to look. See the Step 3 DEGRADED-scope decision.
+ */
+const DEGRADED_FLOORED_ACTIONS: ReadonlySet<EntityAction> = new Set([
+  "CREATE",
+  "UPDATE",
+  "DELETE",
+  "EXECUTE",
+]);
+
+/**
+ * Floors an already-computed bucket to at least APPROVAL when the acting
+ * agent's own resolved runtime status is DEGRADED and the action is one of
+ * CREATE/UPDATE/DELETE/EXECUTE. DEGRADED is a risk *modifier*, not a hard
+ * execution block -- it is intentionally absent from `NON_EXECUTABLE`
+ * (`operating-cycle.ts`), unlike PAUSED/QUARANTINED/REVOKED/etc., which
+ * already deny outright before this function is ever reached (see the
+ * `agentMayExecute` check earlier in `dispatchAgentAction`). Reuses the
+ * exact composition pattern every other floor in this file already uses:
+ * independent, `stricterBucket`-only, never loosens, never grants extra
+ * authority on failure (a `runtimeStatus` of `undefined` is simply not
+ * DEGRADED, so this floor is a no-op for every caller that does not yet
+ * supply `agentRuntimeStatus`).
+ */
+function floorBucketForDegradedAgent(
+  bucket: RiskBucket,
+  runtimeStatus: AgentRuntimeControl | undefined,
+  action: EntityAction,
+): RiskBucket {
+  if (runtimeStatus !== "DEGRADED") return bucket;
+  if (!DEGRADED_FLOORED_ACTIONS.has(action)) return bucket;
   return stricterBucket(bucket, "APPROVAL");
 }
 
@@ -603,6 +646,7 @@ export async function dispatchAgentAction(
   const automationFloored = floorBucketForAutomationActor(rawBucket, actor.kind, action);
   const delegationFloored =
     hops > 0 ? stricterBucket(rawBucket, "APPROVAL") : rawBucket;
+  const degradedFloored = floorBucketForDegradedAgent(rawBucket, runtimeStatus, action);
 
   // F-07 (behavioral monitoring): floors to at least APPROVAL when this
   // agent's own recent (caller-supplied) history shows a repeated
@@ -630,8 +674,11 @@ export async function dispatchAgentAction(
   const behavioralFloored = behavioralPattern ? stricterBucket(rawBucket, "APPROVAL") : rawBucket;
 
   const bucket = stricterBucket(
-    stricterBucket(stricterBucket(untrustedFloored, automationFloored), delegationFloored),
-    behavioralFloored,
+    stricterBucket(
+      stricterBucket(stricterBucket(untrustedFloored, automationFloored), delegationFloored),
+      behavioralFloored,
+    ),
+    degradedFloored,
   );
   const riskLevel = BUCKET_TO_AUDIT_RISK[bucket];
   const evaluation: DispatchGovernanceEvaluation = {
@@ -653,6 +700,8 @@ export async function dispatchAgentAction(
           actor.kind === "AUTOMATION" && AUTOMATION_FLOORED_ACTIONS.has(action),
         delegation: hops > 0,
         behavioralPattern: behavioralPattern !== null,
+        degradedAgent:
+          runtimeStatus === "DEGRADED" && DEGRADED_FLOORED_ACTIONS.has(action),
       },
     },
   };
