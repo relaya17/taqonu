@@ -96,6 +96,17 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
       cb(null, isAllowedWebOrigin(origin, env.WEB_ORIGIN));
     },
     credentials: true,
+    // @fastify/cors defaults Access-Control-Allow-Methods to "GET,HEAD,POST"
+    // when this option is omitted -- it does NOT mirror the old `cors`
+    // npm package's GET/HEAD/PUT/PATCH/POST/DELETE default. Left unset,
+    // every PUT/PATCH/DELETE route (workspace-root link, project updates,
+    // patch approve/apply/rollback, etc.) is silently CORS-blocked from the
+    // deployed web app: the browser's preflight OPTIONS gets back an
+    // Allow-Methods header that never included the method it asked for, so
+    // the real request never leaves the browser. Confirmed live: PUT
+    // /api/v1/projects/:id/workspace-root failed with "Disallowed Request
+    // Method: PUT" even while authenticated and same-origin-approved.
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
   await app.register(rateLimit, {
