@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { agentMayExecute } from "@atlas/shared";
+import {
+  AgentRuntimeControlRepository,
+  type AgentRuntimeControlRecord,
+  type AgentRuntimeControlStore,
+} from "@atlas/database";
+import {
+  clearAgentRuntimeControlStoreForTests,
+  configureAgentRuntimeControlStore,
+  setDurableAgentRuntimeStatus,
+} from "./agent-runtime-controls.js";
 
 // `resolveAgentIdentity` now calls `assertGovernedProjectExists`, which
 // reads `osStore.getProject`. Mocked the same way `project-access.test.ts`
@@ -17,6 +28,33 @@ const {
   resolveGovernedAgentIdentity,
 } = await import("./agent-runtime-authz.js");
 type AuthenticatedAgentIdentity = ReturnType<typeof resolveAgentIdentity>;
+
+/**
+ * Step 4 Decision B wiring coverage: a plain in-memory implementation of
+ * `AgentRuntimeControlStore`, injected via the module's own
+ * `configureAgentRuntimeControlStore` test seam (same fake-store shape used
+ * in `agent-runtime-controls.test.ts` and
+ * `packages/database/.../agent-runtime-controls.test.ts`), so this proves
+ * the real `isAgentRuntimeControlStoreAvailable() === true` ->
+ * `getDurableAgentRuntimeStatus()` -> `combineAgentRuntimeStatus()` ->
+ * resolved `runtimeStatus` path end-to-end, not just each link in
+ * isolation.
+ */
+function createInMemoryAgentRuntimeControlStore(): AgentRuntimeControlStore {
+  const rows = new Map<string, AgentRuntimeControlRecord>();
+  return {
+    async get(agentId) {
+      return rows.get(agentId) ?? null;
+    },
+    async upsert(record) {
+      rows.set(record.agentId, record);
+      return record;
+    },
+    async clear(agentId) {
+      rows.delete(agentId);
+    },
+  };
+}
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
@@ -361,5 +399,63 @@ describe("F-02 Phase 2, Gap 2 — resolveGovernedAgentIdentity requireVerifiedRu
       runtimeStatus: "QUARANTINED",
     });
     expect(resolved.runtimeStatus).toBe("QUARANTINED");
+  });
+});
+
+describe("Step 4 Decision B — durable runtime-control store wired into resolveGovernedAgentIdentity", () => {
+  const prevUrl = process.env.ATLAS_CONTROL_PLANE_URL;
+
+  beforeEach(() => {
+    // No Control Plane configured -- isolates the durable-store path
+    // (Decision B) from the separate CP-lookup overlay tested elsewhere in
+    // this file.
+    delete process.env.ATLAS_CONTROL_PLANE_URL;
+    configureAgentRuntimeControlStore(
+      new AgentRuntimeControlRepository(createInMemoryAgentRuntimeControlStore()),
+    );
+  });
+
+  afterEach(() => {
+    if (prevUrl === undefined) delete process.env.ATLAS_CONTROL_PLANE_URL;
+    else process.env.ATLAS_CONTROL_PLANE_URL = prevUrl;
+    clearAgentRuntimeControlStoreForTests();
+  });
+
+  it("a seeded durable QUARANTINED override reaches the resolved identity and remains non-executable", async () => {
+    await setDurableAgentRuntimeStatus({
+      agentId: "CODE_ENGINEER",
+      status: "QUARANTINED",
+      setBy: OWNER_A,
+      reason: "wiring test seed",
+    });
+
+    const resolved = await resolveGovernedAgentIdentity({
+      fabricAgentId: "CODE_ENGINEER",
+      sessionOwnerId: OWNER_A,
+      projectId: PROJECT_A,
+    });
+
+    expect(resolved.runtimeStatus).toBe("QUARANTINED");
+    if (resolved.runtimeStatus === undefined) throw new Error("expected a runtimeStatus");
+    expect(agentMayExecute(resolved.runtimeStatus)).toBe(false);
+  });
+
+  it("a seeded durable PAUSED override reaches the resolved identity and remains non-executable", async () => {
+    await setDurableAgentRuntimeStatus({
+      agentId: "CODE_ENGINEER",
+      status: "PAUSED",
+      setBy: OWNER_A,
+      reason: "wiring test seed",
+    });
+
+    const resolved = await resolveGovernedAgentIdentity({
+      fabricAgentId: "CODE_ENGINEER",
+      sessionOwnerId: OWNER_A,
+      projectId: PROJECT_A,
+    });
+
+    expect(resolved.runtimeStatus).toBe("PAUSED");
+    if (resolved.runtimeStatus === undefined) throw new Error("expected a runtimeStatus");
+    expect(agentMayExecute(resolved.runtimeStatus)).toBe(false);
   });
 });
