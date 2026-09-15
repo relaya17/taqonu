@@ -176,6 +176,8 @@ export interface GovernedExecutionRequest {
     | "DEGRADED"
     | "RETIRED"
     | "UNKNOWN";
+  /** See `DispatchAgentActionOptions.controlPlaneUnreachable` (Step 4 Decision C). */
+  readonly controlPlaneUnreachable?: boolean;
   /**
    * Delegation hop count for authority attenuation.
    * User → Orchestrator → Specialist → Tool is 2 hops.
@@ -214,16 +216,27 @@ export function computeGovernedBindingHash(
 }
 
 /**
- * Sanitize error messages to avoid leaking absolute server paths.
- * Absolute paths (starting with / or C:\ etc.) are removed from error messages.
+ * Sanitize error messages to avoid leaking absolute server filesystem paths,
+ * while preserving the rest of the error text (error class, reason, syscall,
+ * etc.) that is useful to a caller.
+ *
+ * Previously this matched only a hardcoded allowlist of Unix top-level
+ * directories (/home, /var, /tmp, /Users, /root, /etc, /opt), which missed
+ * any other deployment root (e.g. /sessions/..., /app/..., /srv/...,
+ * /workspace/...). This now matches any absolute-path-shaped token instead
+ * of a fixed prefix list, so it redacts regardless of where the server
+ * happens to be deployed.
  */
 function sanitizeErrorMessage(message: string): string {
-  // Remove Windows absolute paths (e.g., C:\Users\..., D:\path\...)
-  // Remove Unix absolute paths (e.g., /home/user/..., /var/...)
-  // Preserve only the filename or a generic message
-  return message
-    .replace(/[A-Za-z]:\\[^'":\s]+/g, "<path-redacted>")
-    .replace(/\/(?:home|var|tmp|Users|root|etc|opt)[^'":\s]*/g, "<path-redacted>");
+  return (
+    message
+      // Windows absolute paths: C:\Users\..., D:\path\...
+      .replace(/\b[A-Za-z]:\\[^\s'"]+/g, "<path-redacted>")
+      // Unix absolute paths: a `/`-rooted token, matched only where a path can
+      // plausibly start (string start, whitespace, a quote, `(`, `,`, or `:`)
+      // -- not mid-word, so "and/or" or "1/2" are left untouched.
+      .replace(/(?<![^\s'"(,:])\/[^\s'"]+/g, "<path-redacted>")
+  );
 }
 
 interface IdempotentExecution {
@@ -726,7 +739,21 @@ export async function executeGovernedAction(
     request.agentRuntimeStatus,
     request.identity.runtimeStatus,
   );
-  if (!agentMayExecute(runtimeStatus)) {
+  // Step 4 Decision C: at this point the canonical entityType/action have
+  // not been resolved yet (that happens below, from `toolName` via
+  // `resolveCanonicalToolOperationForRequest`) -- so this early, fast-fail
+  // gate cannot itself apply an action-class-aware rule. Rather than
+  // guessing, it defers ONLY the narrow "UNKNOWN because Control Plane was
+  // unreachable" case to `dispatchAgentAction` below (reached via
+  // `runGovernedClaimedExecution`), which by then knows the real action
+  // and applies the actual action-class-aware decision. Every other
+  // NON_EXECUTABLE status (including the durable PAUSED/QUARANTINED/
+  // REVOKED/DISABLED subset, which never depends on Control Plane
+  // reachability per Decision B) still fails fast here, exactly as before.
+  const controlPlaneUnreachable =
+    request.controlPlaneUnreachable === true || request.identity.controlPlaneUnreachable === true;
+  const deferRuntimeCheckForOutage = runtimeStatus === "UNKNOWN" && controlPlaneUnreachable;
+  if (!agentMayExecute(runtimeStatus) && !deferRuntimeCheckForOutage) {
     const outcome: GovernedExecutionOutcome = {
       stage: "AUTHORIZATION",
       status: "DENIED",
@@ -968,6 +995,7 @@ export async function executeGovernedAction(
     projectId: governedRequest.identity.projectId,
     routeLabel: `${governedRequest.routeLabel}.gate`,
     agentRuntimeStatus: runtimeStatus,
+    ...(controlPlaneUnreachable ? { controlPlaneUnreachable: true } : {}),
     delegationHopCount,
     ...(governedRequest.identity.trustLevel !== undefined
       ? { trustLevel: governedRequest.identity.trustLevel }

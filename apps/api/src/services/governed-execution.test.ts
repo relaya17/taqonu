@@ -1137,6 +1137,87 @@ describe("P0.9 — adversarial suite against the full governed-execution chain",
       expect(mockedFinalize).not.toHaveBeenCalled();
     });
   });
+
+  // Regression coverage for the Agent Fabric path-disclosure defect: the
+  // private sanitizeErrorMessage() sanitizer previously matched only a
+  // hardcoded allowlist of Unix top-level directories (/home, /var, /tmp,
+  // /Users, /root, /etc, /opt), which missed real deployment roots such as
+  // /sessions/... . These cases prove the fix redacts ANY absolute-path-
+  // shaped token, not just the previously allowlisted prefixes, while
+  // leaving non-path error text untouched -- exercised end-to-end through
+  // the same public executeGovernedAction() entry point production callers
+  // use (a registered tool throws the raw message, exactly like the
+  // existing "persists execution failure..." / "BLOCKS output containing a
+  // secret" tests above), rather than importing the sanitizer directly.
+  describe("sanitizeErrorMessage (exercised through the public executeGovernedAction path)", () => {
+    async function failWith(rawMessage: string): Promise<string> {
+      resetToolRegistryForTests();
+      registerTool({
+        name: "knowledge_search",
+        run: async () => {
+          throw new Error(rawMessage);
+        },
+      });
+      const result = await executeGovernedAction(baseRequest());
+      expect(result.stage).toBe("EXECUTION");
+      expect(result.status).toBe("FAILED");
+      if (result.status !== "FAILED") throw new Error("expected FAILED");
+      return result.reason;
+    }
+
+    it("redacts an absolute /sessions/... path (the reported production case)", async () => {
+      const reason = await failWith(
+        "ENOENT: no such file or directory, stat '/sessions/abc123/project/repo/src/does-not-exist.ts'",
+      );
+      expect(reason).not.toContain("/sessions/");
+      expect(reason).toBe("ENOENT: no such file or directory, stat '<path-redacted>'");
+    });
+
+    it("redacts an absolute /opt/... path", async () => {
+      const reason = await failWith(
+        "EACCES: permission denied, open '/opt/atlas/deploy/current/config.json'",
+      );
+      expect(reason).not.toContain("/opt/");
+      expect(reason).toBe("EACCES: permission denied, open '<path-redacted>'");
+    });
+
+    it("redacts an absolute /var/... path", async () => {
+      const reason = await failWith(
+        "ENOENT: no such file or directory, stat '/var/lib/atlas/data/missing.db'",
+      );
+      expect(reason).not.toContain("/var/");
+      expect(reason).toBe("ENOENT: no such file or directory, stat '<path-redacted>'");
+    });
+
+    it("redacts a Windows-style absolute path", async () => {
+      const reason = await failWith(
+        "ENOENT: no such file or directory, stat 'C:\\\\Users\\\\agent\\\\repo\\\\missing.ts'",
+      );
+      expect(reason).not.toContain("C:\\\\");
+      expect(reason).toBe("ENOENT: no such file or directory, stat '<path-redacted>'");
+    });
+
+    it("preserves ordinary error text that contains no absolute path", async () => {
+      const raw = "ValidationError: field 'title' must be at most 200 characters";
+      const reason = await failWith(raw);
+      expect(reason).toBe(raw);
+    });
+
+    it("does not over-redact non-path text containing a slash (e.g. and/or, 1/2)", async () => {
+      const raw = "expected a boolean and/or a string, received 1/2 of the required fields";
+      const reason = await failWith(raw);
+      expect(reason).toBe(raw);
+    });
+
+    it("mirrors the agent-tool-execute.test.ts regression: redacts an arbitrary tmpdir-rooted absolute path", async () => {
+      const fakeTmpDir = "/tmp/atlas-agent-tool-execute-test-abcdef/repo";
+      const reason = await failWith(
+        `ENOENT: no such file or directory, stat '${fakeTmpDir}/src/does-not-exist.ts'`,
+      );
+      expect(reason).not.toContain(fakeTmpDir);
+      expect(reason).not.toContain("/");
+    });
+  });
 });
 
 describe("computeGovernedBindingHash preimage", () => {
