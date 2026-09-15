@@ -1,10 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { AuthUser } from "@atlas/shared";
 import { memorySchema } from "@atlas/shared";
+import type {
+  AgentRuntimeControlRecord,
+  AgentRuntimeControlStore,
+} from "@atlas/database";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-agent-fabric-route-test-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
@@ -105,6 +109,38 @@ const { osStore } = await import("../store/os-store.js");
 const { resetApprovalsForTests } = await import(
   "../services/approvals-test-store.js"
 );
+// Step 4 Runtime Authority gap fix regression coverage: the new
+// CODE_ENGINEER/RESEARCHER precheck in `agent-fabric.ts` calls the REAL
+// (unmocked) `getDurableAgentRuntimeStatus`, so this route-test file needs
+// the same test-store injection seam already established in
+// `agent-runtime-authz.test.ts` / `agent-runtime-controls.test.ts` — without
+// it, every dispatch in this file would see a "store not configured"
+// error, fail closed to "UNKNOWN", and (for CODE_ENGINEER/RESEARCHER only —
+// SECURITY/LEGAL_MEDIA_COMMS are shielded by the `dispatchAgentAction`
+// mock) spuriously SKIP before ever reaching the mocked gate.
+const {
+  configureAgentRuntimeControlStore,
+  clearAgentRuntimeControlStoreForTests,
+  setDurableAgentRuntimeStatus,
+  clearDurableAgentRuntimeStatus,
+} = await import("../services/agent-runtime-controls.js");
+const { AgentRuntimeControlRepository } = await import("@atlas/database");
+
+function createInMemoryAgentRuntimeControlStore(): AgentRuntimeControlStore {
+  const rows = new Map<string, AgentRuntimeControlRecord>();
+  return {
+    async get(agentId) {
+      return rows.get(agentId) ?? null;
+    },
+    async upsert(record) {
+      rows.set(record.agentId, record);
+      return record;
+    },
+    async clear(agentId) {
+      rows.delete(agentId);
+    },
+  };
+}
 
 let app: FastifyInstance;
 
@@ -183,6 +219,18 @@ beforeEach(() => {
   runSecuritySpecialistViaSentinel.mockReturnValue(undefined);
   completeWithFreeFallback.mockReset();
   completeWithFreeFallback.mockReturnValue(undefined);
+  // Fresh, empty durable Runtime Control store per test — see the import
+  // block comment above. An agent with no seeded record resolves to
+  // "no overlay" (undefined), matching pre-Decision-B behavior exactly, so
+  // every pre-existing test in this file keeps testing what it always did;
+  // individual Step 4 tests below seed a specific durable status.
+  configureAgentRuntimeControlStore(
+    new AgentRuntimeControlRepository(createInMemoryAgentRuntimeControlStore()),
+  );
+});
+
+afterEach(() => {
+  clearAgentRuntimeControlStoreForTests();
 });
 
 describe("GET /api/v1/agents", () => {
@@ -678,6 +726,130 @@ describe("POST /api/v1/agents/dispatch", () => {
             "agent-fabric.dispatch.code-engineer",
         ),
       ).toBe(false);
+    });
+
+    // Step 4 — Runtime Authority gap fix. The confirmed gap: CODE_ENGINEER /
+    // RESEARCHER reached `runProposalBackedSpecialist` (and therefore a real
+    // LLM call via `completeWithFreeFallback`) with no awareness of the
+    // durable Runtime Control subset at all. These tests prove the complete
+    // chain end to end — durable status seeded in the store, through
+    // `agent-fabric.ts`'s resolution, to the final observable outcome —
+    // rather than merely inspecting an intermediate value.
+    describe("Step 4 Runtime Authority gap fix — durable status now reaches CODE_ENGINEER / RESEARCHER", () => {
+      it("CODE_ENGINEER + durable PAUSED: dispatch is SKIPPED, the LLM is never called, and dispatchAgentAction is never reached for this run", async () => {
+        await setDurableAgentRuntimeStatus({
+          agentId: "CODE_ENGINEER",
+          status: "PAUSED",
+          setBy: OWNER_A.id,
+          reason: "Step 4 regression test",
+        });
+
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/agents/dispatch",
+          payload: { request: "logout leaves the session cookie set", agentIds: ["CODE_ENGINEER"] },
+        });
+
+        expect(res.statusCode).toBe(201);
+        const run = res
+          .json()
+          .runs.find((r: { agentId: string }) => r.agentId === "CODE_ENGINEER");
+        expect(run.status).toBe("SKIPPED");
+        expect(run.epistemicState).toBe("UNKNOWN");
+        expect(run.summary).toMatch(/runtime status PAUSED is non-executable/);
+        expect(run.costUsd).toBe(0);
+
+        // The proposal was never generated — no LLM call.
+        expect(completeWithFreeFallback).not.toHaveBeenCalled();
+        // The real chokepoint was never reached for this run either — the
+        // precheck short-circuits before `submitAgentProposal` would call
+        // it, so there is nothing for `dispatchAgentAction` to (correctly)
+        // deny; it simply never runs.
+        expect(
+          dispatchAgentAction.mock.calls.some(
+            (c) => (c[0] as { routeLabel?: string }).routeLabel ===
+              "agent-fabric.dispatch.code-engineer",
+          ),
+        ).toBe(false);
+      });
+
+      it("RESEARCHER + durable QUARANTINED: dispatch is SKIPPED, the LLM is never called, and dispatchAgentAction is never reached for this run", async () => {
+        await setDurableAgentRuntimeStatus({
+          agentId: "RESEARCHER",
+          status: "QUARANTINED",
+          setBy: OWNER_A.id,
+          reason: "Step 4 regression test",
+        });
+
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/agents/dispatch",
+          payload: { request: "find official guidance on secure cookie flags", agentIds: ["RESEARCHER"] },
+        });
+
+        expect(res.statusCode).toBe(201);
+        const run = res
+          .json()
+          .runs.find((r: { agentId: string }) => r.agentId === "RESEARCHER");
+        expect(run.status).toBe("SKIPPED");
+        expect(run.epistemicState).toBe("UNKNOWN");
+        expect(run.summary).toMatch(/runtime status QUARANTINED is non-executable/);
+        expect(completeWithFreeFallback).not.toHaveBeenCalled();
+        expect(
+          dispatchAgentAction.mock.calls.some(
+            (c) => (c[0] as { routeLabel?: string }).routeLabel ===
+              "agent-fabric.dispatch.researcher",
+          ),
+        ).toBe(false);
+      });
+
+      it("CODE_ENGINEER + durable ACTIVE: the resolved status still reaches dispatchAgentAction (via submitAgentProposal) and the specialist completes normally — the fix does not break the valid path", async () => {
+        await setDurableAgentRuntimeStatus({
+          agentId: "CODE_ENGINEER",
+          status: "PAUSED",
+          setBy: OWNER_A.id,
+          reason: "seed then clear, to prove the clear path too",
+        });
+        await clearDurableAgentRuntimeStatus("CODE_ENGINEER");
+
+        completeWithFreeFallback.mockResolvedValue({
+          provider: "test-provider",
+          cacheHit: false,
+          text: JSON.stringify({
+            claims: ["auth.spec.ts:42 fails because clearSession() never unsets the session cookie"],
+            evidence: [{ ref: "apps/api/src/routes/auth.ts:88", excerpt: "clearSession()" }],
+            confidence: 0.62,
+            rationale: "A failing test and the exact line it points at justify proposing a patch record.",
+            proposedAction: { entityType: "RECORD", action: "CREATE" },
+          }),
+          usage: { promptTokens: 1200, completionTokens: 300, totalTokens: 1500, costUsd: 0.0042 },
+        });
+        dispatchAgentAction.mockReturnValue({
+          decision: "ALLOWED",
+          score: 20,
+          bucket: "AUTO_LOG",
+          auditId: "audit-ce-active",
+        });
+
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/agents/dispatch",
+          payload: { request: "logout leaves the session cookie set", agentIds: ["CODE_ENGINEER"] },
+        });
+
+        expect(res.statusCode).toBe(201);
+        const run = res
+          .json()
+          .runs.find((r: { agentId: string }) => r.agentId === "CODE_ENGINEER");
+        expect(run.status).toBe("COMPLETED");
+        expect(completeWithFreeFallback).toHaveBeenCalledTimes(1);
+        expect(
+          dispatchAgentAction.mock.calls.some(
+            (c) => (c[0] as { routeLabel?: string }).routeLabel ===
+              "agent-fabric.dispatch.code-engineer",
+          ),
+        ).toBe(true);
+      });
     });
   });
 });

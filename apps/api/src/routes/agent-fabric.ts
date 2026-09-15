@@ -14,6 +14,9 @@ import {
   buildVerifiedTechSourcesMarkdown,
   isAuthorizedOfficialKnowledgeUrl,
   AtlasError,
+  combineAgentRuntimeStatus,
+  agentMayExecute,
+  type AgentRuntimeControl,
 } from "@atlas/shared";
 import {
   authorizeEntityAction,
@@ -33,6 +36,7 @@ import { findRepoRoot } from "../services/repo-root.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
 import { lookupControlPlaneAgentRuntimeStatus } from "../services/control-plane-bridge.js";
+import { getDurableAgentRuntimeStatus } from "../services/agent-runtime-controls.js";
 import {
   getKnowledgeCorpusPersistPath,
   getKnowledgeCorpusSource,
@@ -264,11 +268,51 @@ export async function registerAgentFabricRoutes(
       budgetUsd: body.budgetUsd,
       runJudge: body.runJudge,
       specialistOverride: async (agentId, requestStr) => {
+        // Runtime Authority resolution -- Step 4 Decision B (durable
+        // PAUSED/QUARANTINED/REVOKED/DISABLED overlay, read in-process,
+        // merged with Control Plane's overlay via `combineAgentRuntimeStatus`)
+        // -- previously computed only for SECURITY/LEGAL_MEDIA_COMMS below.
+        // Step 4 Runtime Authority gap fix: CODE_ENGINEER/RESEARCHER used to
+        // reach their specialist with no awareness of this durable subset at
+        // all, relying solely on Control Plane's own status mirror (now
+        // display-only for this subset, per `atlas-self-agent-control.ts`).
+        // Hoisted here so all four specialists this route can dispatch live
+        // work to share the SAME resolution rather than a second
+        // implementation -- this call site reaches `dispatchAgentAction`
+        // directly (SECURITY/LEGAL_MEDIA_COMMS below) or indirectly via
+        // `submitAgentProposal` (CODE_ENGINEER/RESEARCHER, threaded through
+        // `llm-specialist-run.ts`) and does not go through
+        // `resolveGovernedAgentIdentity`, so it needs its own read to get
+        // the same guarantee (a durable block here never depends on Control
+        // Plane reachability).
+        let durableStatus: AgentRuntimeControl | undefined;
+        let fromLookup: AgentRuntimeControl | undefined;
+        let controlPlaneUnreachableFlag = false;
+        let combinedRuntimeStatus: AgentRuntimeControl | undefined;
+        if (
+          agentId === "SECURITY" ||
+          agentId === "LEGAL_MEDIA_COMMS" ||
+          agentId === "CODE_ENGINEER" ||
+          agentId === "RESEARCHER"
+        ) {
+          try {
+            durableStatus = (await getDurableAgentRuntimeStatus(agentId))?.status;
+          } catch {
+            durableStatus = "UNKNOWN";
+          }
+          const lookup = await lookupControlPlaneAgentRuntimeStatus(agentId);
+          fromLookup = lookup.configured ? lookup.status : undefined;
+          controlPlaneUnreachableFlag = lookup.configured && lookup.unreachable === true;
+          const overlayPresent = durableStatus !== undefined || fromLookup !== undefined;
+          combinedRuntimeStatus = overlayPresent
+            ? combineAgentRuntimeStatus(durableStatus, fromLookup)
+            : undefined;
+        }
+
         // Gate check before calling the specialist — CASE.EXECUTE for security
         // scans and legal-media reviews. If the gate denies or requires
         // approval, return a SKIPPED run carrying the reason.
         if (agentId === "SECURITY" || agentId === "LEGAL_MEDIA_COMMS") {
-          const lookup = await lookupControlPlaneAgentRuntimeStatus(agentId);
           const gate = await dispatchAgentAction({
             actor: {
               kind: "AGENT",
@@ -287,7 +331,10 @@ export async function registerAgentFabricRoutes(
             trustLevel: "DELEGATED",
             delegationHopCount: 1,
             requestId: request.id,
-            ...(lookup.configured ? { agentRuntimeStatus: lookup.status } : {}),
+            ...(combinedRuntimeStatus !== undefined
+              ? { agentRuntimeStatus: combinedRuntimeStatus }
+              : {}),
+            ...(controlPlaneUnreachableFlag ? { controlPlaneUnreachable: true } : {}),
           });
 
           if (gate.decision !== "ALLOWED") {
@@ -315,6 +362,34 @@ export async function registerAgentFabricRoutes(
           }
         }
 
+        // Step 4 Runtime Authority gap fix: CODE_ENGINEER/RESEARCHER never
+        // call `dispatchAgentAction` directly (unlike SECURITY/
+        // LEGAL_MEDIA_COMMS above) -- their proposal reaches it later,
+        // inside `submitAgentProposal` (called from `llm-specialist-run.ts`),
+        // which remains the sole authoritative gate for this pair. This is
+        // deliberately NOT a second `dispatchAgentAction` call and cannot
+        // itself ALLOW anything the real gate would deny -- it only ever
+        // short-circuits to SKIPPED, purely so a durably-blocked agent
+        // doesn't spend an LLM call generating a proposal that
+        // `dispatchAgentAction` would reject once submitted anyway.
+        if (
+          (agentId === "CODE_ENGINEER" || agentId === "RESEARCHER") &&
+          combinedRuntimeStatus !== undefined &&
+          !agentMayExecute(combinedRuntimeStatus)
+        ) {
+          const reason = `${agentId}: runtime status ${combinedRuntimeStatus} is non-executable`;
+          return {
+            agentId,
+            status: "SKIPPED" as const,
+            summary: reason,
+            claims: [reason],
+            evidenceRefs: [],
+            epistemicState: "UNKNOWN" as const,
+            costUsd: 0,
+            durationMs: 0,
+          };
+        }
+
         if (agentId === "SECURITY") {
           return runSecuritySpecialistViaSentinel({
             request: requestStr,
@@ -335,6 +410,9 @@ export async function registerAgentFabricRoutes(
             env: app.atlasEnv,
             delegationHopCount: 1,
             requestId: request.id,
+            ...(combinedRuntimeStatus !== undefined
+              ? { runtimeStatus: combinedRuntimeStatus }
+              : {}),
           });
         }
         if (agentId === "RESEARCHER") {
@@ -345,6 +423,9 @@ export async function registerAgentFabricRoutes(
             env: app.atlasEnv,
             delegationHopCount: 1,
             requestId: request.id,
+            ...(combinedRuntimeStatus !== undefined
+              ? { runtimeStatus: combinedRuntimeStatus }
+              : {}),
           });
         }
         return null;

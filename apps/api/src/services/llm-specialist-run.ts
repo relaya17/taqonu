@@ -2,6 +2,7 @@ import {
   agentRunResultSchema,
   uuidSchema,
   type AgentProposal,
+  type AgentRuntimeControl,
   type AgentRunResult,
   type EvidenceCategory,
   type FabricAgentId,
@@ -70,6 +71,18 @@ export interface ProposalBackedSpecialistInput {
   /** Orchestrator → specialist is one hop. Direct tool-execute stays at 0. */
   readonly delegationHopCount?: number;
   readonly requestId?: string;
+  /**
+   * Step 4 Runtime Authority gap fix: pre-resolved runtime status from the
+   * caller (`agent-fabric.ts`'s inline durable-store + Control-Plane
+   * resolution, the same sequence SECURITY/LEGAL_MEDIA_COMMS already use on
+   * that route). When supplied, this is threaded straight into
+   * `submitAgentProposal`'s existing `agentRuntimeStatus` field instead of
+   * this function's own Control-Plane-only lookup below, so
+   * `dispatchAgentAction` enforces the same durable Runtime Authority
+   * guarantee every other specialist gets. A caller that omits this keeps
+   * today's Control-Plane-only lookup, unchanged.
+   */
+  readonly runtimeStatus?: AgentRuntimeControl;
 }
 
 /** Evidence references for the run result: the real URI when the model cited one, else its raw reference string. */
@@ -145,7 +158,18 @@ export async function runProposalBackedSpecialist(
 
   let gate: Awaited<ReturnType<typeof submitAgentProposal>>;
   try {
-    const lookup = await lookupControlPlaneAgentRuntimeStatus(config.agentId);
+    // Step 4 Runtime Authority gap fix: prefer the caller's pre-resolved
+    // durable+Control-Plane status (see `ProposalBackedSpecialistInput.runtimeStatus`
+    // doc comment above) when supplied; fall back to this function's own
+    // Control-Plane-only lookup only for a caller that doesn't supply one,
+    // so any other/future caller of this shared helper keeps today's
+    // behavior unchanged.
+    const agentRuntimeStatus =
+      input.runtimeStatus !== undefined
+        ? input.runtimeStatus
+        : await lookupControlPlaneAgentRuntimeStatus(config.agentId).then((lookup) =>
+            lookup.configured ? lookup.status : undefined,
+          );
     gate = await submitAgentProposal(proposal, {
       actorKind: "AGENT",
       onBehalfOfUserId: input.ownerId,
@@ -164,7 +188,7 @@ export async function runProposalBackedSpecialist(
       routeLabel: config.routeLabel,
       trustLevel: "DELEGATED",
       delegationHopCount: input.delegationHopCount ?? 1,
-      ...(lookup.configured ? { agentRuntimeStatus: lookup.status } : {}),
+      ...(agentRuntimeStatus !== undefined ? { agentRuntimeStatus } : {}),
       ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
     });
   } catch (error) {
