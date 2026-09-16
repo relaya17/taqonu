@@ -673,13 +673,23 @@ export async function dispatchAgentAction(
   }
   const behavioralFloored = behavioralPattern ? stricterBucket(rawBucket, "APPROVAL") : rawBucket;
 
-  const bucket = stricterBucket(
-    stricterBucket(
-      stricterBucket(stricterBucket(untrustedFloored, automationFloored), delegationFloored),
-      behavioralFloored,
-    ),
-    degradedFloored,
+  const bucketBeforeDegraded = stricterBucket(
+    stricterBucket(stricterBucket(untrustedFloored, automationFloored), delegationFloored),
+    behavioralFloored,
   );
+  const bucket = stricterBucket(bucketBeforeDegraded, degradedFloored);
+  // Step 4 Decision A (freshness sub-decision, approved): a pre-existing
+  // claimed approval must NOT satisfy a bucket that DEGRADED is what
+  // pushed to APPROVAL/HUMAN_ONLY -- if the acting agent became DEGRADED
+  // after that approval was decided, this floor's whole purpose (more
+  // scrutiny on a now-less-trusted agent) would otherwise be silently
+  // defeated by reusing a decision made before the agent was known to be
+  // degraded. Scoped narrowly: only fires when DEGRADED is what actually
+  // moved the bucket (BUCKET_ORDER[bucket] > BUCKET_ORDER[bucketBeforeDegraded])
+  // -- when another floor (untrusted/automation/delegation/behavioral) or
+  // the raw score already reached the same bucket on its own, a
+  // legitimately claimed approval still satisfies it exactly as before.
+  const degradedForcesFreshApproval = BUCKET_ORDER[bucket] > BUCKET_ORDER[bucketBeforeDegraded];
   const riskLevel = BUCKET_TO_AUDIT_RISK[bucket];
   const evaluation: DispatchGovernanceEvaluation = {
     policy: {
@@ -714,9 +724,14 @@ export async function dispatchAgentAction(
   // or the bucket computation -- both stay honest -- and it leaves the
   // AGENT/AUTOMATION path's unconditional HUMAN_ONLY block fully intact.
   const humanLiveDecisionSatisfied = actor.kind === "HUMAN" && approvalSatisfied;
+  // A claim that would otherwise satisfy this bucket is not honored when
+  // DEGRADED is specifically what pushed the bucket here (see
+  // `degradedForcesFreshApproval` above) -- HUMAN_ONLY's own claim-immunity
+  // is untouched, and every other floor's claim-satisfaction is untouched.
+  const approvalSatisfiedForBucket = approvalSatisfied && !degradedForcesFreshApproval;
   const needsApproval =
     (bucket === "HUMAN_ONLY" && !humanLiveDecisionSatisfied) ||
-    (!approvalSatisfied &&
+    (!approvalSatisfiedForBucket &&
       (bucket === "APPROVAL" || entityAuthz.decision === "APPROVAL_REQUIRED"));
 
   if (needsApproval) {

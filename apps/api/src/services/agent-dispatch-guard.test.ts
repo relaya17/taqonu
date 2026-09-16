@@ -216,22 +216,82 @@ describe("dispatchAgentAction", () => {
     expect(result.evaluation.risk.floors.degradedAgent).toBe(true);
   });
 
-  it("DEGRADED floor: a HEALTHY (non-DEGRADED) agent's identical CREATE is unaffected -- the floor is keyed on runtime status, not action alone", async () => {
-    const result = await dispatchAgentAction({
+  // RCA (agent-dispatch-guard.test.ts 100/101 failure, and the follow-up
+  // Decision Analysis) established that the previous version of this test
+  // asserted an impossible baseline: `ACTIVE + CREATE + no claimedApproval`
+  // can never resolve to ALLOWED, because `authorizeEntityAction`'s write
+  // gate (packages/agent-core/src/policies/entity-policies.ts) requires
+  // `approved === true` for ANY non-READ_ONLY action, independent of
+  // runtime status -- a pre-existing, already-independently-tested
+  // invariant (see the neighboring "automation floor: AUTOMATION + CREATE
+  // never resolves ALLOWED ... always ends up APPROVAL_REQUIRED" test
+  // above). That made the old test fail for a reason wholly unrelated to
+  // DEGRADED, and it never actually exercised `degradedForcesFreshApproval`
+  // (agent-dispatch-guard.ts) at all.
+  //
+  // The real, unique behavior the DEGRADED floor is responsible for is
+  // approval-FRESHNESS invalidation: a claimed approval that already
+  // satisfies the write gate for a healthy agent must stop satisfying it
+  // the moment that same agent is DEGRADED. This test isolates exactly
+  // that -- same governed action, same already-claimed approval record,
+  // the ONLY variable that changes between the two dispatches is
+  // `agentRuntimeStatus`.
+  it("approval freshness under DEGRADED: a claimed approval sufficient for an ACTIVE agent's CREATE is not automatically honored once the same agent becomes DEGRADED -- the DEGRADED floor forces a fresh decision", async () => {
+    const claimed = await claimedMatchingCreate({ requestedBy: AGENT_ID });
+
+    const activeResult = await dispatchAgentAction({
       actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
       entityType: "RECORD",
       action: "CREATE",
-      routeLabel: "test.healthy.record.create",
+      routeLabel: "test.degraded-freshness.active.record.create",
       sourceContext: { origin: "user_message", trustLevel: "trusted" },
       agentRuntimeStatus: "ACTIVE",
       confidence: 1,
       evidenceCount: 10,
       projectId: PROJECT,
+      input: { artifactHash: ARTIFACT_HASH },
+      claimedApproval: claimed,
     });
 
-    expect(result.decision).toBe("ALLOWED");
-    if (result.decision !== "ALLOWED") throw new Error("expected ALLOWED");
-    expect(result.evaluation.risk.floors.degradedAgent).toBe(false);
+    expect(activeResult.decision).toBe("ALLOWED");
+    if (activeResult.decision !== "ALLOWED") throw new Error("expected ALLOWED");
+    expect(activeResult.evaluation.risk.floors.degradedAgent).toBe(false);
+    // The claim satisfies the write gate outright (entityAuthz -> ALLOWED),
+    // so the requiresApproval floor never applies and the raw score (25)
+    // lands in AUTO_LOG, not APPROVAL -- this is the baseline the DEGRADED
+    // dispatch below is compared against.
+    expect(activeResult.bucket).toBe("AUTO_LOG");
+
+    // Same governed action, same already-claimed approval record -- only
+    // agentRuntimeStatus changes. If this second dispatch also reached
+    // ALLOWED, the claim would have been silently reused across a
+    // DEGRADED transition, defeating the entire purpose of
+    // `degradedForcesFreshApproval` (agent-dispatch-guard.ts).
+    const degradedResult = await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "CREATE",
+      routeLabel: "test.degraded-freshness.degraded.record.create",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      agentRuntimeStatus: "DEGRADED",
+      confidence: 1,
+      evidenceCount: 10,
+      projectId: PROJECT,
+      input: { artifactHash: ARTIFACT_HASH },
+      claimedApproval: claimed,
+    });
+
+    expect(degradedResult.decision).toBe("APPROVAL_REQUIRED");
+    if (degradedResult.decision !== "APPROVAL_REQUIRED") {
+      throw new Error("expected APPROVAL_REQUIRED");
+    }
+    expect(degradedResult.evaluation.risk.floors.degradedAgent).toBe(true);
+    // Proves the DEGRADED floor -- not some other floor -- is what
+    // invalidated the previously-sufficient claim: the bucket moved from
+    // AUTO_LOG (active, same claim) to APPROVAL solely because DEGRADED
+    // raised it, which is exactly what makes `degradedForcesFreshApproval`
+    // true and the claim insufficient this time.
+    expect(degradedResult.bucket).toBe("APPROVAL");
   });
 
   it.each(["UPDATE", "DELETE", "EXECUTE"] as const)(
