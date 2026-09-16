@@ -130,6 +130,21 @@ export interface DispatchAgentActionOptions {
     | "DEGRADED"
     | "RETIRED"
     | "UNKNOWN";
+  /**
+   * Step 4 Decision C. True only when `agentRuntimeStatus` is "UNKNOWN"
+   * because Control Plane's ephemeral overlay (SUSPENDED/DEGRADED) could
+   * not be read -- never because of a durable PAUSED/QUARANTINED/REVOKED/
+   * DISABLED override (Decision B's in-process read never depends on
+   * Control Plane reachability), and never a general "CP said UNKNOWN"
+   * determination. When true AND the resolved status is "UNKNOWN", the
+   * runtime-status hard block below becomes action-class-aware: READ
+   * proceeds to ordinary policy/risk evaluation, every mutating/executing
+   * action still fails closed exactly as before. Absent (the default for
+   * every existing caller) keeps today's unconditional fail-closed
+   * behavior -- this is opt-in per call site, never a silent widening of
+   * what executes.
+   */
+  readonly controlPlaneUnreachable?: boolean;
   /** Agent A → B hops. Each hop floors to approval; never inherits unlimited authority. */
   readonly delegationHopCount?: number;
   /** When DELEGATED, omitted hop count floors to 1 rather than 0. */
@@ -499,7 +514,27 @@ export async function dispatchAgentAction(
     };
   }
 
-  if (runtimeStatus !== undefined && !agentMayExecute(runtimeStatus as AgentRuntimeControl)) {
+  // Step 4 Decision C: when the ONLY reason runtimeStatus is "UNKNOWN" is
+  // that Control Plane's ephemeral overlay (SUSPENDED/DEGRADED) could not
+  // be read -- not a genuine UNKNOWN determination, and not any durable
+  // PAUSED/QUARANTINED/REVOKED/DISABLED block, which Decision B reads
+  // in-process and never depends on Control Plane reachability -- the
+  // fail-open/fail-closed decision becomes action-class-aware here, at the
+  // one chokepoint that already knows both identity and action: READ
+  // proceeds to ordinary policy/risk evaluation (never itself approval-
+  // gated); every mutating/executing action (CREATE/UPDATE/DELETE/EXECUTE)
+  // still fails closed exactly as before. A caller that does not supply
+  // `controlPlaneUnreachable` gets today's unconditional fail-closed
+  // behavior for any UNKNOWN status -- this is opt-in per call site, never
+  // a silent widening of what executes.
+  const controlPlaneOutageFailOpen =
+    runtimeStatus === "UNKNOWN" && options.controlPlaneUnreachable === true && action === "READ";
+
+  if (
+    runtimeStatus !== undefined &&
+    !agentMayExecute(runtimeStatus as AgentRuntimeControl) &&
+    !controlPlaneOutageFailOpen
+  ) {
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,

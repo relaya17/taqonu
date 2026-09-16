@@ -100,6 +100,8 @@ export interface RunGovernedClaimedExecutionInput<T> {
     | "DEGRADED"
     | "RETIRED"
     | "UNKNOWN";
+  /** See `DispatchAgentActionOptions.controlPlaneUnreachable` (Step 4 Decision C). */
+  readonly controlPlaneUnreachable?: boolean;
   readonly delegationHopCount?: number;
   readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
   readonly dispatchInput?: Record<string, unknown>;
@@ -284,6 +286,9 @@ async function runPolicy(
     requestId: input.requestId,
     ...(input.agentRuntimeStatus !== undefined
       ? { agentRuntimeStatus: input.agentRuntimeStatus }
+      : {}),
+    ...(input.controlPlaneUnreachable !== undefined
+      ? { controlPlaneUnreachable: input.controlPlaneUnreachable }
       : {}),
     ...(input.delegationHopCount !== undefined
       ? { delegationHopCount: input.delegationHopCount }
