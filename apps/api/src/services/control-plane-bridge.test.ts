@@ -19,7 +19,7 @@ describe("lookupControlPlaneAgentRuntimeStatus", () => {
     process.env.ATLAS_CONTROL_PLANE_TOKEN = "token";
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("down"))));
     const result = await lookupControlPlaneAgentRuntimeStatus("CODE_ENGINEER");
-    expect(result).toEqual({ configured: true, status: "UNKNOWN" });
+    expect(result).toEqual({ configured: true, status: "UNKNOWN", unreachable: true });
   });
 
   it("treats a missing oversight overlay as ACTIVE", async () => {
@@ -30,7 +30,7 @@ describe("lookupControlPlaneAgentRuntimeStatus", () => {
       vi.fn(async () => new Response(JSON.stringify({ error: "not found" }), { status: 404 })),
     );
     const result = await lookupControlPlaneAgentRuntimeStatus("RESEARCHER");
-    expect(result).toEqual({ configured: true, status: "ACTIVE" });
+    expect(result).toEqual({ configured: true, status: "ACTIVE", unreachable: false });
   });
 
   it("returns the Control Plane overlay status when present", async () => {
@@ -45,6 +45,6 @@ describe("lookupControlPlaneAgentRuntimeStatus", () => {
       ),
     );
     const result = await lookupControlPlaneAgentRuntimeStatus("CODE_ENGINEER");
-    expect(result).toEqual({ configured: true, status: "QUARANTINED" });
+    expect(result).toEqual({ configured: true, status: "QUARANTINED", unreachable: false });
   });
 });

@@ -7,6 +7,10 @@ import {
 } from "@atlas/shared";
 import { assertGovernedProjectExists } from "./project-access.js";
 import { lookupControlPlaneAgentRuntimeStatus } from "./control-plane-bridge.js";
+import {
+  getDurableAgentRuntimeStatus,
+  isAgentRuntimeControlStoreAvailable,
+} from "./agent-runtime-controls.js";
 
 /**
  * P0.2 — Agent Identity + Runtime Authorization Enforcement.
@@ -72,6 +76,15 @@ export interface AuthenticatedAgentIdentity {
     | "DEGRADED"
     | "RETIRED"
     | "UNKNOWN";
+  /**
+   * Step 4 Decision C. True only when `runtimeStatus` is "UNKNOWN" because
+   * Control Plane's ephemeral overlay (SUSPENDED/DEGRADED) could not be
+   * read -- never because of a durable PAUSED/QUARANTINED/REVOKED/DISABLED
+   * override, which is read in-process from apps/api's own database and
+   * never depends on Control Plane reachability (Decision B). Absent or
+   * false in every other case. See `dispatchAgentAction`.
+   */
+  readonly controlPlaneUnreachable?: boolean;
 }
 
 /**
@@ -129,6 +142,8 @@ export function resolveAgentIdentity(input: {
     | "DEGRADED"
     | "RETIRED"
     | "UNKNOWN";
+  /** See `AuthenticatedAgentIdentity.controlPlaneUnreachable` (Step 4 Decision C). */
+  readonly controlPlaneUnreachable?: boolean;
 }): AuthenticatedAgentIdentity {
   if (!(FABRIC_AGENT_IDS as readonly string[]).includes(input.fabricAgentId)) {
     throw new AtlasError(
@@ -163,6 +178,7 @@ export function resolveAgentIdentity(input: {
     authorityScope,
     trustLevel: input.trustLevel ?? "FULL",
     runtimeStatus: input.runtimeStatus ?? "ACTIVE",
+    ...(input.controlPlaneUnreachable === true ? { controlPlaneUnreachable: true } : {}),
   };
 }
 
@@ -185,19 +201,53 @@ export async function resolveGovernedAgentIdentity(input: {
    */
   readonly requireVerifiedRuntimeStatus?: boolean;
 }): Promise<AuthenticatedAgentIdentity> {
+  // Step 4 Decision B: the durable subset (PAUSED/QUARANTINED/REVOKED/
+  // DISABLED) is read in-process from apps/api's own database -- no
+  // network hop, no Control Plane dependency, for these four statuses
+  // specifically. Reading this first means an unreachable Control Plane
+  // never affects enforcement of the durable subset.
+  let durableStatus: AuthenticatedAgentIdentity["runtimeStatus"] | undefined;
+  // Only attempt the durable read where a store actually exists. An
+  // environment where Decision B's store has not been wired up yet
+  // (every pre-existing test, and any deployment before this migration
+  // lands) must resolve exactly as it did before Decision B -- no
+  // overlay from this subset at all -- not as "UNKNOWN". Once the store
+  // IS available, a read that still fails (a genuine outage against a
+  // configured database) fails closed to UNKNOWN, consistent with every
+  // other unavailable-input case in this function.
+  if (isAgentRuntimeControlStoreAvailable()) {
+    try {
+      const durable = await getDurableAgentRuntimeStatus(input.fabricAgentId);
+      durableStatus = durable?.status;
+    } catch {
+      durableStatus = "UNKNOWN";
+    }
+  }
+
   const lookup = await lookupControlPlaneAgentRuntimeStatus(input.fabricAgentId);
   const fromLookup = lookup.configured ? lookup.status : undefined;
-  const overlayPresent = input.runtimeStatus !== undefined || fromLookup !== undefined;
+  // Step 4 Decision C: preserve *why* the lookup came back UNKNOWN instead
+  // of discarding it here, so `dispatchAgentAction` can apply an
+  // action-class-aware fail-open/fail-closed rule once the action is
+  // known, rather than this upstream, action-agnostic call pre-deciding a
+  // uniform block.
+  const controlPlaneUnreachable = lookup.configured && lookup.unreachable === true;
+  const overlayPresent =
+    input.runtimeStatus !== undefined ||
+    fromLookup !== undefined ||
+    durableStatus !== undefined;
+
   return resolveAgentIdentity({
     fabricAgentId: input.fabricAgentId,
     sessionOwnerId: input.sessionOwnerId,
     projectId: input.projectId,
     ...(input.trustLevel !== undefined ? { trustLevel: input.trustLevel } : {}),
     runtimeStatus: overlayPresent
-      ? combineAgentRuntimeStatus(input.runtimeStatus, fromLookup)
+      ? combineAgentRuntimeStatus(input.runtimeStatus, durableStatus, fromLookup)
       : input.requireVerifiedRuntimeStatus === true
         ? "UNKNOWN"
         : "ACTIVE",
+    ...(controlPlaneUnreachable ? { controlPlaneUnreachable: true } : {}),
   });
 }
 

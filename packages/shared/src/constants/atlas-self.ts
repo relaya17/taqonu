@@ -15,6 +15,16 @@ export const ATLAS_SELF_CONTROL_VERIFY_PATH =
 export const ATLAS_SELF_CONTROL_REQUEST_PATH =
   "/api/v1/approvals/atlas-self/control-request";
 
+/**
+ * CP SERVICE bearer -> apps/api's durable agent-runtime-control store
+ * (Step 4 Decision B). Durable subset only: PAUSED/QUARANTINED/REVOKED/
+ * DISABLED. POST sets an override for :agentId is appended as the path's
+ * final segment on the DELETE variant (clear); SUSPENDED/DEGRADED remain
+ * Control Plane's own ephemeral, in-memory concept and never call this.
+ */
+export const AGENT_RUNTIME_CONTROL_PATH =
+  "/api/v1/internal/agent-runtime-controls";
+
 export { ATLAS_SELF_APPLICATION_ID, ATLAS_SELF_SYSTEM_ID };
 
 export function isAtlasSelfApplicationId(

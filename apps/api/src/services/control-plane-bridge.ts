@@ -27,7 +27,22 @@ function controlPlaneToken(): string | null {
 
 export type ControlPlaneAgentStatusLookup =
   | { readonly configured: false }
-  | { readonly configured: true; readonly status: AgentRuntimeControl };
+  | {
+      readonly configured: true;
+      readonly status: AgentRuntimeControl;
+      /**
+       * Step 4 Decision C. True only when `status` is "UNKNOWN" because
+       * Control Plane itself could not be reached/read (missing token,
+       * egress denied, timeout, non-2xx, or a transport exception) --
+       * distinct from a genuine "UNKNOWN" value Control Plane actually
+       * returned, and distinct from the 404 "no overlay" case (which
+       * resolves to ACTIVE, not UNKNOWN). Callers thread this through so
+       * the fail-open/fail-closed decision can become action-class-aware
+       * at the point action is known, instead of a uniform block. See
+       * `resolveGovernedAgentIdentity` and `dispatchAgentAction`.
+       */
+      readonly unreachable: boolean;
+    };
 
 function asAgentRuntimeControl(value: unknown): AgentRuntimeControl | null {
   return typeof value === "string" &&
@@ -49,7 +64,7 @@ export async function lookupControlPlaneAgentRuntimeStatus(
   if (!base) return { configured: false };
   const token = controlPlaneToken();
   if (!token) {
-    return { configured: true, status: "UNKNOWN" };
+    return { configured: true, status: "UNKNOWN", unreachable: true };
   }
   try {
     assertEgressAllowed({
@@ -59,7 +74,7 @@ export async function lookupControlPlaneAgentRuntimeStatus(
       purpose: "control-plane.agent-status",
     });
   } catch {
-    return { configured: true, status: "UNKNOWN" };
+    return { configured: true, status: "UNKNOWN", unreachable: true };
   }
   try {
     const response = await fetch(
@@ -70,18 +85,19 @@ export async function lookupControlPlaneAgentRuntimeStatus(
       },
     );
     if (response.status === 404) {
-      return { configured: true, status: "ACTIVE" };
+      return { configured: true, status: "ACTIVE", unreachable: false };
     }
     if (!response.ok) {
-      return { configured: true, status: "UNKNOWN" };
+      return { configured: true, status: "UNKNOWN", unreachable: true };
     }
     const body = (await response.json()) as { status?: unknown };
     return {
       configured: true,
       status: asAgentRuntimeControl(body.status) ?? "UNKNOWN",
+      unreachable: false,
     };
   } catch {
-    return { configured: true, status: "UNKNOWN" };
+    return { configured: true, status: "UNKNOWN", unreachable: true };
   }
 }
 

@@ -9,6 +9,7 @@ export * from "./repositories/live-approval-requests.js";
 export * from "./repositories/personal-supervising-agents.js";
 export * from "./repositories/audit-log.js";
 export * from "./repositories/governed-execution-receipt.js";
+export * from "./repositories/agent-runtime-controls.js";
 export * from "./persist.js";
 export * from "./knowledge-persist.js";
 export * from "./memory-persist.js";
