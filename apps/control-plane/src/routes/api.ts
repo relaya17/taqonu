@@ -499,7 +499,7 @@ export function createApiRouter(): Router {
       });
     }
     const approvalId = presentedApprovalId || mintedApprovalId || "";
-    const result = applyAtlasSelfAgentControl({
+    const result = await applyAtlasSelfAgentControl({
       actorId: principal.id,
       agentId: id,
       action,

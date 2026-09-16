@@ -21,9 +21,28 @@ describe("Atlas-self agent control", () => {
     resetAgentRuntimeForTests();
     resetGovernanceStateForTests();
     setAtlasSelfControlApprovalVerifier(null);
+    // Step 4 Decision B: pause/quarantine/revoke/disable now synchronously
+    // persist to apps/api via the existing CP -> API `callAtlasApi` hop
+    // before the local Map is mutated -- these tests exercise the policy
+    // engine (evaluateAtlasSelfAgentControl/applyAtlasSelfAgentControl's
+    // own approval-workflow logic), not that hop, so it is stubbed to
+    // succeed here exactly as the "production verifier" describe block
+    // below already stubs the same hop for its own purpose.
+    process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+    process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
+    );
   });
 
-  it("requires independent approval and does not execute without it", () => {
+  afterEach(() => {
+    delete process.env["ATLAS_API_URL"];
+    delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+    vi.unstubAllGlobals();
+  });
+
+  it("requires independent approval and does not execute without it", async () => {
     const cycle = evaluateAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "CODE_ENGINEER",
@@ -34,7 +53,7 @@ describe("Atlas-self agent control", () => {
     expect(cycle.decision).toBe("REQUIRE_APPROVAL");
     expect(cycle.executed).toBe(false);
 
-    const applied = applyAtlasSelfAgentControl({
+    const applied = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "CODE_ENGINEER",
       action: "pause",
@@ -60,8 +79,8 @@ describe("Atlas-self agent control", () => {
     expect(cycle.executed).toBe(false);
   });
 
-  it("does not treat a self-asserted approved flag as independent approval", () => {
-    const applied = applyAtlasSelfAgentControl({
+  it("does not treat a self-asserted approved flag as independent approval", async () => {
+    const applied = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "CODE_ENGINEER",
       action: "revoke",
@@ -74,8 +93,8 @@ describe("Atlas-self agent control", () => {
     expect(getRegisteredAgent("CODE_ENGINEER")?.status).not.toBe("REVOKED");
   });
 
-  it("applies the overlay only after independently verified approval", () => {
-    const applied = applyAtlasSelfAgentControl({
+  it("applies the overlay only after independently verified approval", async () => {
+    const applied = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "CODE_ENGINEER",
       action: "pause",
@@ -97,8 +116,8 @@ describe("Atlas-self agent control", () => {
    * status-changing action, even one carrying a freshly, independently
    * verified approval.
    */
-  it("test 7 / test 6: revocation invalidates execution, and REVOKED is terminal -- a later, independently-approved resume does not resurrect it", () => {
-    const revoked = applyAtlasSelfAgentControl({
+  it("test 7 / test 6: revocation invalidates execution, and REVOKED is terminal -- a later, independently-approved resume does not resurrect it", async () => {
+    const revoked = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "RESEARCHER",
       action: "revoke",
@@ -113,7 +132,7 @@ describe("Atlas-self agent control", () => {
 
     // A second, independently-approved request -- not a replay of the first,
     // a fresh approval -- still cannot move a REVOKED agent anywhere.
-    const resurrection = applyAtlasSelfAgentControl({
+    const resurrection = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "RESEARCHER",
       action: "resume",
@@ -135,8 +154,8 @@ describe("Atlas-self agent control", () => {
     expect(refusal?.result).toBe("FAILURE");
   });
 
-  it("test 8: retirement prevents further governed execution and is itself terminal", () => {
-    const retired = applyAtlasSelfAgentControl({
+  it("test 8: retirement prevents further governed execution and is itself terminal", async () => {
+    const retired = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "ARCHITECT",
       action: "retire",
@@ -149,7 +168,7 @@ describe("Atlas-self agent control", () => {
     expect(retired.executed).toBe(true);
     expect(getRegisteredAgent("ARCHITECT")?.status).toBe("RETIRED");
 
-    const reactivate = applyAtlasSelfAgentControl({
+    const reactivate = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "ARCHITECT",
       action: "resume",
@@ -162,8 +181,8 @@ describe("Atlas-self agent control", () => {
     expect(getRegisteredAgent("ARCHITECT")?.status).toBe("RETIRED");
   });
 
-  it("test 11: cross-agent isolation -- revoking one agent never changes another agent's status", () => {
-    applyAtlasSelfAgentControl({
+  it("test 11: cross-agent isolation -- revoking one agent never changes another agent's status", async () => {
+    await applyAtlasSelfAgentControl({
       actorId: "cp:service",
       agentId: "SECURITY",
       action: "revoke",

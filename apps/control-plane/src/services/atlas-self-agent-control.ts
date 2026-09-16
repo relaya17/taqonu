@@ -4,6 +4,7 @@
  * an independently verified Atlas-self approval. CP does not run tools.
  */
 import {
+  AGENT_RUNTIME_CONTROL_PATH,
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_CONTROL_REQUEST_PATH,
   ATLAS_SELF_CONTROL_VERIFY_PATH,
@@ -52,6 +53,58 @@ const TERMINAL_STATUSES: ReadonlySet<AgentStatus> = new Set(["REVOKED", "RETIRED
 
 export function isAgentControlAction(value: string): value is AgentControlAction {
   return (AGENT_CONTROL_ACTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * Step 4 Decision B — the durable subset (PAUSED/QUARANTINED/REVOKED/
+ * DISABLED) is now owned by apps/api's own database, not Control Plane's
+ * in-memory Map. "resume" (-> ACTIVE) and "retire" (-> RETIRED, explicitly
+ * out of the approved durable scope -- terminal, unchanged, Control-Plane-
+ * local as before) never call apps/api here. This uses the existing
+ * `callAtlasApi` CP -> API SERVICE-hop pattern
+ * (`lifecycle-handoff.ts`/`handoffGovernedDecisionToApi`) -- not a new
+ * communication mechanism.
+ */
+const DURABLE_CONTROL_ACTIONS: ReadonlySet<AgentControlAction> = new Set([
+  "pause",
+  "disable",
+  "quarantine",
+  "revoke",
+]);
+
+async function syncDurableAgentRuntimeControl(input: {
+  readonly agentId: string;
+  readonly action: AgentControlAction;
+  readonly status: AgentStatus;
+  readonly setBy: string;
+  readonly reason: string;
+}): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
+  if (input.action === "resume") {
+    const cleared = await callAtlasApi(`${AGENT_RUNTIME_CONTROL_PATH}/${encodeURIComponent(input.agentId)}`, {
+      method: "DELETE",
+    });
+    if (!cleared.ok) {
+      return { ok: false, reason: `Failed to clear durable runtime control: ${cleared.reason}` };
+    }
+    return { ok: true };
+  }
+  if (!DURABLE_CONTROL_ACTIONS.has(input.action)) {
+    // "retire" -- out of the approved durable scope; Control-Plane-local only.
+    return { ok: true };
+  }
+  const set = await callAtlasApi(AGENT_RUNTIME_CONTROL_PATH, {
+    method: "POST",
+    body: {
+      agentId: input.agentId,
+      status: input.status,
+      setBy: input.setBy,
+      reason: input.reason,
+    },
+  });
+  if (!set.ok) {
+    return { ok: false, reason: `Failed to persist durable runtime control: ${set.reason}` };
+  }
+  return { ok: true };
 }
 
 export type AtlasSelfControlApprovalVerifier = (input: {
@@ -134,7 +187,7 @@ export function evaluateAtlasSelfAgentControl(input: {
   });
 }
 
-export function applyAtlasSelfAgentControl(input: {
+export async function applyAtlasSelfAgentControl(input: {
   readonly actorId: string;
   readonly agentId: string;
   readonly action: AgentControlAction;
@@ -142,14 +195,14 @@ export function applyAtlasSelfAgentControl(input: {
   readonly reauthenticated: boolean;
   readonly independentApprovalVerified: boolean;
   readonly approvalId?: string;
-}): {
+}): Promise<{
   readonly decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
   readonly executed: boolean;
   readonly verified: false;
   readonly reason: string;
   readonly applicationId: typeof ATLAS_SELF_APPLICATION_ID;
   readonly agent?: ReturnType<typeof setAgentRuntimeStatus>;
-} {
+}> {
   const cycle = evaluateAtlasSelfAgentControl(input);
   if (cycle.decision !== "ALLOW") {
     appendAuditEntry({
@@ -210,6 +263,58 @@ export function applyAtlasSelfAgentControl(input: {
   }
 
   const next = STATUS_MAP[input.action];
+  if (!getRegisteredAgent(input.agentId)) {
+    return {
+      decision: "DENY",
+      executed: false,
+      verified: false,
+      reason: `Agent "${input.agentId}" not found`,
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+    };
+  }
+
+  // Step 4 Decision B: persist the durable subset to apps/api's own
+  // database BEFORE mutating Control Plane's own (now display-only, for
+  // this subset) in-memory Map. Fail closed on a durable-write failure --
+  // an agent that Control Plane's Map shows as PAUSED/QUARANTINED/REVOKED/
+  // DISABLED (or ACTIVE, on a failed resume) while apps/api's actual
+  // enforcement point never learned about it would be a dangerous,
+  // silent split between what the operator sees and what is actually
+  // enforced. Never partially apply: no local mutation happens unless the
+  // durable write already succeeded (or was a no-op, for "retire").
+  const durableSync = await syncDurableAgentRuntimeControl({
+    agentId: input.agentId,
+    action: input.action,
+    status: next,
+    setBy: input.actorId,
+    reason: input.reason,
+  });
+  if (!durableSync.ok) {
+    appendAuditEntry({
+      seq: Date.now(),
+      timestamp: new Date().toISOString(),
+      type: "atlas-self.agent.control",
+      actorId: input.actorId,
+      actorKind: "SYSTEM",
+      reason: durableSync.reason,
+      policy: "CONFIGURATION.UPDATE",
+      risk: "CRITICAL",
+      approval: "APPROVED",
+      result: "FAILURE",
+      ownerId: input.actorId,
+      projectId: ATLAS_SELF_PROJECT_ID,
+      hash: `atlas-self-control-${Date.now()}`,
+      prevHash: "000",
+    });
+    return {
+      decision: "DENY",
+      executed: false,
+      verified: false,
+      reason: durableSync.reason,
+      applicationId: ATLAS_SELF_APPLICATION_ID,
+    };
+  }
+
   const agent = setAgentRuntimeStatus(input.agentId, next);
   if (!agent) {
     return {

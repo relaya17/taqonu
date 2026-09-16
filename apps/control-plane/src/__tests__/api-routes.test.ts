@@ -606,6 +606,17 @@ describe("Control Plane — API Routes", () => {
           input.agentId === "CODE_ENGINEER" &&
           input.action === "pause",
       );
+      // Step 4 Decision B: "pause" now synchronously persists to apps/api
+      // via the existing CP -> API `callAtlasApi` hop before the overlay
+      // is applied. This test exercises the independent-approval-verifier
+      // path above, not that hop, so it is stubbed to succeed here --
+      // same reasoning as the "production verifier" stub below.
+      process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
+      process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
+      );
       const ticket = issueReauthTicket();
       const res = createMockRes();
       await router.handle(
@@ -672,6 +683,14 @@ describe("Control Plane — API Routes", () => {
       process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
       const approvalId = "33333333-3333-4333-8333-333333333333";
       const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        // Step 4 Decision B: "pause" also makes a separate CP -> API call
+        // to persist the durable override, alongside the pre-existing
+        // verify-atlas-self call this test's assertions are about. Let
+        // that one through trivially so the assertions below stay scoped
+        // to the verify-atlas-self call they actually test.
+        if (String(url).includes("/agent-runtime-controls")) {
+          return new Response(JSON.stringify({}), { status: 200 });
+        }
         expect(String(url)).toContain("/api/v1/approvals/verify-atlas-self");
         const body = JSON.parse(String(init?.body)) as {
           approvalId: string;
