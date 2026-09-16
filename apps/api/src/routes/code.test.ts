@@ -35,7 +35,7 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 
 const { registerCodeRoutes } = await import("./code.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
-const { decideApprovalRequest, getApprovalRequest } = await import("../services/approvals.js");
+const { createApprovalRequest, decideApprovalRequest, getApprovalRequest } = await import("../services/approvals.js");
 const { resetApprovalsForTests } = await import(
   "../services/approvals-test-store.js"
 );
@@ -150,18 +150,56 @@ function lastAuditEntry(type: string) {
 }
 
 describe("POST /api/v1/code/patches/:id/apply", () => {
-  it("applies a LOW-risk approved patch straight through — no approval round trip — and logs a risk-scored audit entry", async () => {
+  it("blocks a LOW-risk patch with 202 (no self-approval), then applies once a different identity decides it", async () => {
+    // Step 4 patch-approval regression fix: /approve no longer mints and
+    // self-decides a live ApprovalRequest (that was the regression --
+    // decidedBy === requestedBy is forbidden for every approval, not only
+    // Atlas's own self-audit ones -- see supabase/migrations/
+    // 20260905230000_atlas_universal_self_approval_prevention.sql).
+    // DOCUMENT.EXECUTE's `requiresApproval: true` is unconditional and
+    // unchanged: EVERY bucket, AUTO/AUTO_LOG included, now needs a real,
+    // separately-decided ApprovalRequest before applying -- there is no
+    // frictionless "approve once, apply forever" path for any risk level
+    // anymore, and there must not be one that self-approves. A second,
+    // independent identity decides the request, exactly like the HIGH-risk
+    // test below; the difference is this LOW-risk, well-evidenced patch's
+    // real confidence lands `dispatchAgentAction`'s own recheck in
+    // APPROVAL rather than HUMAN_ONLY, so the claim actually admits it.
     const patch = makePatch({ risk: "LOW", confidence: 1, evidenceIds: [] });
     osStore.upsertPatch(patch);
 
-    const res = await app.inject({
+    const first = await app.inject({
       method: "POST",
       url: `/api/v1/code/patches/${patch.id}/apply`,
       payload: { workspaceRoot },
     });
+    expect(first.statusCode).toBe(202);
+    const firstBody = first.json();
+    expect(firstBody.status).toBe("APPROVAL_REQUIRED");
+    expect(typeof firstBody.approvalId).toBe("string");
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+      "original content",
+    );
+
+    // Universal Self-Approval Prevention: the requester (testUser(), via
+    // getRequestUser()) can never also be the decider -- a second,
+    // independent approver identity is required, same as the HIGH-risk
+    // case below.
+    await decideApprovalRequest(firstBody.approvalId, {
+      decidedBy: "88888888-8888-4888-8888-888888888888",
+      approve: true,
+      decisionReason: "approved for test",
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${firstBody.approvalId}`,
+      payload: { workspaceRoot },
+    });
+
+    expect(second.statusCode).toBe(200);
+    const body = second.json();
     expect(body.patch.status).toBe("APPLIED");
     expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
       "modified content",
@@ -170,11 +208,20 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
     const entry = lastAuditEntry("code.patch.applied");
     expect(entry).toBeDefined();
     expect(entry?.payload.risk).toBe("LOW");
-    expect(entry?.payload.approval).toBe("NOT_REQUIRED");
+    expect(entry?.payload.approval).toBe("APPROVED");
     expect(String(entry?.payload.reason)).toMatch(/score=/);
   });
 
-  it("blocks a HIGH-risk patch with 202, then holds HUMAN_ONLY after claim instead of consuming", async () => {
+  it("applies a well-evidenced HIGH-risk patch once a genuine, independent decision is claimed -- dispatch's own recheck lands in APPROVAL, not HUMAN_ONLY", async () => {
+    // Step 4 stale-test-contract fix: this fixture (confidence 0.9, 3
+    // evidence items) used to be asserted as landing at HUMAN_ONLY after
+    // claim, but that was only true because governed-claimed-execution.ts
+    // never forwarded confidence/evidenceCount to dispatchAgentAction's own
+    // recheck (see runPatchClaimedExecution in code.ts). With that fixed:
+    // DOCUMENT.EXECUTE base 55 + confPenalty round((1-0.9)*20)=2 +
+    // evidPenalty max(0,3-3)*5=0 = 57 -> APPROVAL, which an AGENT-kind
+    // claim CAN satisfy. See the next test for a genuinely poorly-evidenced
+    // HIGH-risk patch, which still correctly holds at HUMAN_ONLY.
     const patch = makePatch({
       risk: "HIGH",
       confidence: 0.9,
@@ -199,8 +246,67 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
 
     // Universal Self-Approval Prevention: the requester (testUser(), via
     // getRequestUser()) can no longer also be the decider. A second,
-    // independent approver identity is used here -- this test is about the
-    // HUMAN_ONLY retry-burns-the-claim behavior below, not self-approval.
+    // independent approver identity is used here.
+    await decideApprovalRequest(firstBody.approvalId, {
+      decidedBy: "99999999-9999-4999-8999-999999999999",
+      approve: true,
+      decisionReason: "approved for test",
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${firstBody.approvalId}`,
+      payload: { workspaceRoot },
+    });
+    // Dispatch's own DOCUMENT.EXECUTE recheck scores this well-evidenced
+    // patch at 57 (APPROVAL), which the claimed, independently-decided
+    // approval satisfies -- the apply succeeds.
+    expect(second.statusCode).toBe(200);
+    const body = second.json();
+    expect(body.patch.status).toBe("APPLIED");
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+      "modified content",
+    );
+
+    const entry = lastAuditEntry("code.patch.applied");
+    expect(entry).toBeDefined();
+    expect(entry?.payload.risk).toBe("HIGH");
+    expect(entry?.payload.approval).toBe("APPROVED");
+  });
+
+  it("holds a poorly-evidenced HIGH-risk patch's claim at HUMAN_ONLY and burns it to FAILED instead of consuming -- an AGENT-kind claim can never satisfy HUMAN_ONLY", async () => {
+    // Preserves the HUMAN_ONLY-hold-burns-the-claim coverage the old test
+    // (mis-)exercised with a well-evidenced fixture. A genuinely
+    // low-confidence, unevidenced HIGH-risk patch still reaches HUMAN_ONLY
+    // on dispatch's own recheck: base 55 + confPenalty round((1-0)*20)=20 +
+    // evidPenalty max(0,3-0)*5=15 = 90 -> HUMAN_ONLY, which the ordinary
+    // AGENT-kind claimed-execution path can never satisfy (only the
+    // separate live-human decide-and-execute route can).
+    const patch = makePatch({
+      risk: "HIGH",
+      confidence: 0,
+      evidenceIds: [],
+    });
+    osStore.upsertPatch(patch);
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(first.statusCode).toBe(202);
+    const firstBody = first.json();
+    expect(firstBody.status).toBe("APPROVAL_REQUIRED");
+    expect(typeof firstBody.approvalId).toBe("string");
+    expect(["APPROVAL", "HUMAN_ONLY"]).toContain(firstBody.riskBucket);
+
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+      "original content",
+    );
+
+    // Universal Self-Approval Prevention: a second, independent approver
+    // identity is used here -- this test is about the HUMAN_ONLY
+    // retry-burns-the-claim behavior below, not self-approval.
     await decideApprovalRequest(firstBody.approvalId, {
       decidedBy: "99999999-9999-4999-8999-999999999999",
       approve: true,
@@ -351,7 +457,14 @@ describe("POST /api/v1/code/patches/:id/apply/decide-and-execute (CP7.2 live-hum
 });
 
 describe("POST /api/v1/code/patches/:id/rollback", async () => {
-  it("blocks rollback with 202, then holds HUMAN_ONLY after claim instead of consuming", async () => {
+  it("rolls back a well-evidenced LOW-risk patch once a genuine, independent decision is claimed -- dispatch's own recheck lands in APPROVAL, not HUMAN_ONLY", async () => {
+    // Step 4 stale-test-contract fix: same root cause as the apply test
+    // above -- this fixture's real confidence/evidence now reaches
+    // dispatchAgentAction's recheck. DOCUMENT.EXECUTE base 55 + confPenalty
+    // round((1-1)*20)=0 + evidPenalty max(0,3-3)*5=0 = 55 -> APPROVAL,
+    // which an AGENT-kind claim CAN satisfy. See the next test for a
+    // genuinely poorly-evidenced patch, which still correctly holds at
+    // HUMAN_ONLY.
     writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
     const patch = makePatch({
       risk: "LOW",
@@ -359,6 +472,59 @@ describe("POST /api/v1/code/patches/:id/rollback", async () => {
       appliedAt: new Date().toISOString(),
       confidence: 1,
       evidenceIds: [someUuid(4), someUuid(5), someUuid(6)],
+    });
+    osStore.upsertPatch(patch);
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback`,
+      payload: { workspaceRoot },
+    });
+    expect(first.statusCode).toBe(202);
+    const firstBody = first.json();
+    expect(firstBody.status).toBe("APPROVAL_REQUIRED");
+    expect(typeof firstBody.approvalId).toBe("string");
+
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+      "modified content",
+    );
+
+    // Universal Self-Approval Prevention: same reasoning as the apply test
+    // above -- a second, independent approver identity is required now.
+    await decideApprovalRequest(firstBody.approvalId, {
+      decidedBy: "99999999-9999-4999-8999-999999999999",
+      approve: true,
+      decisionReason: "approved rollback for test",
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback?approvalId=${firstBody.approvalId}`,
+      payload: { workspaceRoot },
+    });
+    // Dispatch's own DOCUMENT.EXECUTE recheck scores this well-evidenced
+    // patch at 55 (APPROVAL), which the claimed, independently-decided
+    // approval satisfies -- the rollback succeeds.
+    expect(second.statusCode).toBe(200);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+      "original content",
+    );
+  });
+
+  it("holds a poorly-evidenced patch's rollback claim at HUMAN_ONLY and burns it to FAILED instead of consuming -- an AGENT-kind claim can never satisfy HUMAN_ONLY", async () => {
+    // Preserves the HUMAN_ONLY-hold-burns-the-claim coverage the old test
+    // (mis-)exercised with a well-evidenced fixture. A genuinely
+    // low-confidence, unevidenced patch still reaches HUMAN_ONLY on
+    // dispatch's own recheck, which is fixed at the DOCUMENT.EXECUTE tier
+    // regardless of patch.risk: base 55 + confPenalty round((1-0)*20)=20 +
+    // evidPenalty max(0,3-0)*5=15 = 90 -> HUMAN_ONLY.
+    writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
+    const patch = makePatch({
+      risk: "LOW",
+      status: "APPLIED",
+      appliedAt: new Date().toISOString(),
+      confidence: 0,
+      evidenceIds: [],
     });
     osStore.upsertPatch(patch);
 

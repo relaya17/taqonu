@@ -104,6 +104,26 @@ export interface RunGovernedClaimedExecutionInput<T> {
   readonly controlPlaneUnreachable?: boolean;
   readonly delegationHopCount?: number;
   readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
+  /**
+   * Step 4 patch-approval regression fix. Threaded straight through to
+   * `dispatchAgentAction`'s own `confidence`/`evidenceCount` inputs (see
+   * `DispatchAgentActionOptions` in `agent-dispatch-guard.ts` -- that
+   * channel already existed; this wrapper simply never exposed it before).
+   * Without a real signal here, the risk scorer falls back to its
+   * conservative defaults (0.5 confidence, 0 evidence), which -- combined
+   * with DOCUMENT.EXECUTE's HIGH_RISK_WRITE base score and unconditional
+   * `requiresApproval` floor -- deterministically lands at exactly the
+   * HUMAN_ONLY threshold for every caller, regardless of how well-evidenced
+   * the actual action is. Callers that have a genuine confidence/evidence
+   * signal (e.g. a patch's own `confidence`/`evidenceIds`) should supply it
+   * so DOCUMENT.EXECUTE can land in APPROVAL rather than being forced to
+   * HUMAN_ONLY by an artifact of this wrapper never asking. This does not
+   * change what `requiresApproval` means or floors to -- it only lets an
+   * accurate signal reach the same formula every caller already goes
+   * through.
+   */
+  readonly confidence?: number;
+  readonly evidenceCount?: number;
   readonly dispatchInput?: Record<string, unknown>;
   /**
    * HUMAN_ONLY live-decision path only (CP7.2). When present, `claimOrResume`
@@ -294,6 +314,8 @@ async function runPolicy(
       ? { delegationHopCount: input.delegationHopCount }
       : {}),
     ...(input.trustLevel !== undefined ? { trustLevel: input.trustLevel } : {}),
+    ...(input.confidence !== undefined ? { confidence: input.confidence } : {}),
+    ...(input.evidenceCount !== undefined ? { evidenceCount: input.evidenceCount } : {}),
     ...(claimed !== undefined ? { claimedApproval: claimed } : {}),
   });
 }

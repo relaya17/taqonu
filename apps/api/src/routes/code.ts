@@ -61,6 +61,7 @@ import {
   approvePatchArtifact,
   applyApprovedPatch,
   assertPatchApprovedForApply,
+  patchArtifactHash,
 } from "../services/patch-write.js";
 import { createApprovalRequest } from "../services/approvals.js";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
@@ -69,7 +70,6 @@ import {
   type HelperResult,
 } from "../services/governed-claimed-execution.js";
 import { runLiveHumanDecisionExecution } from "../services/live-human-execution.js";
-import { computeArtifactHash } from "../services/governed-execution.js";
 
 async function assertPatchWrite(
   app: FastifyInstance,
@@ -147,19 +147,6 @@ function evaluatePatchActionRisk(input: {
   return { entityAuthz, score, bucket, explanation };
 }
 
-function patchArtifactHash(patch: PatchArtifact): string {
-  return computeArtifactHash(
-    JSON.stringify({
-      id: patch.id,
-      files: patch.filesChanged.map((file) => ({
-        path: file.path,
-        action: file.action,
-        afterContent: file.afterContent ?? null,
-      })),
-    }),
-  );
-}
-
 function approvalRequiredBody(
   approvalId: string,
   extras?: { readonly riskScore?: number; readonly riskBucket?: string },
@@ -213,6 +200,14 @@ async function runPatchClaimedExecution<T>(input: {
     sourceContext: { origin: "user_message", trustLevel: "trusted" },
     ...(input.patch.projectId ? { projectId: input.patch.projectId } : {}),
     routeLabel: input.routeLabel,
+    // Step 4 patch-approval regression fix: the SAME signal
+    // `evaluatePatchActionRisk` already uses for this patch's own risk
+    // classification, now also reaching `dispatchAgentAction`'s own,
+    // previously-blind, internal recheck -- see
+    // `RunGovernedClaimedExecutionInput.confidence`/`evidenceCount` for why
+    // this was missing and what it fixes.
+    confidence: input.patch.confidence,
+    evidenceCount: input.patch.evidenceIds.length,
     dispatchInput: { patchId: input.patch.id, route: input.routeLabel },
     executeOnce: async () => {
       try {
@@ -886,8 +881,30 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const needsApprovalRequest = bucket === "APPROVAL" || bucket === "HUMAN_ONLY";
-    if (needsApprovalRequest && !query.approvalId) {
+    // DOCUMENT.EXECUTE's `requiresApproval: true` is unconditional (see
+    // entity-policies.ts; unchanged by this fix, not weakened) and applies
+    // to every bucket, including AUTO/AUTO_LOG -- there is no bucket-based
+    // exemption from it, by design (see the Step 4 architectural audit for
+    // the full policy-layer analysis). Before Step 4, AUTO/AUTO_LOG patches
+    // dodged this gate by dispatching a real filesystem write as a
+    // dishonest "READ" -- that mislabeling is permanently closed and is
+    // never restored here. Step 4 then tried to satisfy the gate at
+    // /approve time by minting a live `ApprovalRequest` and immediately
+    // deciding it with `decidedBy === requestedBy` -- a self-approval,
+    // unconditionally forbidden by the separation-of-duties invariant
+    // enforced in both `live-approval-requests.*` and the real Postgres
+    // RPC (supabase/migrations/20260905230000_atlas_universal_self_
+    // approval_prevention.sql). That self-approval attempt has been
+    // removed from `approvePatchArtifact` (patch-write.ts), not merely
+    // worked around here. There is no existing mechanism that lets the
+    // /approve-time PatchArtifact sign-off (status/approvals[]) honestly
+    // satisfy DOCUMENT.EXECUTE's claim requirement on its own: every
+    // bucket now requires a real, separately-decided `ApprovalRequest`
+    // before applying, exactly like APPROVAL/HUMAN_ONLY always did. This
+    // is a disclosed behavior change -- AUTO/AUTO_LOG patches no longer
+    // apply frictionlessly right after a single approve -- not a silent
+    // regression.
+    if (!query.approvalId) {
       const approval = await createApprovalRequest({
         entityType: "DOCUMENT",
         action: "EXECUTE",
@@ -905,19 +922,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       }));
     }
 
-    // AUTO/AUTO_LOG: helper no-approval path. DOCUMENT.READ is Policy-ALLOWED
-    // so this does not invent `approved: true` and does not force a
-    // DOCUMENT.EXECUTE HUMAN_ONLY hold onto a patch already scored auto.
-    // Approval-backed apply claims the minted DOCUMENT.EXECUTE record.
     const helper = await runPatchClaimedExecution({
       user,
       patch: existing,
       requestId: request.id,
       routeLabel: "code.patch.apply.gate",
-      action: needsApprovalRequest ? "EXECUTE" : "READ",
-      ...(needsApprovalRequest && query.approvalId
-        ? { approvalRequestId: query.approvalId }
-        : {}),
+      action: "EXECUTE",
+      approvalRequestId: query.approvalId,
       execute: () =>
         applyApprovedPatch({
           existing,
@@ -945,7 +956,12 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       output: { status: result.patch.status, applied: result.apply.applied },
       policy: "DOCUMENT.EXECUTE",
       risk: existing.risk,
-      approval: needsApprovalRequest ? "APPROVED" : "NOT_REQUIRED",
+      // DOCUMENT.EXECUTE's approval requirement is unconditional for every
+      // bucket -- a successful EXECUTED result is only reachable when a
+      // real ApprovalRequest, decided by an identity other than the
+      // requester, was claimed. "NOT_REQUIRED" is never an accurate value
+      // here.
+      approval: "APPROVED",
       result: "SUCCESS",
       projectId: existing.projectId,
     });

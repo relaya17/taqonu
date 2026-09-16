@@ -17,6 +17,30 @@ import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import { atlasMetrics } from "../routes/metrics.js";
 import { appendOracleAudit } from "./admin-oracle-digest.js";
+import { computeArtifactHash } from "./governed-execution.js";
+
+/**
+ * Step 4 Decision A. Moved here (from `routes/code.ts`, which still
+ * re-exports it via this same import) so `approvePatchArtifact` and
+ * `code.ts`'s apply route bind the exact same hash for the same patch --
+ * one definition, not two independently-maintained copies. Preimage
+ * intentionally excludes everything but identity/content: title, reason,
+ * risk, etc. can be edited without invalidating an already-decided
+ * approval's artifact binding, matching the sibling rollback route's
+ * existing use of this same function.
+ */
+export function patchArtifactHash(patch: PatchArtifact): string {
+  return computeArtifactHash(
+    JSON.stringify({
+      id: patch.id,
+      files: patch.filesChanged.map((file) => ({
+        path: file.path,
+        action: file.action,
+        afterContent: file.afterContent ?? null,
+      })),
+    }),
+  );
+}
 
 export function isAutoRemediationDraft(patch: PatchArtifact): boolean {
   return (
@@ -134,6 +158,20 @@ export function approvePatchArtifact(
     at: now,
   };
   if (input.note !== undefined) approval.note = input.note;
+
+  // Step 4 regression fix: this used to also mint a live `ApprovalRequest`
+  // here and immediately decide it with `decidedBy === requestedBy ===
+  // input.userId` -- a self-approval, unconditionally forbidden by
+  // `live-approval-requests.*`'s separation-of-duties check (see
+  // supabase/migrations/20260905230000_atlas_universal_self_approval_
+  // prevention.sql) for every approval request, not only Atlas's own.
+  // There is no existing mechanism that lets this route's own PatchArtifact
+  // sign-off (status/approvals[] below) honestly satisfy that invariant --
+  // manufacturing one here was the bug, not a missing feature. Approving a
+  // patch is, once again, exactly what it was before Step 4: a
+  // PatchArtifact-local decision (status + approvals[]), nothing more. A
+  // real `ApprovalRequest`/claim, decided by a different identity, is
+  // obtained at apply time instead -- see `code.ts`'s apply route.
   const patch = patchArtifactSchema.parse({
     ...existing,
     status: "APPROVED",
