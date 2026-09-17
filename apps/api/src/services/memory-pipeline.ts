@@ -64,14 +64,23 @@ export function buildMemoryContext(input: {
   /** P0 tenant-isolation fix: scope retrieval to this caller (admins omit). */
   ownerId?: string;
   /**
-   * Per-agent scoping (P1 fix): the agent (kernel catalog id / plugin id)
-   * asking for memory. When a memory has a non-empty `allowedAgents` list,
-   * it is only returned when this matches one of those ids. Optional —
-   * omit for callers that don't know/care which agent is asking; those
-   * memories are simply excluded (see `retrieveMemories()` for the exact
-   * filtering rule, including its backward-compat behavior).
+   * Per-agent scoping (P1 fix): the single agent (kernel catalog id /
+   * plugin id) asking for memory. When a memory has a non-empty
+   * `allowedAgents` list, it is only returned when this matches one of
+   * those ids. Optional and backward-compatible: omitting it (and
+   * `requestingAgentIds` below) is a strict no-op for this filter --
+   * `allowedAgents`-restricted memories stay visible exactly as before
+   * this field existed (see `isVisibleToAgent()` for the exact rule).
    */
   requestingAgentId?: string;
+  /**
+   * When the caller is a multi-agent surface (plan/dispatch) rather than a
+   * single specialist, pass the participating agent ids here. A memory is
+   * visible if ANY candidate is in its `allowedAgents` list — the
+   * OR-generalization of `requestingAgentId` (a list of one id is
+   * equivalent to passing that id via `requestingAgentId`).
+   */
+  requestingAgentIds?: readonly string[];
 }): MemoryContextPayload & { memories: Memory[] } {
   const retrieved = retrieveMemories(input);
   const hasInferred = retrieved.items.some(
@@ -481,25 +490,31 @@ export function approveMemory(input: {
 }
 
 /**
- * Per-agent scoping (P1 fix): true when `memory` may be returned to
- * `requestingAgentId`. A memory with no `allowedAgents` set (null/undefined/
+ * Per-agent scoping (P1 fix): true when `memory` may be returned to the
+ * requesting agent(s). A memory with no `allowedAgents` set (null/undefined/
  * empty array) is unchanged/default-open — visible to any agent within the
  * existing `ownerId` tenant boundary. A memory that *does* set a non-empty
- * `allowedAgents` list is only visible to agents in that list — but ONLY
- * when the caller actually identifies itself via `requestingAgentId`. When
- * `requestingAgentId` is omitted, the memory stays visible regardless of
- * `allowedAgents`: this is the backward-compat guarantee the task requires
- * — the overwhelming majority of existing `retrieveMemories()` /
- * `buildMemoryContext()` callers never pass `requestingAgentId` at all, and
- * this filter must be a strict no-op for them, exactly as before this field
- * existed. Enforcement only kicks in for callers that opt in by passing
- * `requestingAgentId`.
+ * `allowedAgents` list is only visible when at least one identified
+ * requester (`requestingAgentId` and/or `requestingAgentIds`) is in that
+ * list. When both requester fields are omitted, the memory stays visible:
+ * this is the backward-compat guarantee for human-facing callers
+ * (conversation, generic agent run, memory list) that never identify an
+ * agent. Enforcement only kicks in for callers that opt in by passing
+ * requester identity.
  */
-function isVisibleToAgent(memory: Memory, requestingAgentId?: string): boolean {
+function isVisibleToAgent(
+  memory: Memory,
+  requestingAgentId?: string,
+  requestingAgentIds?: readonly string[],
+): boolean {
   const allowed = memory.allowedAgents;
   if (!allowed || allowed.length === 0) return true;
-  if (!requestingAgentId) return true;
-  return allowed.includes(requestingAgentId);
+  const candidates = [
+    ...(requestingAgentId ? [requestingAgentId] : []),
+    ...(requestingAgentIds ?? []),
+  ];
+  if (candidates.length === 0) return true;
+  return candidates.some((id) => allowed.includes(id));
 }
 
 /** Retrieve ACTIVE memories with a hard budget (token/cost control). */
@@ -516,6 +531,8 @@ export function retrieveMemories(input: {
    * before for any memory that doesn't set `allowedAgents`.
    */
   requestingAgentId?: string;
+  /** See `buildMemoryContext()`'s `requestingAgentIds` -- same OR rule. */
+  requestingAgentIds?: readonly string[];
 }): { items: Memory[]; budget: number; truncated: boolean } {
   const budget = Math.max(1, Math.min(input.budget ?? 12, 40));
   const key = input.projectId ?? null;
@@ -536,7 +553,7 @@ export function retrieveMemories(input: {
   const q = (input.query ?? "").trim().toLowerCase();
   const active = pools
     .filter((m) => m.status === "ACTIVE")
-    .filter((m) => isVisibleToAgent(m, input.requestingAgentId));
+    .filter((m) => isVisibleToAgent(m, input.requestingAgentId, input.requestingAgentIds));
   const ranked = active
     .map((m) => {
       let score = m.confidence;

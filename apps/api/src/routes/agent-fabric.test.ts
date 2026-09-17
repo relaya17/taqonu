@@ -165,7 +165,11 @@ const OWNER_B: AuthUser = {
 };
 
 /** Global-scope (projectId: null) ACTIVE memory owned by `ownerId`. */
-function globalMemory(statement: string, ownerId: string) {
+function globalMemory(
+  statement: string,
+  ownerId: string,
+  allowedAgents?: readonly string[],
+) {
   const now = new Date().toISOString();
   return memorySchema.parse({
     id: crypto.randomUUID(),
@@ -192,6 +196,7 @@ function globalMemory(statement: string, ownerId: string) {
     createdBy: "test",
     scope: "GLOBAL",
     priority: "MEDIUM",
+    ...(allowedAgents !== undefined ? { allowedAgents: [...allowedAgents] } : {}),
   });
 }
 
@@ -310,6 +315,50 @@ describe("POST /api/v1/agents/plan", () => {
       .memoryContext.items.map((m: { statement: string }) => m.statement);
     expect(statements).toContain("owner A's private incident note");
     expect(statements).not.toContain("owner B's private incident note");
+  });
+
+  it("does not surface a SECURITY-only memory when the plan is forced to CODE_ENGINEER", async () => {
+    osStore.addMemory(
+      globalMemory("security-only fabric plan secret", OWNER_A.id, ["SECURITY"]),
+    );
+    osStore.addMemory(
+      globalMemory("open fabric plan note", OWNER_A.id),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/plan",
+      payload: {
+        request: "logout leaves the session cookie set",
+        agentIds: ["CODE_ENGINEER"],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const statements = res
+      .json()
+      .memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("open fabric plan note");
+    expect(statements).not.toContain("security-only fabric plan secret");
+  });
+
+  it("surfaces a SECURITY-only memory when SECURITY is in the planned agent set", async () => {
+    osStore.addMemory(
+      globalMemory("security-visible fabric plan secret", OWNER_A.id, ["SECURITY"]),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/plan",
+      payload: {
+        request: "run a security scan",
+        agentIds: ["SECURITY"],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const statements = res
+      .json()
+      .memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("security-visible fabric plan secret");
   });
 
   it("does NOT call the Policy Engine (authorizeEntityAction) — planning is a proposal only, mirroring kernel.ts's plan-vs-run split", async () => {
@@ -449,6 +498,50 @@ describe("POST /api/v1/agents/dispatch", () => {
       .memoryContext.items.map((m: { statement: string }) => m.statement);
     expect(statements).toContain("owner A's dispatch-only secret");
     expect(statements).not.toContain("owner B's dispatch-only secret");
+  });
+
+  it("does not surface a SECURITY-only memory when dispatch is forced to CODE_ENGINEER", async () => {
+    osStore.addMemory(
+      globalMemory("security-only fabric dispatch secret", OWNER_A.id, ["SECURITY"]),
+    );
+    osStore.addMemory(
+      globalMemory("open fabric dispatch note", OWNER_A.id),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/dispatch",
+      payload: {
+        request: "logout leaves the session cookie set",
+        agentIds: ["CODE_ENGINEER"],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const statements = res
+      .json()
+      .memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("open fabric dispatch note");
+    expect(statements).not.toContain("security-only fabric dispatch secret");
+  });
+
+  it("surfaces a SECURITY-only memory when SECURITY is dispatched", async () => {
+    osStore.addMemory(
+      globalMemory("security-visible fabric dispatch secret", OWNER_A.id, ["SECURITY"]),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/dispatch",
+      payload: {
+        request: "run a security scan",
+        agentIds: ["SECURITY"],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const statements = res
+      .json()
+      .memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("security-visible fabric dispatch secret");
   });
 
   describe("specialistOverride per-specialist gate (SECURITY)", () => {

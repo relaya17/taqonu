@@ -351,6 +351,31 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
       "open note, no allowedAgents",
     );
   });
+
+  it("includes an agent-scoped memory when any requestingAgentIds candidate is allowed", () => {
+    const { items } = retrieveMemories({
+      budget: 20,
+      requestingAgentIds: ["ORCHESTRATOR", "JUDGE"],
+    });
+    expect(items.map((row) => row.statement)).toContain("judge-only note");
+  });
+
+  it("excludes an agent-scoped memory when no requestingAgentIds candidate is allowed", () => {
+    const { items } = retrieveMemories({
+      budget: 20,
+      requestingAgentIds: ["ORCHESTRATOR", "SECURITY"],
+    });
+    expect(items.map((row) => row.statement)).not.toContain("judge-only note");
+  });
+
+  it("unions requestingAgentId with requestingAgentIds (OR)", () => {
+    const { items } = retrieveMemories({
+      budget: 20,
+      requestingAgentId: "ORCHESTRATOR",
+      requestingAgentIds: ["JUDGE"],
+    });
+    expect(items.map((row) => row.statement)).toContain("judge-only note");
+  });
 });
 
 describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {

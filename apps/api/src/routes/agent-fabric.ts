@@ -72,6 +72,12 @@ import {
 
 const AGENT_MEMORY_BUDGET = 12;
 
+function uniquePlanAgentIds(
+  plan: { readonly steps: readonly { readonly agentId: string }[] },
+): readonly string[] {
+  return [...new Set(plan.steps.map((step) => step.agentId))];
+}
+
 function toPublicMemoryContext(
   ctx: ReturnType<typeof buildMemoryContext>,
 ): MemoryContextPayload {
@@ -134,19 +140,6 @@ export async function registerAgentFabricRoutes(
     // `/api/v1/agents/dispatch` has below.
     const body = agentPlanRequestSchema.parse(request.body);
     const started = Date.now();
-    const memoryContext = toPublicMemoryContext(
-      buildMemoryContext({
-        projectId: body.projectId ?? null,
-        query: body.request,
-        budget: AGENT_MEMORY_BUDGET,
-        ownerId: user.id,
-      }),
-    );
-    atlasMetrics.record(
-      "retrieval_hit_rate",
-      memoryContext.items.length > 0 ? 1 : 0,
-      { surface: "memory", kind: "agents.plan" },
-    );
     const plan = planAgentWork({
       request: body.request,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
@@ -154,6 +147,24 @@ export async function registerAgentFabricRoutes(
       maxAgents: body.maxAgents,
       budgetUsd: body.budgetUsd,
     });
+    // Agent-scoped memory isolation: retrieve against the agents this plan
+    // will actually run (forced specialists + Orchestrator/Judge wrap), not
+    // the unscoped tenant pool. Human-facing surfaces that omit requester
+    // identity stay on the backward-compat no-op path.
+    const memoryContext = toPublicMemoryContext(
+      buildMemoryContext({
+        projectId: body.projectId ?? null,
+        query: body.request,
+        budget: AGENT_MEMORY_BUDGET,
+        ownerId: user.id,
+        requestingAgentIds: uniquePlanAgentIds(plan),
+      }),
+    );
+    atlasMetrics.record(
+      "retrieval_hit_rate",
+      memoryContext.items.length > 0 ? 1 : 0,
+      { surface: "memory", kind: "agents.plan" },
+    );
     atlasMetrics.record("agent_run_duration", Date.now() - started, {
       kind: "plan",
     });
@@ -247,12 +258,20 @@ export async function registerAgentFabricRoutes(
     }
 
     const started = Date.now();
+    const plan = planAgentWork({
+      request: body.request,
+      ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
+      ...(body.agentIds !== undefined ? { agentIds: body.agentIds } : {}),
+      maxAgents: body.maxAgents,
+      budgetUsd: body.budgetUsd,
+    });
     const memoryContext = toPublicMemoryContext(
       buildMemoryContext({
         projectId: body.projectId ?? null,
         query: body.request,
         budget: AGENT_MEMORY_BUDGET,
         ownerId: user.id,
+        requestingAgentIds: uniquePlanAgentIds(plan),
       }),
     );
     atlasMetrics.record(
@@ -262,6 +281,7 @@ export async function registerAgentFabricRoutes(
     );
     const result = await dispatchAgentPlan({
       request: body.request,
+      plan,
       ...(body.projectId !== undefined ? { projectId: body.projectId } : {}),
       ...(body.agentIds !== undefined ? { agentIds: body.agentIds } : {}),
       maxAgents: body.maxAgents,
