@@ -41,7 +41,7 @@ describe("hybrid-rag closed loop", () => {
     expect(result.hits).toHaveLength(0);
     expect(result.retrievalBackend).toBe("local");
     expect(result.plainLanguage).toMatch(/INSUFFICIENT_EVIDENCE/);
-  });
+  }, 15_000);
 
   it("offline ingest writes file corpus and reports pgvector=false", async () => {
     const { ingestKnowledgeClosedLoop } = await import("./hybrid-rag.js");

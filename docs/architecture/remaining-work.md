@@ -13,7 +13,8 @@ open engineering backlog.
 **Production gate: NOT PRODUCTION READY.**
 
 **CODE-COMPLETABLE REMAINING WORK: NONE** (this pointer is documentation
-synchronization only).
+synchronization only). The 2026-09-17 Control/Studio/embeddings landing is
+**in git, not production-closed** — see the honest status block below.
 
 Authoritative narrative: `docs/architecture/ATLAS_MASTER_TRUTH.md` §62–§64.
 
@@ -42,6 +43,47 @@ Live ML training, demo/customer packaging, and Phase 11 re-entry are
 
 ADR-022 request (not an amendment):
 `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+
+### Control gap closure (2026-09-17)
+
+Landed in git (kill-switch `1421164`, agent memory `e0991a7`, QA/gateway
+`52a5dc2`, Control/Studio/embeddings `39b3fc2`). **In-repo implementation,
+not production-verified. Do not treat this list as CLOSED.**
+
+- Runtime Kill Switch Control (A1) — in HEAD; live operator UI still needs a running API
+- Agent-scoped memory isolation on plan/dispatch (B1) — in HEAD; omit-`agentId` retrieve remains an open policy (human surfaces still see `allowedAgents` rows)
+- Control Approvals hop to the live API store (A2) — unit/route tests; live Postgres and decide→NDJSON not proven
+- Agent lifecycle pause/quarantine/revoke Control UI (A3) — UI over existing API enforcement
+- Dashboard Applications + Live Execution (A4)
+- Operator audit verify hops to canonical NDJSON; local CP chain stays UNKNOWN (A5)
+- Live executions hop to `GET /api/v1/internal/executions` (A6)
+- Application self-registration stays PENDING until operator decide (A7) — in-memory CP registry
+- Operating-cycle RISK scores existing tool-risk/evidence signals (A8) — shared helpers plus a Control copy
+- Error aggregator read surface for Control (B4)
+- Multi-tenant/org isolation (C1) — **production tenancy is user-level
+  `ownerId`**, not `organizations` / `org_id`. ADR-012 non-goal.
+  `DRAFT_multi_tenant_orgs.sql` stays draft. Unowned projects remain readable
+  when `ownerId` is unset. Conversation memory now uses `authorizedProjectId`.
+- Semantic memory/knowledge retrieval (B2) — cosine ranking when an embedding
+  provider is configured; otherwise lexical-hash. Live HTTP embeddings are
+  BLOCKED BY EXTERNAL DEPENDENCY. pgvector dual-write still expects 64-d hash vectors.
+- Bug tracker → memory learning (B3) — OBSERVED SOLUTION memories; unit tests
+- Evidence/memory writes no longer stamp `STUB_OWNER_ID` on the observe/learning
+  paths (B5). Billing `plan-quota` still has a legacy stub fallback.
+
+### Web / Studio gap closure (2026-09-17)
+
+Landed in `apps/web` (Studio stays on the user plane). **Partially verified.**
+
+- D1 Chat persistence — owned threads list/reload/continue (API tests; no browser proof here)
+- D2 Studio/Patches apply — patch Approve is not a disk write. Apply mints
+  `DOCUMENT.EXECUTE`; HTTP 202 `APPROVAL_REQUIRED` is no longer treated as
+  success. A different identity must decide, then retry Apply with `approvalId`.
+- D3 Studio Checks — Observer, Sentinel, QA, Process Audit, Health, Readiness,
+  Truth; standalone routes remain as redirects. Ops nav highlight follows the
+  Studio `check` query.
+
+Dashboard Patches remain. Control Plane was not moved into Web.
 
 ---
 

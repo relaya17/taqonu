@@ -20,7 +20,8 @@ import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
-import { WEB_NAV_PATHS } from "@/lib/studio-surfaces";
+import { useSearchParams } from "next/navigation";
+import { WEB_NAV_PATHS, type StudioCheckId } from "@/lib/studio-surfaces";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
@@ -96,7 +97,31 @@ const NAV_GROUPS: readonly {
   },
 ];
 
-function isNavSelected(key: NavKey, pathname: string): boolean {
+const NAV_TO_STUDIO_CHECK: Partial<Record<NavKey, StudioCheckId>> = {
+  observer: "observer",
+  sentinel: "sentinel",
+  qa: "qa",
+  processAudit: "processAudit",
+  health: "health",
+  readiness: "readiness",
+  truth: "truth",
+};
+
+function isNavSelected(
+  key: NavKey,
+  pathname: string,
+  searchParams: { get: (name: string) => string | null },
+): boolean {
+  const studioPath = PATHS.studio;
+  if (pathname === studioPath || pathname.startsWith(`${studioPath}/`)) {
+    const tab = searchParams.get("tab");
+    const check = searchParams.get("check");
+    const mapped = NAV_TO_STUDIO_CHECK[key];
+    if (tab === "checks" && mapped) {
+      return check === mapped;
+    }
+    return key === "studio";
+  }
   if (key === "projects" && /\/projects\/[^/]+\/state$/.test(pathname)) {
     return false;
   }
@@ -122,6 +147,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useTranslations();
   const locale = useLocale();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { mode, toggleMode } = useColorMode();
   const mainRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -328,7 +354,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Box component="nav" aria-label={t("nav.main")}>
           {NAV_GROUPS.map((group) => {
             const groupSelected = group.items.some((key) =>
-              isNavSelected(key, pathname),
+              isNavSelected(key, pathname, searchParams),
             );
             const collapsed =
               Boolean(group.collapsedByDefault) &&
@@ -379,7 +405,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <List dense disablePadding>
                 {group.items.map((key) => {
                   const href = PATHS[key];
-                  const selected = isNavSelected(key, pathname);
+                  const selected = isNavSelected(key, pathname, searchParams);
                   return (
                     // Real <li> wrapper (WCAG 1.3.1 "list" rule — axe-core
                     // flagged the previous markup, an <a> as a direct child

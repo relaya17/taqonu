@@ -2,8 +2,9 @@
 
 import { Alert, Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import {
   STUDIO_PATCH_STEPS,
@@ -11,6 +12,7 @@ import {
   canApproveStudioPatch,
   canVerifyStudioPatch,
   nextStudioPatchStep,
+  patchGovernedPath,
 } from "@/lib/studio-patch-workflow";
 
 interface PatchItem {
@@ -48,6 +50,10 @@ export function StudioPatchWorkflow({
   const queryClient = useQueryClient();
   const root = workspaceRoot?.trim() ?? "";
 
+  const [pendingApplyById, setPendingApplyById] = useState<Record<string, string>>(
+    {},
+  );
+
   const patches = useQuery({
     queryKey: ["patches", projectId],
     enabled: Boolean(projectId),
@@ -77,11 +83,27 @@ export function StudioPatchWorkflow({
   });
 
   const apply = useMutation({
-    mutationFn: (id: string) =>
-      apiPost(`/api/v1/code/patches/${id}/apply`, {
-        ...(root ? { workspaceRoot: root } : {}),
-      }),
-    onSuccess: async () => {
+    mutationFn: async (id: string) => {
+      try {
+        return await apiPost(patchGovernedPath(id, "apply", pendingApplyById[id]), {
+          ...(root ? { workspaceRoot: root } : {}),
+        });
+      } catch (error) {
+        if (isApprovalRequiredError(error)) {
+          setPendingApplyById((current) => ({
+            ...current,
+            [id]: error.approvalId,
+          }));
+        }
+        throw error;
+      }
+    },
+    onSuccess: async (_data, id) => {
+      setPendingApplyById((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       await queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
       onVerified?.();
     },
@@ -171,6 +193,11 @@ export function StudioPatchWorkflow({
               {focused.evaluationSummary}
             </Typography>
           ) : null}
+          {pendingApplyById[focused.id] ? (
+            <Alert severity="warning" sx={{ mt: 1.5 }}>
+              {tPatches("approvalPending", { id: pendingApplyById[focused.id] })}
+            </Alert>
+          ) : null}
           <Typography variant="overline" sx={{ display: "block", mt: 1.25, color: "#8B9099" }}>
             {t("workflow.reviewFiles")}
           </Typography>
@@ -197,7 +224,9 @@ export function StudioPatchWorkflow({
               disabled={busy || !canApplyStudioPatch(focused.status) || !root}
               onClick={() => apply.mutate(focused.id)}
             >
-              {tPatches("apply")}
+              {pendingApplyById[focused.id]
+                ? tPatches("retryApply")
+                : tPatches("apply")}
             </Button>
             <Button
               size="small"

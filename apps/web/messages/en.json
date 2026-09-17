@@ -255,7 +255,7 @@
     },
     "workflow": {
       "title": "Propose → review → approve → apply → verify",
-      "help": "The agent proposes a Patch. You review it here, then Approve, then Apply. Disk writes never skip approval.",
+      "help": "The agent proposes a Patch. You review and Approve it here. Apply then mints a live write approval that a different identity must decide before the disk write can retry.",
       "empty": "Inspect a file, then Propose a change. Existing Patches for this project appear here.",
       "reviewFiles": "Files in this Patch",
       "steps": {
@@ -1293,7 +1293,10 @@
   "patches": {
     "title": "Patches",
     "subtitle": "Governed code changes — Preview → Approve → Apply → Rollback (ADR-015).",
-    "gateNote": "WRITE is approval-gated: Approve → Apply → Verify. LOW AUTO_FIX may auto-apply only with ATLAS_AUTO_APPLY_LOW or explicit flag + signed-in session. HIGH/CRITICAL stay human-gated.",
+    "gateNote": "Patch Approve is not a disk write. Apply mints a live DOCUMENT.EXECUTE approval; a different identity must decide it, then retry Apply with that approval id. There is no same-user auto-apply.",
+    "approvalPending": "Live approval {id} is waiting for a second identity. After it is decided, retry Apply.",
+    "retryApply": "Retry apply",
+    "retryRollback": "Retry rollback",
     "project": "Project",
     "unlinked": "no local folder",
     "workspaceRoot": "Workspace root",

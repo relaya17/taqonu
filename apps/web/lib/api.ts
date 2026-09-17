@@ -42,6 +42,38 @@ export function downloadVerifiedSourcesPack(
   window.open(verifiedSourcesDownloadUrl(format), "_blank", "noopener,noreferrer");
 }
 
+/** Live DOCUMENT.EXECUTE (and similar) gates mint a PENDING approval and return 202. */
+export class ApprovalRequiredError extends Error {
+  readonly approvalId: string;
+
+  constructor(approvalId: string, message?: string) {
+    super(
+      message ??
+        `Live approval ${approvalId} must be decided by a different identity before retrying.`,
+    );
+    this.name = "ApprovalRequiredError";
+    this.approvalId = approvalId;
+  }
+}
+
+export function isApprovalRequiredError(
+  error: unknown,
+): error is ApprovalRequiredError {
+  return error instanceof ApprovalRequiredError;
+}
+
+function isApprovalRequiredPayload(
+  value: unknown,
+): value is { approvalId: string; message?: string } {
+  if (value === null || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.status === "APPROVAL_REQUIRED" &&
+    typeof record.approvalId === "string" &&
+    record.approvalId.length > 0
+  );
+}
+
 async function readError(path: string, response: Response): Promise<never> {
   let detail = `API ${path} failed with ${response.status}`;
   try {
@@ -62,6 +94,17 @@ async function readError(path: string, response: Response): Promise<never> {
   throw new Error(detail);
 }
 
+async function readSuccessJson<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const json = (await response.json()) as unknown;
+  if (response.status === 202 && isApprovalRequiredPayload(json)) {
+    throw new ApprovalRequiredError(json.approvalId, json.message);
+  }
+  return json as T;
+}
+
 const defaultInit: NonNullable<Parameters<typeof fetch>[1]> = {
   credentials: "include",
   cache: "no-store",
@@ -74,7 +117,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   if (!response.ok) {
     await readError(path, response);
   }
-  return (await response.json()) as T;
+  return readSuccessJson<T>(response);
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
@@ -87,7 +130,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   if (!response.ok) {
     await readError(path, response);
   }
-  return (await response.json()) as T;
+  return readSuccessJson<T>(response);
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
@@ -100,7 +143,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   if (!response.ok) {
     await readError(path, response);
   }
-  return (await response.json()) as T;
+  return readSuccessJson<T>(response);
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
@@ -113,7 +156,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   if (!response.ok) {
     await readError(path, response);
   }
-  return (await response.json()) as T;
+  return readSuccessJson<T>(response);
 }
 
 export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
@@ -130,8 +173,5 @@ export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   if (!response.ok) {
     await readError(path, response);
   }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return (await response.json()) as T;
+  return readSuccessJson<T>(response);
 }

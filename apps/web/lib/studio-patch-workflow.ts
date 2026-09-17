@@ -45,3 +45,14 @@ export function canApplyStudioPatch(status: string | null | undefined): boolean 
 export function canVerifyStudioPatch(status: string | null | undefined): boolean {
   return status === "APPLIED" || status === "VERIFIED";
 }
+
+export function patchGovernedPath(
+  id: string,
+  action: "apply" | "rollback",
+  approvalId?: string,
+): string {
+  const path = `/api/v1/code/patches/${id}/${action}`;
+  return approvalId
+    ? `${path}?approvalId=${encodeURIComponent(approvalId)}`
+    : path;
+}

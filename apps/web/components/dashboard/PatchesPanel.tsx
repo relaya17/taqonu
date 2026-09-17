@@ -13,9 +13,10 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import { patchGovernedPath } from "@/lib/studio-patch-workflow";
 
 interface ProjectItem {
   id: string;
@@ -45,6 +46,12 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState("");
   const [root, setRoot] = useState("");
+  const [pendingApplyById, setPendingApplyById] = useState<Record<string, string>>(
+    {},
+  );
+  const [pendingRollbackById, setPendingRollbackById] = useState<
+    Record<string, string>
+  >({});
 
   const projects = useQuery({
     queryKey: ["projects"],
@@ -86,21 +93,59 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   });
 
   const apply = useMutation({
-    mutationFn: (id: string) =>
-      apiPost(`/api/v1/code/patches/${id}/apply`, {
-        ...(root.trim() ? { workspaceRoot: root.trim() } : {}),
-      }),
-    onSuccess: async () => {
+    mutationFn: async (id: string) => {
+      try {
+        return await apiPost(
+          patchGovernedPath(id, "apply", pendingApplyById[id]),
+          {
+            ...(root.trim() ? { workspaceRoot: root.trim() } : {}),
+          },
+        );
+      } catch (error) {
+        if (isApprovalRequiredError(error)) {
+          setPendingApplyById((current) => ({
+            ...current,
+            [id]: error.approvalId,
+          }));
+        }
+        throw error;
+      }
+    },
+    onSuccess: async (_data, id) => {
+      setPendingApplyById((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       await queryClient.invalidateQueries({ queryKey: ["patches"] });
     },
   });
 
   const rollback = useMutation({
-    mutationFn: (id: string) =>
-      apiPost(`/api/v1/code/patches/${id}/rollback`, {
-        workspaceRoot: root,
-      }),
-    onSuccess: async () => {
+    mutationFn: async (id: string) => {
+      try {
+        return await apiPost(
+          patchGovernedPath(id, "rollback", pendingRollbackById[id]),
+          {
+            workspaceRoot: root,
+          },
+        );
+      } catch (error) {
+        if (isApprovalRequiredError(error)) {
+          setPendingRollbackById((current) => ({
+            ...current,
+            [id]: error.approvalId,
+          }));
+        }
+        throw error;
+      }
+    },
+    onSuccess: async (_data, id) => {
+      setPendingRollbackById((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       await queryClient.invalidateQueries({ queryKey: ["patches"] });
     },
   });
@@ -175,6 +220,19 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
         {t("openAgent")}
       </Button>
 
+      {approve.error || apply.error || rollback.error || verify.error ? (
+        <Alert severity="error">
+          {
+            (
+              (approve.error ||
+                apply.error ||
+                rollback.error ||
+                verify.error) as Error
+            ).message
+          }
+        </Alert>
+      ) : null}
+
       <Stack spacing={2}>
         {(patches.data?.items ?? []).length === 0 ? (
           <Typography color="text.secondary">{t("empty")}</Typography>
@@ -210,6 +268,13 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
                 {patch.evaluationSummary}
               </Typography>
             ) : null}
+            {pendingApplyById[patch.id] || pendingRollbackById[patch.id] ? (
+              <Alert severity="warning" sx={{ mt: 1, textAlign: "start" }}>
+                {t("approvalPending", {
+                  id: pendingApplyById[patch.id] ?? pendingRollbackById[patch.id] ?? "",
+                })}
+              </Alert>
+            ) : null}
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
               <Button
                 size="small"
@@ -225,7 +290,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
                 disabled={apply.isPending || !root.trim()}
                 onClick={() => apply.mutate(patch.id)}
               >
-                {t("apply")}
+                {pendingApplyById[patch.id] ? t("retryApply") : t("apply")}
               </Button>
               <Button
                 size="small"
@@ -233,7 +298,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
                 disabled={rollback.isPending || !root.trim()}
                 onClick={() => rollback.mutate(patch.id)}
               >
-                {t("rollback")}
+                {pendingRollbackById[patch.id] ? t("retryRollback") : t("rollback")}
               </Button>
               <Button
                 size="small"

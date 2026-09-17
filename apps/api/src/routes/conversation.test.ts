@@ -307,7 +307,8 @@ describe("POST /api/v1/conversation/message", () => {
 // Task 6 regression tests: apps/api/src/routes/conversation.ts previously
 // trusted the client-supplied `projectId` directly for snapshot/decisions/
 // evidence/knowledge-scope/portfolio-list reads, with zero ownership check
-// (only `memories` was independently ownerId-scoped). These tests exercise
+// (only `memories` was independently ownerId-scoped). Memory retrieve now
+// uses the same `authorizedProjectId` as those reads. These tests exercise
 // the server-side boundary via the free "arletos-included" provider's
 // system-prompt echo (`body.answer`), the same technique the existing
 // memory-isolation tests above already rely on -- no LLM mocking needed.

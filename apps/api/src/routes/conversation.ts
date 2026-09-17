@@ -209,12 +209,12 @@ export async function registerConversationRoutes(
     const decisions = authorizedProjectId
       ? [...osStore.getDecisions(authorizedProjectId), ...osStore.getDecisions("global")]
       : [...osStore.getDecisions("global")];
-    // Tenant boundary (P0 fix): scope memory retrieval to the caller so one
-    // tenant's conversation never surfaces another tenant's memories.
-    // Admins bypass, same convention as memory.ts.
+    // Tenant boundary: memory uses the same authorized project as snapshot/
+    // decisions/evidence. A client-supplied projectId the caller cannot read
+    // degrades to no-project retrieval (owner-scoped), never a foreign key.
     const callerOwnerId = user.role === "admin" ? undefined : user.id;
     const memoryContextResult = await buildMemoryContext({
-      projectId,
+      projectId: authorizedProjectId,
       query: body.message,
       budget: AGENT_MEMORY_BUDGET,
       embeddingEnv: app.atlasEnv,
