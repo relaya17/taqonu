@@ -18,6 +18,7 @@ vi.mock("../store/os-store.js", () => ({
     getProject: (id: string) => getProject(id),
     getMeta: (key: string) => getMeta(key),
     setMeta: (key: string, value: string) => setMeta(key, value),
+    getKillSwitchOverrides: () => ({}),
   },
 }));
 

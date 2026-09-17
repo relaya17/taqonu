@@ -54,7 +54,7 @@ const CP = (process.env["ATLAS_CONTROL_PLANE_URL"] ?? "http://127.0.0.1:3100").r
   "",
 );
 const ADMIN = (process.env["ATLAS_ADMIN_URL"] ?? "http://127.0.0.1:3200").replace(/\/$/, "");
-const WEB = (process.env["ATLAS_WEB_URL"] ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+const WEB = (process.env["ATLAS_WEB_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
 const TOKEN = process.env["ATLAS_CONTROL_PLANE_TOKEN"]?.trim() ?? "";
 const CIVIO_SECRET = process.env["ATLAS_CIVIO_CONNECTOR_SECRET"]?.trim() ?? "";
 const CIVIO_TENANT = process.env["ATLAS_CIVIO_TENANT_ID"]?.trim() ?? "tenant-alpha";
@@ -145,7 +145,10 @@ record({
   status: webRoot.status !== null ? "PASS" : "BLOCKED",
   expected: "Studio :3000 accepts HTTP (optional; needs apps/web env)",
   actual: webRoot.error ?? `HTTP ${webRoot.status}`,
-  evidence: "web .env.local was absent at last inspection; BLOCKED is an environment gap",
+  evidence:
+    webRoot.status !== null
+      ? "Studio responded on ATLAS_WEB_URL / localhost:3000. This is local render, not live Supabase auth."
+      : "Studio unreachable. Copy apps/web/.env.example to gitignored .env.local; Next binds -H localhost (not 127.0.0.1).",
 });
 record({
   id: "infra.localhost-is-not-production",
@@ -461,42 +464,28 @@ if (apiUp) {
       outcome?: { status?: string; stage?: string };
       verificationVerdict?: string;
       applicationId?: string;
-      observation?: { artifactHash?: string };
     } | null;
-    const artifactHash = fulfillBody?.observation?.artifactHash;
-    const artifactHashOk =
-      typeof artifactHash === "string" && /^[a-f0-9]{64}$/i.test(artifactHash);
-    const executed =
+    const gated =
       fulfill.status === 200 &&
-      fulfillBody?.executed === true &&
-      fulfillBody.toolName === "analyze_repo" &&
+      fulfillBody?.executed === false &&
+      fulfillBody.outcome?.status === "APPROVAL_REQUIRED" &&
       fulfillBody.applicationId === "def-000";
     record({
-      id: "e2e.def-000.fulfill.execute",
-      status: executed ? "PASS" : "FAIL",
+      id: "e2e.def-000.fulfill.requires-approval",
+      status: gated ? "PASS" : "FAIL",
       expected:
-        "CP bearer → fulfill → executeGovernedAction → executeTool(analyze_repo) executed:true",
+        "CP bearer → fulfill request_agent_run without approval → APPROVAL_REQUIRED, executed:false (DOCUMENT.READ tool does not skip RECORD.EXECUTE)",
       actual: `HTTP ${fulfill.status} executed=${String(fulfillBody?.executed)} tool=${fulfillBody?.toolName} outcome=${fulfillBody?.outcome?.status}`,
       evidence: JSON.stringify({ requestId, body: fulfill.body }).slice(0, 800),
     });
     record({
-      id: "e2e.def-000.artifact-hash",
-      status: executed && artifactHashOk ? "PASS" : executed ? "FAIL" : "SKIP",
-      expected: "EXECUTED fulfill returns observation.artifactHash (64 hex)",
-      actual: `hashLength=${typeof artifactHash === "string" ? artifactHash.length : 0}`,
-      evidence: "Request correlation is x-request-id; hash is the execution artifact, not world-state VERIFIED",
-    });
-    record({
-      id: "e2e.def-000.executed-not-verified",
-      status:
-        executed && fulfillBody?.verified === false
-          ? "PASS"
-          : executed
-            ? "FAIL"
-            : "SKIP",
-      expected: "executed:true does not imply verified:true (world-state NOT VERIFIED without observations)",
-      actual: `verified=${String(fulfillBody?.verified)} verdict=${fulfillBody?.verificationVerdict}`,
-      evidence: "Missing verification observations → NOT VERIFIED, fail-closed on claiming verified",
+      id: "e2e.def-000.fulfill.approved-execute",
+      status: "SKIP",
+      expected:
+        "A second identity APPROVES RECORD.EXECUTE, then fulfill with approvalRequestId executes analyze_repo",
+      actual: "single SERVICE token; self-approval is forbidden",
+      evidence:
+        "Route tests cover approved execute. Live two-identity approve is not this script.",
     });
   } else {
     record({

@@ -33,6 +33,25 @@ describe("Control Plane governance invariants", () => {
     expect(chain.status).toBe("UNKNOWN");
   });
 
+  it("does not raise audit-chain-break after multiple observational gateway writes", () => {
+    evaluateGatewayRequest({
+      actorId: "cp:service",
+      applicationId: "def-000",
+      operation: "inspect",
+      reason: "first",
+    });
+    evaluateGatewayRequest({
+      actorId: "cp:service",
+      applicationId: "def-000",
+      operation: "inspect",
+      reason: "second",
+    });
+    const chain = verifyAuditChain();
+    expect(chain.ok).toBe(true);
+    const report = runSelfAudit();
+    expect(report.findings.some((f) => f.id === "audit-chain-break")).toBe(false);
+  });
+
   it("self-audit detects and proposes only — never auto-applies", () => {
     const report = runSelfAudit();
     expect(report.findings.length).toBeGreaterThan(0);

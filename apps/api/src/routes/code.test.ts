@@ -35,7 +35,7 @@ vi.mock("../services/resolve-identity.js", async (importOriginal) => {
 
 const { registerCodeRoutes } = await import("./code.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
-const { createApprovalRequest, decideApprovalRequest, getApprovalRequest } = await import("../services/approvals.js");
+const { decideApprovalRequest, getApprovalRequest } = await import("../services/approvals.js");
 const { resetApprovalsForTests } = await import(
   "../services/approvals-test-store.js"
 );

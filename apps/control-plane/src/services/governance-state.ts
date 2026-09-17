@@ -17,7 +17,12 @@
  * observer. Write operations (creating approvals, recording reputation,
  * appending audit entries) happen exclusively through the engineering
  * surface's governed execution pipeline.
+ *
+ * Observational CP hashes are allocated only in `appendAuditEntry`.
+ * Canonical NDJSON remains apps/api `audit-log.ts`.
  */
+
+import { createHash } from "node:crypto";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -85,8 +90,55 @@ const startTime = Date.now();
 
 // ── Audit Trail ─────────────────────────────────────────────────────────
 
-export function appendAuditEntry(entry: AuditEntry): void {
-  auditEntries.push(entry);
+export type AuditEntryInput = Omit<AuditEntry, "seq" | "hash" | "prevHash"> &
+  Partial<Pick<AuditEntry, "seq" | "hash" | "prevHash">>;
+
+/**
+ * Observational Control Plane chain only. Canonical NDJSON is apps/api.
+ * Callers must not forge seq/hash/prevHash — this function is the only
+ * allocator, so Date.now() seq and prevHash:"000" cannot break verify.
+ */
+export function appendAuditEntry(entry: AuditEntryInput): AuditEntry {
+  const prev = auditEntries[auditEntries.length - 1];
+  const seq = (prev?.seq ?? 0) + 1;
+  const prevHash = prev?.hash ?? "GENESIS";
+  const hash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        seq,
+        prevHash,
+        timestamp: entry.timestamp,
+        type: entry.type,
+        actorId: entry.actorId,
+        actorKind: entry.actorKind,
+        reason: entry.reason,
+        policy: entry.policy,
+        risk: entry.risk,
+        approval: entry.approval,
+        result: entry.result,
+        ownerId: entry.ownerId,
+        projectId: entry.projectId,
+      }),
+    )
+    .digest("hex");
+  const stored: AuditEntry = {
+    timestamp: entry.timestamp,
+    type: entry.type,
+    actorId: entry.actorId,
+    actorKind: entry.actorKind,
+    reason: entry.reason,
+    policy: entry.policy,
+    risk: entry.risk,
+    approval: entry.approval,
+    result: entry.result,
+    ownerId: entry.ownerId,
+    projectId: entry.projectId,
+    seq,
+    prevHash,
+    hash,
+  };
+  auditEntries.push(stored);
+  return stored;
 }
 
 export function listAuditEntries(filter?: {
@@ -141,7 +193,7 @@ export function verifyAuditChain(): {
   readonly canonical: false;
   readonly note: string;
 } {
-  const ordered = [...auditEntries].sort((a, b) => a.seq - b.seq);
+  const ordered = auditEntries;
   for (let i = 1; i < ordered.length; i += 1) {
     const prev = ordered[i - 1];
     const cur = ordered[i];

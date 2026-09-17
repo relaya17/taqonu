@@ -50,7 +50,7 @@ Landed in git (kill-switch `1421164`, agent memory `e0991a7`, QA/gateway
 `52a5dc2`, Control/Studio/embeddings `39b3fc2`). **In-repo implementation,
 not production-verified. Do not treat this list as CLOSED.**
 
-- Runtime Kill Switch Control (A1) — in HEAD; live operator UI still needs a running API
+- Runtime Kill Switch Control (A1) — in HEAD; live operator UI still needs a running API. Governed-execution test doubles now stub `getKillSwitchOverrides` so the A1 union is consulted on the execute path.
 - Agent-scoped memory isolation on plan/dispatch (B1) — in HEAD; omit-`agentId` retrieve remains an open policy (human surfaces still see `allowedAgents` rows)
 - Control Approvals hop to the live API store (A2) — unit/route tests; live Postgres and decide→NDJSON not proven
 - Agent lifecycle pause/quarantine/revoke Control UI (A3) — UI over existing API enforcement
@@ -84,6 +84,41 @@ Landed in `apps/web` (Studio stays on the user plane). **Partially verified.**
   Studio `check` query.
 
 Dashboard Patches remain. Control Plane was not moved into Web.
+
+### Verification pass (2026-09-17 evening)
+
+Not a production-readiness claim. Not a 10/10 score.
+
+**VERIFIED (this workstation)**
+- Typecheck: `@atlas/api` (build tsconfig), `@atlas/control-plane`, `@atlas/web`, `@atlas/shared`, `@atlas/agent-core`
+- `pnpm test:unit`: 317 files / 2871 tests PASS after kill-switch test doubles gained `getKillSwitchOverrides`
+- `pnpm exec eslint packages apps --max-warnings 0` PASS
+- CI eval gate PASS; secret scan 0 findings
+- Supply-chain: SBOM VALID, UNSIGNED, `releaseReady: false`
+- Control Plane observational audit: `appendAuditEntry` is the only seq/hash/prevHash allocator. Forged `prevHash: "000"` / `seq: Date.now()` no longer break `verifyAuditChain`. Canonical NDJSON remains apps/api. CP tests 276 PASS. The already-running live CP process can still report `audit-chain-break` until restart.
+- Local private plane live-proof: **29 PASS / 0 FAIL / 0 BLOCKED / 3 SKIP** (Ubuntu plane, two-identity approved fulfill, external pentest). Studio probe is `http://localhost:3000` (Next `-H localhost`).
+- HTTP 200 local render: `/he`, `/en`, `/he/health`, `/he/studio`. Not signed-in Studio E2E. gitignored `.env.local` is the example copy (`replace-me`) — not live Supabase.
+- Live `POST /api/v1/gateway/fulfill` `request_agent_run` without approval → `APPROVAL_REQUIRED`, `executed: false`
+
+**IMPLEMENTED / NOT FULLY VERIFIED**
+- Approved fulfill execute (second identity) — route tests only; live-proof SKIP
+- Browser E2E / signed-in Studio apply
+- Live embeddings provider
+- Canonical audit decide→NDJSON on live Postgres
+- Live CP `audit-chain-break` until that process restarts onto the new allocator
+
+**STILL OPEN (production gate — unchanged)**
+- Ubuntu + Tailscale + systemd
+- Live Supabase/Postgres
+- Studio production credentials (do not commit `replace-me`)
+- Offsite DR destination
+- Sigstore identity
+- External pentest
+- ADR-022 sibling execute (owner decision)
+
+**NOT CLAIMED**
+- Production ready
+- Completeness of the August vision gap-analysis / staged roadmap
 
 ---
 

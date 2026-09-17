@@ -147,7 +147,7 @@ export const CONNECTED_APPLICATION_RUNTIME: readonly ConnectedApplicationRuntime
         sourceRepository: "github/taqonu-main",
       },
       evidence:
-        "POST /api/v1/gateway/fulfill → executeGovernedAction. Control Plane does not run tools. Live proof executed analyze_repo.",
+        "POST /api/v1/gateway/fulfill → executeGovernedAction. Control Plane does not run tools. request_agent_run requires a live APPROVED RECORD.EXECUTE approval; DOCUMENT.READ does not skip that gate.",
     },
     {
       applicationId: "civio",

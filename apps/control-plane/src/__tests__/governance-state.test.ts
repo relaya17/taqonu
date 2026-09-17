@@ -10,6 +10,7 @@ import {
   replaceApprovalRecords,
   computeHealthMetrics,
   resetGovernanceStateForTests,
+  verifyAuditChain,
   type AuditEntry,
   type ApprovalRecord,
 } from "../services/governance-state.js";
@@ -72,6 +73,19 @@ describe("Control Plane — Governance State", () => {
       appendAuditEntry(makeAuditEntry({ seq: 1 }));
       appendAuditEntry(makeAuditEntry({ seq: 2 }));
       expect(getAuditEntryCount()).toBe(2);
+    });
+
+    it("stamps a consistent observational hash chain even if callers forge prevHash", () => {
+      appendAuditEntry(makeAuditEntry({ seq: 99, hash: "forged", prevHash: "000" }));
+      appendAuditEntry(makeAuditEntry({ seq: 99, hash: "also-forged", prevHash: "000" }));
+      const chain = verifyAuditChain();
+      expect(chain.ok).toBe(true);
+      expect(chain.canonical).toBe(false);
+      expect(chain.checked).toBe(2);
+      const newestFirst = listAuditEntries();
+      expect(newestFirst[0]?.seq).toBe(2);
+      expect(newestFirst[0]?.prevHash).toBe(newestFirst[1]?.hash);
+      expect(newestFirst[1]?.prevHash).toBe("GENESIS");
     });
 
     it("returns entries newest-first", () => {

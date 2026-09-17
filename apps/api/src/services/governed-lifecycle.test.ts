@@ -28,6 +28,7 @@ const getProject = vi.fn();
 vi.mock("../store/os-store.js", () => ({
   osStore: {
     getProject: (id: string) => getProject(id),
+    getKillSwitchOverrides: () => ({}),
   },
 }));
 

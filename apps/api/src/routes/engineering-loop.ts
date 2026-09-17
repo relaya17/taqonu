@@ -336,7 +336,6 @@ export async function registerEngineeringLoopRoutes(
         throw new AtlasError("FORBIDDEN", reason, { statusCode });
       }
 
-      const appliedPatch = helper.value.patch;
       const applied = helper.value.apply;
 
       if (existing.projectId) {
