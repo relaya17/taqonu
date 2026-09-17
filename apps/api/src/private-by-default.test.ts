@@ -20,6 +20,13 @@ describe("private-by-default API hook (ADR-021)", () => {
     const app = await buildApp(buildTestEnv({ SUPABASE_SERVICE_ROLE_KEY: "replace-me" }));
     try {
       expect((await app.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
+      expect((await app.inject({ method: "HEAD", url: "/health" })).statusCode).toBe(200);
+      expect(
+        (await app.inject({ method: "HEAD", url: "/api/v1/memory" })).statusCode,
+      ).toBe(401);
+      expect(
+        (await app.inject({ method: "HEAD", url: "/api/v1/metrics" })).statusCode,
+      ).toBe(401);
       expect(
         (await app.inject({ method: "GET", url: "/api/v1/studio/tree" })).statusCode,
       ).toBe(401);
@@ -63,6 +70,52 @@ describe("private-by-default API hook (ADR-021)", () => {
           })
         ).statusCode,
       ).toBe(401);
+
+      expect(
+        (await app.inject({ method: "HEAD", url: "/api/v1/knowledge" }))
+          .statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await app.inject({
+            method: "OPTIONS",
+            url: "/api/v1/memory",
+            headers: {
+              origin: "http://localhost:3000",
+              "access-control-request-method": "GET",
+            },
+          })
+        ).statusCode,
+      ).not.toBe(401);
+
+      const email = `head-gate-${Date.now()}@atlas.local`;
+      const password = "AtlasHeadGate1!";
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/v1/auth/register",
+            payload: { email, password, displayName: "HEAD gate" },
+          })
+        ).statusCode,
+      ).toBe(201);
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        payload: { email, password },
+      });
+      expect(login.statusCode).toBe(200);
+      const cookie = String(login.headers["set-cookie"] ?? "");
+      expect(cookie).toMatch(/atlas_session=/);
+      expect(
+        (
+          await app.inject({
+            method: "HEAD",
+            url: "/api/v1/metrics",
+            headers: { cookie },
+          })
+        ).statusCode,
+      ).toBe(200);
     } finally {
       await app.close();
     }

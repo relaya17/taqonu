@@ -47,4 +47,21 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     );
     expect(isPublicAtlasRoute("GET", "/api/v1/internal/approvals")).toBe(false);
   });
+
+  it("treats HEAD as the matching GET allow-list, not as universally public", () => {
+    expect(isPublicAtlasRoute("HEAD", "/health")).toBe(true);
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/health")).toBe(true);
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/knowledge")).toBe(true);
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/onboarding/storage-policy")).toBe(
+      true,
+    );
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/memory")).toBe(false);
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/metrics")).toBe(false);
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/internal/kill-switches")).toBe(
+      false,
+    );
+    expect(isPublicAtlasRoute("OPTIONS", "/api/v1/memory")).toBe(true);
+    expect(isPublicAtlasRoute("OPTIONS", "/api/v1/metrics")).toBe(true);
+    expect(isPublicAtlasRoute("POST", "/api/v1/memory")).toBe(false);
+  });
 });

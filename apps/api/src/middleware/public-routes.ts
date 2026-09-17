@@ -51,10 +51,14 @@ export function normalizeRequestPath(url: string): string {
 
 export function isPublicAtlasRoute(method: string, url: string): boolean {
   const verb = method.toUpperCase();
-  if (verb === "OPTIONS" || verb === "HEAD") return true;
+  if (verb === "OPTIONS") return true;
+  // HEAD must follow the GET allow-list. Treating every HEAD as public lets
+  // Fastify run the corresponding GET handler without the session gate.
+  const effectiveVerb = verb === "HEAD" ? "GET" : verb;
   const path = normalizeRequestPath(url);
-  if (PUBLIC_EXACT.has(`${verb} ${path}`)) return true;
+  if (PUBLIC_EXACT.has(`${effectiveVerb} ${path}`)) return true;
   return PUBLIC_PREFIXES.some(
-    (entry) => verb === entry.method && path.startsWith(entry.prefix),
+    (entry) =>
+      effectiveVerb === entry.method && path.startsWith(entry.prefix),
   );
 }

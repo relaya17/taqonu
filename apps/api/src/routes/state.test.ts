@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import type { AuthUser } from "@atlas/shared";
+import { memorySchema, type AuthUser } from "@atlas/shared";
 
 // Isolate the singleton osStore before it's ever imported/loaded (same
 // pattern as conflicts.test.ts / db-feeds.test.ts).
@@ -157,5 +157,47 @@ describe("POST /api/v1/projects/:id/state/reconcile", () => {
       payload: {},
     });
     expect(res.statusCode).toBe(200);
+  });
+
+  it("does not return another tenant's global memory statement in TASKS/RISKS", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    const now = new Date().toISOString();
+    osStore.addMemory(
+      memorySchema.parse({
+        id: crypto.randomUUID(),
+        ownerId: otherUser.id,
+        type: "BUG",
+        projectId: null,
+        statement: "HTTP-TENANT-B-SECRET bug in foreign global memory",
+        reason: ["n2"],
+        status: "ACTIVE",
+        confidence: 0.7,
+        category: "GENERATED_REASONING",
+        epistemicState: "OBSERVED",
+        observationMode: "OBSERVED",
+        source: "n2-http",
+        sourceType: "USER",
+        sourceId: null,
+        evidence: [],
+        supersededBy: null,
+        validFrom: now,
+        validUntil: null,
+        observedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: "test",
+        scope: "GLOBAL",
+        priority: "HIGH",
+      }),
+    );
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/state/reconcile`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("HTTP-TENANT-B-SECRET");
   });
 });

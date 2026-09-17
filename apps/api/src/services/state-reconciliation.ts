@@ -1,6 +1,8 @@
 import {
   parseEvidenceRecord,
+  SYSTEM_OWNER_ID,
   type EvidenceRecord,
+  type Memory,
   type ProjectStateSnapshot,
 } from "@atlas/shared";
 import {
@@ -9,7 +11,31 @@ import {
 } from "@atlas/integrations-github";
 import { reconcileProjectState } from "@atlas/state";
 import { osStore } from "../store/os-store.js";
+import { getProjectOwnerId } from "./project-access.js";
 import { resolveEvidenceOwnerId } from "./write-owner.js";
+
+/**
+ * Memories that may enter a persisted project snapshot.
+ *
+ * `"global"` is the store key for memories with `projectId: null` — it is
+ * not a cross-tenant bulletin board. Retrieve/export already owner-filter
+ * that pool (A3). Reconciliation previously loaded every owner's global
+ * rows, and TASKS/RISKS copy `statement` into the snapshot the project
+ * owner later reads.
+ *
+ * Keep: all memories already stored under this project id (write-gated to
+ * owner/admin), the project owner's unscoped memories, and SYSTEM actor
+ * memories. Omit: other tenants' global memories.
+ */
+function memoriesForProjectReconciliation(projectId: string): Memory[] {
+  const projectOwnerId = getProjectOwnerId(projectId);
+  const onProject = osStore.getMemories(projectId);
+  const globalVisible = osStore.getMemories("global").filter((memory) => {
+    if (memory.ownerId === SYSTEM_OWNER_ID) return true;
+    return projectOwnerId !== null && memory.ownerId === projectOwnerId;
+  });
+  return [...onProject, ...globalVisible];
+}
 
 export function ingestGitHubSync(
   projectId: string,
@@ -66,10 +92,7 @@ export function runStateReconciliation(projectId: string): ProjectStateSnapshot 
     observations: osStore.getObservations(projectId),
     evidence: osStore.getEvidence(projectId),
     claims: osStore.getClaims(projectId),
-    memories: [
-      ...osStore.getMemories(projectId),
-      ...osStore.getMemories("global"),
-    ],
+    memories: memoriesForProjectReconciliation(projectId),
     decisions: [
       ...osStore.getDecisions(projectId),
       ...osStore.getDecisions("global"),
