@@ -9,12 +9,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "node scripts/turbo-run.mjs run build",
     "dev": "node scripts/dev-surfaces.mjs",
     "dev:all": "turbo run dev --parallel --ui=stream",
-    "lint": "turbo run lint",
+    "lint": "node scripts/turbo-run.mjs run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "node scripts/turbo-run.mjs run test",
     "test:e2e": "playwright test",
     "test:e2e:critical": "playwright test e2e/critical-path.spec.ts",
     "test:e2e:product": "playwright test e2e/product-surfaces.spec.ts",
