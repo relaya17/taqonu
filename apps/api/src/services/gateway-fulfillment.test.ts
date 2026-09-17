@@ -19,11 +19,39 @@ const { computeGovernedBindingHash } = await import("./governed-execution.js");
 const {
   createApprovalRequest,
   decideApprovalRequest,
+  getApprovalRequest,
 } = await import("./approvals.js");
 const { resetApprovalsForTests } = await import("./approvals-test-store.js");
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const PROJECT_A = "33333333-3333-4333-8333-333333333333";
+
+async function approveGatewayOperation(input: {
+  readonly entityType: string;
+  readonly action: string;
+  readonly agentId?: string;
+  readonly expectedObservations?: readonly string[];
+  readonly baselineObservations?: readonly string[];
+}) {
+  const approval = await createApprovalRequest({
+    entityType: input.entityType,
+    action: input.action,
+    requestedBy: input.agentId ?? "CODE_ENGINEER",
+    reason: `test ${input.entityType}.${input.action}`,
+    ...(input.expectedObservations
+      ? { expectedObservations: [...input.expectedObservations] }
+      : {}),
+    ...(input.baselineObservations
+      ? { baselineObservations: [...input.baselineObservations] }
+      : {}),
+  });
+  await decideApprovalRequest(approval.id, {
+    decidedBy: OWNER_A,
+    approve: true,
+    decisionReason: "approved for test",
+  });
+  return approval;
+}
 
 describe("Gateway fulfillment → executeGovernedAction", () => {
   let dir: string;
@@ -73,6 +101,10 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
   });
 
   it("reaches executeTool and DENIES when the mapped tool has no implementation", async () => {
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const result = await fulfillGatewayHandoff({
       sessionOwnerId: OWNER_A,
       applicationId: "def-000",
@@ -81,6 +113,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       projectRoot: dir,
       projectId: PROJECT_A,
       requestId: "req_gw_noimpl",
+      approvalRequestId: approval.id,
     });
     expect(result.outcome.stage).toBe("EXECUTION");
     expect(result.outcome.status).toBe("FAILED");
@@ -94,6 +127,10 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       run: async () => "observation: 3 TypeScript files",
     });
 
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const result = await fulfillGatewayHandoff({
       sessionOwnerId: OWNER_A,
       applicationId: "def-000",
@@ -102,6 +139,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       projectRoot: dir,
       projectId: PROJECT_A,
       requestId: "req_gw_ok",
+      approvalRequestId: approval.id,
     });
 
     expect(result.outcome.status).toBe("EXECUTED");
@@ -180,6 +218,11 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       run: async () => "observation: 3 TypeScript files",
     });
 
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      expectedObservations: ["3 TypeScript files"],
+    });
     const result = await fulfillGatewayHandoff({
       sessionOwnerId: OWNER_A,
       applicationId: "def-000",
@@ -188,6 +231,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       projectRoot: dir,
       projectId: PROJECT_A,
       requestId: "req_gw_nu",
+      approvalRequestId: approval.id,
       expectedObservations: ["3 TypeScript files"],
     });
 
@@ -207,6 +251,12 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       run: async () => "observation: 3 TypeScript files",
     });
 
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      expectedObservations: ["3 TypeScript files"],
+      baselineObservations: ["authz still enforced"],
+    });
     const result = await fulfillGatewayHandoff({
       sessionOwnerId: OWNER_A,
       applicationId: "def-000",
@@ -215,6 +265,7 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       projectRoot: dir,
       projectId: PROJECT_A,
       requestId: "req_gw_reg",
+      approvalRequestId: approval.id,
       expectedObservations: ["3 TypeScript files"],
       baselineObservations: ["authz still enforced"],
     });
@@ -267,12 +318,12 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
       run: async () => "observation: 3 TypeScript files",
     });
 
-    // mapGatewayHandoff("request_agent_run", "CODE_ENGINEER") returns:
-    // { toolName: "analyze_repo", entityType: "DOCUMENT", action: "READ" }
-    // requestedBy must be the agent ID that will consume it (consumeApprovalRequest checks this)
+    // Operation-level classification is RECORD.EXECUTE, even though the mapped
+    // fabric tool is analyze_repo (DOCUMENT.READ). requestedBy must be the
+    // agent that will redeem it.
     const approval = await createApprovalRequest({
-      entityType: "DOCUMENT",
-      action: "READ",
+      entityType: "RECORD",
+      action: "EXECUTE",
       requestedBy: "CODE_ENGINEER",
       reason: "run analysis with locked verification plan",
       expectedObservations: ["3 TypeScript files"],
@@ -306,5 +357,114 @@ describe("Gateway fulfillment → executeGovernedAction", () => {
     expect(result.verified).toBe(true);
     expect(result.verificationVerdict).toBe("VERIFIED");
     expect(result.regressionVerdict).toBe("INCONCLUSIVE");
+  });
+
+  it("direct fulfill of request_agent_run without approval cannot execute via DOCUMENT.READ", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "must-not-run",
+    });
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_no_appr_run",
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("APPROVAL_REQUIRED");
+    expect(result.toolName).toBe("analyze_repo");
+  });
+
+  it("direct fulfill of request_test without approval cannot execute via DOCUMENT.READ", async () => {
+    // Distinct from request_agent_run: operation is RECORD.READ (test.read),
+    // still write-adjacent at the operating cycle.
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "must-not-run",
+    });
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_test",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_no_appr_test",
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("direct fulfill of request_verify without approval cannot execute via DOCUMENT.READ", async () => {
+    // Distinct from request_test: operation is RECORD.CREATE (finding.create),
+    // still write-adjacent at the operating cycle.
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "must-not-run",
+    });
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_verify",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_no_appr_verify",
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("keeps REQUIRE_APPROVAL pending — a PENDING row is not consumed", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "must-not-run",
+    });
+    const pending = await createApprovalRequest({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      requestedBy: "CODE_ENGINEER",
+      reason: "still waiting",
+    });
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_pending",
+      approvalRequestId: pending.id,
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("APPROVAL_REQUIRED");
+    expect((await getApprovalRequest(pending.id))?.status).toBe("PENDING");
+  });
+
+  it("rejects a DOCUMENT.READ approval for request_agent_run (RECORD.EXECUTE)", async () => {
+    registerTool({
+      name: "analyze_repo",
+      run: async () => "must-not-run",
+    });
+    const wrong = await approveGatewayOperation({
+      entityType: "DOCUMENT",
+      action: "READ",
+    });
+    const result = await fulfillGatewayHandoff({
+      sessionOwnerId: OWNER_A,
+      applicationId: "def-000",
+      agentId: "CODE_ENGINEER",
+      operation: "request_agent_run",
+      projectRoot: dir,
+      projectId: PROJECT_A,
+      requestId: "req_gw_wrong_class",
+      approvalRequestId: wrong.id,
+    });
+    expect(result.executed).toBe(false);
+    expect(result.outcome.status).toBe("DENIED");
+    expect(result.outcome.reason).toMatch(/DOCUMENT\.READ/);
   });
 });

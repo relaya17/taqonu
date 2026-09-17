@@ -106,8 +106,8 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
     // ─── 2. Create approval with LOCKED verification plan ─────────────────────
     // This is the key: observations are bound to the approval, not the fulfill body
     const approval = await createApprovalRequest({
-      entityType: "DOCUMENT",
-      action: "READ",
+      entityType: "RECORD",
+      action: "EXECUTE",
       requestedBy: "CODE_ENGINEER", // Must match agent ID for consume
       reason: "GEAL integration test: locked verification plan",
       expectedObservations: ["3 TypeScript files", "coverage 87%"],
@@ -207,8 +207,8 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
 
     // Approval with baseline that WON'T appear in output
     const approval = await createApprovalRequest({
-      entityType: "DOCUMENT",
-      action: "READ",
+      entityType: "RECORD",
+      action: "EXECUTE",
       requestedBy: "CODE_ENGINEER",
       reason: "GEAL regression test",
       expectedObservations: ["3 TypeScript files"], // Will match
@@ -258,7 +258,7 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
     expect(latestMemory?.payload["regressionVerdict"]).toBe("FAILED");
   });
 
-  it("WITHOUT APPROVAL: observations from body are used (less secure path)", async () => {
+  it("WITHOUT APPROVAL: request_agent_run cannot execute merely because the tool is DOCUMENT.READ", async () => {
     const toolOutput = "observation: direct path test";
     registerTool({
       name: "analyze_repo",
@@ -266,7 +266,6 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
     });
     getRequestUser.mockReturnValue(ownerUser());
 
-    // No approval — observations come from request body
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/gateway/fulfill",
@@ -282,11 +281,11 @@ describe("GEAL Live Path: CP ALLOW → fulfill → audit/memory/OBSERVED", () =>
     const body = res.json() as {
       executed: boolean;
       verified: boolean;
-      verificationVerdict: string;
+      outcome: { status: string };
     };
 
-    expect(body.executed).toBe(true);
-    expect(body.verified).toBe(true);
-    expect(body.verificationVerdict).toBe("VERIFIED");
+    expect(body.executed).toBe(false);
+    expect(body.outcome.status).toBe("APPROVAL_REQUIRED");
+    expect(body.verified).toBe(false);
   });
 });

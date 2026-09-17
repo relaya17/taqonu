@@ -6,9 +6,11 @@
  * catalog authz → approval → dispatchAgentAction → executeTool → audit.
  */
 import {
+  agentMayExecute,
   isAtlasSelfApplicationId,
   mapGatewayHandoff,
   memoryEpistemicAfterAction,
+  type GatewayHandoffMapping,
 } from "@atlas/shared";
 import { extractGovernedTarget } from "@atlas/agent-core";
 import {
@@ -27,7 +29,10 @@ import {
   verificationVerdictFromOutcome,
   type VerificationVerdict,
 } from "./verification.js";
-import { getApprovalRequest } from "./approvals.js";
+import {
+  consumeApprovalRequest,
+  getApprovalRequest,
+} from "./approvals.js";
 
 export interface GatewayHandoff {
   readonly sessionOwnerId: string;
@@ -76,6 +81,124 @@ function unmappedOutcome(
   reason: string,
 ): Extract<GovernedExecutionOutcome, { stage: "AUTHORIZATION"; status: "DENIED" }> {
   return { stage: "AUTHORIZATION", status: "DENIED", reason };
+}
+
+function approvalRequiredOutcome(reason: string): GovernedExecutionOutcome {
+  return { stage: "POLICY", status: "APPROVAL_REQUIRED", reason };
+}
+
+function approvalDeniedOutcome(reason: string): GovernedExecutionOutcome {
+  return { stage: "APPROVAL", status: "DENIED", reason };
+}
+
+function blockedResult(
+  handoff: GatewayHandoff,
+  toolName: string | null,
+  outcome: GovernedExecutionOutcome,
+): GatewayFulfillmentResult {
+  const reason =
+    "reason" in outcome && typeof outcome.reason === "string"
+      ? outcome.reason
+      : "blocked";
+  return {
+    applicationId: handoff.applicationId,
+    operation: handoff.operation,
+    toolName,
+    principalId: handoff.sessionOwnerId,
+    outcome,
+    executed: false,
+    verified: false,
+    verificationVerdict: verificationVerdictFromOutcome(outcome),
+    regressionVerdict: "BLOCKED",
+    observation: null,
+    verificationDetail: reason,
+  };
+}
+
+function toolPairMatchesOperation(mapping: GatewayHandoffMapping): boolean {
+  return (
+    mapping.entityType === mapping.operationEntityType &&
+    mapping.action === mapping.operationAction
+  );
+}
+
+/**
+ * Operation-level approval is independent of the mapped tool's canonical
+ * pair. `request_agent_run` stays RECORD.EXECUTE even when the fabric tool
+ * is `analyze_repo` (DOCUMENT.READ). Missing/pending → REQUIRE_APPROVAL
+ * without consuming. Mismatch/non-APPROVED → DENIED.
+ */
+async function gateOperationApproval(
+  handoff: GatewayHandoff,
+  mapping: GatewayHandoffMapping,
+): Promise<GovernedExecutionOutcome | null> {
+  if (!mapping.requiresApproval) return null;
+
+  if (!handoff.approvalRequestId) {
+    return approvalRequiredOutcome(
+      `Gateway operation "${handoff.operation}" requires a live APPROVED approval (${mapping.operationEntityType}.${mapping.operationAction}); DOCUMENT.READ tool classification does not skip this gate`,
+    );
+  }
+
+  let stored: Awaited<ReturnType<typeof getApprovalRequest>>;
+  try {
+    stored = await getApprovalRequest(handoff.approvalRequestId);
+  } catch (error) {
+    return approvalDeniedOutcome(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  if (!stored) {
+    return approvalDeniedOutcome(
+      `Approval request ${handoff.approvalRequestId} was not found`,
+    );
+  }
+
+  if (stored.status === "PENDING") {
+    return approvalRequiredOutcome(
+      `Approval request ${stored.id} is still PENDING for ${handoff.operation}`,
+    );
+  }
+
+  if (stored.status !== "APPROVED") {
+    return approvalDeniedOutcome(
+      `Approval request ${stored.id} is ${stored.status} and cannot authorize ${handoff.operation}`,
+    );
+  }
+
+  if (
+    stored.entityType !== mapping.operationEntityType ||
+    stored.action !== mapping.operationAction
+  ) {
+    return approvalDeniedOutcome(
+      `Approval request ${stored.id} authorizes ${stored.entityType}.${stored.action}, not ${mapping.operationEntityType}.${mapping.operationAction} required by "${handoff.operation}"`,
+    );
+  }
+
+  if (stored.requestedBy !== handoff.agentId) {
+    return approvalDeniedOutcome(
+      `Approval request ${stored.id} was requested by ${stored.requestedBy} and cannot be redeemed by ${handoff.agentId}`,
+    );
+  }
+
+  if (toolPairMatchesOperation(mapping)) {
+    return null;
+  }
+
+  try {
+    await consumeApprovalRequest(stored.id, {
+      entityType: mapping.operationEntityType,
+      action: mapping.operationAction,
+      agentId: handoff.agentId,
+    });
+  } catch (error) {
+    return approvalDeniedOutcome(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  return null;
 }
 
 export async function fulfillGatewayHandoff(
@@ -133,6 +256,21 @@ export async function fulfillGatewayHandoff(
       : {}),
   });
 
+  const runtimeStatus = identity.runtimeStatus;
+  const deferRuntimeCheckForOutage =
+    runtimeStatus === "UNKNOWN" && identity.controlPlaneUnreachable === true;
+  const runtimeBlocksExecution =
+    runtimeStatus !== undefined &&
+    !agentMayExecute(runtimeStatus) &&
+    !deferRuntimeCheckForOutage;
+
+  if (!runtimeBlocksExecution) {
+    const blocked = await gateOperationApproval(handoff, mapping);
+    if (blocked) {
+      return blockedResult(handoff, mapping.toolName, blocked);
+    }
+  }
+
   const artifact =
     handoff.artifact ??
     JSON.stringify({
@@ -187,7 +325,7 @@ export async function fulfillGatewayHandoff(
     ...(identity.runtimeStatus !== undefined
       ? { agentRuntimeStatus: identity.runtimeStatus }
       : {}),
-    ...(handoff.approvalRequestId
+    ...(handoff.approvalRequestId && toolPairMatchesOperation(mapping)
       ? { approvalRequestId: handoff.approvalRequestId }
       : {}),
   });

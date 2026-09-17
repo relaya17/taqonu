@@ -66,18 +66,38 @@ export function isForbiddenSelfMutation(
   return (FORBIDDEN_SELF_MUTATIONS as readonly string[]).includes(value);
 }
 
+export type GatewayHandoffEntityType = "DOCUMENT" | "RECORD";
+export type GatewayHandoffAction = "READ" | "UPDATE" | "CREATE" | "EXECUTE";
+
 /**
- * Map a Gateway write-op onto a fabric catalog tool.
+ * Two-layer handoff. Do not collapse these into one enum.
  *
- * The Control Plane must not invent runtime tool names (`fs.read_file`).
- * Execution uses `FABRIC_AGENT_CATALOG.allowedTools` and `executeGovernedAction`.
- * If the preferred tool is not granted to this agent, fall back to the first
- * catalog tool rather than a Control Plane registry alias.
+ * 1. Tool-runtime pair (`entityType`/`action`/`toolName`):
+ *    What `executeGovernedAction` asserts against `DEFAULT_TOOL_POLICIES`.
+ *    `analyze_repo` / `knowledge_search` stay DOCUMENT.READ. `propose_patch`
+ *    stays RECORD.UPDATE. Passing RECORD.EXECUTE into executeGovernedAction
+ *    for analyze_repo is a mismatch deny, not an approval gate.
+ *
+ * 2. Operation classification (`operationEntityType`/`operationAction` +
+ *    `requiresApproval`): aligned with Control Plane `mapControlPlaneHandoff`
+ *    and `evaluateOperatingCycle`. Write-adjacent gateway ops are not
+ *    inspect/diagnose/retrieve_* even when the mapped tool is read-only.
+ *
+ * Per-operation (not a blanket READ/EXECUTE):
+ * - request_agent_run → RECORD.EXECUTE, requiresApproval true (HIGH_RISK_WRITE)
+ * - request_test → RECORD.READ, requiresApproval true (LOW_RISK_WRITE; entity
+ *   RECORD.READ itself does not require approval — the cycle still does)
+ * - request_verify → RECORD.CREATE, requiresApproval true (LOW_RISK_WRITE;
+ *   entity RECORD.CREATE does not require approval — the cycle still does)
+ * - request_remediation → RECORD.UPDATE, requiresApproval true (DESTRUCTIVE)
  */
 export type GatewayHandoffMapping = {
   readonly toolName: string;
-  readonly entityType: "DOCUMENT" | "RECORD";
-  readonly action: "READ" | "UPDATE";
+  readonly entityType: GatewayHandoffEntityType;
+  readonly action: GatewayHandoffAction;
+  readonly operationEntityType: GatewayHandoffEntityType;
+  readonly operationAction: GatewayHandoffAction;
+  readonly requiresApproval: boolean;
 };
 
 const PREFERRED_HANDOFF_TOOL: Readonly<Record<string, string>> = {
@@ -87,12 +107,34 @@ const PREFERRED_HANDOFF_TOOL: Readonly<Record<string, string>> = {
   request_agent_run: "analyze_repo",
 };
 
+function operationClassification(
+  operation: string,
+): {
+  readonly entityType: GatewayHandoffEntityType;
+  readonly action: GatewayHandoffAction;
+  readonly requiresApproval: boolean;
+} | null {
+  switch (operation) {
+    case "request_agent_run":
+      return { entityType: "RECORD", action: "EXECUTE", requiresApproval: true };
+    case "request_test":
+      return { entityType: "RECORD", action: "READ", requiresApproval: true };
+    case "request_verify":
+      return { entityType: "RECORD", action: "CREATE", requiresApproval: true };
+    case "request_remediation":
+      return { entityType: "RECORD", action: "UPDATE", requiresApproval: true };
+    default:
+      return null;
+  }
+}
+
 export function mapGatewayHandoff(
   operation: string,
   agentId: string,
 ): GatewayHandoffMapping | null {
   const preferred = PREFERRED_HANDOFF_TOOL[operation];
-  if (!preferred) return null;
+  const classified = operationClassification(operation);
+  if (!preferred || !classified) return null;
 
   const def =
     agentId in FABRIC_AGENT_CATALOG
@@ -110,5 +152,8 @@ export function mapGatewayHandoff(
     toolName,
     entityType: mutating ? "RECORD" : "DOCUMENT",
     action: mutating ? "UPDATE" : "READ",
+    operationEntityType: classified.entityType,
+    operationAction: classified.action,
+    requiresApproval: classified.requiresApproval,
   };
 }

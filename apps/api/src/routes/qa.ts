@@ -7,10 +7,17 @@ import {
 import {
   createProcessAuditSchema,
   createQaRunSchema,
+  isControlPlaneRole,
   qaPortfolioPatternSchema,
+  type AuthUser,
   type QaPortfolioPattern,
   type QaReport,
 } from "@atlas/shared";
+import {
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+  filterProjectsForCaller,
+} from "../services/project-access.js";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import {
@@ -27,9 +34,7 @@ import {
   rememberProcessAuditId,
   syncProcessAuditToMemory,
 } from "../services/central-opinion.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
-
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 
 const QA_RUNS_META = "qa.runs";
 const QA_PATTERNS_META = "qa.portfolioPatterns";
@@ -63,7 +68,17 @@ type StoredQaReport = QaReport & {
   durablePatterns?: readonly QaPortfolioPattern[];
   contextPatterns?: readonly QaPortfolioPattern[];
   patternLessons?: readonly string[];
+  /** Owner of the POST that persisted this run. Not part of the public QaRun. */
+  createdBy?: string;
 };
+
+function callerMayReadQaRun(user: AuthUser, report: StoredQaReport): boolean {
+  if (user.role === "admin" || isControlPlaneRole(user.role)) return true;
+  if (report.createdBy === user.id) return true;
+  const projectIds = report.run.projectIds;
+  if (projectIds.length === 0) return false;
+  return projectIds.every((id) => canReadProjectScoped(user, id));
+}
 
 function loadLearnedKeys(): string[] {
   const raw = osStore.getMeta(QA_LEARNED_META);
@@ -181,9 +196,12 @@ function resolveProjectWorkspaceRoots(opts: {
 }
 
 export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/qa/runs", async () => {
+  app.get("/api/v1/qa/runs", async (request) => {
+    const user = await requireUser(app, request);
     osStore.ensureLoaded();
-    const reports = loadStoredRuns();
+    const reports = loadStoredRuns().filter((report) =>
+      callerMayReadQaRun(user, report),
+    );
     return {
       items: reports.map((r) => r.run),
       page: 1,
@@ -194,9 +212,28 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/v1/qa/patterns", async (request) => {
+    const user = await requireUser(app, request);
     osStore.ensureLoaded();
     const q = patternsQuerySchema.parse(request.query ?? {});
-    const all = loadPortfolioPatterns();
+    if (q.projectId && !canReadProjectScoped(user, q.projectId)) {
+      return {
+        items: [],
+        total: 0,
+        crossProjectCount: 0,
+        storedCount: 0,
+        portfolioOnly: q.portfolioOnly,
+        projectId: q.projectId,
+        learnedPatternKeys: loadLearnedKeys(),
+      };
+    }
+    const all = loadPortfolioPatterns()
+      .map((pattern) => ({
+        ...pattern,
+        projectIds: pattern.projectIds.filter((id) =>
+          canReadProjectScoped(user, id),
+        ),
+      }))
+      .filter((pattern) => pattern.projectIds.length > 0);
     const items = filterPortfolioPatterns({
       patterns: all,
       projectId: q.projectId ?? null,
@@ -273,16 +310,20 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
           ? (request.body as Record<string, unknown>)
           : {},
       );
-    const allProjects = osStore.listProjects();
+    const allProjects = filterProjectsForCaller(user, osStore.listProjects());
 
     let resolvedProjectIds: string[] = [];
     if (body.scope === "ENTIRE_PORTFOLIO") {
       resolvedProjectIds = allProjects.map((p) => p.id);
     } else if (body.scope === "SELECTED_PROJECTS") {
-      resolvedProjectIds = body.projectIds ?? [];
+      resolvedProjectIds = (body.projectIds ?? []).filter((id) =>
+        canReadProjectScoped(user, id),
+      );
     } else {
       resolvedProjectIds = body.projectId
-        ? [body.projectId]
+        ? canReadProjectScoped(user, body.projectId)
+          ? [body.projectId]
+          : []
         : allProjects[0]
           ? [allProjects[0].id]
           : [];
@@ -315,7 +356,7 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
         p.projectIds.length >= 2 &&
         report.durablePatterns.some((d) => d.patternKey === p.patternKey),
     );
-    saveStoredRun(report);
+    saveStoredRun({ ...report, createdBy: user.id });
     const seededMemories = seedPortfolioPatternMemories(newlyCrossProject);
 
     const primaryProjectId = resolvedProjectIds[0] ?? null;
@@ -323,10 +364,11 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     // tenant's QA run never surfaces another tenant's memories. Admins
     // bypass, same convention as memory.ts.
     const callerOwnerId = user.role === "admin" ? undefined : user.id;
-    const memoryContextResult = buildMemoryContext({
+    const memoryContextResult = await buildMemoryContext({
       projectId: primaryProjectId,
       query: body.userRequest ?? report.emittedPatternKeys.join(" "),
       budget: QA_MEMORY_BUDGET,
+      embeddingEnv: app.atlasEnv,
       ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
     const { memories: _memories, ...memoryContext } = memoryContextResult;
@@ -403,13 +445,11 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     // otherwise just require a real signed-in caller. Mirrors the
     // client-supplied-projectId-trust precedent used by
     // observer.ts / sentinel.ts / code.ts via project-access.ts.
-    if (body.projectId) {
-      await assertProjectWriteAccess(app, request, body.projectId);
-    } else {
-      await requireSignedInForWrite(app, request);
-    }
+    const user = body.projectId
+      ? await assertProjectWriteAccess(app, request, body.projectId)
+      : await requireSignedInForWrite(app, request);
     const project = body.projectId ? osStore.getProject(body.projectId) : null;
-    const allProjects = osStore.listProjects();
+    const allProjects = filterProjectsForCaller(user, osStore.listProjects());
     const projectId =
       body.projectId ?? allProjects[0]?.id ?? null;
     const resolvedProject = projectId
@@ -437,7 +477,7 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
       JSON.stringify(document),
     );
     rememberProcessAuditId(document.id);
-    const memory = syncProcessAuditToMemory(document);
+    const memory = syncProcessAuditToMemory(document, user.id);
     recordProcessAuditUsage();
     osStore.setMeta(
       "admin.processAudit.last",

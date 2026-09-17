@@ -7,6 +7,34 @@ describe("mapGatewayHandoff", () => {
       toolName: "analyze_repo",
       entityType: "DOCUMENT",
       action: "READ",
+      operationEntityType: "RECORD",
+      operationAction: "EXECUTE",
+      requiresApproval: true,
+    });
+  });
+
+  it("classifies request_test as RECORD.READ write-adjacent, not DOCUMENT.READ", () => {
+    // Distinct from request_agent_run (RECORD.EXECUTE) and request_verify
+    // (RECORD.CREATE). Entity RECORD.READ does not itself requireApproval;
+    // the operating cycle still does because this op is not isReadLike.
+    expect(mapGatewayHandoff("request_test", "CODE_ENGINEER")).toEqual({
+      toolName: "analyze_repo",
+      entityType: "DOCUMENT",
+      action: "READ",
+      operationEntityType: "RECORD",
+      operationAction: "READ",
+      requiresApproval: true,
+    });
+  });
+
+  it("classifies request_verify as RECORD.CREATE write-adjacent, not DOCUMENT.READ", () => {
+    expect(mapGatewayHandoff("request_verify", "CODE_ENGINEER")).toEqual({
+      toolName: "analyze_repo",
+      entityType: "DOCUMENT",
+      action: "READ",
+      operationEntityType: "RECORD",
+      operationAction: "CREATE",
+      requiresApproval: true,
     });
   });
 
@@ -15,6 +43,9 @@ describe("mapGatewayHandoff", () => {
       toolName: "propose_patch",
       entityType: "RECORD",
       action: "UPDATE",
+      operationEntityType: "RECORD",
+      operationAction: "UPDATE",
+      requiresApproval: true,
     });
   });
 
@@ -23,6 +54,9 @@ describe("mapGatewayHandoff", () => {
       toolName: "knowledge_search",
       entityType: "DOCUMENT",
       action: "READ",
+      operationEntityType: "RECORD",
+      operationAction: "EXECUTE",
+      requiresApproval: true,
     });
   });
 

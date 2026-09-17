@@ -24,6 +24,7 @@ vi.mock("../services/resolve-identity.js", () => ({
 const { registerQaRoutes } = await import("./qa.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
+const { bindProjectOwner } = await import("../services/project-access.js");
 
 function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
   return {
@@ -75,7 +76,7 @@ function seedGlobalMemory(ownerId: string, statement: string) {
   });
 }
 
-function seedProject(id: string, slug: string) {
+function seedProject(id: string, slug: string, owner?: AuthUser) {
   osStore.ensureLoaded();
   const now = new Date().toISOString();
   osStore.upsertProject({
@@ -88,6 +89,9 @@ function seedProject(id: string, slug: string) {
     createdAt: now,
     updatedAt: now,
   });
+  if (owner) {
+    bindProjectOwner(id, owner.id, "bound_on_create");
+  }
 }
 
 let app: FastifyInstance;
@@ -210,6 +214,114 @@ describe("POST /api/v1/qa/runs", () => {
     );
     expect(statements).toContain("distinctivephrase owner-B qa lesson");
     expect(statements).not.toContain("distinctivephrase owner-A qa lesson");
+  });
+
+  it("ENTIRE_PORTFOLIO only analyzes the caller's projects — never another tenant's bound project", async () => {
+    const projectA = crypto.randomUUID();
+    const projectB = crypto.randomUUID();
+    seedProject(projectA, `qa-a-${projectA.slice(0, 8)}`, ownerA);
+    seedProject(projectB, `qa-b-secret-${projectB.slice(0, 8)}`, ownerB);
+
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/qa/runs",
+      payload: { scope: "ENTIRE_PORTFOLIO" },
+    });
+    expect(res.statusCode).toBe(201);
+    const raw = res.body;
+    expect(raw).toContain(projectA);
+    expect(raw).not.toContain(projectB);
+    expect(raw).not.toContain(`qa-b-secret-${projectB.slice(0, 8)}`);
+  });
+});
+
+describe("GET /api/v1/qa/runs", () => {
+  it("401s when not signed in", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/qa/runs",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("does not let user B retrieve user A's QA runs", async () => {
+    const projectA = crypto.randomUUID();
+    const projectB = crypto.randomUUID();
+    seedProject(projectA, `qa-run-a-${projectA.slice(0, 8)}`, ownerA);
+    seedProject(projectB, `qa-run-b-${projectB.slice(0, 8)}`, ownerB);
+
+    getRequestUser.mockReturnValue(ownerA);
+    const createdA = await app.inject({
+      method: "POST",
+      url: "/api/v1/qa/runs",
+      payload: { scope: "SELECTED_PROJECTS", projectIds: [projectA] },
+    });
+    expect(createdA.statusCode).toBe(201);
+    const runAId = createdA.json().run.id as string;
+
+    getRequestUser.mockReturnValue(ownerB);
+    const createdB = await app.inject({
+      method: "POST",
+      url: "/api/v1/qa/runs",
+      payload: { scope: "SELECTED_PROJECTS", projectIds: [projectB] },
+    });
+    expect(createdB.statusCode).toBe(201);
+    const runBId = createdB.json().run.id as string;
+
+    getRequestUser.mockReturnValue(ownerB);
+    const asB = await app.inject({ method: "GET", url: "/api/v1/qa/runs" });
+    expect(asB.statusCode).toBe(200);
+    const bIds = (asB.json().items as Array<{ id: string }>).map((item) => item.id);
+    expect(bIds).toContain(runBId);
+    expect(bIds).not.toContain(runAId);
+
+    getRequestUser.mockReturnValue(ownerA);
+    const asA = await app.inject({ method: "GET", url: "/api/v1/qa/runs" });
+    expect(asA.statusCode).toBe(200);
+    const aIds = (asA.json().items as Array<{ id: string }>).map((item) => item.id);
+    expect(aIds).toContain(runAId);
+    expect(aIds).not.toContain(runBId);
+  });
+
+  it("lets admin and operator see every stored run", async () => {
+    const projectA = crypto.randomUUID();
+    seedProject(projectA, `qa-admin-${projectA.slice(0, 8)}`, ownerA);
+    getRequestUser.mockReturnValue(ownerA);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/qa/runs",
+      payload: { scope: "SELECTED_PROJECTS", projectIds: [projectA] },
+    });
+    expect(created.statusCode).toBe(201);
+    const runId = created.json().run.id as string;
+
+    getRequestUser.mockReturnValue(
+      signedInUser({
+        id: "44444444-4444-4444-8444-444444444444",
+        email: "admin@example.com",
+        role: "admin",
+      }),
+    );
+    const asAdmin = await app.inject({ method: "GET", url: "/api/v1/qa/runs" });
+    expect(asAdmin.statusCode).toBe(200);
+    expect(
+      (asAdmin.json().items as Array<{ id: string }>).map((item) => item.id),
+    ).toContain(runId);
+
+    getRequestUser.mockReturnValue(
+      signedInUser({
+        id: "55555555-5555-4555-8555-555555555555",
+        email: "operator@example.com",
+        role: "operator",
+      }),
+    );
+    const asOperator = await app.inject({ method: "GET", url: "/api/v1/qa/runs" });
+    expect(asOperator.statusCode).toBe(200);
+    expect(
+      (asOperator.json().items as Array<{ id: string }>).map((item) => item.id),
+    ).toContain(runId);
   });
 });
 

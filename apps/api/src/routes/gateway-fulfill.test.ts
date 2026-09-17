@@ -52,6 +52,33 @@ function ownerUser(partial: Partial<AuthUser> = {}): AuthUser {
   };
 }
 
+async function approveGatewayOperation(input: {
+  readonly entityType: string;
+  readonly action: string;
+  readonly agentId?: string;
+  readonly expectedObservations?: readonly string[];
+  readonly baselineObservations?: readonly string[];
+}) {
+  const approval = await createApprovalRequest({
+    entityType: input.entityType,
+    action: input.action,
+    requestedBy: input.agentId ?? "CODE_ENGINEER",
+    reason: `test ${input.entityType}.${input.action}`,
+    ...(input.expectedObservations
+      ? { expectedObservations: [...input.expectedObservations] }
+      : {}),
+    ...(input.baselineObservations
+      ? { baselineObservations: [...input.baselineObservations] }
+      : {}),
+  });
+  await decideApprovalRequest(approval.id, {
+    decidedBy: ownerUser().id,
+    approve: true,
+    decisionReason: "approved for test",
+  });
+  return approval;
+}
+
 beforeAll(async () => {
   app = await buildRouteTestApp(registerGatewayFulfillRoutes);
 });
@@ -110,6 +137,10 @@ describe("POST /api/v1/gateway/fulfill", () => {
       name: "analyze_repo",
       run: async () => "ok",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/gateway/fulfill",
@@ -117,6 +148,7 @@ describe("POST /api/v1/gateway/fulfill", () => {
         applicationId: "def-000",
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
+        approvalRequestId: approval.id,
       },
     });
     expect(res.statusCode).toBe(200);
@@ -139,6 +171,10 @@ describe("POST /api/v1/gateway/fulfill", () => {
       name: "analyze_repo",
       run: async () => "ok",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/gateway/fulfill",
@@ -147,6 +183,7 @@ describe("POST /api/v1/gateway/fulfill", () => {
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
         sessionOwnerId: "99999999-9999-4999-8999-999999999999",
+        approvalRequestId: approval.id,
       },
     });
     expect(res.statusCode).toBe(200);
@@ -154,6 +191,46 @@ describe("POST /api/v1/gateway/fulfill", () => {
     expect(body.principalId).toBe(ownerUser().id);
     expect(body.principalId).not.toBe("99999999-9999-4999-8999-999999999999");
   });
+
+  it.each([
+    {
+      operation: "request_agent_run" as const,
+      classification: "RECORD.EXECUTE",
+    },
+    {
+      operation: "request_test" as const,
+      classification: "RECORD.READ",
+    },
+    {
+      operation: "request_verify" as const,
+      classification: "RECORD.CREATE",
+    },
+  ])(
+    "direct fulfill of $operation without approval cannot execute ($classification)",
+    async ({ operation }) => {
+      getRequestUser.mockReturnValue(ownerUser());
+      registerTool({
+        name: "analyze_repo",
+        run: async () => "must-not-run",
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/gateway/fulfill",
+        payload: {
+          applicationId: "def-000",
+          agentId: "CODE_ENGINEER",
+          operation,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        executed: boolean;
+        outcome: { status: string };
+      };
+      expect(body.executed).toBe(false);
+      expect(body.outcome.status).toBe("APPROVAL_REQUIRED");
+    },
+  );
 });
 
 describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
@@ -178,6 +255,10 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
       name: "analyze_repo",
       run: async () => "ok",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/gateway/fulfill",
@@ -187,6 +268,7 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
         agentRuntimeStatus: "ACTIVE",
+        approvalRequestId: approval.id,
       },
     });
     expect(res.statusCode).toBe(200);
@@ -205,6 +287,10 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
       name: "analyze_repo",
       run: async () => "ok",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const requestId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const res = await app.inject({
       method: "POST",
@@ -218,6 +304,7 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
         agentRuntimeStatus: "ACTIVE",
+        approvalRequestId: approval.id,
       },
     });
     expect(res.statusCode).toBe(200);
@@ -271,6 +358,10 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
       name: "analyze_repo",
       run: async () => "ok",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/gateway/fulfill",
@@ -280,6 +371,7 @@ describe("POST /api/v1/gateway/fulfill Control Plane SERVICE bearer", () => {
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
         agentRuntimeStatus: "ACTIVE",
+        approvalRequestId: approval.id,
       },
     });
     expect(res.statusCode).toBe(200);
@@ -332,6 +424,11 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
       name: "analyze_repo",
       run: async () => "observation: 3 TypeScript files",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      expectedObservations: ["3 TypeScript files"],
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -341,6 +438,7 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
         agentId: "CODE_ENGINEER",
         operation: "request_agent_run",
         expectedObservations: ["3 TypeScript files"],
+        approvalRequestId: approval.id,
       },
     });
 
@@ -380,10 +478,11 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
       run: async () => "observation: 3 TypeScript files",
     });
 
-    // Create approval with locked verification plan
+    // Create approval with locked verification plan — operation class is
+    // RECORD.EXECUTE, not the mapped tool's DOCUMENT.READ pair.
     const approval = await createApprovalRequest({
-      entityType: "DOCUMENT",
-      action: "READ",
+      entityType: "RECORD",
+      action: "EXECUTE",
       requestedBy: "CODE_ENGINEER",
       reason: "approved analysis with locked verification plan",
       expectedObservations: ["3 TypeScript files"],
@@ -428,6 +527,12 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
       name: "analyze_repo",
       run: async () => "observation: 3 TypeScript files",
     });
+    const approval = await approveGatewayOperation({
+      entityType: "RECORD",
+      action: "EXECUTE",
+      expectedObservations: ["3 TypeScript files"],
+      baselineObservations: ["authz still enforced"],
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -438,6 +543,7 @@ describe("POST /api/v1/gateway/fulfill → CP ALLOW → receipt/audit/OBSERVED l
         operation: "request_agent_run",
         expectedObservations: ["3 TypeScript files"],
         baselineObservations: ["authz still enforced"],
+        approvalRequestId: approval.id,
       },
     });
 
