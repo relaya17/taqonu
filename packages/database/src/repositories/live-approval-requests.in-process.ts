@@ -398,7 +398,9 @@ export function createInProcessLiveApprovalClient(): LiveApprovalRpcClient {
       throw new Error("liveExecutionId does not match");
     }
     if (existing.executionStartedAt !== null) {
-      return existing;
+      throw new Error(
+        `Approval request ${id} already has execution started and cannot be marked started again`,
+      );
     }
     const updated = approvalRequestSchema.parse({
       ...existing,

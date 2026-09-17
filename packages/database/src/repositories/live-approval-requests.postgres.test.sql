@@ -182,11 +182,14 @@ begin
   if v_consumed->>'executionStartedAt' is null then
     raise exception 'mark-started must set executionStartedAt';
   end if;
-  if public.mark_live_approval_execution_started(
-    v_id, (v_decided->>'liveExecutionId')::uuid
-  )->>'executionStartedAt' is distinct from v_consumed->>'executionStartedAt' then
-    raise exception 'mark-started must be idempotent for the same liveExecutionId';
-  end if;
+  begin
+    perform public.mark_live_approval_execution_started(
+      v_id, (v_decided->>'liveExecutionId')::uuid
+    );
+    raise exception 'second mark-started must fail';
+  exception when others then
+    if sqlerrm not like '%already has execution started%' then raise; end if;
+  end;
   if public.get_live_approval_request(v_id)->>'executionStartedAt' is null then
     raise exception 'executionStartedAt must survive reload';
   end if;

@@ -67,8 +67,7 @@ import { registerSentinelRoutes } from "./routes/sentinel.js";
 import { registerPerformanceRoutes } from "./routes/performance.js";
 import { registerIntelligenceRoutes } from "./routes/intelligence.js";
 import { errorHandler } from "./middleware/error-handler.js";
-import { isPublicAtlasRoute } from "./middleware/public-routes.js";
-import { requireUser } from "./middleware/auth-guards.js";
+import { registerAtlasSessionGate } from "./middleware/atlas-session-gate.js";
 import { registerRequestTiming } from "./middleware/request-timing.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
@@ -127,10 +126,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   registerFilesystemTools();
   registerAnalyzeRepoTool();
 
-  app.addHook("onRequest", async (request) => {
-    if (isPublicAtlasRoute(request.method, request.url)) return;
-    await requireUser(app, request);
-  });
+  registerAtlasSessionGate(app);
 
   registerEventRules();
   registerControlPlaneBridge();

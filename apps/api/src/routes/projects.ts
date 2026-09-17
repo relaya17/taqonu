@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   AtlasError,
   createProjectSchema,
+  isControlPlaneRole,
   projectResumeSchema,
   projectSchema,
   uuidSchema,
@@ -29,6 +30,10 @@ import {
   resolveProjectReachability,
   listManagerPartnerReminders,
 } from "../services/central-opinion.js";
+
+function memoryOwnerFilter(user: { role: string; id: string }): string | undefined {
+  return user.role === "admin" || isControlPlaneRole(user.role) ? undefined : user.id;
+}
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
@@ -231,7 +236,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id/resume", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    const user = await assertProjectReadAccess(app, request, params.id);
     const project = osStore.getProject(params.id);
     const snapshot = osStore.getSnapshot(params.id);
     const decisions = osStore.getDecisions(params.id);
@@ -274,7 +279,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           : "Review Current State slices and resolve conflicts if any."
         : "POST /api/v1/github/discover then reconcile Current State.",
       relevantMemories: osStore
-        .getMemories(params.id)
+        .getMemories(params.id, memoryOwnerFilter(user))
         .slice(-5)
         .map((item) => item.statement),
       relevantRepositoryChanges: gitSlice ? [gitSlice.summary] : [],
@@ -285,14 +290,14 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/v1/projects/:id/context-export", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    const user = await assertProjectReadAccess(app, request, params.id);
     const project = osStore.getProject(params.id);
     if (!project) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
     const snapshot = osStore.getSnapshot(params.id);
     const decisions = osStore.getDecisions(params.id);
-    const memories = osStore.getMemories(params.id);
+    const memories = osStore.getMemories(params.id, memoryOwnerFilter(user));
     const evidence = osStore.getEvidence(params.id);
 
     const markdown = [
@@ -371,30 +376,30 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
    */
   app.get("/api/v1/projects/:id/central-opinion", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    const user = await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
-    return buildCentralOpinion(params.id);
+    return buildCentralOpinion(params.id, memoryOwnerFilter(user));
   });
 
   app.get("/api/v1/projects/:id/central-opinion.html", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    const user = await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
-    const opinion = buildCentralOpinion(params.id);
+    const opinion = buildCentralOpinion(params.id, memoryOwnerFilter(user));
     return reply.type("text/html; charset=utf-8").send(opinion.html);
   });
 
   app.get("/api/v1/projects/:id/central-opinion.pdf", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    const user = await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
-    const opinion = buildCentralOpinion(params.id);
+    const opinion = buildCentralOpinion(params.id, memoryOwnerFilter(user));
     const bytes = buildCentralOpinionPdfBytes(opinion);
     const slug = opinion.projectName.replace(/[^\w.-]+/g, "_").slice(0, 40);
     return reply
@@ -409,7 +414,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   /** Manager-partner reminders (process/studio memories the agent tracks). */
   app.get("/api/v1/projects/:id/manager-reminders", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectReadAccess(app, request, params.id);
+    const user = await assertProjectReadAccess(app, request, params.id);
     if (!osStore.getProject(params.id)) {
       throw new AtlasError("NOT_FOUND", "Project not found");
     }
@@ -417,7 +422,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     return {
       projectId: params.id,
       reachability,
-      reminders: listManagerPartnerReminders(params.id),
+      reminders: listManagerPartnerReminders(params.id, memoryOwnerFilter(user)),
       note: "Agent acts as management partner — tracks process audits and studio notes in Memory for follow-up.",
     };
   });

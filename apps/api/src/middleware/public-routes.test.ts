@@ -39,5 +39,12 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     expect(
       isPublicAtlasRoute("POST", "/api/v1/synthetic/scenarios/closed-loop"),
     ).toBe(false);
+    expect(isPublicAtlasRoute("GET", "/api/v1/internal/kill-switches")).toBe(
+      false,
+    );
+    expect(isPublicAtlasRoute("POST", "/api/v1/internal/kill-switches")).toBe(
+      false,
+    );
+    expect(isPublicAtlasRoute("GET", "/api/v1/internal/approvals")).toBe(false);
   });
 });

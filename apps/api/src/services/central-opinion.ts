@@ -214,11 +214,14 @@ export function syncProcessAuditToMemory(
   return memory;
 }
 
-export function listManagerPartnerReminders(projectId: string | null): string[] {
+export function listManagerPartnerReminders(
+  projectId: string | null,
+  ownerId?: string,
+): string[] {
   const memories =
     projectId != null
-      ? osStore.getMemories(projectId)
-      : osStore.getMemories("global");
+      ? osStore.getMemories(projectId, ownerId)
+      : osStore.getMemories("global", ownerId);
   return memories
     .filter(
       (m) =>
@@ -232,14 +235,14 @@ export function listManagerPartnerReminders(projectId: string | null): string[] 
     .map((m) => `[${m.type}] ${m.statement}`);
 }
 
-export function buildCentralOpinion(projectId: string): CentralOpinion {
+export function buildCentralOpinion(projectId: string, ownerId?: string): CentralOpinion {
   const project = osStore.getProject(projectId);
   if (!project) {
     throw new Error("Project not found");
   }
   const reachability = resolveProjectReachability(projectId);
   const audits = listProcessAuditsForProject(projectId);
-  const reminders = listManagerPartnerReminders(projectId);
+  const reminders = listManagerPartnerReminders(projectId, ownerId);
   const now = new Date().toISOString();
 
   // `audits` is every stored E2E run for this project (rememberProcessAuditId
@@ -272,7 +275,7 @@ export function buildCentralOpinion(projectId: string): CentralOpinion {
     }
   }
 
-  for (const m of osStore.getMemories(projectId).slice(-30)) {
+  for (const m of osStore.getMemories(projectId, ownerId).slice(-30)) {
     if (m.type === "BUG" || m.priority === "CRITICAL" || m.priority === "HIGH") {
       findings.push({
         source: `memory:${m.type}`,

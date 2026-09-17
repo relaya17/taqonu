@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { AuthUser } from "@atlas/shared";
+import { memorySchema } from "@atlas/shared";
 
 /**
  * CROSS-TENANT ISOLATION ATTACK SUITE
@@ -99,10 +100,12 @@ vi.mock("../services/cloud-identity.js", () => ({
 const { registerMemoryRoutes } = await import("../routes/memory.js");
 const { registerProjectRoutes } = await import("../routes/projects.js");
 const { registerEvidenceRoutes } = await import("../routes/evidence.js");
+const { registerCommercialValidationRoutes } = await import("../routes/commercial.js");
 const { buildRouteTestApp } = await import(
   "../routes/test-helpers/build-route-test-app.js"
 );
 const { setAuditLogPathForTests } = await import("../services/audit-log.js");
+const { osStore } = await import("../store/os-store.js");
 const { enforceAgentToolAuthorization, resolveAgentIdentity } = await import(
   "../services/agent-runtime-authz.js"
 );
@@ -273,6 +276,7 @@ beforeAll(async () => {
       await registerMemoryRoutes(instance);
       await registerProjectRoutes(instance);
       await registerEvidenceRoutes(instance);
+      await registerCommercialValidationRoutes(instance);
     },
     { SUPABASE_SERVICE_ROLE_KEY: "replace-me" },
   );
@@ -468,23 +472,14 @@ describe("POST /api/v1/memory — cross-tenant write / parameter tampering", () 
     expect(idsA).not.toContain(created.record.id);
   });
 
-  it("PARAMETER TAMPERING: writing into owner A's projectId does not make it visible to A", async () => {
+  it("PARAMETER TAMPERING: writing into owner A's projectId is denied at the project write gate", async () => {
     signInAs(ownerB);
     const created = await createMemory({
       statement: "BRAVO-PROJECT-INJECTION attacker note aimed at tenant A's project bucket",
       projectId: projectA.id,
     });
-    expect(created.statusCode).toBe(201);
-    expect(created.record.ownerId).toBe(ownerB.id);
-
-    signInAs(ownerA);
-    const res = await app.inject({
-      method: "GET",
-      url: `/api/v1/memory?mode=retrieve&budget=40&projectId=${projectA.id}`,
-    });
-    expect(res.statusCode).toBe(200);
-    const idsA = res.json<ListEnvelope<MemoryRecord>>().items.map((m) => m.id);
-    expect(idsA).not.toContain(created.record.id);
+    expect(created.statusCode).toBe(403);
+    expectNoLeakOf(created.body, [SECRET_A_STATEMENT, "ALPHA-PROJECT-SECRET"]);
   });
 
   it("owner A's memory is unchanged after the write attacks above", async () => {
@@ -677,6 +672,77 @@ describe("/api/v1/projects — cross-tenant read, IDOR and write", () => {
         workspaceRootA,
       ]);
     }
+  });
+
+  it("A's context-export does not include another owner's planted project-bucket memory", async () => {
+    const planted =
+      "BRAVO-EXPORT-SECRET attacker statement planted into tenant A project bucket";
+    osStore.addMemory(
+      memorySchema.parse({
+      id: crypto.randomUUID(),
+      ownerId: ownerB.id,
+      type: "LESSON",
+      projectId: projectA.id,
+      statement: planted,
+      reason: ["cross-tenant-isolation-test"],
+      status: "ACTIVE",
+      confidence: 0.5,
+      category: "GENERATED_REASONING",
+      epistemicState: "PROPOSED",
+      observationMode: "INFERRED",
+      source: "cross-tenant-isolation-test",
+      sourceType: "USER",
+      sourceId: null,
+      evidence: [],
+      supersededBy: null,
+      validFrom: null,
+      validUntil: null,
+      observedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: ownerB.email,
+      scope: "PROJECT",
+      priority: "MEDIUM",
+      agentId: null,
+      allowedAgents: null,
+    }),
+    );
+    signInAs(ownerA);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectA.id}/context-export`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain(planted);
+    expect(res.body).toContain(SECRET_A_STATEMENT);
+  });
+});
+
+describe("GET /api/v1/projects/:id/verdict and /report — IDOR", () => {
+  it("owner B cannot read owner A's verdict or reports", async () => {
+    signInAs(ownerB);
+    for (const path of [
+      `/api/v1/projects/${projectA.id}/verdict`,
+      `/api/v1/projects/${projectA.id}/report`,
+      `/api/v1/projects/${projectA.id}/executive-report`,
+    ]) {
+      const res = await app.inject({ method: "GET", url: path });
+      expect(res.statusCode).toBe(403);
+      expectNoLeakOf(res.body, [
+        SECRET_A_STATEMENT,
+        "ALPHA-PROJECT-SECRET",
+        workspaceRootA,
+      ]);
+    }
+  });
+
+  it("owner A can read their own verdict", async () => {
+    signInAs(ownerA);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectA.id}/verdict`,
+    });
+    expect(res.statusCode).toBe(200);
   });
 });
 

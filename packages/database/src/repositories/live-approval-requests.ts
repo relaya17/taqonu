@@ -94,7 +94,7 @@ function mapRpcError(error: { message: string }): never {
     throw new LiveApprovalPersistenceError("NOT_FOUND", message);
   }
   if (
-    /already been decided|not APPROVED|not CLAIMED|not PENDING|REVOKED|expired at|authorizes |cannot be revoked|cannot be redeemed|cannot be claimed|requires presenting that artifact|claim requires|separation of duties|liveExecutionId|FULFILLED requires|FAILED requires|OUTCOME_UNKNOWN requires|already been finalized|conflicting terminal|invalid terminal|cannot be replaced/i.test(
+    /already been decided|not APPROVED|not CLAIMED|not PENDING|REVOKED|expired at|authorizes |cannot be revoked|cannot be redeemed|cannot be claimed|requires presenting that artifact|claim requires|separation of duties|liveExecutionId|FULFILLED requires|FAILED requires|OUTCOME_UNKNOWN requires|already been finalized|conflicting terminal|invalid terminal|cannot be replaced|already has execution started/i.test(
       message,
     )
   ) {

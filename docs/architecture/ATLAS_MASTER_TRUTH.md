@@ -74,13 +74,28 @@ performed in this environment).
 
 ## 6. Canonical Execution Architecture
 
-`executeGovernedAction → executeTool` is the only production execution path.
-It carries identity → policy → risk → approval → artifact-integrity →
-execution → verification → audit through every governed action. No
-alternate or parallel execution path was found. The legacy
-`ApprovalExecutionRepository` ("Unit 2") is explicitly parked per ADR-023
-(`83ed006`) and lint-guarded against reactivation (`c55198c`) — see §14.
-**Status: IMPLEMENTED — UNVERIFIED.**
+`executeGovernedAction → executeTool` is the only production **catalog tool**
+path. It carries identity → policy → risk → approval → artifact-integrity →
+execution → verification → audit. The Tool Runtime has exactly one production
+call site (`governed-execution.ts`). The legacy `ApprovalExecutionRepository`
+("Unit 2") remains parked per ADR-023.
+
+That spine is **not** the only mutation path in the API:
+
+| Path | Classification |
+| --- | --- |
+| `executeGovernedAction` / gateway fulfill / live-human claim | GOVERNED AND CORRECT (tool + occupancy) |
+| Tenant Studio `PUT /studio/file` for non-Atlas-self projects | INTENTIONALLY OUTSIDE governed tool execution: signed-in project write + workspace containment. Atlas-self writes mint live approval. |
+| `POST /remediation/drafts/:id/apply` and `auto-apply-low` | INTENTIONALLY OUTSIDE occupancy: `enforceEntityWrite` + PatchArtifact. LOW auto-apply is a documented product flag, not `live_approval_requests`. |
+| `POST /engineering/loop` start (`spawnSync`) | INTENTIONALLY OUTSIDE occupancy: identity + `authorizeEntityAction(..., approved: true)`. Patch apply later uses live-human occupancy. Kill Switch is not consulted on **start**. |
+| Gateway `request_agent_run` when tool pair ≠ operation pair | GOVERNED AND CORRECT for the operation approval: consume-before-tool, then `executeGovernedAction` without that approval id (ADR-023). |
+
+Do not read this section as “no process may mutate disk except through
+`executeTool`.” Occupancy applies to live `ApprovalRequest` execution.
+Human project writes and remediation PatchArtifact apply are a different
+authorization model (`enforceEntityWrite` / project access).
+**Status: IMPLEMENTED** (static + tests). Production occupancy vs live
+Postgres remains an evidence gap.
 
 ## 7. Control Plane
 

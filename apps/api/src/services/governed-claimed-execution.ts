@@ -142,6 +142,10 @@ export interface RunGovernedClaimedExecutionInput<T> {
   ) => Promise<GovernedExecuteOnceResult<T>>;
 }
 
+function isAlreadyStartedMarkError(reason: string): boolean {
+  return /already has execution started/i.test(reason);
+}
+
 const startClaims = new Set<string>();
 
 export function resetGovernedClaimStartsForTests(): void {
@@ -489,6 +493,16 @@ export async function runGovernedClaimedExecution<T>(
     } catch (error) {
       startClaims.delete(handle.liveExecutionId);
       const reason = error instanceof Error ? error.message : String(error);
+      if (isAlreadyStartedMarkError(reason)) {
+        const latest = await getApprovalRequest(claimed.id);
+        return {
+          status: "OUTCOME_UNKNOWN",
+          reason: "execution already started for this liveExecutionId",
+          approval: handle,
+          gate,
+          approvalRecord: latest ?? claimed,
+        };
+      }
       const finalized = await finalizeClaimed(claimed, "FAILED", { reason });
       if ("incomplete" in finalized) {
         return {

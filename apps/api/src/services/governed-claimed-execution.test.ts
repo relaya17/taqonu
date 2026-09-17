@@ -732,4 +732,37 @@ describe("runGovernedClaimedExecution", () => {
     expect(statuses).toContain("EXECUTED");
     expect(runs).toBeLessThanOrEqual(1);
   });
+
+  it("a second process with empty startClaims does not executeOnce after STARTED", async () => {
+    const approved = await approveCreate();
+    const claimed = await claimApprovalRequest(approved.id, {
+      entityType: "RECORD",
+      action: "CREATE",
+      executorId: AGENT,
+      artifactHash: ARTIFACT,
+    });
+    await markApprovalExecutionStarted(
+      claimed.id,
+      claimed.liveExecutionId as string,
+    );
+    resetGovernedClaimStartsForTests();
+    let runs = 0;
+    const result = await runGovernedClaimedExecution({
+      executorId: AGENT,
+      actor,
+      entityType: "RECORD",
+      action: "CREATE",
+      artifactHash: ARTIFACT,
+      approvalRequestId: approved.id,
+      requestId: "req-other-process",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      routeLabel: "test.helper.other-process",
+      executeOnce: async () => {
+        runs += 1;
+        return { kind: "SUCCESS", value: "dup", outputEvidence: "dup" };
+      },
+    });
+    expect(runs).toBe(0);
+    expect(result.status).toBe("OUTCOME_UNKNOWN");
+  });
 });

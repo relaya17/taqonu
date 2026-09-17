@@ -11,6 +11,7 @@ import { authorizeEntityAction, redactSecrets } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import { assertProjectWriteAccess } from "../services/project-access.js";
 import {
   appendDomainEvent,
   approveMemory,
@@ -117,6 +118,10 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     }
 
     const body = createMemorySchema.parse(request.body);
+
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    }
     const now = new Date().toISOString();
     const classified = classifyMemoryType(body.statement);
 

@@ -385,8 +385,8 @@ export async function claimApprovalRequestAsLiveHuman(
 }
 
 /**
- * Marks Stage 5 as started on a CLAIMED approval. Same `liveExecutionId` is
- * idempotent; a different id conflicts.
+ * Marks Stage 5 as started on a CLAIMED approval. A second mark for the same
+ * liveExecutionId fails closed so two processes cannot both run executeOnce.
  */
 export async function markApprovalExecutionStarted(
   id: string,

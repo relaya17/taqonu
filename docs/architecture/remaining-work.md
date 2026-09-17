@@ -129,13 +129,15 @@ Handoff: production evidence. No rewrite of accepted commits. No secrets committ
 | Production PostgreSQL | **INFRASTRUCTURE BLOCKER** | `DATABASE_URL` host `localhost:54322`; TCP closed. `SUPABASE_*` service/anon keys are placeholders (`replace-me`). `environment:gate` `auditLogPersistence.live=false`. API health remains local JSON. |
 | Ubuntu + Tailscale + systemd VM | **INFRASTRUCTURE BLOCKER** | Tailscale peer `ip-172-31-42-218` (`100.93.71.107`) **offline**, last seen ~8d; `tailscale ping` timed out. AWS CLI not installed. Do not fabricate production VM health. |
 | Studio production + browser Apply E2E | **EVIDENCE GAP** + **CREDENTIAL** | `http://localhost:3000/he/studio` HTTP 200 (binds `::1`, not `127.0.0.1`). `NEXT_PUBLIC_SUPABASE_ANON_KEY` is `replace-me`. Signed-in two-identity Apply is not live-proven. SoD not weakened. |
-| Multi-process occupancy vs live Postgres | **EVIDENCE GAP** blocked by Postgres TCP | In-process occupancy tests remain the current proof. `startClaims` is process-local. |
+| Multi-process occupancy vs live Postgres | **EVIDENCE GAP** blocked by Postgres TCP | In-process exclusive `markExecutionStarted` (second mark fails). SQL migration `20260918010000_mark_started_exclusive.sql` matches. Live multi-node Postgres proof still unavailable (`localhost:54322` closed). |
 | Spec consume-before-policy vs live claim path | **DOCUMENTATION/CONTRACT MISMATCH** (spec stale for matching pairs) | Matching execute uses `claim → recheck → STARTED → execute → finalize`. Gateway mismatch (`RECORD.EXECUTE` vs `DOCUMENT.READ`) still consumes the operation approval first. ADR-023 updated. Code not reverted. |
 | Local Docker / supabase CLI | **INFRASTRUCTURE BLOCKER** | Docker Desktop daemon not running (`dockerDesktopLinuxEngine` pipe missing). `supabase` CLI not on PATH. Cannot start local Postgres `:54322` from this workstation either. |
 | Memory omit-`agentId` retrieve | **POLICY DECISION** | `isVisibleToAgent` returns true when `allowedAgents` is set but no requester id is supplied (human conversation / list). Test: “includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)”. Not a silent bug. |
 | ADR-022 sibling execute | **POLICY DECISION** | `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`. No shortcut fulfill. |
 | Sigstore / cosign | **INFRASTRUCTURE BLOCKER** / **EXTERNAL PROVIDER** | `ATLAS_SIGNING_IDENTITY` unset; `cosign` not on PATH. `pnpm supply-chain:sign` REFUSE. SBOM VALID, UNSIGNED, `releaseReady: false`. |
 | External pentest | **EXTERNAL VALIDATION** | Scope package only. Not replaced by unit tests. |
+
+**2026-09-18 remediations (code, local tests):** Control `/api/v1/internal/*` session gate; exclusive STARTED mark; memory export/write owner filter; verdict/report `assertProjectReadAccess`. Live Postgres/VM proof still missing.
 
 ---
 

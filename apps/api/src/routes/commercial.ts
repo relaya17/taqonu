@@ -39,6 +39,7 @@ import {
 import { recordSystemHealthReport } from "./engineering-audit.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import {
+  assertProjectReadAccess,
   assertProjectWriteAccess,
   bindProjectOwner,
 } from "../services/project-access.js";
@@ -94,6 +95,7 @@ export async function registerCommercialValidationRoutes(
 
   app.get("/api/v1/projects/:id/verdict", async (request) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     const q = z
       .object({
         workspaceRoot: z.string().max(1000).optional(),
@@ -116,6 +118,7 @@ export async function registerCommercialValidationRoutes(
 
   app.get("/api/v1/projects/:id/report", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     const q = z
       .object({
         workspaceRoot: z.string().max(1000).optional(),
@@ -146,6 +149,7 @@ export async function registerCommercialValidationRoutes(
 
   app.get("/api/v1/projects/:id/executive-report", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
+    await assertProjectReadAccess(app, request, params.id);
     const q = z
       .object({
         workspaceRoot: z.string().max(1000).optional(),

@@ -457,7 +457,7 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
     ).rejects.toMatchObject({ kind: "NOT_FOUND" });
   });
 
-  it("marks execution started once, idempotently for the same liveExecutionId", async () => {
+  it("marks execution started once; a second mark for the same liveExecutionId fails closed", async () => {
     const { repository } = repositoryFromClient();
     const claimed = await repository.claim((await approve(repository)).id, matching);
     const started = await repository.markExecutionStarted(
@@ -465,11 +465,9 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
       claimed.liveExecutionId as string,
     );
     expect(started.executionStartedAt).toEqual(expect.any(String));
-    const replayed = await repository.markExecutionStarted(
-      claimed.id,
-      claimed.liveExecutionId as string,
-    );
-    expect(replayed.executionStartedAt).toBe(started.executionStartedAt);
+    await expect(
+      repository.markExecutionStarted(claimed.id, claimed.liveExecutionId as string),
+    ).rejects.toThrow(/already has execution started/);
     await expect(
       repository.markExecutionStarted(claimed.id, "00000000-0000-4000-8000-000000000099"),
     ).rejects.toThrow(/liveExecutionId/);
@@ -482,6 +480,23 @@ describe("LiveApprovalRequestRepository claim/mark/finalize", () => {
     await expect(
       repository.markExecutionStarted(pending.id, "00000000-0000-4000-8000-000000000099"),
     ).rejects.toThrow(/not CLAIMED/);
+  });
+
+  it("two concurrent markExecutionStarted calls succeed for exactly one claimant", async () => {
+    const { repository } = repositoryFromClient();
+    const claimed = await repository.claim((await approve(repository)).id, matching);
+    const id = claimed.liveExecutionId as string;
+    const results = await Promise.allSettled([
+      repository.markExecutionStarted(claimed.id, id),
+      repository.markExecutionStarted(claimed.id, id),
+    ]);
+    const fulfilled = results.filter((row) => row.status === "fulfilled");
+    const rejected = results.filter((row) => row.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toMatch(
+      /already has execution started/,
+    );
   });
 
   it("finalizes CLAIMED to FULFILLED, FAILED, and OUTCOME_UNKNOWN", async () => {
