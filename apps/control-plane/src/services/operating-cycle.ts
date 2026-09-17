@@ -70,7 +70,7 @@ export function agentMayExecute(status: AgentRuntimeControl): boolean {
   return !NON_EXECUTABLE.has(status);
 }
 
-export interface OperatingCycleInput {
+export type OperatingCycleInput = {
   readonly actorId: string;
   readonly actorKind: "USER" | "AGENT" | "SYSTEM";
   readonly applicationId: string;
@@ -94,6 +94,18 @@ export interface OperatingCycleInput {
   readonly delegationHopCount?: number;
   readonly reauthenticated?: boolean;
   readonly requiresReauth?: boolean;
+  readonly toolRisk?: "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "DESTRUCTIVE";
+};
+
+export const OPERATING_RISK_BANDS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+export type OperatingRiskBand = (typeof OPERATING_RISK_BANDS)[number];
+
+export interface OperatingRiskAssessment {
+  readonly band: OperatingRiskBand;
+  readonly score: number;
+  readonly bucket: "CONTINUE" | "REQUIRE_APPROVAL" | "DENY";
+  readonly reason: string;
+  readonly toolRisk: "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "DESTRUCTIVE" | "UNSPECIFIED";
 }
 
 export interface OperatingCycleResult {
@@ -104,6 +116,57 @@ export interface OperatingCycleResult {
   readonly epistemic: EpistemicGap;
   readonly executed: false;
   readonly verificationRequired: boolean;
+  readonly risk?: OperatingRiskAssessment;
+}
+
+export function assessOperatingCycleRisk(
+  input: OperatingCycleInput,
+): OperatingRiskAssessment {
+  const readOnly = input.readOnly === true;
+  const toolRisk = input.toolRisk ?? (readOnly ? "READ_ONLY" : "UNSPECIFIED");
+  const evidenceCount = input.evidenceCount ?? 0;
+  const evidenceStale = input.evidenceStale === true;
+
+  let score = 0;
+  if (toolRisk === "READ_ONLY") score = 15;
+  else if (toolRisk === "LOW_RISK_WRITE") score = 40;
+  else if (toolRisk === "HIGH_RISK_WRITE") score = 65;
+  else if (toolRisk === "DESTRUCTIVE") score = 90;
+  else score = readOnly ? 15 : 35;
+
+  if (!readOnly && evidenceCount <= 0) score += 15;
+  if (evidenceStale) score += 10;
+  score = Math.min(100, score);
+
+  const band: OperatingRiskBand =
+    score >= 90 ? "CRITICAL" : score >= 70 ? "HIGH" : score >= 40 ? "MEDIUM" : "LOW";
+
+  if (toolRisk === "DESTRUCTIVE" && input.approved !== true) {
+    return {
+      band,
+      score,
+      bucket: "REQUIRE_APPROVAL",
+      reason: `RISK ${band} (score ${score}): destructive operations require human approval`,
+      toolRisk,
+    };
+  }
+  if (toolRisk === "HIGH_RISK_WRITE" && !readOnly && input.approved !== true) {
+    return {
+      band,
+      score,
+      bucket: "REQUIRE_APPROVAL",
+      reason: `RISK ${band} (score ${score}): high-risk writes require human approval`,
+      toolRisk,
+    };
+  }
+
+  return {
+    band,
+    score,
+    bucket: "CONTINUE",
+    reason: `RISK ${band} (score ${score}) from ${toolRisk}`,
+    toolRisk,
+  };
 }
 
 export function evaluateOperatingCycle(
@@ -152,11 +215,27 @@ export function evaluateOperatingCycle(
     return deny("POLICY", "Capability is not in the agent's allow-list", stages, input);
   }
   stages.push("POLICY");
+  const risk = assessOperatingCycleRisk(input);
+  if (risk.bucket === "DENY") {
+    return deny("RISK", risk.reason, stages, input, risk);
+  }
+  if (risk.bucket === "REQUIRE_APPROVAL") {
+    return {
+      decision: "REQUIRE_APPROVAL",
+      blockedAt: "RISK",
+      reason: risk.reason,
+      stagesPassed: [...stages, "RISK"],
+      epistemic: epistemicOf(input),
+      executed: false,
+      verificationRequired: true,
+      risk,
+    };
+  }
   stages.push("RISK");
 
   const sufficiency = assessEvidenceSufficiency(sufficiencyArgs(input));
   if (sufficiency.decision === "HALT") {
-    return deny("EVIDENCE", sufficiency.reason, stages, input);
+    return deny("EVIDENCE", sufficiency.reason, stages, input, risk);
   }
 
   const hops = input.delegationHopCount ?? 0;
@@ -169,6 +248,7 @@ export function evaluateOperatingCycle(
       epistemic: epistemicOf(input),
       executed: false,
       verificationRequired: true,
+      risk,
     };
   }
 
@@ -182,6 +262,7 @@ export function evaluateOperatingCycle(
       epistemic: epistemicOf(input),
       executed: false,
       verificationRequired: false,
+      risk,
     };
   }
 
@@ -195,6 +276,7 @@ export function evaluateOperatingCycle(
       epistemic: epistemicOf(input),
       executed: false,
       verificationRequired: true,
+      risk,
     };
   }
 
@@ -206,6 +288,7 @@ export function evaluateOperatingCycle(
       "Approved plan cannot execute until a post-action verification plan is defined — a successful command is not a successful repair",
       stages,
       input,
+      risk,
     );
   }
 
@@ -218,6 +301,7 @@ export function evaluateOperatingCycle(
     epistemic: epistemicOf(input),
     executed: false,
     verificationRequired: false,
+    risk,
   };
 }
 
@@ -255,6 +339,7 @@ function deny(
   reason: string,
   stages: readonly OperatingCycleStage[],
   input: OperatingCycleInput,
+  risk?: OperatingRiskAssessment,
 ): OperatingCycleResult {
   return {
     decision: "DENY",
@@ -264,5 +349,6 @@ function deny(
     epistemic: epistemicOf(input),
     executed: false,
     verificationRequired: blockedAt === "VERIFY",
+    ...(risk ? { risk } : {}),
   };
 }

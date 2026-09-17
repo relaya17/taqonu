@@ -66,7 +66,10 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         ...(q.agentId !== undefined ? { requestingAgentId: q.agentId } : {}),
       };
       if (q.query !== undefined) retrieveInput.query = q.query;
-      const result = retrieveMemories(retrieveInput);
+      const result = await retrieveMemories({
+        ...retrieveInput,
+        embeddingEnv: app.atlasEnv,
+      });
       atlasMetrics.record(
         "retrieval_hit_rate",
         result.items.length > 0 ? 1 : 0,
@@ -79,6 +82,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         total: result.items.length,
         truncated: result.truncated,
         pipeline: "retrieve",
+        embeddingKind: result.embeddingKind,
       };
     }
 
@@ -176,6 +180,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     appendDomainEvent({
       type: "memory.created",
       projectId: memory.projectId,
+      ownerId: identity.ownerId,
       epistemicState: memory.epistemicState,
       payload: {
         memoryId: memory.id,
@@ -328,9 +333,10 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         (byEpistemic[m.epistemicState] ?? 0) + 1;
     }
 
-    const retrieve = retrieveMemories({
+    const retrieve = await retrieveMemories({
       projectId: q.projectId ?? null,
       budget: q.budget ?? 8,
+      embeddingEnv: app.atlasEnv,
       ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
 

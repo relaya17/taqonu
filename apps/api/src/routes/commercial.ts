@@ -375,7 +375,7 @@ export async function registerCommercialValidationRoutes(
           },
         ],
         reconcile: body.reconcile ?? true,
-      });
+      }, user.id);
       const project = result.projects[0];
       if (!project) {
         throw new AtlasError("INTERNAL_ERROR", "GitHub import produced no project");

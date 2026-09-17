@@ -7,6 +7,19 @@ companion draft SQL file is `supabase/migrations/DRAFT_multi_tenant_orgs.sql`
 (note the `DRAFT_` prefix — it is deliberately not a real timestamped
 migration and is not picked up by the migration runner).
 
+**Production tenancy (C1, 2026-09-17):** the intended live isolation model is
+**user-level `owner_id` / `ownerId`**, not this org schema. ADR-012 lists
+full multi-tenant org RBAC as a non-goal. Architecture v1.0 keys tenant rows
+by `owner_id` (or project ownership). Remaining-work Phase 03 is complete for
+the existing identity model with no redesign. Open questions in §7 of this
+document are unanswered product decisions. This draft therefore **stays
+draft**: do not apply the SQL; do not add `org_id` to owner-scoped tables;
+do not weaken `ownerId` filters. Org tables remain a future, separately
+approved increment. Live Supabase/Postgres apply is also
+BLOCKED BY EXTERNAL DEPENDENCY even if this design were later approved.
+
+## 1. Why this is needed
+
 ## 1. Why this is needed
 
 Every table in the current schema (`supabase/migrations/20260811000000_init.sql`

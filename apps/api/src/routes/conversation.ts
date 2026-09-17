@@ -16,6 +16,8 @@ import {
   AtlasError,
   agentRunSchema,
   createConversationMessageSchema,
+  conversationThreadListQuerySchema,
+  conversationThreadParamsSchema,
   type EpistemicState,
 } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
@@ -29,6 +31,7 @@ import {
   resolveTier,
 } from "../services/plan-quota.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import { canReadProjectScoped } from "../services/project-access.js";
 import {
   resolveAtlasSurfaceKnowledgeScope,
@@ -39,7 +42,6 @@ import {
   insufficientEvidenceAnswer,
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { assertLlmEgressAllowed } from "../services/egress-gate.js";
 
 const AGENT_MEMORY_BUDGET = 12;
@@ -113,6 +115,13 @@ function llmEnvForProvider(
   return llmEnvOverride;
 }
 
+function formatThreadHistory(turns: readonly ThreadTurn[]): string {
+  return turns
+    .slice(-20)
+    .map((turn) => `${turn.role}: ${turn.content.slice(0, 2000)}`)
+    .join("\n");
+}
+
 export async function registerConversationRoutes(
   app: FastifyInstance,
 ): Promise<void> {
@@ -128,8 +137,34 @@ export async function registerConversationRoutes(
     const now = new Date().toISOString();
     const locale = body.locale ?? "en";
     const threadId = body.threadId ?? crypto.randomUUID();
+    const priorTurns = [...osStore.getConversationThread(threadId)] as ThreadTurn[];
+    const existingMeta = osStore.getConversationThreadMeta(threadId);
+    if (existingMeta && existingMeta.ownerId !== user.id) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Conversation thread is owned by another user",
+        { statusCode: 403 },
+      );
+    }
+    if (!existingMeta && priorTurns.length > 0) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Conversation thread is not owned",
+        { statusCode: 403 },
+      );
+    }
+    if (
+      existingMeta?.projectId &&
+      !canReadProjectScoped(user, existingMeta.projectId)
+    ) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Conversation thread is not readable",
+        { statusCode: 403 },
+      );
+    }
     const messageId = crypto.randomUUID();
-    const projectId = body.projectId ?? null;
+    const projectId = body.projectId ?? existingMeta?.projectId ?? null;
     // Tenant boundary (Task 6 fix): projectId is client-supplied and must
     // not be trusted for project-scoped reads (snapshot/decisions/evidence/
     // knowledge/portfolio list). Mirrors the canReadProjectScoped convention
@@ -178,10 +213,11 @@ export async function registerConversationRoutes(
     // tenant's conversation never surfaces another tenant's memories.
     // Admins bypass, same convention as memory.ts.
     const callerOwnerId = user.role === "admin" ? undefined : user.id;
-    const memoryContextResult = buildMemoryContext({
+    const memoryContextResult = await buildMemoryContext({
       projectId,
       query: body.message,
       budget: AGENT_MEMORY_BUDGET,
+      embeddingEnv: app.atlasEnv,
       ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
     const { memories, ...memoryContext } = memoryContextResult;
@@ -264,6 +300,9 @@ export async function registerConversationRoutes(
         untrustedBlocks: [
           { label: "evidence", content: evidenceBlock },
           { label: "context", content: context },
+          ...(priorTurns.length > 0
+            ? [{ label: "history", content: formatThreadHistory(priorTurns) }]
+            : []),
         ],
       });
       if (layered.flagged) {
@@ -322,7 +361,7 @@ export async function registerConversationRoutes(
         epistemicState: epistemicLabel,
         startedAt: now,
         completedAt: now,
-        createdBy: "user",
+        createdBy: user.id,
       });
       runId = run.id;
       osStore.addAgentRun(run);
@@ -366,7 +405,10 @@ export async function registerConversationRoutes(
       evidenceRefs,
       at: now,
     });
-    osStore.setConversationThread(threadId, history);
+    osStore.setConversationThread(threadId, history, {
+      ownerId: user.id,
+      projectId: existingMeta?.projectId ?? authorizedProjectId,
+    });
     recordAgentMessageUsage();
 
     return reply.status(201).send({
@@ -395,12 +437,42 @@ export async function registerConversationRoutes(
     });
   });
 
+  app.get("/api/v1/conversation/threads", async (request) => {
+    const user = await requireUser(app, request);
+    osStore.ensureLoaded();
+    const query = conversationThreadListQuerySchema.parse(request.query);
+    if (query.projectId && !canReadProjectScoped(user, query.projectId)) {
+      return { items: [] };
+    }
+    const items = osStore.listConversationThreadsByOwner(
+      user.id,
+      query.projectId ?? undefined,
+    );
+    return { items };
+  });
+
   app.get<{ Params: { threadId: string } }>(
     "/api/v1/conversation/threads/:threadId",
     async (request) => {
+      const user = await requireUser(app, request);
       osStore.ensureLoaded();
-      const items = osStore.getConversationThread(request.params.threadId);
-      return { threadId: request.params.threadId, items };
+      const { threadId } = conversationThreadParamsSchema.parse(request.params);
+      const meta = osStore.getConversationThreadMeta(threadId);
+      if (!meta || meta.ownerId !== user.id) {
+        throw new AtlasError("NOT_FOUND", "Thread not found", {
+          statusCode: 404,
+        });
+      }
+      if (meta.projectId && !canReadProjectScoped(user, meta.projectId)) {
+        throw new AtlasError("NOT_FOUND", "Thread not found", {
+          statusCode: 404,
+        });
+      }
+      return {
+        threadId,
+        projectId: meta.projectId,
+        items: osStore.getConversationThread(threadId),
+      };
     },
   );
 }

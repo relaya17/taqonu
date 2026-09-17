@@ -1,13 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AtlasError } from "@atlas/shared";
+import { AtlasError, AUDIT_VERIFY_CONTROL_PATH } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
-import { requireAdmin } from "../middleware/auth-guards.js";
-import { isControlPlaneServiceAuthorization } from "../services/governed-lifecycle-handoff.js";
+import { requireAdmin, requireUser } from "../middleware/auth-guards.js";
+import {
+  isControlPlaneServiceAuthorization,
+  requireControlPlaneService,
+} from "../services/governed-lifecycle-handoff.js";
 import {
   countAuditLogLines,
   listUnifiedAuditEntries,
   resolveAuditLogPath,
+  verifyAuditLogChain,
 } from "../services/audit-log.js";
 import {
   cpAuditEntrySchema,
@@ -65,6 +69,33 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Per-tenant audit visibility (C1): signed-in callers see only unified
+   * entries they themselves performed. Does not loosen GET /audit, which
+   * remains admin/operator and cross-tenant by design.
+   */
+  app.get("/api/v1/audit/mine", async (request) => {
+    const user = await requireUser(app, request);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(2000).optional(),
+      })
+      .parse(request.query ?? {});
+    const unified = listUnifiedAuditEntries({
+      actorId: user.id,
+      limit: query.limit ?? 200,
+    });
+    const unifiedSorted = [...unified].sort(
+      (a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime(),
+    );
+    return {
+      items: [],
+      total: 0,
+      unified: unifiedSorted,
+      note: "Caller-scoped unified audit only. Platform-wide trail remains GET /api/v1/audit (admin).",
+    };
+  });
+
+  /**
    * POST /api/v1/audit/cp-import
    *
    * Import Control Plane observational entries into the canonical API file.
@@ -98,5 +129,20 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
         { statusCode: 400 },
       );
     }
+  });
+
+  /**
+   * CP SERVICE → canonical NDJSON chain verification.
+   * Control Plane in-memory hashes are observational and must not be
+   * reported as VALID/BROKEN for the operator-facing verify route.
+   */
+  app.get(AUDIT_VERIFY_CONTROL_PATH, async (request) => {
+    requireControlPlaneService(request.headers.authorization);
+    const verification = verifyAuditLogChain();
+    return {
+      ...verification,
+      canonical: true as const,
+      path: resolveAuditLogPath(),
+    };
   });
 }

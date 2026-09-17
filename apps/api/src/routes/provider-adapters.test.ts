@@ -184,6 +184,12 @@ describe("POST /api/v1/providers/vercel/observe", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().provider).toBe("vercel");
+    const evidence = res.json().evidence as Array<{ ownerId: string }>;
+    expect(evidence.length).toBeGreaterThan(0);
+    expect(evidence.every((row) => row.ownerId === owner.id)).toBe(true);
+    expect(evidence.every((row) => row.ownerId !== "00000000-0000-4000-8000-000000000001")).toBe(
+      true,
+    );
   });
 });
 

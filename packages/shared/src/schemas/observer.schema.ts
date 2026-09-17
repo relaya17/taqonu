@@ -211,6 +211,7 @@ export const ingestBugsRequestSchema = z.object({
         status: bugStatusSchema.optional(),
         source: z.string().max(200).optional(),
         linkedFlowId: z.string().max(200).nullable().optional(),
+        evidenceRefs: z.array(z.string().max(200)).max(40).optional(),
       }),
     )
     .min(1)

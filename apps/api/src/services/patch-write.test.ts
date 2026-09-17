@@ -104,4 +104,37 @@ describe("patch-write: applyApprovedPatch threads the actor id into patch.applie
     const last = events[events.length - 1]!;
     expect(last.payload.actorId).toBe(user.id);
   });
+
+  it("stamps the authenticated user on apply evidence, not the legacy stub", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-patch-write-owner-"));
+    const projectId = "55555555-5555-4555-8555-555555555555";
+    osStore.setWorkspaceRoot(projectId, root);
+    const issue = lowIssue();
+    const drafts = persistAutoRemediationDrafts({
+      projectId,
+      issues: [issue],
+      workspaceRoot: root,
+    });
+    expect(drafts).toHaveLength(1);
+    const draft = drafts[0]!;
+
+    const approved = approvePatchArtifact(draft.patch, {
+      approvedBy: user.email,
+      userId: user.id,
+    });
+
+    applyApprovedPatch({
+      existing: approved,
+      user,
+      bodyWorkspaceRoot: root,
+      skipVerify: true,
+    });
+
+    const evidence = osStore.getEvidence(projectId);
+    expect(evidence.length).toBeGreaterThan(0);
+    expect(evidence.every((row) => row.ownerId === user.id)).toBe(true);
+    expect(
+      evidence.every((row) => row.ownerId !== "00000000-0000-4000-8000-000000000001"),
+    ).toBe(true);
+  });
 });

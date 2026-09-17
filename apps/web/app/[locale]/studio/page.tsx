@@ -30,6 +30,20 @@ import { ChatPanel } from "@/components/studio/ChatPanel";
 import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
 import { ObserverPanel } from "@/components/studio/ObserverPanel";
 import { SentinelPanel } from "@/components/studio/SentinelPanel";
+import { QaPanel } from "@/components/studio/QaPanel";
+import { ProcessAuditPanel } from "@/components/studio/ProcessAuditPanel";
+import { HealthPanel } from "@/components/studio/HealthPanel";
+import { ReadinessPanel } from "@/components/studio/ReadinessPanel";
+import { TruthPanel } from "@/components/studio/TruthPanel";
+import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
+import {
+  STUDIO_CHECK_IDS,
+  STUDIO_TABS,
+  isStudioCheckId,
+  isStudioTab,
+  type StudioCheckId,
+  type StudioTab,
+} from "@/lib/studio-surfaces";
 
 interface Project {
   id: string;
@@ -96,21 +110,6 @@ interface CloneResult {
 
 type StudioIntent = "propose" | "loop" | "remind" | "summary";
 const ASK_MODES = ["fix", "generate", "implement", "refactor", "secure"] as const;
-
-type StudioTab = "files" | "chat" | "cloud" | "checks";
-const STUDIO_TABS: StudioTab[] = ["files", "chat", "cloud", "checks"];
-function isStudioTab(value: string | null): value is StudioTab {
-  return (
-    value === "files" || value === "chat" || value === "cloud" || value === "checks"
-  );
-}
-
-/** Sub-tabs inside "Checks" — one ops page migrates in per rollout step. */
-type ChecksSubTab = "observer" | "sentinel";
-const CHECKS_SUB_TABS: ChecksSubTab[] = ["observer", "sentinel"];
-function isChecksSubTab(value: string | null): value is ChecksSubTab {
-  return value === "observer" || value === "sentinel";
-}
 
 function TreeBranch({
   node,
@@ -187,6 +186,7 @@ export default function StudioPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
+  const projectFromUrl = searchParams.get("project");
   const [tab, setTab] = useState<StudioTab>(
     isStudioTab(tabFromUrl) ? tabFromUrl : "files",
   );
@@ -199,27 +199,37 @@ export default function StudioPage() {
 
   const selectTab = (next: StudioTab) => {
     setTab(next);
-    router.replace(`${pathname}?tab=${next}`);
+    const projectQs = projectId ? `&project=${encodeURIComponent(projectId)}` : "";
+    router.replace(
+      next === "checks"
+        ? `${pathname}?tab=${next}&check=${checksTab}${projectQs}`
+        : `${pathname}?tab=${next}${projectQs}`,
+    );
   };
 
   const checkFromUrl = searchParams.get("check");
-  const [checksTab, setChecksTab] = useState<ChecksSubTab>(
-    isChecksSubTab(checkFromUrl) ? checkFromUrl : "observer",
+  const [checksTab, setChecksTab] = useState<StudioCheckId>(
+    isStudioCheckId(checkFromUrl) ? checkFromUrl : "observer",
   );
 
   useEffect(() => {
-    if (isChecksSubTab(checkFromUrl) && checkFromUrl !== checksTab) {
+    if (isStudioCheckId(checkFromUrl) && checkFromUrl !== checksTab) {
       setChecksTab(checkFromUrl);
     }
   }, [checkFromUrl, checksTab]);
 
-  const selectChecksTab = (next: ChecksSubTab) => {
+  const selectChecksTab = (next: StudioCheckId) => {
     setChecksTab(next);
-    router.replace(`${pathname}?tab=checks&check=${next}`);
+    const projectQs = projectId ? `&project=${encodeURIComponent(projectId)}` : "";
+    router.replace(`${pathname}?tab=checks&check=${next}${projectQs}`);
   };
 
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(projectFromUrl ?? "");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (projectFromUrl) setProjectId(projectFromUrl);
+  }, [projectFromUrl]);
   const [instruction, setInstruction] = useState("");
   const [intent, setIntent] = useState<StudioIntent>("propose");
   const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
@@ -799,33 +809,6 @@ export default function StudioPage() {
                   {intent === "propose" && typeof propose.data?.memoryUsed === "number"
                     ? ` (${t("memoryHint")}: ${propose.data.memoryUsed})`
                     : null}
-                  {intent === "propose" && propose.data?.patch ? (
-                    <Box sx={{ mt: 1 }}>
-                      <Button
-                        component={Link}
-                        href="/patches"
-                        size="small"
-                        variant="outlined"
-                      >
-                        {t("openPatches")}
-                      </Button>
-                    </Box>
-                  ) : null}
-                  {intent === "loop" && runLoop.data?.patchId ? (
-                    <Box sx={{ mt: 1 }}>
-                      <Typography variant="caption" sx={{ display: "block", mb: 0.5 }}>
-                        {t("loopPatchHint")}
-                      </Typography>
-                      <Button
-                        component={Link}
-                        href="/patches"
-                        size="small"
-                        variant="outlined"
-                      >
-                        {t("openPatches")}
-                      </Button>
-                    </Box>
-                  ) : null}
                   {intent !== "propose" && intent !== "loop" ? (
                     <Box sx={{ mt: 1 }}>
                       <Button
@@ -841,6 +824,16 @@ export default function StudioPage() {
                 </Alert>
               ) : null}
             </Box>
+
+            <StudioPatchWorkflow
+              projectId={projectId}
+              workspaceRoot={selectedProject?.workspaceRoot}
+              focusPatchId={propose.data?.patch?.id ?? runLoop.data?.patchId ?? null}
+              onVerified={() => {
+                void fileQuery.refetch();
+                void treeQuery.refetch();
+              }}
+            />
 
             <Box
               sx={{
@@ -957,11 +950,13 @@ export default function StudioPage() {
       {tab === "cloud" ? <CloudToolsPanel embedded /> : null}
 
       {tab === "checks" ? (
-        projectId ? (
           <Stack spacing={2}>
+            {!projectId ? <Alert severity="info">{t("pickProject")}</Alert> : null}
             <Tabs
               value={checksTab}
-              onChange={(_, v: ChecksSubTab) => selectChecksTab(v)}
+              onChange={(_, v: StudioCheckId) => selectChecksTab(v)}
+              variant="scrollable"
+              scrollButtons="auto"
               sx={{
                 borderBottom: panelBorder,
                 minHeight: 36,
@@ -975,20 +970,32 @@ export default function StudioPage() {
                 "& .MuiTabs-indicator": { bgcolor: "#9A9EA8" },
               }}
             >
-              {CHECKS_SUB_TABS.map((id) => (
+              {STUDIO_CHECK_IDS.map((id) => (
                 <Tab key={id} value={id} label={t(`checksTab.${id}`)} />
               ))}
             </Tabs>
-            {checksTab === "observer" ? (
+            {checksTab === "observer" && projectId ? (
               <ObserverPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "sentinel" ? (
+            {checksTab === "sentinel" && projectId ? (
               <SentinelPanel projectId={projectId} embedded />
             ) : null}
+            {checksTab === "qa" ? (
+              <QaPanel projectId={projectId || undefined} embedded />
+            ) : null}
+            {checksTab === "processAudit" ? (
+              <ProcessAuditPanel projectId={projectId || undefined} embedded />
+            ) : null}
+            {checksTab === "health" ? (
+              <HealthPanel projectId={projectId || undefined} embedded />
+            ) : null}
+            {checksTab === "readiness" ? (
+              <ReadinessPanel projectId={projectId || undefined} embedded />
+            ) : null}
+            {checksTab === "truth" ? (
+              <TruthPanel projectId={projectId || undefined} embedded />
+            ) : null}
           </Stack>
-        ) : (
-          <Alert severity="info">{t("pickProject")}</Alert>
-        )
       ) : null}
     </Stack>
     </Box>

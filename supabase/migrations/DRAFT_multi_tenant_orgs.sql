@@ -7,6 +7,10 @@
 -- AND GETTING SIGN-OFF ON `docs/multi-tenant-design.md`, WHICH THIS FILE
 -- IMPLEMENTS ONLY PHASE 1 OF.
 --
+-- Production tenancy remains user-level owner_id / ownerId (ADR-012 org RBAC
+-- is a non-goal; architecture v1.0 keys rows by owner_id). This draft stays
+-- draft until the design is approved and §7 product questions are answered.
+--
 -- Naming note: this file is intentionally named `DRAFT_multi_tenant_orgs.sql`
 -- instead of the real `YYYYMMDDHHMMSS_description.sql` convention used by
 -- every other file in this directory. That is deliberate — it keeps this

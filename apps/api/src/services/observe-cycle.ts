@@ -27,6 +27,8 @@ import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { defaultGoldenRoot } from "./golden-root.js";
 import { isolationAuditSummary } from "./project-access.js";
+import { resolveEvidenceOwnerId } from "./write-owner.js";
+import { learnFromObserverBugs } from "./bug-fix-learning.js";
 
 export function resolveObserverWorkspace(input: {
   projectId?: string | null;
@@ -75,6 +77,8 @@ export function resolveObserverWorkspace(input: {
 export function executeObserveCycle(input: {
   body: unknown;
   envGoldenRoot?: string | null;
+  /** Authenticated owner — required to persist validated bug-fix memories. */
+  ownerId?: string | null;
 }): ObserveCycleResult {
   const body = observeCycleRequestSchema.parse(input.body);
   const resolved = resolveObserverWorkspace({
@@ -109,7 +113,10 @@ export function executeObserveCycle(input: {
   });
 
   const now = new Date().toISOString();
-  const ownerId = "00000000-0000-4000-8000-000000000001";
+  const ownerId = resolveEvidenceOwnerId({
+    ...(input.ownerId != null ? { requestOwnerId: input.ownerId } : {}),
+    projectId: resolved.projectId,
+  });
   if (resolved.projectId) {
     const evidence = result.evidenceDrafts.map((draft) =>
       parseEvidenceRecord({
@@ -143,6 +150,14 @@ export function executeObserveCycle(input: {
     });
   }
 
+  if (input.ownerId) {
+    learnFromObserverBugs({
+      ownerId: input.ownerId,
+      projectId: resolved.projectId,
+      bugs: result.bugs,
+    });
+  }
+
   return result;
 }
 
@@ -151,6 +166,7 @@ export function tryContinuousObserve(input: {
   projectId: string;
   envGoldenRoot?: string | null;
   trigger?: string;
+  ownerId?: string;
   deployEvent?: {
     provider: string;
     environment: string;
@@ -175,6 +191,7 @@ export function tryContinuousObserve(input: {
         persist: true,
       },
       envGoldenRoot: input.envGoldenRoot ?? null,
+      ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
     });
   } catch {
     return null;
@@ -184,6 +201,8 @@ export function tryContinuousObserve(input: {
 export function executeBugIngest(input: {
   body: unknown;
   envGoldenRoot?: string | null;
+  /** Authenticated owner — required to persist validated bug-fix memories. */
+  ownerId?: string | null;
 }) {
   const body = ingestBugsRequestSchema.parse(input.body);
   const resolved = resolveObserverWorkspace({
@@ -200,10 +219,24 @@ export function executeBugIngest(input: {
       ...(b.status !== undefined ? { status: b.status } : {}),
       ...(b.source !== undefined ? { source: b.source } : {}),
       ...(b.linkedFlowId !== undefined ? { linkedFlowId: b.linkedFlowId } : {}),
+      ...(b.evidenceRefs !== undefined ? { evidenceRefs: b.evidenceRefs } : {}),
     })),
     resolved.projectId,
   );
-  return { items: bugs, total: bugs.length, workspaceRoot: resolved.workspaceRoot };
+  const learned =
+    input.ownerId != null && input.ownerId.length > 0
+      ? learnFromObserverBugs({
+          ownerId: input.ownerId,
+          projectId: resolved.projectId,
+          bugs,
+        })
+      : [];
+  return {
+    items: bugs,
+    total: bugs.length,
+    workspaceRoot: resolved.workspaceRoot,
+    learnedMemoryIds: learned.map((m) => m.id),
+  };
 }
 
 export function readObserverState(input: {

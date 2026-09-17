@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   memorySchema,
-  STUB_OWNER_ID,
   type Memory,
   type ProcessAuditDocument,
   type ProcessVerdict,
@@ -158,7 +157,10 @@ export function resolveProjectReachability(projectId: string): ProjectReachabili
 }
 
 /** Persist process-audit outcome into Memory so the companion can remind later. */
-export function syncProcessAuditToMemory(doc: ProcessAuditDocument): Memory {
+export function syncProcessAuditToMemory(
+  doc: ProcessAuditDocument,
+  ownerId: string,
+): Memory {
   const now = new Date().toISOString();
   const blockers = doc.sections.blockers.slice(0, 5).join("; ") || "none";
   const defects = doc.sections.defects.slice(0, 5).join("; ") || "none";
@@ -177,10 +179,9 @@ export function syncProcessAuditToMemory(doc: ProcessAuditDocument): Memory {
 
   const memory = memorySchema.parse({
     id: crypto.randomUUID(),
-    // System-generated (QA process audit, not tied to a specific caller) —
-    // same STUB_OWNER_ID convention used for other system-authored memories
-    // (memory-pipeline.ts, demo-seed.ts, patch-write.ts).
-    ownerId: STUB_OWNER_ID,
+    // Caller-owned: process-audit writes are triggered by a signed-in
+    // request, never silently stamped as the legacy personal-instance stub.
+    ownerId,
     type: "EVENT",
     projectId: doc.projectId,
     statement: safeStatement.slice(0, 4000),

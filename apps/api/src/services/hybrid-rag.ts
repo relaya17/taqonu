@@ -1,8 +1,10 @@
 import type { KnowledgeSearchResult } from "@atlas/shared";
 import {
   cosineSimilarity,
-  getDefaultEmbeddingProvider,
+  resolveEmbeddingProvider,
   safeEmbed,
+  type EmbeddingEnv,
+  type EmbeddingProvider,
 } from "@atlas/embeddings";
 import {
   getKnowledgeCorpusSource,
@@ -19,10 +21,11 @@ import {
   isLiveKnowledgeStore,
   tryHybridSearchKnowledgeChunks,
   tryPersistKnowledgeChunk,
+  KNOWLEDGE_EMBEDDING_DIMS,
   type KnowledgeStoreEnv,
 } from "@atlas/database";
 
-export type HybridRagEnv = KnowledgeStoreEnv;
+export type HybridRagEnv = KnowledgeStoreEnv & EmbeddingEnv;
 
 function metadataString(meta: Record<string, unknown>, key: string): string | null {
   const value = meta[key];
@@ -119,7 +122,7 @@ export async function ingestKnowledgeClosedLoop(
   corpus: "seed" | "persisted";
   pgvector: boolean;
 }> {
-  const provider = getDefaultEmbeddingProvider();
+  const provider = resolveEmbeddingProvider(env);
   const [embedding] = await safeEmbed(provider, [
     `${input.title}\n${input.excerpt}`,
   ]);
@@ -147,6 +150,10 @@ export async function ingestKnowledgeClosedLoop(
     ? upsertKnowledgeDocument({ id: input.id, ...payload })
     : ingestKnowledgeDocument(payload);
 
+  const persistableEmbedding =
+    embedding && embedding.length === KNOWLEDGE_EMBEDDING_DIMS
+      ? embedding
+      : null;
   const cloud = await tryPersistKnowledgeChunk(env, {
     id: doc.id,
     title: doc.title,
@@ -156,7 +163,7 @@ export async function ingestKnowledgeClosedLoop(
     sourceUpdatedAt: doc.sourceUpdatedAt,
     projectScoped: doc.projectScoped,
     contentHash: doc.contentHash,
-    embedding: doc.embedding ?? embedding ?? null,
+    embedding: persistableEmbedding,
     embeddingProvider: provider.name,
     metadata: chunkMetadataFromDoc(doc),
   });
@@ -176,17 +183,21 @@ async function localHybridSearch(input: {
   allowStale?: boolean;
   pin?: KnowledgePin;
   requestingAgentIds?: readonly string[];
+  provider: EmbeddingProvider;
 }): Promise<KnowledgeSearchResult> {
   const corpus = listKnowledgeCorpus();
-  const provider = getDefaultEmbeddingProvider();
   const texts = [input.query, ...corpus.map((d) => `${d.title}\n${d.excerpt}`)];
-  const vectors = await safeEmbed(provider, texts);
+  const vectors = await safeEmbed(input.provider, texts);
   const queryVec = vectors[0] ?? [];
   const vectorScores: Record<string, number> = {};
   corpus.forEach((doc, i) => {
     const cached = doc.embedding;
-    const docVec =
-      cached && cached.length > 0 ? cached : (vectors[i + 1] ?? []);
+    const cachedCompatible =
+      cached != null &&
+      cached.length > 0 &&
+      input.provider.dims != null &&
+      cached.length === input.provider.dims;
+    const docVec = cachedCompatible ? cached : (vectors[i + 1] ?? []);
     vectorScores[doc.id] = cosineSimilarity(queryVec, docVec);
   });
   return searchKnowledgeFabric({
@@ -207,7 +218,8 @@ async function localHybridSearch(input: {
 }
 
 /**
- * Closed-loop hybrid search: prefer pgvector when live; else local embeddings + file corpus.
+ * Closed-loop hybrid search: prefer pgvector when live AND the embedding
+ * width matches the 64-d hash schema; else local cosine on the file corpus.
  * Empty hits → INSUFFICIENT_EVIDENCE (never invent packages).
  * Eligibility/scoping is enforced inside `searchKnowledgeFabric`.
  */
@@ -221,18 +233,26 @@ export async function searchKnowledgeClosedLoop(
     allowStale?: boolean;
     pin?: KnowledgePin;
     requestingAgentIds?: readonly string[];
+    embeddingProvider?: EmbeddingProvider;
   },
 ): Promise<KnowledgeSearchResult> {
-  const provider = getDefaultEmbeddingProvider();
+  const provider =
+    input.embeddingProvider ?? resolveEmbeddingProvider(env);
+  const localInput = { ...input, provider };
   const [queryEmbedding] = await safeEmbed(provider, [input.query]);
   const scope = input.scope ?? null;
+  const pgvectorCompatible =
+    queryEmbedding != null &&
+    queryEmbedding.length === KNOWLEDGE_EMBEDDING_DIMS;
   // Incomplete scope never queries pgvector — candidates would leak across tenants.
+  // Semantic HTTP embeddings (typically 1536-d) stay on local cosine until the
+  // pgvector schema is migrated to match.
   if (
-    !queryEmbedding ||
+    !pgvectorCompatible ||
     !isLiveKnowledgeStore(env) ||
     !isCompleteKnowledgeScope(scope)
   ) {
-    return localHybridSearch(input);
+    return localHybridSearch(localInput);
   }
 
   const matches = await tryHybridSearchKnowledgeChunks(env, {
@@ -248,7 +268,7 @@ export async function searchKnowledgeClosedLoop(
 
   // null = store offline/error → local fallback. [] = live INSUFFICIENT_EVIDENCE.
   if (matches == null) {
-    return localHybridSearch(input);
+    return localHybridSearch(localInput);
   }
 
   const corpus = matches.map(chunkToCorpusDoc);

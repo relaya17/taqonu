@@ -101,6 +101,78 @@ describe("evaluateOperatingCycle", () => {
     expect(result.blockedAt).toBe("EVIDENCE");
   });
 
+  it("requires approval at RISK for an unapproved HIGH_RISK_WRITE", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "request_agent_run",
+      toolRisk: "HIGH_RISK_WRITE",
+    });
+    expect(result.decision).toBe("REQUIRE_APPROVAL");
+    expect(result.blockedAt).toBe("RISK");
+    expect(result.risk?.band).toBe("HIGH");
+    expect(result.risk?.score).toBeGreaterThanOrEqual(70);
+    expect(result.stagesPassed).toContain("POLICY");
+    expect(result.stagesPassed).toContain("RISK");
+  });
+
+  it("requires approval at RISK for unapproved DESTRUCTIVE work", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "request_remediation",
+      toolRisk: "DESTRUCTIVE",
+    });
+    expect(result.decision).toBe("REQUIRE_APPROVAL");
+    expect(result.blockedAt).toBe("RISK");
+    expect(result.risk?.toolRisk).toBe("DESTRUCTIVE");
+    expect(result.risk?.score).toBeGreaterThanOrEqual(90);
+  });
+
+  it("does not invent a HIGH-risk gate when toolRisk is omitted", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "request_agent_run",
+    });
+    expect(result.decision).toBe("REQUIRE_APPROVAL");
+    expect(result.blockedAt).toBe("APPROVAL");
+    expect(result.risk?.toolRisk).toBe("UNSPECIFIED");
+    expect(result.risk?.bucket).toBe("CONTINUE");
+  });
+
+  it("lets an approved HIGH_RISK_WRITE continue past RISK to VERIFY", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "request_agent_run",
+      toolRisk: "HIGH_RISK_WRITE",
+      approved: true,
+      verificationPlanPresent: false,
+    });
+    expect(result.blockedAt).toBe("VERIFY");
+    expect(result.risk?.bucket).toBe("CONTINUE");
+  });
+
+  it("keeps read-only inspect at LOW risk and ALLOW", () => {
+    const result = evaluateOperatingCycle({
+      actorId: "owner",
+      actorKind: "USER",
+      applicationId: "def-000",
+      operation: "inspect",
+      readOnly: true,
+      evidenceCount: 1,
+      toolRisk: "READ_ONLY",
+    });
+    expect(result.decision).toBe("ALLOW");
+    expect(result.risk?.band).toBe("LOW");
+    expect(result.stagesPassed).toContain("RISK");
+  });
+
   it("only ACTIVE and DEGRADED agents may execute", () => {
     expect(agentMayExecute("ACTIVE")).toBe(true);
     expect(agentMayExecute("DEGRADED")).toBe(true);

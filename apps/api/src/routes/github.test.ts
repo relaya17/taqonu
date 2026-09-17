@@ -218,5 +218,11 @@ describe("POST /api/v1/github/sync", () => {
       payload: { projectId, fullName: "acme/widgets", reconcile: false },
     });
     expect(res.statusCode).toBe(201);
+    const evidence = osStore.getEvidence(projectId);
+    expect(evidence.length).toBeGreaterThan(0);
+    expect(evidence.every((row) => row.ownerId === owner.id)).toBe(true);
+    expect(
+      evidence.every((row) => row.ownerId !== "00000000-0000-4000-8000-000000000001"),
+    ).toBe(true);
   });
 });

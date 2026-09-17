@@ -30,5 +30,8 @@ export * from "./egress-policy.js";
 export * from "./atlas-gateway.js";
 export * from "./atlas-self.js";
 export * from "./kill-switch-control.js";
+export * from "./approval-control.js";
+export * from "./execution-control.js";
+export * from "./error-aggregate-control.js";
 export * from "./operating-cycle.js";
 export * from "./evidence-sufficiency.js";

@@ -70,6 +70,15 @@ const serverEnvSchema = baseEnvSchema.extend({
   OPENAI_API_KEY: optionalString,
   OPENAI_BASE_URL: optionalUrl,
   OPENAI_MODEL: optionalString,
+  /**
+   * Embedding retrieval (B2). Distinct from chat: OPENAI_API_KEY alone does
+   * not enable embeddings. Unset → lexical-hash fallback, not semantic.
+   * `openai` | `http` | `ollama` | `hash` | `local-hash`
+   */
+  ATLAS_EMBEDDING_PROVIDER: optionalString,
+  ATLAS_EMBEDDING_API_KEY: optionalString,
+  ATLAS_EMBEDDING_BASE_URL: optionalString,
+  ATLAS_EMBEDDING_MODEL: optionalString,
   ANTHROPIC_API_KEY: optionalString,
   ANTHROPIC_MODEL: optionalString,
   GEMINI_API_KEY: optionalString,

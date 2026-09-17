@@ -246,7 +246,27 @@
     },
     "checksTab": {
       "observer": "Observer",
-      "sentinel": "Security"
+      "sentinel": "Security",
+      "qa": "QA",
+      "processAudit": "Process Audit",
+      "health": "Health",
+      "readiness": "Readiness",
+      "truth": "Truth"
+    },
+    "workflow": {
+      "title": "Propose → review → approve → apply → verify",
+      "help": "The agent proposes a Patch. You review it here, then Approve, then Apply. Disk writes never skip approval.",
+      "empty": "Inspect a file, then Propose a change. Existing Patches for this project appear here.",
+      "reviewFiles": "Files in this Patch",
+      "steps": {
+        "inspect": "Inspect",
+        "analyze": "Analyze",
+        "propose": "Propose",
+        "review": "Review",
+        "approve": "Approve",
+        "apply": "Apply",
+        "verify": "Verify"
+      }
     }
   },
   "contract": {

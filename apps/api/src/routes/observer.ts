@@ -18,7 +18,7 @@ export async function registerObserverRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post("/api/v1/observe/cycle", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: observe cycle is RECORD.EXECUTE.
     const entityDecision = authorizeEntityAction("RECORD", "EXECUTE", {
@@ -37,13 +37,14 @@ export async function registerObserverRoutes(
     const result = executeObserveCycle({
       body: request.body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+      ownerId: user.id,
     });
     return reply.send(result);
   });
 
   app.post("/api/v1/projects/:id/observe-cycle", async (request, reply) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    await assertProjectWriteAccess(app, request, projectId);
+    const user = await assertProjectWriteAccess(app, request, projectId);
     const body =
       typeof request.body === "object" && request.body
         ? { ...(request.body as Record<string, unknown>), projectId }
@@ -51,6 +52,7 @@ export async function registerObserverRoutes(
     const result = executeObserveCycle({
       body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+      ownerId: user.id,
     });
     return reply.send(result);
   });
@@ -122,10 +124,11 @@ export async function registerObserverRoutes(
   });
 
   app.post("/api/v1/observer/bugs", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const result = executeBugIngest({
       body: request.body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
+      ownerId: user.id,
     });
     return reply.status(201).send(result);
   });

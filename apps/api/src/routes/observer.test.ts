@@ -168,4 +168,23 @@ describe("POST /api/v1/observer/bugs", () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it("ingests an OPEN bug without creating a memory (unverified is not truth)", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "atlas-observer-bugs-"));
+    const owner = signedInUser();
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/observer/bugs",
+      payload: {
+        workspaceRoot: workspace,
+        bugs: [{ title: "open UI glitch", status: "OPEN" }],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as { learnedMemoryIds: string[]; total: number };
+    expect(body.total).toBeGreaterThan(0);
+    expect(body.learnedMemoryIds).toEqual([]);
+    rmSync(workspace, { recursive: true, force: true });
+  });
 });

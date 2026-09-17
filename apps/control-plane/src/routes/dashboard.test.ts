@@ -85,3 +85,42 @@ describe("dashboard Portfolio UI (Phase 11.2)", () => {
     expect(html).toContain('data-i18n="portfolioReadOnly"');
   });
 });
+
+describe("dashboard Approvals UI", () => {
+  const html = getDashboardHtml();
+
+  it("decides pending approvals through Control's own API with a required reason", () => {
+    expect(html).toContain("submitApprovalDecision");
+    expect(html).toContain("encodeURIComponent(id) + '/decide'");
+    expect(html).toContain("'X-Atlas-Reason': reason");
+    expect(html).toContain('t("approveRequest")');
+    expect(html).toContain('t("denyRequest")');
+    expect(html).toContain("loadApprovals();");
+  });
+});
+
+describe("dashboard agent lifecycle and remaining surfaces", () => {
+  const html = getDashboardHtml();
+
+  it("exposes pause, quarantine, and revoke through Control's agent control API", () => {
+    expect(html).toContain("submitAgentControl");
+    expect(html).toContain("/control'");
+    expect(html).toContain("data-agent-action");
+    expect(html).toContain('t("pauseAgent")');
+    expect(html).toContain('t("quarantineAgent")');
+    expect(html).toContain('t("revokeAgent")');
+    expect(html).toContain("/api/v1/auth/reauth");
+  });
+
+  it("exposes the applications and live execution surfaces", () => {
+    expect(html).toContain('data-panel="applications"');
+    expect(html).toContain('data-panel="execution"');
+    expect(html).toContain("loadApplications()");
+    expect(html).toContain("loadExecutions()");
+    expect(html).toContain("fetch('/api/v1/applications')");
+    expect(html).toContain("fetch('/api/v1/executions')");
+    expect(html).toContain("fetch('/api/v1/processes')");
+    expect(html).toContain("fetch('/api/v1/error-aggregates')");
+    expect(html).toContain("submitApplicationDecision");
+  });
+});

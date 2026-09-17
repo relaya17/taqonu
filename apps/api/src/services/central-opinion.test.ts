@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ProcessAuditDocument } from "@atlas/shared";
+import { STUB_OWNER_ID, type ProcessAuditDocument } from "@atlas/shared";
 
 // Isolation gap fix: `syncProcessAuditToMemory` internally calls
 // `osStore.addMemory(...)` (see central-opinion.ts) even though this test
@@ -13,6 +13,7 @@ const tmpDir = mkdtempSync(join(tmpdir(), "atlas-central-opinion-test-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 
+const AUDIT_OWNER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const { syncProcessAuditToMemory, buildCentralOpinion, rememberProcessAuditId } =
   await import("./central-opinion.js");
 const { osStore } = await import("../store/os-store.js");
@@ -57,7 +58,7 @@ describe("syncProcessAuditToMemory", () => {
       verdictReason: `CI logs dump included a credential: ${leakedToken}`,
     });
 
-    const memory = syncProcessAuditToMemory(audit);
+    const memory = syncProcessAuditToMemory(audit, AUDIT_OWNER);
 
     expect(memory.statement).not.toContain(leakedToken);
     expect(memory.statement).toContain("[REDACTED_SECRET]");
@@ -75,7 +76,7 @@ describe("syncProcessAuditToMemory", () => {
       },
     });
 
-    const memory = syncProcessAuditToMemory(audit);
+    const memory = syncProcessAuditToMemory(audit, AUDIT_OWNER);
 
     expect(memory.statement).not.toContain(leakedToken);
     expect(memory.statement).toContain("[REDACTED_SECRET]");
@@ -93,12 +94,18 @@ describe("syncProcessAuditToMemory", () => {
       },
     });
 
-    const memory = syncProcessAuditToMemory(audit);
+    const memory = syncProcessAuditToMemory(audit, AUDIT_OWNER);
 
     expect(memory.statement).toContain("All gates passed cleanly.");
     expect(memory.statement).toContain("minor styling issue");
     expect(memory.statement).toContain(`auditId=${audit.id}`);
     expect(memory.statement).not.toContain("[REDACTED_SECRET]");
+  });
+
+  it("stamps the authenticated owner, not the legacy stub placeholder", () => {
+    const memory = syncProcessAuditToMemory(makeAudit(), AUDIT_OWNER);
+    expect(memory.ownerId).toBe(AUDIT_OWNER);
+    expect(memory.ownerId).not.toBe(STUB_OWNER_ID);
   });
 });
 

@@ -17,6 +17,7 @@ export interface BugIngestInput {
   source?: string | undefined;
   linkedFlowId?: string | null | undefined;
   projectId?: string | null | undefined;
+  evidenceRefs?: readonly string[] | undefined;
 }
 
 const CRITICAL = /\b(data loss|rce|auth bypass|payment|charge|security)\b/i;
@@ -64,7 +65,7 @@ export function createBug(input: BugIngestInput): ObserverBug {
     claim: claimForBugStatus(status),
     source: input.source ?? "manual",
     linkedFlowId: input.linkedFlowId ?? null,
-    evidenceRefs: [],
+    evidenceRefs: [...(input.evidenceRefs ?? [])].slice(0, 40),
     createdAt: now,
     updatedAt: now,
   });
@@ -112,4 +113,34 @@ export function ingestBugs(
   const merged = [...existing, ...created];
   saveBugs(workspaceRoot, merged);
   return merged;
+}
+
+/**
+ * Stamp a tracker bug VERIFIED after an independent validation gate
+ * (patch verify, evidence). No-op when the bug id is not in this workspace.
+ */
+export function markBugVerified(
+  workspaceRoot: string,
+  bugId: string,
+  evidenceRefs: readonly string[] = [],
+): ObserverBug | null {
+  const bugs = loadBugs(workspaceRoot);
+  const idx = bugs.findIndex((b) => b.id === bugId);
+  if (idx < 0) return null;
+  const current = bugs[idx]!;
+  const now = new Date().toISOString();
+  const next = observerBugSchema.parse({
+    ...current,
+    status: "VERIFIED",
+    claim: claimForBugStatus("VERIFIED"),
+    evidenceRefs: [...new Set([...current.evidenceRefs, ...evidenceRefs])].slice(
+      0,
+      40,
+    ),
+    updatedAt: now,
+  });
+  const updated = [...bugs];
+  updated[idx] = next;
+  saveBugs(workspaceRoot, updated);
+  return next;
 }

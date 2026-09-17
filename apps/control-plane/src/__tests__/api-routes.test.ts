@@ -16,7 +16,7 @@ import {
   issueReauthTicket,
   resetPrincipalRoleForTests,
 } from "../control-plane-auth.js";
-import { resetApplicationRegistryForTests } from "../services/application-registry.js";
+import { resetApplicationRegistryForTests, upsertRegisteredApplication } from "../services/application-registry.js";
 import { resetCivioConnectorForTests } from "../services/civio-connector.js";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -340,6 +340,19 @@ describe("Control Plane — API Routes", () => {
       expect(body).toHaveLength(1);
       expect(body[0]?.["actorId"]).toBe("AGENT_A");
     });
+
+    it("supports ownerId filter so operators can inspect one tenant without mixing another", async () => {
+      appendAuditEntry(makeEntry({ ownerId: "tenant-alpha", seq: 1 }));
+      appendAuditEntry(makeEntry({ ownerId: "tenant-beta", seq: 2 }));
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("GET", "/api/v1/audit?ownerId=tenant-alpha"),
+        res,
+      );
+      const body = JSON.parse(res._mock.body) as Array<Record<string, unknown>>;
+      expect(body).toHaveLength(1);
+      expect(body[0]?.["ownerId"]).toBe("tenant-alpha");
+    });
   });
 
   describe("GET /api/v1/audit/count", () => {
@@ -364,6 +377,16 @@ describe("Control Plane — API Routes", () => {
       );
       const body = JSON.parse(res._mock.body) as Record<string, unknown>;
       expect(body["count"]).toBe(3);
+    });
+  });
+
+  describe("GET /api/v1/audit/verify", () => {
+    it("fail-closes when the canonical Atlas API hop is not configured", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/audit/verify"), res);
+      expect(res._mock.statusCode).toBe(502);
+      const body = JSON.parse(res._mock.body) as { error: string };
+      expect(body.error).toMatch(/ATLAS_API_URL|ATLAS_CONTROL_PLANE_TOKEN/);
     });
   });
 
@@ -405,14 +428,28 @@ describe("Control Plane — API Routes", () => {
   // ── Approvals ─────────────────────────────────────────────────────
 
   describe("GET /api/v1/approvals", () => {
-    it("returns empty array initially", async () => {
+    it("fail-closes when the canonical Atlas API hop is not configured", async () => {
       const res = createMockRes();
       await router.handle(
         createMockReq("GET", "/api/v1/approvals"),
         res,
       );
-      const body = JSON.parse(res._mock.body) as unknown[];
-      expect(body).toEqual([]);
+      expect(res._mock.statusCode).toBe(502);
+      const body = JSON.parse(res._mock.body) as { error: string };
+      expect(body.error).toMatch(/ATLAS_API_URL|ATLAS_CONTROL_PLANE_TOKEN/);
+    });
+  });
+
+  describe("POST /api/v1/approvals/:id/decide", () => {
+    it("requires X-Atlas-Reason", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/approvals/00000000-0000-4000-8000-000000000000/decide", {
+          body: { approve: true },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(400);
     });
   });
 
@@ -436,6 +473,73 @@ describe("Control Plane — API Routes", () => {
       await router.handle(createMockReq("GET", "/api/v1/applications"), res);
       const body = JSON.parse(res._mock.body) as { items: Array<{ applicationId: string }> };
       expect(body.items.some((item) => item.applicationId === "def-000")).toBe(true);
+    });
+  });
+
+  describe("POST /api/v1/applications/:id/decide", () => {
+    it("requires X-Atlas-Reason", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/applications/hotel-os/decide", {
+          body: { approve: true },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(400);
+    });
+
+    it("refuses to change Atlas-self trust", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/applications/def-000/decide", {
+          body: { approve: false },
+          headers: { "x-atlas-reason": "try to reject atlas self" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(400);
+    });
+
+    it("approves a pending self-registered application and audits the decision", async () => {
+      upsertRegisteredApplication({
+        applicationId: "hotel-os",
+        name: "HotelOS",
+      });
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/applications/hotel-os/decide", {
+          body: { approve: true },
+          headers: { "x-atlas-reason": "reviewed sibling registration" },
+        }),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(200);
+      const body = JSON.parse(res._mock.body) as { trustStatus: string; applicationId: string };
+      expect(body.applicationId).toBe("hotel-os");
+      expect(body.trustStatus).toBe("APPROVED");
+      expect(
+        listAuditEntries({ type: "application.approved" }).some(
+          (entry) => entry.reason === "reviewed sibling registration",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("GET /api/v1/executions", () => {
+    it("fail-closes when the canonical Atlas API hop is not configured", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/executions"), res);
+      expect(res._mock.statusCode).toBe(502);
+      const body = JSON.parse(res._mock.body) as { error: string };
+      expect(body.error).toMatch(/ATLAS_API_URL|ATLAS_CONTROL_PLANE_TOKEN/);
+    });
+  });
+
+  describe("GET /api/v1/error-aggregates", () => {
+    it("fail-closes when the canonical Atlas API hop is not configured", async () => {
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/error-aggregates"), res);
+      expect(res._mock.statusCode).toBe(502);
     });
   });
 

@@ -1,5 +1,5 @@
 import {
-  STUB_OWNER_ID,
+  SYSTEM_OWNER_ID,
   domainEventSchema,
   memoryEpistemicAfterAction,
   memorySchema,
@@ -11,6 +11,14 @@ import {
   type QaPortfolioPattern,
 } from "@atlas/shared";
 import { domainEventBus, redactSecrets } from "@atlas/agent-core";
+import {
+  cosineSimilarity,
+  resolveEmbeddingProvider,
+  safeEmbed,
+  type EmbeddingEnv,
+  type EmbeddingKind,
+  type EmbeddingProvider,
+} from "@atlas/embeddings";
 import { osStore } from "../store/os-store.js";
 
 /** Evidence-tagged memory slice for agent payloads — never silent FACT merge. */
@@ -40,24 +48,14 @@ export type MemoryContextPayload = {
 const MEMORY_CONTEXT_NOTE =
   "Memories are evidence-tagged by epistemicState — do not silently merge as FACT.";
 
-export function toMemoryContextItem(memory: Memory): MemoryContextItem {
-  return {
-    id: memory.id,
-    type: memory.type,
-    statement: memory.statement,
-    epistemicState: memory.epistemicState,
-    confidence: memory.confidence,
-    category: memory.category,
-    source: memory.source,
-    evidence: memory.evidence,
-    scope: memory.scope,
-    projectId: memory.projectId,
-    priority: memory.priority,
-  };
-}
+/** Cosine weight when a semantic (non-hash) embedding provider is configured. */
+const SEMANTIC_COSINE_WEIGHT = 0.45;
+/** Weak token-overlap signal from the lexical-hash fallback — never called semantic. */
+const LEXICAL_HASH_COSINE_WEIGHT = 0.08;
 
-/** Budgeted retrieve + evidence-tagged context for agent plan/dispatch/runs. */
-export function buildMemoryContext(input: {
+export type MemoryRetrievalEmbeddingKind = EmbeddingKind | "none";
+
+export type MemoryRetrieveInput = {
   projectId?: string | null;
   query?: string;
   budget?: number;
@@ -81,8 +79,33 @@ export function buildMemoryContext(input: {
    * equivalent to passing that id via `requestingAgentId`).
    */
   requestingAgentIds?: readonly string[];
-}): MemoryContextPayload & { memories: Memory[] } {
-  const retrieved = retrieveMemories(input);
+  /** Injected provider (tests / explicit wiring). Wins over `embeddingEnv`. */
+  embeddingProvider?: EmbeddingProvider;
+  /** Used to resolve HTTP vs hash fallback when `embeddingProvider` is omitted. */
+  embeddingEnv?: EmbeddingEnv;
+};
+
+export function toMemoryContextItem(memory: Memory): MemoryContextItem {
+  return {
+    id: memory.id,
+    type: memory.type,
+    statement: memory.statement,
+    epistemicState: memory.epistemicState,
+    confidence: memory.confidence,
+    category: memory.category,
+    source: memory.source,
+    evidence: memory.evidence,
+    scope: memory.scope,
+    projectId: memory.projectId,
+    priority: memory.priority,
+  };
+}
+
+/** Budgeted retrieve + evidence-tagged context for agent plan/dispatch/runs. */
+export async function buildMemoryContext(
+  input: MemoryRetrieveInput,
+): Promise<MemoryContextPayload & { memories: Memory[] }> {
+  const retrieved = await retrieveMemories(input);
   const hasInferred = retrieved.items.some(
     (m) =>
       m.epistemicState === "INFERRED" ||
@@ -154,9 +177,9 @@ export function seedPortfolioPatternMemories(
     const memory = memorySchema.parse({
       id: crypto.randomUUID(),
       // System-seeded, portfolio-wide insight — not tied to any single
-      // request's caller. STUB_OWNER_ID marks system-owned memories, same
-      // convention already used for domain-event ownerId above.
-      ownerId: STUB_OWNER_ID,
+      // request's caller. SYSTEM_OWNER_ID is the explicit platform actor,
+      // never the legacy personal-instance stub.
+      ownerId: SYSTEM_OWNER_ID,
       type: "LESSON",
       projectId: null,
       statement: `[${pattern.patternKey}] ${safeTitle}: ${safeSummary}`,
@@ -194,6 +217,7 @@ export function seedPortfolioPatternMemories(
     appendDomainEvent({
       type: "memory.created",
       projectId: null,
+      ownerId: SYSTEM_OWNER_ID,
       epistemicState: "INFERRED",
       payload: {
         memoryId: memory.id,
@@ -216,6 +240,8 @@ export function seedPortfolioPatternMemories(
 export function appendDomainEvent(input: {
   type: DomainEventType;
   projectId?: string | null;
+  /** Tenant or SYSTEM actor. Defaults to SYSTEM_OWNER_ID — never STUB_OWNER_ID. */
+  ownerId?: string;
   epistemicState?: EpistemicState;
   payload: Record<string, unknown>;
   correlationId?: string;
@@ -226,7 +252,7 @@ export function appendDomainEvent(input: {
     id: crypto.randomUUID(),
     type: input.type,
     occurredAt: now,
-    ownerId: STUB_OWNER_ID,
+    ownerId: input.ownerId ?? SYSTEM_OWNER_ID,
     projectId: input.projectId ?? null,
     correlationId: input.correlationId ?? crypto.randomUUID(),
     causationId: input.causationId ?? null,
@@ -348,6 +374,7 @@ export function supersedeMatchingMemories(input: {
     appendDomainEvent({
       type: "memory.superseded",
       projectId: input.projectId,
+      ownerId: input.ownerId,
       epistemicState: "STALE",
       payload: {
         newerMemoryId: input.newerMemoryId,
@@ -481,6 +508,7 @@ export function approveMemory(input: {
     appendDomainEvent({
       type: "memory.created",
       projectId: updated.projectId,
+      ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
       epistemicState: updated.epistemicState,
       payload: { memoryId: updated.id, action: "approve" },
     });
@@ -517,23 +545,58 @@ function isVisibleToAgent(
   return candidates.some((id) => allowed.includes(id));
 }
 
-/** Retrieve ACTIVE memories with a hard budget (token/cost control). */
-export function retrieveMemories(input: {
-  projectId?: string | null;
-  query?: string;
-  budget?: number;
-  /** P0 tenant-isolation fix: scope retrieval to this caller (admins omit). */
-  ownerId?: string;
-  /**
-   * Per-agent scoping (P1 fix): the agent (kernel catalog id / plugin id)
-   * asking for memory. See `isVisibleToAgent()` for the exact filtering
-   * rule. Optional and backward-compatible — omitting it behaves exactly as
-   * before for any memory that doesn't set `allowedAgents`.
-   */
-  requestingAgentId?: string;
-  /** See `buildMemoryContext()`'s `requestingAgentIds` -- same OR rule. */
-  requestingAgentIds?: readonly string[];
-}): { items: Memory[]; budget: number; truncated: boolean } {
+function heuristicMemoryScore(memory: Memory, queryLower: string): number {
+  let score = memory.confidence;
+  if (memory.epistemicState === "FACT" || memory.epistemicState === "VERIFIED") {
+    score += 0.2;
+  } else if (
+    memory.epistemicState === "CONFIRMED" ||
+    memory.epistemicState === "OBSERVED"
+  ) {
+    score += 0.12;
+  } else if (memory.epistemicState === "PROPOSED") {
+    score -= 0.15;
+  } else if (memory.epistemicState === "STALE") {
+    score -= 0.35;
+  }
+  if (queryLower && memory.statement.toLowerCase().includes(queryLower)) {
+    score += 0.25;
+  }
+  if (queryLower && memory.reason.some((r) => r.toLowerCase().includes(queryLower))) {
+    score += 0.08;
+  }
+  if (memory.priority === "CRITICAL") score += 0.15;
+  if (memory.priority === "HIGH") score += 0.08;
+  if (memory.source === "qa-portfolio-pattern") score += 0.18;
+  if (memory.source === "demo-seed") score += 0.05;
+  // Recency boost (ISO timestamps sort lexicographically)
+  const ageBoost = Math.min(
+    0.1,
+    Math.max(0, (Date.parse(memory.updatedAt) - Date.parse("2020-01-01")) / 1e13),
+  );
+  return score + ageBoost;
+}
+
+function memoryEmbedText(memory: Memory): string {
+  return `${memory.statement}\n${memory.reason.join(" ")}`;
+}
+
+/**
+ * Retrieve ACTIVE memories with a hard budget (token/cost control).
+ *
+ * Isolation (project / owner / agent) runs at the data layer before any
+ * embedding or ranking. A denied memory cannot surface via cosine score.
+ *
+ * Ranking: heuristic fields always apply. When a query is present, cosine
+ * similarity is added from the configured embedding provider. Hash-trick
+ * vectors are an explicit `lexical-hash` fallback — never labeled semantic.
+ */
+export async function retrieveMemories(input: MemoryRetrieveInput): Promise<{
+  items: Memory[];
+  budget: number;
+  truncated: boolean;
+  embeddingKind: MemoryRetrievalEmbeddingKind;
+}> {
   const budget = Math.max(1, Math.min(input.budget ?? 12, 40));
   const key = input.projectId ?? null;
   const pools: Memory[] = [];
@@ -550,34 +613,49 @@ export function retrieveMemories(input: {
         .filter((m) => m.projectId == null),
     );
   }
-  const q = (input.query ?? "").trim().toLowerCase();
+  const query = (input.query ?? "").trim();
+  const queryLower = query.toLowerCase();
   const active = pools
     .filter((m) => m.status === "ACTIVE")
-    .filter((m) => isVisibleToAgent(m, input.requestingAgentId, input.requestingAgentIds));
-  const ranked = active
-    .map((m) => {
-      let score = m.confidence;
-      if (m.epistemicState === "FACT" || m.epistemicState === "VERIFIED") {
-        score += 0.2;
-      } else if (m.epistemicState === "CONFIRMED" || m.epistemicState === "OBSERVED") {
-        score += 0.12;
-      } else if (m.epistemicState === "PROPOSED") {
-        score -= 0.15;
-      } else if (m.epistemicState === "STALE") {
-        score -= 0.35;
+    .filter((m) =>
+      isVisibleToAgent(m, input.requestingAgentId, input.requestingAgentIds),
+    );
+
+  let embeddingKind: MemoryRetrievalEmbeddingKind = "none";
+  let queryVec: readonly number[] | null = null;
+  const memoryVecs: Array<readonly number[] | null> = active.map(() => null);
+
+  if (query.length > 0 && active.length > 0) {
+    const provider =
+      input.embeddingProvider ?? resolveEmbeddingProvider(input.embeddingEnv ?? {});
+    try {
+      const vectors = await safeEmbed(provider, [
+        query,
+        ...active.map(memoryEmbedText),
+      ]);
+      queryVec = vectors[0] ?? null;
+      for (let i = 0; i < active.length; i += 1) {
+        memoryVecs[i] = vectors[i + 1] ?? null;
       }
-      if (q && m.statement.toLowerCase().includes(q)) score += 0.25;
-      if (q && m.reason.some((r) => r.toLowerCase().includes(q))) score += 0.08;
-      if (m.priority === "CRITICAL") score += 0.15;
-      if (m.priority === "HIGH") score += 0.08;
-      if (m.source === "qa-portfolio-pattern") score += 0.18;
-      if (m.source === "demo-seed") score += 0.05;
-      // Recency boost (ISO timestamps sort lexicographically)
-      const ageBoost = Math.min(
-        0.1,
-        Math.max(0, (Date.parse(m.updatedAt) - Date.parse("2020-01-01")) / 1e13),
-      );
-      score += ageBoost;
+      embeddingKind = provider.kind;
+    } catch {
+      queryVec = null;
+      embeddingKind = "none";
+    }
+  }
+
+  const ranked = active
+    .map((m, index) => {
+      let score = heuristicMemoryScore(m, queryLower);
+      const memoryVec = memoryVecs[index];
+      if (queryVec && memoryVec) {
+        const similarity = cosineSimilarity(queryVec, memoryVec);
+        if (embeddingKind === "semantic") {
+          score += similarity * SEMANTIC_COSINE_WEIGHT;
+        } else if (embeddingKind === "lexical-hash") {
+          score += Math.max(0, similarity) * LEXICAL_HASH_COSINE_WEIGHT;
+        }
+      }
       return { m, score };
     })
     .sort((a, b) => b.score - a.score);
@@ -586,5 +664,6 @@ export function retrieveMemories(input: {
     items,
     budget,
     truncated: ranked.length > budget,
+    embeddingKind,
   };
 }

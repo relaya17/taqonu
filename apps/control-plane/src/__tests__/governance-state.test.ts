@@ -7,6 +7,7 @@ import {
   getPolicyForAction,
   addApprovalRecord,
   listApprovalRecords,
+  replaceApprovalRecords,
   computeHealthMetrics,
   resetGovernanceStateForTests,
   type AuditEntry,
@@ -89,6 +90,15 @@ describe("Control Plane — Governance State", () => {
       const filtered = listAuditEntries({ actorId: "AGENT_A" });
       expect(filtered).toHaveLength(2);
       expect(filtered.every((e) => e.actorId === "AGENT_A")).toBe(true);
+    });
+
+    it("filters by ownerId — cross-tenant entries are excluded", () => {
+      appendAuditEntry(makeAuditEntry({ ownerId: "tenant-alpha", seq: 1 }));
+      appendAuditEntry(makeAuditEntry({ ownerId: "tenant-beta", seq: 2 }));
+      const filtered = listAuditEntries({ ownerId: "tenant-alpha" });
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0]?.ownerId).toBe("tenant-alpha");
+      expect(filtered.every((e) => e.ownerId !== "tenant-beta")).toBe(true);
     });
 
     it("filters by risk level", () => {
@@ -196,6 +206,16 @@ describe("Control Plane — Governance State", () => {
       addApprovalRecord(makeApprovalRecord({ id: "apr_1" }));
       addApprovalRecord(makeApprovalRecord({ id: "apr_2" }));
       expect(listApprovalRecords()).toHaveLength(2);
+    });
+
+    it("replaceApprovalRecords overwrites the observational mirror", () => {
+      addApprovalRecord(makeApprovalRecord({ id: "apr_old" }));
+      replaceApprovalRecords([
+        makeApprovalRecord({ id: "apr_new", status: "PENDING" }),
+      ]);
+      const records = listApprovalRecords();
+      expect(records).toHaveLength(1);
+      expect(records[0]?.id).toBe("apr_new");
     });
 
     it("filters by status", () => {

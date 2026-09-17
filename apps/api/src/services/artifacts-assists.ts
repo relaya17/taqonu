@@ -7,7 +7,6 @@ import {
   EXPERT_CATALOG,
   FREE_MONTHLY_ASSIST_CREDITS,
   PRO_MONTHLY_ASSIST_CREDITS,
-  STUB_OWNER_ID,
   artifactSchema,
   assistRunSchema,
   creditsBalanceSchema,
@@ -108,6 +107,7 @@ export function purchaseCreditPack(
 
 export function createArtifactFromUpload(
   input: CreateArtifact,
+  ownerId: string,
 ): { artifact: Artifact; evidence: EvidenceRecord } {
   const raw = Buffer.from(input.contentBase64, "base64");
   const maxBytes = 5 * 1024 * 1024;
@@ -128,7 +128,7 @@ export function createArtifactFromUpload(
   const projectKey = input.projectId ?? "global";
   const evidence = parseEvidenceRecord({
     id: evidenceId,
-    ownerId: STUB_OWNER_ID,
+    ownerId,
     projectId: input.projectId ?? null,
     source: `artifact:${input.filename}`,
     sourceType: "ARTIFACT",

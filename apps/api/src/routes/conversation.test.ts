@@ -420,13 +420,129 @@ describe("POST /api/v1/conversation/message -- Task 6 tenant isolation for proje
 });
 
 describe("GET /api/v1/conversation/threads/:threadId", () => {
-  it("returns an (empty) thread without requiring auth — informational read", async () => {
+  it("401s when not signed in", async () => {
+    getRequestUser.mockReturnValue(null);
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/conversation/threads/44444444-4444-4444-8444-444444444444",
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(Array.isArray(body.items)).toBe(true);
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("404s for a signed-in caller when the thread does not exist", async () => {
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/conversation/threads/44444444-4444-4444-8444-444444444444",
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("D1 conversation persistence: create → reload → retrieve → continue", () => {
+  it("persists a thread, returns it after a simulated client reload, and continues the same thread", async () => {
+    getRequestUser.mockReturnValue(ownerA);
+    const projectId = makeProject(ownerA, "D1 Persist Project");
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: {
+        message: "d1-create-marker remember this turn",
+        projectId,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const createdBody = created.json() as { threadId: string; answer: string };
+    expect(createdBody.threadId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+
+    const reloadedList = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversation/threads?projectId=${projectId}`,
+    });
+    expect(reloadedList.statusCode).toBe(200);
+    const listBody = reloadedList.json() as {
+      items: Array<{ threadId: string; turnCount: number }>;
+    };
+    expect(listBody.items[0]?.threadId).toBe(createdBody.threadId);
+    expect(listBody.items[0]?.turnCount).toBeGreaterThanOrEqual(2);
+
+    const retrieved = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversation/threads/${createdBody.threadId}`,
+    });
+    expect(retrieved.statusCode).toBe(200);
+    const retrievedBody = retrieved.json() as {
+      items: Array<{ role: string; content: string }>;
+    };
+    expect(retrievedBody.items.some((t) => t.content.includes("d1-create-marker"))).toBe(
+      true,
+    );
+    expect(retrievedBody.items.some((t) => t.role === "assistant")).toBe(true);
+
+    const continued = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: {
+        message: "d1-continue-marker second turn",
+        projectId,
+        threadId: createdBody.threadId,
+      },
+    });
+    expect(continued.statusCode).toBe(201);
+    expect(continued.json().threadId).toBe(createdBody.threadId);
+
+    const afterContinue = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversation/threads/${createdBody.threadId}`,
+    });
+    expect(afterContinue.statusCode).toBe(200);
+    const afterItems = (
+      afterContinue.json() as { items: Array<{ content: string }> }
+    ).items;
+    expect(afterItems.some((t) => t.content.includes("d1-create-marker"))).toBe(true);
+    expect(afterItems.some((t) => t.content.includes("d1-continue-marker"))).toBe(true);
+    expect(afterItems.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("does not let owner B list, read, or continue owner A's thread", async () => {
+    getRequestUser.mockReturnValue(ownerA);
+    const projectA = makeProject(ownerA, "D1 Isolation Project A");
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: {
+        message: "d1-secret-owner-a-thread",
+        projectId: projectA,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const threadId = (created.json() as { threadId: string }).threadId;
+
+    getRequestUser.mockReturnValue(ownerB);
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversation/threads?projectId=${projectA}`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect((listed.json() as { items: unknown[] }).items).toEqual([]);
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/conversation/threads/${threadId}`,
+    });
+    expect(read.statusCode).toBe(404);
+
+    const hijack = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: {
+        message: "hijack attempt",
+        threadId,
+      },
+    });
+    expect(hijack.statusCode).toBe(403);
   });
 });

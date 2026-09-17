@@ -24,6 +24,7 @@
     { "path": "../../packages/integrations/supabase" },
     { "path": "../../packages/integrations/mongodb" },
     { "path": "../../packages/knowledge" },
+    { "path": "../../packages/embeddings" },
     { "path": "../../packages/observer" },
     { "path": "../../packages/state" },
     { "path": "../../packages/system-model" },

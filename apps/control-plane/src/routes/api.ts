@@ -18,12 +18,16 @@ import {
   getAuditEntryCount,
   listPolicies,
   getPolicyForAction,
-  listApprovalRecords,
   computeHealthMetrics,
-  verifyAuditChain,
+  appendAuditEntry,
 } from "../services/governance-state.js";
 import {
+  fetchCanonicalApprovals,
+  decideCanonicalApproval,
+} from "../services/approval-control.js";
+import {
   applicationIntegrationContract,
+  decideApplicationTrust,
   getRegisteredApplication,
   listRegisteredApplications,
 } from "../services/application-registry.js";
@@ -36,6 +40,9 @@ import {
   fetchKillSwitchStatus,
   setKillSwitchOverride,
 } from "../services/kill-switch-control.js";
+import { fetchCanonicalAuditVerification } from "../services/audit-verify-control.js";
+import { fetchCanonicalExecutions } from "../services/execution-control.js";
+import { fetchErrorAggregates } from "../services/error-aggregate-control.js";
 import { buildControlSupervisionSnapshot } from "../services/supervision-snapshot.js";
 import {
   buildControlOperationalFoundation,
@@ -78,6 +85,10 @@ import {
  * Applications:
  *   GET /api/v1/applications
  *   GET /api/v1/applications/:id
+ *   POST /api/v1/applications/:id/decide  — approve/reject pending registration
+ *
+ * Live execution:
+ *   GET /api/v1/executions
  *
  * Agent Registry (legacy oversight list — not Fabric execution):
  *   GET /api/v1/agents
@@ -165,6 +176,7 @@ export function createApiRouter(): Router {
   router.get("/api/v1/audit", (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const actorId = url.searchParams.get("actorId") ?? undefined;
+    const ownerId = url.searchParams.get("ownerId") ?? undefined;
     const type = url.searchParams.get("type") ?? undefined;
     const risk = url.searchParams.get("risk") ?? undefined;
     const result = url.searchParams.get("result") ?? undefined;
@@ -175,6 +187,7 @@ export function createApiRouter(): Router {
       res,
       listAuditEntries({
         ...(actorId ? { actorId } : {}),
+        ...(ownerId ? { ownerId } : {}),
         ...(type ? { type } : {}),
         ...(risk ? { risk } : {}),
         ...(result ? { result } : {}),
@@ -206,18 +219,64 @@ export function createApiRouter(): Router {
   });
 
   // ── Approvals ───────────────────────────────────────────────────────
+  // Canonical store is apps/api's live approval repository. This route
+  // projects that store through the existing CP → API SERVICE hop rather
+  // than returning the unused in-memory `addApprovalRecord` list.
 
-  router.get("/api/v1/approvals", (req, res) => {
+  router.get("/api/v1/approvals", async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const status = url.searchParams.get("status") ?? undefined;
     const agentId = url.searchParams.get("agentId") ?? undefined;
-    json(
-      res,
-      listApprovalRecords({
-        ...(status ? { status } : {}),
-        ...(agentId ? { agentId } : {}),
-      }),
-    );
+    const result = await fetchCanonicalApprovals({
+      ...(status ? { status } : {}),
+      ...(agentId ? { agentId } : {}),
+    });
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
+  });
+
+  router.post("/api/v1/approvals/:id/decide", async (req, res, params) => {
+    const reason = headerReason(req);
+    if (!reason) {
+      json(res, { error: "X-Atlas-Reason is required (minimum 8 characters)" }, 400);
+      return;
+    }
+    const id = params["id"];
+    if (!id) {
+      json(res, { error: "approval id is required" }, 400);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      json(
+        res,
+        { error: error instanceof Error ? error.message : "invalid json" },
+        400,
+      );
+      return;
+    }
+    const record = body as Record<string, unknown>;
+    if (typeof record["approve"] !== "boolean") {
+      json(res, { error: "approve must be a boolean" }, 400);
+      return;
+    }
+    const principal = resolveControlPlanePrincipal(req);
+    const result = await decideCanonicalApproval({
+      id,
+      approve: record["approve"],
+      decidedBy: principal.id,
+      reason,
+    });
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
   });
 
   // ── Health & Status ─────────────────────────────────────────────────
@@ -314,8 +373,89 @@ export function createApiRouter(): Router {
     json(res, { ...app, contract: applicationIntegrationContract(app) });
   });
 
-  router.get("/api/v1/audit/verify", (_req, res) => {
-    json(res, verifyAuditChain());
+  router.post("/api/v1/applications/:id/decide", async (req, res, params) => {
+    const reason = headerReason(req);
+    if (!reason) {
+      json(res, { error: "X-Atlas-Reason is required (minimum 8 characters)" }, 400);
+      return;
+    }
+    const id = params["id"];
+    if (!id) {
+      json(res, { error: "Application ID required" }, 400);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      json(
+        res,
+        { error: error instanceof Error ? error.message : "invalid json" },
+        400,
+      );
+      return;
+    }
+    const record = body as Record<string, unknown>;
+    if (typeof record["approve"] !== "boolean") {
+      json(res, { error: "approve must be a boolean" }, 400);
+      return;
+    }
+    const principal = resolveControlPlanePrincipal(req);
+    const result = decideApplicationTrust({
+      applicationId: id,
+      approve: record["approve"],
+      decidedBy: principal.id,
+      reason,
+    });
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.status);
+      return;
+    }
+    const seq = Date.now();
+    appendAuditEntry({
+      seq,
+      timestamp: new Date().toISOString(),
+      type: record["approve"] ? "application.approved" : "application.rejected",
+      actorId: principal.id,
+      actorKind: "USER",
+      reason,
+      policy: "application.registration",
+      risk: "MEDIUM",
+      approval: record["approve"] ? "APPROVED" : "REJECTED",
+      result: "SUCCESS",
+      ownerId: principal.id,
+      projectId: null,
+      hash: `app-trust-${seq}`,
+      prevHash: "000",
+    });
+    json(res, result.application);
+  });
+
+  router.get("/api/v1/executions", async (_req, res) => {
+    const result = await fetchCanonicalExecutions();
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
+  });
+
+  router.get("/api/v1/error-aggregates", async (_req, res) => {
+    const result = await fetchErrorAggregates();
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
+  });
+
+  router.get("/api/v1/audit/verify", async (_req, res) => {
+    const result = await fetchCanonicalAuditVerification();
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
   });
 
   router.get("/api/v1/self-audit", (_req, res) => {

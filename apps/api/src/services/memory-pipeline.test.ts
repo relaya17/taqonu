@@ -4,6 +4,7 @@ import {
   type MemoryEvidence,
   type QaPortfolioPattern,
 } from "@atlas/shared";
+import { DeterministicConceptEmbeddingProvider } from "@atlas/embeddings";
 import { osStore } from "../store/os-store.js";
 import {
   approveMemory,
@@ -85,16 +86,16 @@ describe("retrieveMemories isolation", () => {
     else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
   });
 
-  it("does not leak another project's memories when scoped", () => {
-    const { items } = retrieveMemories({ projectId: PROJECT_A, budget: 20 });
+  it("does not leak another project's memories when scoped", async () => {
+    const { items } = await retrieveMemories({ projectId: PROJECT_A, budget: 20 });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("secret from tenant A");
     expect(statements).not.toContain("secret from tenant B");
     expect(statements).not.toContain("platform-only global note");
   });
 
-  it("does not dump every project when unscoped", () => {
-    const { items } = retrieveMemories({ budget: 20 });
+  it("does not dump every project when unscoped", async () => {
+    const { items } = await retrieveMemories({ budget: 20 });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("platform-only global note");
     expect(statements).not.toContain("secret from tenant A");
@@ -117,15 +118,15 @@ describe("retrieveMemories ownerId scoping (P0 tenant-isolation fix)", () => {
     else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
   });
 
-  it("only returns the caller's own memories when ownerId is provided", () => {
-    const { items } = retrieveMemories({ budget: 20, ownerId: OWNER_A });
+  it("only returns the caller's own memories when ownerId is provided", async () => {
+    const { items } = await retrieveMemories({ budget: 20, ownerId: OWNER_A });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("owner A's global note");
     expect(statements).not.toContain("owner B's global note");
   });
 
-  it("returns every owner's memories when ownerId is omitted (trusted internal caller)", () => {
-    const { items } = retrieveMemories({ budget: 20 });
+  it("returns every owner's memories when ownerId is omitted (trusted internal caller)", async () => {
+    const { items } = await retrieveMemories({ budget: 20 });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("owner A's global note");
     expect(statements).toContain("owner B's global note");
@@ -314,8 +315,8 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
   });
 
-  it("excludes an agent-scoped memory when the requesting agent is not in allowedAgents", () => {
-    const { items } = retrieveMemories({
+  it("excludes an agent-scoped memory when the requesting agent is not in allowedAgents", async () => {
+    const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentId: "ORCHESTRATOR",
     });
@@ -323,8 +324,8 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(statements).not.toContain("judge-only note");
   });
 
-  it("includes an agent-scoped memory when the requesting agent is in allowedAgents", () => {
-    const { items } = retrieveMemories({
+  it("includes an agent-scoped memory when the requesting agent is in allowedAgents", async () => {
+    const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentId: "JUDGE",
     });
@@ -332,18 +333,18 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(statements).toContain("judge-only note");
   });
 
-  it("includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)", () => {
-    const { items } = retrieveMemories({ budget: 20 });
+  it("includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)", async () => {
+    const { items } = await retrieveMemories({ budget: 20 });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("judge-only note");
   });
 
-  it("a memory with no allowedAgents set is visible to any agent (default-open)", () => {
-    const asOrchestrator = retrieveMemories({
+  it("a memory with no allowedAgents set is visible to any agent (default-open)", async () => {
+    const asOrchestrator = await retrieveMemories({
       budget: 20,
       requestingAgentId: "ORCHESTRATOR",
     });
-    const asJudge = retrieveMemories({ budget: 20, requestingAgentId: "JUDGE" });
+    const asJudge = await retrieveMemories({ budget: 20, requestingAgentId: "JUDGE" });
     expect(
       asOrchestrator.items.map((row) => row.statement),
     ).toContain("open note, no allowedAgents");
@@ -352,29 +353,90 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     );
   });
 
-  it("includes an agent-scoped memory when any requestingAgentIds candidate is allowed", () => {
-    const { items } = retrieveMemories({
+  it("includes an agent-scoped memory when any requestingAgentIds candidate is allowed", async () => {
+    const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentIds: ["ORCHESTRATOR", "JUDGE"],
     });
     expect(items.map((row) => row.statement)).toContain("judge-only note");
   });
 
-  it("excludes an agent-scoped memory when no requestingAgentIds candidate is allowed", () => {
-    const { items } = retrieveMemories({
+  it("excludes an agent-scoped memory when no requestingAgentIds candidate is allowed", async () => {
+    const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentIds: ["ORCHESTRATOR", "SECURITY"],
     });
     expect(items.map((row) => row.statement)).not.toContain("judge-only note");
   });
 
-  it("unions requestingAgentId with requestingAgentIds (OR)", () => {
-    const { items } = retrieveMemories({
+  it("unions requestingAgentId with requestingAgentIds (OR)", async () => {
+    const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentId: "ORCHESTRATOR",
       requestingAgentIds: ["JUDGE"],
     });
     expect(items.map((row) => row.statement)).toContain("judge-only note");
+  });
+});
+
+describe("retrieveMemories semantic ranking (B2)", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+  const concept = new DeterministicConceptEmbeddingProvider();
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
+  it("ranks synonym-related text above unrelated text with an injected embedding function", async () => {
+    osStore.addMemory(memory(null, "authentication flow throws an exception"));
+    osStore.addMemory(memory(null, "weather forecast for the weekend"));
+
+    const { items, embeddingKind } = await retrieveMemories({
+      budget: 20,
+      query: "user login is broken",
+      embeddingProvider: concept,
+    });
+
+    expect(embeddingKind).toBe("semantic");
+    expect(items.map((row) => row.statement)[0]).toBe(
+      "authentication flow throws an exception",
+    );
+    expect(items.map((row) => row.statement)).toContain(
+      "weather forecast for the weekend",
+    );
+  });
+
+  it("still excludes a semantically closer memory when the requesting agent is denied", async () => {
+    osStore.addMemory(
+      memory(null, "authentication flow throws an exception", OWNER_A, ["JUDGE"]),
+    );
+    osStore.addMemory(memory(null, "weather forecast for the weekend"));
+
+    const { items } = await retrieveMemories({
+      budget: 20,
+      query: "user login is broken",
+      requestingAgentId: "ORCHESTRATOR",
+      embeddingProvider: concept,
+    });
+    const statements = items.map((row) => row.statement);
+    expect(statements).not.toContain("authentication flow throws an exception");
+    expect(statements).toContain("weather forecast for the weekend");
+  });
+
+  it("labels hash-trick fallback as lexical-hash, not semantic", async () => {
+    osStore.addMemory(memory(null, "webhook idempotency keys"));
+    const { embeddingKind } = await retrieveMemories({
+      budget: 20,
+      query: "webhook idempotency",
+      embeddingEnv: {},
+    });
+    expect(embeddingKind).toBe("lexical-hash");
   });
 });
 

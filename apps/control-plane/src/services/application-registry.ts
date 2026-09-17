@@ -5,6 +5,8 @@
 
 export type ApplicationHealth = "healthy" | "degraded" | "down" | "unknown";
 
+export type ApplicationTrustStatus = "PENDING" | "APPROVED" | "REJECTED";
+
 export interface RegisteredApplication {
   readonly applicationId: string;
   readonly name: string;
@@ -19,6 +21,10 @@ export interface RegisteredApplication {
   readonly lastEventType: string | null;
   readonly tenantId: string | null;
   readonly projectId: string | null;
+  readonly trustStatus: ApplicationTrustStatus;
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+  readonly decisionReason: string | null;
 }
 
 const ATLAS_SELF: RegisteredApplication = {
@@ -35,6 +41,10 @@ const ATLAS_SELF: RegisteredApplication = {
   lastEventType: null,
   tenantId: "atlas",
   projectId: null,
+  trustStatus: "APPROVED",
+  decidedBy: "system",
+  decidedAt: null,
+  decisionReason: "Seeded Atlas-self (DEF-000) is the Control Plane identity.",
 };
 
 const applications = new Map<string, RegisteredApplication>();
@@ -62,6 +72,7 @@ export function upsertRegisteredApplication(
 ): RegisteredApplication {
   ensureSeed();
   const existing = applications.get(patch.applicationId);
+  const seededApproved = patch.applicationId === ATLAS_SELF.applicationId;
   const next: RegisteredApplication = {
     applicationId: patch.applicationId,
     name: patch.name,
@@ -76,9 +87,53 @@ export function upsertRegisteredApplication(
     lastEventType: patch.lastEventType ?? existing?.lastEventType ?? null,
     tenantId: patch.tenantId ?? existing?.tenantId ?? null,
     projectId: patch.projectId ?? existing?.projectId ?? null,
+    trustStatus: seededApproved
+      ? "APPROVED"
+      : (patch.trustStatus ?? existing?.trustStatus ?? "PENDING"),
+    decidedBy: patch.decidedBy ?? existing?.decidedBy ?? (seededApproved ? "system" : null),
+    decidedAt: patch.decidedAt ?? existing?.decidedAt ?? null,
+    decisionReason:
+      patch.decisionReason ??
+      existing?.decisionReason ??
+      (seededApproved ? ATLAS_SELF.decisionReason : null),
   };
   applications.set(next.applicationId, next);
   return next;
+}
+
+export function applicationIsUsable(app: RegisteredApplication): boolean {
+  return app.trustStatus === "APPROVED";
+}
+
+export function decideApplicationTrust(input: {
+  readonly applicationId: string;
+  readonly approve: boolean;
+  readonly decidedBy: string;
+  readonly reason: string;
+}):
+  | { readonly ok: true; readonly application: RegisteredApplication }
+  | { readonly ok: false; readonly reason: string; readonly status: 400 | 404 } {
+  ensureSeed();
+  if (input.applicationId === ATLAS_SELF.applicationId) {
+    return {
+      ok: false,
+      reason: "Atlas-self (def-000) trust cannot be changed",
+      status: 400,
+    };
+  }
+  const existing = applications.get(input.applicationId);
+  if (!existing) {
+    return { ok: false, reason: `Application "${input.applicationId}" not found`, status: 404 };
+  }
+  const next = upsertRegisteredApplication({
+    applicationId: existing.applicationId,
+    name: existing.name,
+    trustStatus: input.approve ? "APPROVED" : "REJECTED",
+    decidedBy: input.decidedBy,
+    decidedAt: new Date().toISOString(),
+    decisionReason: input.reason,
+  });
+  return { ok: true, application: next };
 }
 
 export function recordApplicationEvent(

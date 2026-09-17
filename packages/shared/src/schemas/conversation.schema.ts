@@ -56,6 +56,22 @@ export const conversationMessageResponseSchema = z.object({
   createdAt: isoDateTimeSchema,
 });
 
+export const conversationThreadTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  epistemicLabel: epistemicStateSchema.optional(),
+  evidenceRefs: z.array(conversationEvidenceRefSchema).optional(),
+  at: isoDateTimeSchema,
+});
+
+export const conversationThreadListQuerySchema = z.object({
+  projectId: uuidSchema.optional(),
+});
+
+export const conversationThreadParamsSchema = z.object({
+  threadId: uuidSchema,
+});
+
 export type CreateConversationMessage = z.infer<
   typeof createConversationMessageSchema
 >;
@@ -64,4 +80,7 @@ export type ConversationEvidenceRef = z.infer<
 >;
 export type ConversationMessageResponse = z.infer<
   typeof conversationMessageResponseSchema
+>;
+export type ConversationThreadTurn = z.infer<
+  typeof conversationThreadTurnSchema
 >;

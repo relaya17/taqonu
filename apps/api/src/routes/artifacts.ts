@@ -12,7 +12,7 @@ import {
 import { osStore } from "../store/os-store.js";
 import { resolveTier } from "../services/plan-quota.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
-import { canReadProjectScoped } from "../services/project-access.js";
+import { assertProjectWriteAccess, canReadProjectScoped } from "../services/project-access.js";
 
 export async function registerArtifactRoutes(app: FastifyInstance): Promise<void> {
   osStore.ensureLoaded();
@@ -26,10 +26,13 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/artifacts", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const body = createArtifactSchema.parse(request.body);
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    }
     try {
-      const result = createArtifactFromUpload(body);
+      const result = createArtifactFromUpload(body, user.id);
       return reply.status(201).send(result);
     } catch (error) {
       if (error instanceof Error && error.message === "INVALID_SIZE") {

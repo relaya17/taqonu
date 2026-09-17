@@ -45,6 +45,16 @@ export const PLAN_AXIS_LIMITS: Record<
 /** Personal-instance owner until real auth (must be valid uuid). */
 export const STUB_OWNER_ID = "00000000-0000-4000-8000-000000000001";
 
+/**
+ * Explicit platform actor for system-authored evidence, memory, and domain
+ * events when no authenticated tenant owner is available (portfolio seeds,
+ * unattended webhooks without a bound project owner, background jobs).
+ * Distinct from `STUB_OWNER_ID`, which remains the legacy personal-instance
+ * / catalog / unauthenticated-quota fallback and must not be silently
+ * stamped on production writes.
+ */
+export const SYSTEM_OWNER_ID = "00000000-0000-4000-8000-aaaaaaaa0001";
+
 /** Paid assists credits — ADR-013 */
 export const CREDIT_PACKS = {
   starter: { credits: 50, label: "Starter" },

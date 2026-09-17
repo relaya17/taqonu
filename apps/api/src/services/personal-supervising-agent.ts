@@ -700,7 +700,7 @@ export async function requestGovernedAction(
 export async function readPsaMemory(
   ownerId: string,
   input: { readonly projectId?: string | null; readonly query?: string },
-): Promise<ReturnType<typeof buildMemoryContext>> {
+): Promise<Awaited<ReturnType<typeof buildMemoryContext>>> {
   const agent = await getPersonalSupervisingAgent(ownerId);
   if (input.projectId) {
     assertProjectInScope(agent.scope, input.projectId);

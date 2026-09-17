@@ -143,4 +143,32 @@ describe("hybrid-rag closed loop", () => {
     expect(result.retrievalBackend).toBe("pgvector");
     expect(result.hits.some((h) => h.id === "kf_pg")).toBe(true);
   });
+
+  it("ranks synonym-related corpus docs above unrelated docs with an injected semantic embedder", async () => {
+    const { DeterministicConceptEmbeddingProvider } = await import(
+      "@atlas/embeddings"
+    );
+    const { searchKnowledgeClosedLoop, ingestKnowledgeClosedLoop } = await import(
+      "./hybrid-rag.js"
+    );
+    await ingestKnowledgeClosedLoop(offlineEnv, {
+      title: "Auth session lesson",
+      excerpt: "authentication flow throws an exception",
+      sourceClass: "REPOSITORY_SOURCE",
+    });
+    await ingestKnowledgeClosedLoop(offlineEnv, {
+      title: "Weather desk note",
+      excerpt: "weather forecast for the weekend remains sunny",
+      sourceClass: "REPOSITORY_SOURCE",
+    });
+    const result = await searchKnowledgeClosedLoop(offlineEnv, {
+      query: "user login is broken",
+      scope: SCOPE,
+      minAuthority: 0.3,
+      embeddingProvider: new DeterministicConceptEmbeddingProvider(),
+    });
+    const titles = result.hits.map((hit) => hit.title);
+    expect(titles).toContain("Auth session lesson");
+    expect(titles).not.toContain("Weather desk note");
+  });
 });

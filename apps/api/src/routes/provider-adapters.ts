@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
   AtlasError,
-  STUB_OWNER_ID,
   parseEvidenceRecord,
   normalizedEvidenceDraftSchema,
   providerAdapterIdSchema,
@@ -115,7 +114,7 @@ export async function registerProviderAdapterRoutes(
 
   app.post("/api/v1/providers/vercel/observe", async (request, reply) => {
     const body = vercelObserveSchema.parse(request.body);
-    await assertProjectWriteAccess(app, request, body.projectId);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
 
     // Entity-policy gate: provider observation creates CONFIGURATION evidence.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
@@ -156,7 +155,7 @@ export async function registerProviderAdapterRoutes(
       const normalized = normalizedEvidenceDraftSchema.parse(draft);
       return parseEvidenceRecord({
         id: crypto.randomUUID(),
-        ownerId: STUB_OWNER_ID,
+        ownerId: user.id,
         projectId: body.projectId,
         source: normalized.source,
         sourceType,
@@ -184,6 +183,7 @@ export async function registerProviderAdapterRoutes(
     appendDomainEvent({
       type: "provider.observation",
       projectId: body.projectId,
+      ownerId: user.id,
       epistemicState: records[0]?.epistemicState ?? "OBSERVED",
       payload: {
         provider: providerAdapterIdSchema.parse("vercel"),
@@ -195,6 +195,7 @@ export async function registerProviderAdapterRoutes(
     appendDomainEvent({
       type: "evidence.recorded",
       projectId: body.projectId,
+      ownerId: user.id,
       epistemicState: "OBSERVED",
       payload: { count: records.length, provider: "vercel" },
     });
@@ -208,7 +209,7 @@ export async function registerProviderAdapterRoutes(
 
   app.post("/api/v1/providers/render/observe", async (request, reply) => {
     const body = renderObserveSchema.parse(request.body);
-    await assertProjectWriteAccess(app, request, body.projectId);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
 
     // Entity-policy gate: provider observation creates CONFIGURATION evidence.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
@@ -249,7 +250,7 @@ export async function registerProviderAdapterRoutes(
       const normalized = normalizedEvidenceDraftSchema.parse(draft);
       return parseEvidenceRecord({
         id: crypto.randomUUID(),
-        ownerId: STUB_OWNER_ID,
+        ownerId: user.id,
         projectId: body.projectId,
         source: normalized.source,
         sourceType,
@@ -277,6 +278,7 @@ export async function registerProviderAdapterRoutes(
     appendDomainEvent({
       type: "provider.observation",
       projectId: body.projectId,
+      ownerId: user.id,
       epistemicState: records[0]?.epistemicState ?? "OBSERVED",
       payload: {
         provider: providerAdapterIdSchema.parse("render"),
@@ -288,6 +290,7 @@ export async function registerProviderAdapterRoutes(
     appendDomainEvent({
       type: "evidence.recorded",
       projectId: body.projectId,
+      ownerId: user.id,
       epistemicState: "OBSERVED",
       payload: { count: records.length, provider: "render" },
     });

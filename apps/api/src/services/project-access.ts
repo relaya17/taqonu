@@ -276,3 +276,11 @@ export function canReadProjectScoped(
   const ownerId = getProjectOwnerId(projectId);
   return !ownerId || ownerId === user.id;
 }
+
+/** List-filter helper: keep only projects the caller may read. */
+export function filterProjectsForCaller<T extends { readonly id: string }>(
+  user: AuthUser,
+  projects: readonly T[],
+): T[] {
+  return projects.filter((project) => canReadProjectScoped(user, project.id));
+}

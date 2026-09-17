@@ -7,6 +7,7 @@ import {
 import {
   getRegisteredApplication,
   resetApplicationRegistryForTests,
+  decideApplicationTrust,
 } from "../services/application-registry.js";
 import {
   listApprovalRecords,
@@ -71,6 +72,56 @@ describe("Atlas Gateway", () => {
     expect(app?.name).toBe("HotelOS");
     expect(app?.findingCount).toBe(1);
     expect(app?.health).toBe("degraded");
+    expect(app?.trustStatus).toBe("PENDING");
+  });
+
+  it("does not make a self-registered application usable until an operator approves it", () => {
+    ingestGatewayEvent({
+      type: "application.registered",
+      applicationId: "civio",
+      payload: { name: "Civio" },
+    });
+    expect(getRegisteredApplication("civio")?.trustStatus).toBe("PENDING");
+    const inspect = evaluateGatewayRequest({
+      actorId: "operator",
+      applicationId: "civio",
+      operation: "inspect",
+      reason: "review pending registration",
+    });
+    expect(inspect.decision).toBe("ALLOW");
+    const write = evaluateGatewayRequest({
+      actorId: "operator",
+      applicationId: "civio",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      reason: "run before approval",
+    });
+    expect(write.decision).toBe("DENY");
+    expect(write.reason).toMatch(/PENDING/);
+    const rejected = decideApplicationTrust({
+      applicationId: "civio",
+      approve: false,
+      decidedBy: "operator",
+      reason: "unsigned connector",
+    });
+    expect(rejected.ok).toBe(true);
+    if (rejected.ok) expect(rejected.application.trustStatus).toBe("REJECTED");
+    const approved = decideApplicationTrust({
+      applicationId: "civio",
+      approve: true,
+      decidedBy: "operator",
+      reason: "connector HMAC reviewed",
+    });
+    expect(approved.ok).toBe(true);
+    expect(getRegisteredApplication("civio")?.trustStatus).toBe("APPROVED");
+    expect(
+      decideApplicationTrust({
+        applicationId: "def-000",
+        approve: false,
+        decidedBy: "operator",
+        reason: "cannot reject atlas self",
+      }).ok,
+    ).toBe(false);
   });
 
   it("rejects unknown event types", () => {
@@ -107,7 +158,7 @@ describe("Atlas Gateway", () => {
     });
     expect(result.decision).toBe("REQUIRE_APPROVAL");
     expect(result.executed).toBe(false);
-    expect(result.blockedAt).toBe("APPROVAL");
+    expect(result.blockedAt).toBe("RISK");
   });
 
   it("does not treat independent Atlas-self approval without a verification plan as a completed repair", () => {
@@ -389,7 +440,19 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
   it("REQUIRE_APPROVAL does not call the API fulfill hop", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/internal/approvals/mint")) {
+        return new Response(
+          JSON.stringify({
+            id: "11111111-1111-4111-8111-111111111111",
+            status: "PENDING",
+          }),
+          { status: 201 },
+        );
+      }
+      return new Response("unexpected", { status: 500 });
+    });
     vi.stubGlobal("fetch", fetchMock);
     const result = await dispatchGatewayOperation({
       actorId: "owner",
@@ -400,7 +463,11 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     });
     expect(result.decision).toBe("REQUIRE_APPROVAL");
     expect(result.executed).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.approvalRequestId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(listApprovalRecords()).toHaveLength(0);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/gateway/fulfill"))).toBe(
+      false,
+    );
   });
 
   it("does not HTTP-fulfill a non-def-000 sibling even on ALLOW write", async () => {
@@ -409,6 +476,28 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
       applicationId: "hotel-os",
       payload: { name: "HotelOS" },
     });
+    const pending = await dispatchGatewayOperation({
+      actorId: "owner",
+      applicationId: "hotel-os",
+      operation: "request_agent_run",
+      agentId: "CODE_ENGINEER",
+      reason: "sibling write while pending",
+      approved: true,
+      independentApprovalVerified: true,
+      verificationPlanPresent: true,
+    });
+    expect(pending.decision).toBe("DENY");
+    expect(pending.reason).toMatch(/PENDING/i);
+    expect(pending.executed).toBe(false);
+
+    const decided = decideApplicationTrust({
+      applicationId: "hotel-os",
+      approve: true,
+      decidedBy: "operator-1",
+      reason: "reviewed sibling registration",
+    });
+    expect(decided.ok).toBe(true);
+
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
     const fetchMock = vi.fn();

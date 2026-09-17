@@ -11,27 +11,12 @@ import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.
 import { resolveCloudIdentity } from "../services/cloud-identity.js"; // POST still needs this
 
 /**
- * SECURITY FIX (found while widening Policy Engine coverage): both routes
- * had ZERO auth — every evidence record across every tenant/project was
- * publicly listable, and anyone could inject a fabricated evidence record.
- * `requireUser` (not `requireAdmin`) on the read: unlike `GET /events`
- * (the prior round's equivalent fix, which went `requireAdmin` because its
- * only real consumer is the admin Command Center), this endpoint backs
- * `DecisionsPanel` on the regular signed-in user's own dashboard
- * (`apps/web/app/[locale]/page.tsx` -> `PersonalDesk`) — `requireAdmin`
- * here would break that page for every non-admin user. `requireUser` still
- * closes the "fully public, anyone on the internet" hole.
- *
- * KNOWN LIMITATION (not fixed here, same class as the `GET /events` /
- * `connections.ts` limitations already documented): evidence records
- * created through most of the codebase's system/webhook-driven pathways
- * (db-feeds.ts, provider-adapters.ts, deploy-feeds.ts, security-sarif.ts,
- * engineering-loop.ts, ...) are stamped with a shared `STUB_OWNER_ID`
- * rather than a real per-tenant owner, so this list is not genuinely
- * tenant-scoped yet — `requireUser` blocks anonymous access but does not
- * by itself deliver per-tenant isolation. Reworking that would mean
- * touching every one of those call sites, a larger change than fits this
- * pass.
+ * Tenant-scoped evidence list. POST stamps the session owner. Other
+ * production writers (provider adapters, feeds, patches, observe cycles)
+ * stamp the authenticated request owner, the bound project owner, or the
+ * explicit `SYSTEM_OWNER_ID` platform actor — never `STUB_OWNER_ID`.
+ * Non-admin GET still returns only the caller's own records, so
+ * system-owned rows stay admin-visible rather than leaking into every tenant.
  */
 export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void> {
   /**

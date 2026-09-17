@@ -91,6 +91,7 @@ export function appendAuditEntry(entry: AuditEntry): void {
 
 export function listAuditEntries(filter?: {
   readonly actorId?: string;
+  readonly ownerId?: string;
   readonly type?: string;
   readonly risk?: string;
   readonly result?: string;
@@ -102,6 +103,10 @@ export function listAuditEntries(filter?: {
   if (filter?.actorId) {
     const actorId = filter.actorId;
     filtered = filtered.filter((e) => e.actorId === actorId);
+  }
+  if (filter?.ownerId) {
+    const ownerId = filter.ownerId;
+    filtered = filtered.filter((e) => e.ownerId === ownerId);
   }
   if (filter?.type) {
     const type = filter.type;
@@ -269,6 +274,16 @@ export function getPolicyForAction(
 
 export function addApprovalRecord(record: ApprovalRecord): void {
   approvalRecords.push(record);
+}
+
+/**
+ * Replace the observational approval mirror after a successful canonical
+ * fetch from apps/api. Control never treats this array as authority — it
+ * exists so health/self-audit counts match the last successful projection.
+ */
+export function replaceApprovalRecords(records: readonly ApprovalRecord[]): void {
+  approvalRecords.length = 0;
+  approvalRecords.push(...records);
 }
 
 export function listApprovalRecords(filter?: {

@@ -204,7 +204,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/github/import", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: importing repos is CONFIGURATION.EXECUTE.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
@@ -249,7 +249,7 @@ export async function registerConnectionRoutes(
         htmlUrl: repo.html_url,
       })),
       reconcile: body.reconcile,
-    });
+    }, user.id);
     return reply.status(201).send({
       imported: selected.length,
       ...result,

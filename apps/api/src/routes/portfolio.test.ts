@@ -21,6 +21,7 @@ vi.mock("../services/resolve-identity.js", () => ({
 const { registerPortfolioRoutes } = await import("./portfolio.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
+const { bindProjectOwner } = await import("../services/project-access.js");
 const { authorizeEntityAction } = await import("@atlas/agent-core");
 
 function signedInUser(partial: Partial<AuthUser> = {}): AuthUser {
@@ -107,5 +108,54 @@ describe("entity-policy wiring for the link route", () => {
       approved: true,
     });
     expect(decision.decision).toBe("ALLOWED");
+  });
+});
+
+describe("GET /api/v1/portfolio/overview — C1 tenant isolation", () => {
+  const ownerA = signedInUser();
+  const ownerB = signedInUser({
+    id: "33333333-3333-4333-8333-333333333333",
+    email: "other@example.com",
+  });
+
+  function makeProject(owner: AuthUser, name: string): string {
+    osStore.ensureLoaded();
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    osStore.upsertProject({
+      id,
+      slug: `pf-${id.slice(0, 8)}`,
+      name,
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(id, owner.id, "bound_on_create");
+    return id;
+  }
+
+  it("same-tenant allow: owner A sees their own project name", async () => {
+    makeProject(ownerA, "C1 Portfolio Mine Visible");
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/portfolio/overview",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("C1 Portfolio Mine Visible");
+    expect(res.json().ownerId).toBe(ownerA.id);
+  });
+
+  it("cross-tenant deny: owner A never sees owner B's project name", async () => {
+    makeProject(ownerB, "C1 Portfolio Bravo Secret");
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/portfolio/overview",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("C1 Portfolio Bravo Secret");
   });
 });

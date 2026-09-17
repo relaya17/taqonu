@@ -30,7 +30,10 @@ import {
   runStateReconciliation,
 } from "./state-reconciliation.js";
 
-export function discoverGitHubPortfolio(raw: unknown): {
+export function discoverGitHubPortfolio(
+  raw: unknown,
+  ownerId?: string,
+): {
   projects: Project[];
   created: number;
   updated: number;
@@ -87,7 +90,7 @@ export function discoverGitHubPortfolio(raw: unknown): {
       hasDependabot: observation.hasDependabot,
       hasCodeowners: observation.hasCodeowners,
       observedAt: observation.observedAt,
-    });
+    }, ownerId);
 
     if (body.reconcile) {
       runStateReconciliation(project.id);

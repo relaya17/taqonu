@@ -79,7 +79,7 @@ function uniquePlanAgentIds(
 }
 
 function toPublicMemoryContext(
-  ctx: ReturnType<typeof buildMemoryContext>,
+  ctx: Awaited<ReturnType<typeof buildMemoryContext>>,
 ): MemoryContextPayload {
   return {
     items: ctx.items,
@@ -152,12 +152,13 @@ export async function registerAgentFabricRoutes(
     // the unscoped tenant pool. Human-facing surfaces that omit requester
     // identity stay on the backward-compat no-op path.
     const memoryContext = toPublicMemoryContext(
-      buildMemoryContext({
+      await buildMemoryContext({
         projectId: body.projectId ?? null,
         query: body.request,
         budget: AGENT_MEMORY_BUDGET,
         ownerId: user.id,
         requestingAgentIds: uniquePlanAgentIds(plan),
+        embeddingEnv: app.atlasEnv,
       }),
     );
     atlasMetrics.record(
@@ -266,12 +267,13 @@ export async function registerAgentFabricRoutes(
       budgetUsd: body.budgetUsd,
     });
     const memoryContext = toPublicMemoryContext(
-      buildMemoryContext({
+      await buildMemoryContext({
         projectId: body.projectId ?? null,
         query: body.request,
         budget: AGENT_MEMORY_BUDGET,
         ownerId: user.id,
         requestingAgentIds: uniquePlanAgentIds(plan),
+        embeddingEnv: app.atlasEnv,
       }),
     );
     atlasMetrics.record(

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,6 +35,9 @@ const { resetApprovalsForTests } = await import(
 const {
   ATLAS_SELF_CONTROL_REQUEST_PATH,
   ATLAS_SELF_CONTROL_VERIFY_PATH,
+  APPROVAL_CONTROL_PATH,
+  APPROVAL_CONTROL_MINT_PATH,
+  approvalControlDecidePath,
   atlasSelfApprovalContext,
 } = await import("@atlas/shared");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
@@ -361,5 +364,169 @@ describe("POST Atlas-self control verify (CP SERVICE)", () => {
     });
     expect(wrongOp.json().verified).toBe(false);
     expect(wrongOp.json().reason).toMatch(/operation/i);
+  });
+});
+
+describe("Control Plane SERVICE canonical approval list/decide", () => {
+  const CP_TOKEN = "control-approval-list-token-32chars!!";
+
+  beforeEach(() => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = CP_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+  });
+
+  function cpHeaders(token = CP_TOKEN): Record<string, string> {
+    return { authorization: `Bearer ${token}`, "content-type": "application/json" };
+  }
+
+  it("401s list without a Control Plane service token and mutates nothing", async () => {
+    await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "run checks",
+    });
+    const missing = await app.inject({ method: "GET", url: APPROVAL_CONTROL_PATH });
+    expect(missing.statusCode).toBe(401);
+    const wrong = await app.inject({
+      method: "GET",
+      url: APPROVAL_CONTROL_PATH,
+      headers: { authorization: "Bearer not-the-token" },
+    });
+    expect(wrong.statusCode).toBe(401);
+  });
+
+  it("lists canonical live approvals for a valid Control Plane service token", async () => {
+    const created = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "run checks",
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: APPROVAL_CONTROL_PATH,
+      headers: cpHeaders(),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toHaveLength(1);
+    expect(res.json().items[0].id).toBe(created.id);
+    expect(res.json().items[0].status).toBe("PENDING");
+  });
+
+  it("401s decide without a Control Plane service token and leaves the request PENDING", async () => {
+    const created = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "run checks",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: approvalControlDecidePath(created.id),
+      payload: {
+        approve: true,
+        decidedBy: "cp:owner",
+        reason: "operator approved after review",
+      },
+    });
+    expect(res.statusCode).toBe(401);
+    const listed = await app.inject({
+      method: "GET",
+      url: APPROVAL_CONTROL_PATH,
+      headers: cpHeaders(),
+    });
+    expect(listed.json().items[0].status).toBe("PENDING");
+    expect(listed.json().items[0].decidedBy).toBeNull();
+  });
+
+  it("approves a pending request through the Control Plane service hop", async () => {
+    const created = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "run checks",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: approvalControlDecidePath(created.id),
+      headers: cpHeaders(),
+      payload: {
+        approve: true,
+        decidedBy: "cp:owner",
+        reason: "operator approved after review",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("APPROVED");
+    expect(res.json().decidedBy).toBe("cp:owner");
+  });
+
+  it("rejects a pending request through the Control Plane service hop", async () => {
+    const created = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "run checks",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: approvalControlDecidePath(created.id),
+      headers: cpHeaders(),
+      payload: {
+        approve: false,
+        decidedBy: "cp:owner",
+        reason: "operator denied after review",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("REJECTED");
+    expect(res.json().decidedBy).toBe("cp:owner");
+  });
+
+  it("401s mint without a Control Plane service token", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: APPROVAL_CONTROL_MINT_PATH,
+      payload: {
+        entityType: "RECORD",
+        action: "EXECUTE",
+        requestedBy: "owner",
+        reason: "run diagnostic agent now",
+        agentId: "CODE_ENGINEER",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(401);
+    const listed = await app.inject({
+      method: "GET",
+      url: APPROVAL_CONTROL_PATH,
+      headers: cpHeaders(),
+    });
+    expect(listed.json().items).toHaveLength(0);
+  });
+
+  it("mints a pending live approval for a valid Control Plane service token", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: APPROVAL_CONTROL_MINT_PATH,
+      headers: cpHeaders(),
+      payload: {
+        entityType: "RECORD",
+        action: "EXECUTE",
+        requestedBy: "owner",
+        reason: "run diagnostic agent now",
+        agentId: "CODE_ENGINEER",
+        applicationId: "def-000",
+        operation: "request_agent_run",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().status).toBe("PENDING");
+    expect(res.json().entityType).toBe("RECORD");
+    expect(res.json().context.agentId).toBe("CODE_ENGINEER");
   });
 });

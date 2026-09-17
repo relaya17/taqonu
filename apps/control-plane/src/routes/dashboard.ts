@@ -431,6 +431,8 @@ export function getDashboardHtml(): string {
       <button class="tab" data-panel="policies" data-i18n="tabPolicies">Policies</button>
       <button class="tab" data-panel="approvals" data-i18n="tabApprovals">Approvals</button>
       <button class="tab" data-panel="killswitches" data-i18n="tabKillSwitches">Kill Switches</button>
+      <button class="tab" data-panel="applications" data-i18n="tabApplications">Applications</button>
+      <button class="tab" data-panel="execution" data-i18n="tabExecution">Live Execution</button>
     </div>
 
     <!-- ── Overview Panel ──────────────────────────────── -->
@@ -446,6 +448,7 @@ export function getDashboardHtml(): string {
         <h2 data-i18n="registeredAgents">Registered Agents</h2>
         <span class="count" id="agent-count"></span>
       </div>
+      <div id="agents-message" class="kill-switch-message" role="status" aria-live="polite"></div>
       <div class="table-wrapper">
         <table>
           <thead>
@@ -456,10 +459,11 @@ export function getDashboardHtml(): string {
               <th data-i18n="thCapabilities">Capabilities</th>
               <th data-i18n="thCode">Code</th>
               <th data-i18n="thTools">Tools</th>
+              <th data-i18n="thActions">Actions</th>
             </tr>
           </thead>
           <tbody id="agents-tbody">
-            <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
+            <tr><td colspan="7" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -660,7 +664,9 @@ export function getDashboardHtml(): string {
       <div class="section-header">
         <h2 data-i18n="auditTrail">Audit Trail</h2>
         <span class="count" id="audit-count"></span>
+        <button type="button" class="btn-refresh" id="audit-verify-refresh" data-i18n="refresh">Refresh</button>
       </div>
+      <div id="audit-verify" class="readonly-banner" role="status" aria-live="polite" data-i18n="auditChainPending">Canonical audit chain: checking…</div>
       <div class="table-wrapper">
         <table>
           <thead>
@@ -697,22 +703,25 @@ export function getDashboardHtml(): string {
       <div class="section-header">
         <h2 data-i18n="approvalRecords">Approval Records</h2>
         <span class="count" id="approval-count"></span>
+        <button type="button" class="btn-refresh" id="approvals-refresh" data-i18n="refresh">Refresh</button>
       </div>
+      <div id="approvals-message" class="kill-switch-message" role="status" aria-live="polite"></div>
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
               <th data-i18n="thId">ID</th>
-              <th data-i18n="thAgent">Agent</th>
+              <th data-i18n="thRequestedBy">Requested By</th>
               <th data-i18n="thAction">Action</th>
               <th data-i18n="thStatus">Status</th>
               <th data-i18n="thDecidedBy">Decided By</th>
               <th data-i18n="thCreated">Created</th>
               <th data-i18n="thExpires">Expires</th>
+              <th data-i18n="thActions">Actions</th>
             </tr>
           </thead>
           <tbody id="approvals-tbody">
-            <tr><td colspan="7" class="loading" data-i18n="loading">Loading...</td></tr>
+            <tr><td colspan="8" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -743,6 +752,106 @@ export function getDashboardHtml(): string {
           </thead>
           <tbody id="kill-switches-tbody">
             <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Applications Panel ────────────────────────── -->
+    <div class="panel" id="panel-applications">
+      <div class="section-header">
+        <h2 data-i18n="applicationsTitle">Application Registry</h2>
+        <span class="count" id="applications-count"></span>
+        <button type="button" class="btn-refresh" id="applications-refresh" data-i18n="refresh">Refresh</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin:4px 0 12px" data-i18n="applicationsIntro">
+        Self-registration stays pending until an operator approves it. Atlas-self (def-000) is pre-approved.
+      </p>
+      <div id="applications-message" class="kill-switch-message" role="status" aria-live="polite"></div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thId">ID</th>
+              <th data-i18n="thName">Name</th>
+              <th data-i18n="thTrust">Trust</th>
+              <th data-i18n="thHealth">Health</th>
+              <th data-i18n="thLastEvent">Last Event</th>
+              <th data-i18n="thActions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="applications-tbody">
+            <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Live Execution Panel ──────────────────────── -->
+    <div class="panel" id="panel-execution">
+      <div class="section-header">
+        <h2 data-i18n="executionTitle">Live Agent Executions</h2>
+        <span class="count" id="execution-count"></span>
+        <button type="button" class="btn-refresh" id="execution-refresh" data-i18n="refresh">Refresh</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin:4px 0 12px" data-i18n="executionIntro">
+        Canonical run state from the Atlas API. No fabricated rows. Lifecycle holds are listed separately.
+      </p>
+      <div id="execution-message" class="kill-switch-message" role="status" aria-live="polite"></div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thRunId">Run ID</th>
+              <th data-i18n="thRunStatus">Run Status</th>
+              <th data-i18n="thVisibility">Visibility</th>
+              <th data-i18n="thType">Mode</th>
+              <th data-i18n="thActor">Created By</th>
+              <th data-i18n="thTimestamp">Started</th>
+              <th data-i18n="thReason">Request</th>
+            </tr>
+          </thead>
+          <tbody id="execution-tbody">
+            <tr><td colspan="7" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:24px">
+        <h2 data-i18n="processTitle">Supervised Processes</h2>
+        <span class="count" id="process-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thId">ID</th>
+              <th data-i18n="thApplication">Application</th>
+              <th data-i18n="thStatus">Status</th>
+              <th data-i18n="thType">Type</th>
+            </tr>
+          </thead>
+          <tbody id="processes-tbody">
+            <tr><td colspan="4" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section-header" style="margin-top:24px">
+        <h2 data-i18n="errorAggregatesTitle">Aggregated Errors</h2>
+        <span class="count" id="error-aggregate-count"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thType">Code</th>
+              <th data-i18n="thCount">Count</th>
+              <th data-i18n="thCreated">First Seen</th>
+              <th data-i18n="thExpires">Last Seen</th>
+              <th data-i18n="thReason">Sample</th>
+            </tr>
+          </thead>
+          <tbody id="error-aggregates-tbody">
+            <tr><td colspan="5" class="loading" data-i18n="loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -797,6 +906,8 @@ export function getDashboardHtml(): string {
           loadPolicies();
           loadApprovals();
           loadKillSwitches();
+          loadApplications();
+          loadExecutions();
         }
       }
       document.querySelectorAll(".lang-pills [data-lang]").forEach(function (b) {
@@ -902,7 +1013,7 @@ export function getDashboardHtml(): string {
         var tbody = document.getElementById('agents-tbody');
         if (!tbody) return;
         if (agents.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">' + t("noAgents") + '</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-state">' + t("noAgents") + '</td></tr>';
           return;
         }
         tbody.innerHTML = agents.map(function(a) {
@@ -912,18 +1023,97 @@ export function getDashboardHtml(): string {
           var tools = a.allowedTools.slice(0, 3).map(function(tool) {
             return '<span class="capability-tag">' + tool + '</span>';
           }).join('');
+          var status = a.status || '';
+          var locked = status === 'REVOKED' || status === 'RETIRED' || status === 'DISABLED';
+          var buttons = '';
+          if (!locked && (status === 'PAUSED' || status === 'QUARANTINED' || status === 'SUSPENDED')) {
+            buttons += '<button type="button" class="btn-refresh" data-agent-action="resume" data-agent-id="' + escapeHtml(a.agentId) + '">' + t("resumeAgent") + '</button>';
+          }
+          if (!locked && status !== 'PAUSED') {
+            buttons += '<button type="button" class="btn-refresh" data-agent-action="pause" data-agent-id="' + escapeHtml(a.agentId) + '">' + t("pauseAgent") + '</button>';
+          }
+          if (!locked && status !== 'QUARANTINED') {
+            buttons += '<button type="button" class="btn-refresh" data-agent-action="quarantine" data-agent-id="' + escapeHtml(a.agentId) + '">' + t("quarantineAgent") + '</button>';
+          }
+          if (!locked) {
+            buttons += '<button type="button" class="btn-refresh" data-agent-action="revoke" data-agent-id="' + escapeHtml(a.agentId) + '">' + t("revokeAgent") + '</button>';
+          }
+          var actions = locked
+            ? '<span style="color:var(--text-muted);font-size:12px">' + t("none") + '</span>'
+            : '<div style="display:flex;flex-direction:column;gap:6px;min-width:180px">' +
+                '<input type="text" class="reason-input" id="agent-reason-' + escapeHtml(a.agentId) + '" placeholder="' + t("reasonPlaceholder") + '" minlength="8" />' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px">' + buttons + '</div>' +
+              '</div>';
           return '<tr>' +
-            '<td class="mono" style="font-family:var(--mono);font-size:12px">' + a.agentId + '</td>' +
+            '<td class="mono" style="font-family:var(--mono);font-size:12px">' + escapeHtml(a.agentId) + '</td>' +
             '<td>' + agentDisplayName(a) + '</td>' +
             '<td>' + statusPill(a.status) + '</td>' +
             '<td>' + (caps || '<span class="pill pill-muted">' + t("none") + '</span>') + '</td>' +
             '<td>' + (a.canWriteCode ? '<span class="pill pill-warning">' + t("yes") + '</span>' : '<span class="pill pill-muted">' + t("no") + '</span>') + '</td>' +
             '<td>' + tools + '</td>' +
+            '<td>' + actions + '</td>' +
             '</tr>';
         }).join('');
+        tbody.querySelectorAll('[data-agent-action]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            submitAgentControl(btn.getAttribute('data-agent-id'), btn.getAttribute('data-agent-action'), btn);
+          });
+        });
       } catch (e) {
         var tbody2 = document.getElementById('agents-tbody');
-        if (tbody2) tbody2.innerHTML = '<tr><td colspan="6" class="loading">' + t("failedLoad") + '</td></tr>';
+        if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+    }
+
+    function agentMessage(text, isError) {
+      var el = document.getElementById('agents-message');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'kill-switch-message ' + (isError ? 'kill-switch-message-error' : 'kill-switch-message-success');
+    }
+
+    async function submitAgentControl(agentId, action, btn) {
+      if (action === 'revoke' && !window.confirm(t("confirmRevoke"))) return;
+      var reasonEl = document.getElementById('agent-reason-' + agentId);
+      var reason = reasonEl && reasonEl.value ? reasonEl.value.trim() : '';
+      if (reason.length < 8) {
+        agentMessage(t("reasonTooShort"), true);
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        var reauthRes = await fetch('/api/v1/auth/reauth', { method: 'POST' });
+        var reauthBody = await reauthRes.json().catch(function() { return {}; });
+        if (!reauthRes.ok || !reauthBody.ticket) {
+          agentMessage(t("reauthFailed"), true);
+          if (btn) btn.disabled = false;
+          return;
+        }
+        var res = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/control', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'X-Atlas-Reason': reason,
+            'x-atlas-reauth': reauthBody.ticket
+          },
+          body: JSON.stringify({ action: action })
+        });
+        var body = await res.json().catch(function() { return {}; });
+        if (res.status === 202) {
+          agentMessage(t("approvalRequired") + (body.approvalId ? ': ' + body.approvalId : ''), false);
+          await loadAgents();
+          return;
+        }
+        if (!res.ok) {
+          agentMessage(t("actionFailed") + (body.error || body.reason ? ': ' + (body.error || body.reason) : ''), true);
+          if (btn) btn.disabled = false;
+          return;
+        }
+        agentMessage(t("agentControlSucceeded"), false);
+        await loadAgents();
+      } catch (e) {
+        agentMessage(t("actionFailed"), true);
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -1177,6 +1367,23 @@ export function getDashboardHtml(): string {
 
     async function loadAudit() {
       try {
+        var verifyRes = await fetch('/api/v1/audit/verify');
+        var verifyEl = document.getElementById('audit-verify');
+        if (verifyEl) {
+          if (!verifyRes.ok) {
+            var errBody = await verifyRes.json().catch(function() { return {}; });
+            verifyEl.textContent = t("auditChainFailed") + (errBody.error ? ': ' + errBody.error : '');
+          } else {
+            var verify = await verifyRes.json();
+            verifyEl.textContent = t("auditCanonical") + ': ' + (verify.status || t("failedLoad")) +
+              (typeof verify.checked === 'number' ? ' (' + verify.checked + ')' : '');
+          }
+        }
+      } catch (verifyErr) {
+        var verifyFail = document.getElementById('audit-verify');
+        if (verifyFail) verifyFail.textContent = t("auditChainFailed");
+      }
+      try {
         var res = await fetch('/api/v1/audit?limit=50');
         var entries = await res.json();
         var countRes = await fetch('/api/v1/audit/count');
@@ -1206,6 +1413,11 @@ export function getDashboardHtml(): string {
       }
     }
 
+    (function wireAuditVerifyRefresh() {
+      var btn = document.getElementById('audit-verify-refresh');
+      if (btn) btn.addEventListener('click', function() { loadAudit(); });
+    })();
+
     async function loadPolicies() {
       try {
         var res = await fetch('/api/v1/policies');
@@ -1232,35 +1444,113 @@ export function getDashboardHtml(): string {
     async function loadApprovals() {
       try {
         var res = await fetch('/api/v1/approvals');
+        if (!res.ok) {
+          var errBody = await res.json().catch(function() { return {}; });
+          var tbodyErr = document.getElementById('approvals-tbody');
+          if (tbodyErr) tbodyErr.innerHTML = '<tr><td colspan="8" class="loading">' + t("failedLoad") + (errBody.error ? ': ' + escapeHtml(errBody.error) : '') + '</td></tr>';
+          return;
+        }
         var approvals = await res.json();
+        if (!Array.isArray(approvals)) {
+          var tbodyBad = document.getElementById('approvals-tbody');
+          if (tbodyBad) tbodyBad.innerHTML = '<tr><td colspan="8" class="loading">' + t("failedLoad") + '</td></tr>';
+          return;
+        }
         var countEl = document.getElementById('approval-count');
         if (countEl) countEl.textContent = approvals.length + ' ' + t("recordsCount");
         var tbody = document.getElementById('approvals-tbody');
         if (!tbody) return;
         if (approvals.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><h3>' + t("noApprovalsTitle") + '</h3><p>' + t("noApprovalsBody") + '</p></td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><h3>' + t("noApprovalsTitle") + '</h3><p>' + t("noApprovalsBody") + '</p></td></tr>';
           return;
         }
         tbody.innerHTML = approvals.map(function(a) {
-          var statusClass = a.status === 'APPROVED' ? 'pill-success' :
-            a.status === 'DENIED' ? 'pill-danger' :
-            a.status === 'PENDING' ? 'pill-warning' :
-            a.status === 'EXPIRED' ? 'pill-muted' : 'pill-info';
-          return '<tr>' +
+          var status = a.status || '';
+          var statusClass = status === 'APPROVED' || status === 'CONSUMED' || status === 'FULFILLED' ? 'pill-success' :
+            status === 'REJECTED' || status === 'DENIED' || status === 'REVOKED' || status === 'FAILED' ? 'pill-danger' :
+            status === 'PENDING' ? 'pill-warning' :
+            status === 'EXPIRED' ? 'pill-muted' : 'pill-info';
+          var requestedBy = a.requestedBy || (a.context && a.context.agentId) || a.agentId || '-';
+          var created = a.requestedAt || a.createdAt;
+          var expires = a.expiresAt;
+          var pending = status === 'PENDING';
+          var rowId = 'approval-row-' + a.id;
+          var actions = pending
+            ? '<div style="display:flex;flex-direction:column;gap:6px;min-width:220px">' +
+                '<input type="text" id="' + rowId + '-reason" placeholder="' + t("reasonPlaceholder") + '" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-elevated,transparent);color:inherit" />' +
+                '<div style="display:flex;gap:6px">' +
+                  '<button type="button" class="btn-approval-action" data-id="' + a.id + '" data-approve="true" data-reason-input="' + rowId + '-reason">' + t("approveRequest") + '</button>' +
+                  '<button type="button" class="btn-approval-action" data-id="' + a.id + '" data-approve="false" data-reason-input="' + rowId + '-reason">' + t("denyRequest") + '</button>' +
+                '</div>' +
+              '</div>'
+            : '<span style="color:var(--text-muted);font-size:12px">' + t("none") + '</span>';
+          return '<tr id="' + rowId + '">' +
             '<td class="mono" style="font-family:var(--mono);font-size:11px">' + truncate(a.id, 20) + '</td>' +
-            '<td class="mono">' + a.agentId + '</td>' +
-            '<td><span class="capability-tag">' + a.entityType + '.' + a.action + '</span></td>' +
-            '<td><span class="pill ' + statusClass + '">' + a.status + '</span></td>' +
-            '<td class="mono">' + (a.decidedBy || '-') + '</td>' +
-            '<td class="ltr" style="font-size:12px">' + new Date(a.createdAt).toLocaleString() + '</td>' +
-            '<td class="ltr" style="font-size:12px">' + new Date(a.expiresAt).toLocaleString() + '</td>' +
+            '<td class="mono">' + escapeHtml(String(requestedBy)) + '</td>' +
+            '<td><span class="capability-tag">' + escapeHtml(String(a.entityType || '')) + '.' + escapeHtml(String(a.action || '')) + '</span></td>' +
+            '<td><span class="pill ' + statusClass + '">' + escapeHtml(String(status)) + '</span></td>' +
+            '<td class="mono">' + escapeHtml(String(a.decidedBy || '-')) + '</td>' +
+            '<td class="ltr" style="font-size:12px">' + (created ? new Date(created).toLocaleString() : '-') + '</td>' +
+            '<td class="ltr" style="font-size:12px">' + (expires ? new Date(expires).toLocaleString() : '-') + '</td>' +
+            '<td>' + actions + '</td>' +
             '</tr>';
         }).join('');
+        tbody.querySelectorAll('.btn-approval-action').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var id = btn.getAttribute('data-id');
+            var approve = btn.getAttribute('data-approve') === 'true';
+            var inputId = btn.getAttribute('data-reason-input');
+            var input = document.getElementById(inputId);
+            var reason = input ? input.value.trim() : '';
+            submitApprovalDecision(id, approve, reason, btn);
+          });
+        });
       } catch (e) {
         var tbody2 = document.getElementById('approvals-tbody');
-        if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" class="loading">' + t("failedLoad") + '</td></tr>';
+        if (tbody2) tbody2.innerHTML = '<tr><td colspan="8" class="loading">' + t("failedLoad") + '</td></tr>';
       }
     }
+
+    function approvalMessage(text, isError) {
+      var el = document.getElementById('approvals-message');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'kill-switch-message ' + (isError ? 'kill-switch-message-error' : 'kill-switch-message-success');
+    }
+
+    async function submitApprovalDecision(id, approve, reason, btn) {
+      if (!reason || reason.length < 8) {
+        approvalMessage(t("reasonTooShort"), true);
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        var res = await fetch('/api/v1/approvals/' + encodeURIComponent(id) + '/decide', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'X-Atlas-Reason': reason
+          },
+          body: JSON.stringify({ approve: approve })
+        });
+        if (!res.ok) {
+          var errBody = await res.json().catch(function() { return {}; });
+          approvalMessage((errBody.error ? String(errBody.error) : t("actionFailed")), true);
+          if (btn) btn.disabled = false;
+          return;
+        }
+        approvalMessage(t("approvalDecideSucceeded"), false);
+        await loadApprovals();
+      } catch (e) {
+        approvalMessage(t("actionFailed"), true);
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    (function wireApprovalsRefresh() {
+      var btn = document.getElementById('approvals-refresh');
+      if (btn) btn.addEventListener('click', function() { loadApprovals(); });
+    })();
 
     // ── Task 7: Kill Switches ────────────────────────────────────────
     //
@@ -1398,6 +1688,198 @@ export function getDashboardHtml(): string {
       if (btn) btn.addEventListener('click', function() { loadKillSwitches(); });
     })();
 
+    function applicationsMessage(text, isError) {
+      var el = document.getElementById('applications-message');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'kill-switch-message ' + (isError ? 'kill-switch-message-error' : 'kill-switch-message-success');
+    }
+
+    function trustLabel(status) {
+      if (status === 'APPROVED') return t("approvedTrust");
+      if (status === 'REJECTED') return t("rejectedTrust");
+      return t("pendingTrust");
+    }
+
+    async function loadApplications() {
+      try {
+        var res = await fetch('/api/v1/applications');
+        if (!res.ok) throw new Error('applications ' + res.status);
+        var body = await res.json();
+        var items = body.items || [];
+        var countEl = document.getElementById('applications-count');
+        if (countEl) countEl.textContent = items.length + ' ' + t("portfolioApps");
+        var tbody = document.getElementById('applications-tbody');
+        if (!tbody) return;
+        if (items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">' + t("noApplications") + '</td></tr>';
+          return;
+        }
+        tbody.innerHTML = items.map(function(app) {
+          var locked = app.applicationId === 'def-000';
+          var actions = locked
+            ? '<span style="color:var(--text-muted);font-size:12px">' + t("atlasSelfLocked") + '</span>'
+            : '<div style="display:flex;flex-direction:column;gap:6px;min-width:180px">' +
+                '<input type="text" class="reason-input" id="app-reason-' + escapeHtml(app.applicationId) + '" placeholder="' + t("reasonPlaceholder") + '" minlength="8" />' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+                  '<button type="button" class="btn-refresh" data-app-approve="true" data-app-id="' + escapeHtml(app.applicationId) + '">' + t("approveApplication") + '</button>' +
+                  '<button type="button" class="btn-refresh" data-app-approve="false" data-app-id="' + escapeHtml(app.applicationId) + '">' + t("rejectApplication") + '</button>' +
+                '</div>' +
+              '</div>';
+          return '<tr>' +
+            '<td class="mono">' + escapeHtml(app.applicationId) + '</td>' +
+            '<td>' + escapeHtml(app.name || app.applicationId) + '</td>' +
+            '<td>' + statusPill(app.trustStatus || 'PENDING') + ' ' + trustLabel(app.trustStatus) + '</td>' +
+            '<td>' + escapeHtml(app.health || 'unknown') + '</td>' +
+            '<td>' + escapeHtml(app.lastEventType || t("none")) + '</td>' +
+            '<td>' + actions + '</td>' +
+            '</tr>';
+        }).join('');
+        tbody.querySelectorAll('[data-app-id]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            submitApplicationDecision(btn.getAttribute('data-app-id'), btn.getAttribute('data-app-approve') === 'true', btn);
+          });
+        });
+      } catch (e) {
+        var tbodyErr = document.getElementById('applications-tbody');
+        if (tbodyErr) tbodyErr.innerHTML = '<tr><td colspan="6" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+    }
+
+    async function submitApplicationDecision(id, approve, btn) {
+      var reasonEl = document.getElementById('app-reason-' + id);
+      var reason = reasonEl && reasonEl.value ? reasonEl.value.trim() : '';
+      if (reason.length < 8) {
+        applicationsMessage(t("reasonTooShort"), true);
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        var res = await fetch('/api/v1/applications/' + encodeURIComponent(id) + '/decide', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'X-Atlas-Reason': reason },
+          body: JSON.stringify({ approve: approve })
+        });
+        var body = await res.json().catch(function() { return {}; });
+        if (!res.ok) {
+          applicationsMessage(t("actionFailed") + (body.error ? ': ' + body.error : ''), true);
+          if (btn) btn.disabled = false;
+          return;
+        }
+        applicationsMessage(t("applicationDecideSucceeded"), false);
+        await loadApplications();
+      } catch (e) {
+        applicationsMessage(t("actionFailed"), true);
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    (function wireApplicationsRefresh() {
+      var btn = document.getElementById('applications-refresh');
+      if (btn) btn.addEventListener('click', function() { loadApplications(); });
+    })();
+
+    function visibilityLabel(visibility) {
+      if (visibility === 'active') return t("activeRun");
+      if (visibility === 'completed') return t("completedRun");
+      if (visibility === 'failed') return t("failedRun");
+      if (visibility === 'blocked') return t("blockedRun");
+      if (visibility === 'paused') return t("pausedRun");
+      return visibility || t("none");
+    }
+
+    async function loadExecutions() {
+      var tbody = document.getElementById('execution-tbody');
+      var procBody = document.getElementById('processes-tbody');
+      try {
+        var res = await fetch('/api/v1/executions');
+        if (!res.ok) {
+          var errBody = await res.json().catch(function() { return {}; });
+          if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">' + t("failedLoad") + (errBody.error ? ': ' + escapeHtml(errBody.error) : '') + '</td></tr>';
+        } else {
+          var data = await res.json();
+          var items = data.items || [];
+          var countEl = document.getElementById('execution-count');
+          if (countEl) countEl.textContent = items.length + ' ' + t("recordsCount");
+          if (tbody) {
+            if (items.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="7" class="empty-state">' + t("noExecutions") + '</td></tr>';
+            } else {
+              tbody.innerHTML = items.map(function(run) {
+                return '<tr>' +
+                  '<td class="mono">' + escapeHtml(run.id) + '</td>' +
+                  '<td>' + statusPill(run.status) + '</td>' +
+                  '<td>' + visibilityLabel(run.visibility) + '</td>' +
+                  '<td>' + escapeHtml(run.mode || '') + '</td>' +
+                  '<td>' + escapeHtml(run.createdBy || '') + '</td>' +
+                  '<td class="ltr">' + escapeHtml(run.startedAt || '') + '</td>' +
+                  '<td>' + escapeHtml(run.userRequest || '') + '</td>' +
+                '</tr>';
+              }).join('');
+            }
+          }
+        }
+      } catch (e) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+      try {
+        var procRes = await fetch('/api/v1/processes');
+        if (!procRes.ok) throw new Error('processes');
+        var processes = await procRes.json();
+        var list = Array.isArray(processes) ? processes : (processes.items || []);
+        var procCount = document.getElementById('process-count');
+        if (procCount) procCount.textContent = list.length + ' ' + t("recordsCount");
+        if (procBody) {
+          if (list.length === 0) {
+            procBody.innerHTML = '<tr><td colspan="4" class="empty-state">' + t("noProcesses") + '</td></tr>';
+          } else {
+            procBody.innerHTML = list.map(function(p) {
+              return '<tr>' +
+                '<td class="mono">' + escapeHtml(p.processId || p.id || '') + '</td>' +
+                '<td>' + escapeHtml(p.applicationId || '') + '</td>' +
+                '<td>' + statusPill(p.state || p.status || '') + '</td>' +
+                '<td>' + escapeHtml(p.processType || p.type || '') + '</td>' +
+              '</tr>';
+            }).join('');
+          }
+        }
+      } catch (e) {
+        if (procBody) procBody.innerHTML = '<tr><td colspan="4" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+      var errBody = document.getElementById('error-aggregates-tbody');
+      try {
+        var errRes = await fetch('/api/v1/error-aggregates');
+        if (!errRes.ok) throw new Error('error-aggregates');
+        var errData = await errRes.json();
+        var entries = errData.entries || [];
+        var errCount = document.getElementById('error-aggregate-count');
+        if (errCount) errCount.textContent = (errData.totalOccurrences || 0) + ' / ' + entries.length;
+        if (errBody) {
+          if (entries.length === 0) {
+            errBody.innerHTML = '<tr><td colspan="5" class="empty-state">' + t("noErrorAggregates") + '</td></tr>';
+          } else {
+            errBody.innerHTML = entries.map(function(entry) {
+              var sample = (entry.samples && entry.samples[0] && entry.samples[0].message) ? entry.samples[0].message : t("none");
+              return '<tr>' +
+                '<td class="mono">' + escapeHtml(entry.code || '') + '</td>' +
+                '<td>' + escapeHtml(String(entry.count || 0)) + '</td>' +
+                '<td class="ltr">' + escapeHtml(entry.firstSeen || '') + '</td>' +
+                '<td class="ltr">' + escapeHtml(entry.lastSeen || '') + '</td>' +
+                '<td>' + escapeHtml(sample) + '</td>' +
+              '</tr>';
+            }).join('');
+          }
+        }
+      } catch (e) {
+        if (errBody) errBody.innerHTML = '<tr><td colspan="5" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+    }
+
+    (function wireExecutionRefresh() {
+      var btn = document.getElementById('execution-refresh');
+      if (btn) btn.addEventListener('click', function() { loadExecutions(); });
+    })();
+
     // ── Initial load ───────────────────────────────────────────────────
     loadOverview();
     loadAgents();
@@ -1406,6 +1888,8 @@ export function getDashboardHtml(): string {
     loadPolicies();
     loadApprovals();
     loadKillSwitches();
+    loadApplications();
+    loadExecutions();
 
     // ── Auto-refresh every 10s ─────────────────────────────────────────
     setInterval(function() {

@@ -17,6 +17,7 @@ import {
   getRegisteredApplication,
   recordApplicationEvent,
   upsertRegisteredApplication,
+  applicationIsUsable,
 } from "./application-registry.js";
 import { evaluateOperatingCycle } from "./operating-cycle.js";
 import {
@@ -26,6 +27,7 @@ import {
   type ReceiptVerificationVerdict,
 } from "./execution-receipt.js";
 import { callAtlasApi } from "./lifecycle-handoff.js";
+import { mintCanonicalApproval } from "./approval-control.js";
 
 export const GATEWAY_OPERATIONS = [
   "inspect",
@@ -86,6 +88,7 @@ export interface GatewayEvaluation {
   readonly blockedAt?: string | null;
   readonly stagesPassed?: readonly string[];
   readonly receipt: ExecutionReceipt | null;
+  readonly approvalRequestId?: string | null;
 }
 
 export interface GatewayEventInput {
@@ -155,6 +158,15 @@ function isReadLike(operation: string): boolean {
     operation === "retrieve_findings" ||
     operation === "diagnose"
   );
+}
+
+function toolRiskForOperation(
+  operation: string,
+): "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "DESTRUCTIVE" {
+  if (isReadLike(operation)) return "READ_ONLY";
+  if (operation === "request_test" || operation === "request_verify") return "LOW_RISK_WRITE";
+  if (operation === "request_remediation") return "DESTRUCTIVE";
+  return "HIGH_RISK_WRITE";
 }
 
 /**
@@ -462,11 +474,19 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
     return denyEval(input, `Unknown gateway operation: ${input.operation}`, "POLICY", ["IDENTITY"]);
   }
 
-  if (!getRegisteredApplication(input.applicationId)) {
+  const registered = getRegisteredApplication(input.applicationId);
+  if (!registered) {
     return denyEval(
       input,
       `Unknown application: ${input.applicationId}`,
       "IDENTITY",
+    );
+  }
+  if (!applicationIsUsable(registered) && !isReadLike(input.operation)) {
+    return denyEval(
+      input,
+      `Application ${input.applicationId} is ${registered.trustStatus} and is not usable until approved`,
+      "AUTHORIZATION",
     );
   }
 
@@ -530,6 +550,7 @@ export function evaluateGatewayRequest(input: GatewayRequest): GatewayEvaluation
     ...(input.conflictingClaimIds !== undefined
       ? { conflictingClaimIds: input.conflictingClaimIds }
       : {}),
+    toolRisk: toolRiskForOperation(input.operation),
   });
 
   const base = {
@@ -549,6 +570,21 @@ export async function dispatchGatewayOperation(input: GatewayRequest): Promise<G
   let evaluation = evaluateGatewayRequest(input);
   if (evaluation.decision === "ALLOW") {
     evaluation = await fulfillAllow(input, evaluation);
+  } else if (evaluation.decision === "REQUIRE_APPROVAL") {
+    const pair = mapControlPlaneHandoff(input.operation, input.agentId);
+    const minted = await mintCanonicalApproval({
+      entityType: pair.entityType,
+      action: pair.action,
+      requestedBy: input.actorId,
+      reason: input.reason,
+      applicationId: input.applicationId,
+      operation: input.operation,
+      ...(input.agentId ? { agentId: input.agentId } : {}),
+    });
+    evaluation = {
+      ...evaluation,
+      approvalRequestId: minted.ok ? minted.data.id : null,
+    };
   }
   nextAudit({
     timestamp: new Date().toISOString(),
@@ -569,8 +605,8 @@ export async function dispatchGatewayOperation(input: GatewayRequest): Promise<G
     projectId: null,
   });
 
-  // REQUIRE_APPROVAL is a decision, not a second queue. Consume via
-  // apps/api/src/services/approvals.ts then POST /api/v1/gateway/fulfill.
+  // REQUIRE_APPROVAL mints a durable API pending row (not CP RAM).
+  // Consume via decideCanonicalApproval then POST /api/v1/gateway/fulfill.
 
   return evaluation;
 }
@@ -588,9 +624,18 @@ export function ingestGatewayEvent(event: GatewayEventInput): {
       typeof event.payload?.["name"] === "string"
         ? event.payload["name"]
         : event.applicationId;
+    const existing = getRegisteredApplication(event.applicationId);
     upsertRegisteredApplication({
       applicationId: event.applicationId,
       name,
+      ...(existing?.trustStatus === "REJECTED"
+        ? {
+            trustStatus: "PENDING" as const,
+            decidedBy: null,
+            decidedAt: null,
+            decisionReason: null,
+          }
+        : {}),
     });
   }
 

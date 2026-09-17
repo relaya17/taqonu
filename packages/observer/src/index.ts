@@ -24,6 +24,7 @@ export {
   loadBugs,
   saveBugs,
   ingestBugs,
+  markBugVerified,
 } from "./bugs/ingest.js";
 export type { BugIngestInput } from "./bugs/ingest.js";
 export { runObserveCycle } from "./cycle.js";

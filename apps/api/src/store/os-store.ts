@@ -150,6 +150,8 @@ interface PersistedShape {
   killSwitchOverrides?: Record<string, KillSwitchOverrideRecord>;
   /** Durable conversation threads (survives API restart). */
   conversationThreads?: Record<string, ConversationThreadTurn[]>;
+  /** Ownership for conversation threads (tenant/user isolation). */
+  conversationThreadMeta?: Record<string, ConversationThreadMeta>;
   /** Customer BYO cloud bindings (Cloudflare-first). Keyed by ownerId. */
   byoCloudBindings?: Record<string, StoredByoCloudBinding>;
   /** Stage 19: Hypothesis engine storage. Keyed by hypothesis id. */
@@ -206,6 +208,23 @@ export interface ConversationThreadTurn {
   epistemicLabel?: string;
   evidenceRefs?: unknown[];
   at: string;
+}
+
+export interface ConversationThreadMeta {
+  ownerId: string;
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationThreadListItem {
+  threadId: string;
+  ownerId: string;
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  turnCount: number;
+  preview: string;
 }
 
 export interface CloudProjectLink {
@@ -325,6 +344,7 @@ function emptyShape(): PersistedShape {
     workspaceRoots: {},
     killSwitchOverrides: {},
     conversationThreads: {},
+    conversationThreadMeta: {},
     byoCloudBindings: {},
     exemplars: [],
     hypotheses: {},
@@ -372,6 +392,7 @@ class OsStore {
   private workspaceRoots: Record<string, string> = {};
   private killSwitchOverrides = new Map<string, KillSwitchOverrideRecord>();
   private conversationThreads = new Map<string, ConversationThreadTurn[]>();
+  private conversationThreadMeta = new Map<string, ConversationThreadMeta>();
   private byoCloudBindings = new Map<string, StoredByoCloudBinding>();
   private exemplars: ExemplarRecord[] = [];
   private hypotheses = new Map<string, StoredHypothesis>();
@@ -481,6 +502,9 @@ class OsStore {
     this.conversationThreads = new Map(
       Object.entries(raw.conversationThreads ?? {}),
     );
+    this.conversationThreadMeta = new Map(
+      Object.entries(raw.conversationThreadMeta ?? {}),
+    );
     this.byoCloudBindings = new Map(Object.entries(raw.byoCloudBindings ?? {}));
     this.hypotheses = new Map(Object.entries(raw.hypotheses ?? {}));
     this.goldenProjects = new Map(Object.entries(raw.goldenProjects ?? {}));
@@ -537,6 +561,7 @@ class OsStore {
       workspaceRoots: this.workspaceRoots,
       killSwitchOverrides: Object.fromEntries(this.killSwitchOverrides),
       conversationThreads: Object.fromEntries(this.conversationThreads),
+      conversationThreadMeta: Object.fromEntries(this.conversationThreadMeta),
       byoCloudBindings: Object.fromEntries(this.byoCloudBindings),
       hypotheses: Object.fromEntries(this.hypotheses),
       goldenProjects: Object.fromEntries(this.goldenProjects),
@@ -706,6 +731,8 @@ class OsStore {
     this.meta = {};
     this.workspaceRoots = {};
     this.killSwitchOverrides.clear();
+    this.conversationThreads.clear();
+    this.conversationThreadMeta.clear();
     this.personalSupervisingAgents.clear();
     this.loaded = false;
   }
@@ -1389,12 +1416,52 @@ class OsStore {
     return this.conversationThreads.get(threadId) ?? [];
   }
 
+  getConversationThreadMeta(
+    threadId: string,
+  ): ConversationThreadMeta | undefined {
+    this.ensureLoaded();
+    return this.conversationThreadMeta.get(threadId);
+  }
+
+  listConversationThreadsByOwner(
+    ownerId: string,
+    projectId?: string | null,
+  ): ConversationThreadListItem[] {
+    this.ensureLoaded();
+    const items: ConversationThreadListItem[] = [];
+    for (const [threadId, meta] of this.conversationThreadMeta) {
+      if (meta.ownerId !== ownerId) continue;
+      if (projectId !== undefined && meta.projectId !== projectId) continue;
+      const turns = this.conversationThreads.get(threadId) ?? [];
+      const last = turns[turns.length - 1];
+      items.push({
+        threadId,
+        ownerId: meta.ownerId,
+        projectId: meta.projectId,
+        createdAt: meta.createdAt,
+        updatedAt: meta.updatedAt,
+        turnCount: turns.length,
+        preview: last?.content.slice(0, 180) ?? "",
+      });
+    }
+    return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
   setConversationThread(
     threadId: string,
     turns: readonly ConversationThreadTurn[],
+    ownership: { ownerId: string; projectId: string | null },
   ): void {
     this.ensureLoaded();
+    const now = new Date().toISOString();
+    const existing = this.conversationThreadMeta.get(threadId);
     this.conversationThreads.set(threadId, [...turns].slice(-40));
+    this.conversationThreadMeta.set(threadId, {
+      ownerId: existing?.ownerId ?? ownership.ownerId,
+      projectId: existing?.projectId ?? ownership.projectId,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
     this.persist();
   }
 

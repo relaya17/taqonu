@@ -9,12 +9,12 @@ import {
 } from "@atlas/integrations-github";
 import { reconcileProjectState } from "@atlas/state";
 import { osStore } from "../store/os-store.js";
-
-const OWNER_ID = "00000000-0000-4000-8000-000000000001";
+import { resolveEvidenceOwnerId } from "./write-owner.js";
 
 export function ingestGitHubSync(
   projectId: string,
   payload: Parameters<typeof buildObservationFromSyncPayload>[0],
+  ownerId?: string,
 ): {
   observation: ReturnType<typeof buildObservationFromSyncPayload>;
   evidence: EvidenceRecord[];
@@ -24,10 +24,14 @@ export function ingestGitHubSync(
 
   const drafts = observationToEvidenceDrafts(observation);
   const now = new Date().toISOString();
+  const resolvedOwnerId = resolveEvidenceOwnerId({
+    requestOwnerId: ownerId,
+    projectId,
+  });
   const evidence = drafts.map((draft) =>
     parseEvidenceRecord({
       id: crypto.randomUUID(),
-      ownerId: OWNER_ID,
+      ownerId: resolvedOwnerId,
       projectId,
       source: draft.source,
       sourceType: draft.sourceType,

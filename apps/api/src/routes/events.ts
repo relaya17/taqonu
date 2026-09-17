@@ -7,17 +7,11 @@ import { requireAdmin } from "../middleware/auth-guards.js";
 
 export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/events", async (request) => {
-    // Admin-only (P0 fix): domain events embed full memory `statement` text
-    // and other sensitive payload content, but every event currently gets
-    // written via memory-pipeline's `appendDomainEvent` with a hardcoded
-    // `ownerId: STUB_OWNER_ID` (see services/memory-pipeline.ts) — so there
-    // is no reliable per-caller tenant field to filter this list by yet.
-    // Filtering on `ownerId` today would either leak all tenants' events to
-    // any signed-in user (if compared against the shared stub id) or hide
-    // everything from everyone (if compared against the real caller id).
-    // Until domain events carry a real per-tenant `ownerId`, gate this
-    // cross-tenant surface behind `requireAdmin` rather than pretending to
-    // scope it.
+    // Admin-only: domain events embed memory `statement` text and other
+    // sensitive payload content. Events now carry a real tenant `ownerId` or
+    // the explicit SYSTEM actor (never the legacy stub), but this list stays
+    // admin-gated because payloads remain cross-tenant sensitive and mixed
+    // SYSTEM/tenant rows would otherwise need a second product surface.
     await requireAdmin(app, request);
     const q = paginationQuerySchema
       .extend({

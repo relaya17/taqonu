@@ -4,8 +4,19 @@ import { createHash } from "node:crypto";
 /** Default local-hash width — must match knowledge_chunks.embedding vector(64). */
 export const LOCAL_EMBEDDING_DIMS = 64 as const;
 
+/**
+ * Honest labeling for retrieval rankers.
+ * `semantic` = meaning-bearing vectors (learned HTTP model or an injected
+ * concept embedder). `lexical-hash` = bag-of-hashed-tokens fallback — never
+ * describe that path as semantic retrieval.
+ */
+export type EmbeddingKind = "semantic" | "lexical-hash";
+
 export interface EmbeddingProvider {
   readonly name: string;
+  readonly kind: EmbeddingKind;
+  /** Output width when known up front; HTTP providers may report null until first embed. */
+  readonly dims: number | null;
   embed(texts: readonly string[]): Promise<readonly number[][]>;
 }
 
@@ -21,13 +32,9 @@ export async function safeEmbed(
 }
 
 /**
- * Synchronous core of the local hash-trick embedding — same deterministic,
- * pure-computation hash-of-tokens vector `LocalHashEmbeddingProvider` uses,
- * exposed directly (no `Promise`) for callers on a synchronous request path
- * (e.g. `retrieveMemories()` in `@atlas/api`) that cannot `await` the async
- * `EmbeddingProvider` interface — that interface stays `Promise`-returning
- * because it's provider-agnostic and a future provider might do real I/O;
- * this local one never does, so a sync entry point is safe to offer.
+ * Synchronous core of the local hash-trick embedding — bag-of-hashed-tokens,
+ * not a learned model. Same vector `LocalHashEmbeddingProvider` produces.
+ * Keep this only as an explicit fallback when no semantic provider is configured.
  */
 export function embedTextLocalSync(
   text: string,
@@ -45,10 +52,15 @@ export function embedTextLocalSync(
   return vec.map((v) => v / norm);
 }
 
-/** Deterministic local embedding — hybrid RAG without paid APIs. */
+/** Lexical hash-trick fallback — token overlap, not semantic similarity. */
 export class LocalHashEmbeddingProvider implements EmbeddingProvider {
   readonly name = "local-hash";
-  constructor(private readonly dims: number = LOCAL_EMBEDDING_DIMS) {}
+  readonly kind = "lexical-hash" as const;
+  readonly dims: number;
+
+  constructor(dims: number = LOCAL_EMBEDDING_DIMS) {
+    this.dims = dims;
+  }
 
   async embed(texts: readonly string[]): Promise<readonly number[][]> {
     return texts.map((text) => embedTextLocalSync(text, this.dims));
@@ -71,8 +83,9 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
   return denom === 0 ? 0 : dot / denom;
 }
 
-const DEFAULT_PROVIDER = new LocalHashEmbeddingProvider();
+const DEFAULT_HASH_PROVIDER = new LocalHashEmbeddingProvider();
 
+/** Unconfigured default: lexical-hash only. Prefer `resolveEmbeddingProvider`. */
 export function getDefaultEmbeddingProvider(): EmbeddingProvider {
-  return DEFAULT_PROVIDER;
+  return DEFAULT_HASH_PROVIDER;
 }

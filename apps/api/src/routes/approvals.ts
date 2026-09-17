@@ -3,6 +3,8 @@ import {
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_CONTROL_REQUEST_PATH,
   ATLAS_SELF_CONTROL_VERIFY_PATH,
+  APPROVAL_CONTROL_PATH,
+  APPROVAL_CONTROL_MINT_PATH,
   AtlasError,
   approvalRequestStatusSchema,
 } from "@atlas/shared";
@@ -12,6 +14,7 @@ import {
   decideApprovalRequest,
   getApprovalRequest,
   listApprovalRequests,
+  createApprovalRequest,
 } from "../services/approvals.js";
 import {
   mintAtlasSelfControlApproval,
@@ -27,6 +30,22 @@ const listQuerySchema = z.object({
 const decideBodySchema = z.object({
   approve: z.boolean(),
   reason: z.string().trim().min(1, "reason is required"),
+});
+
+const controlDecideBodySchema = z.object({
+  approve: z.boolean(),
+  decidedBy: z.string().trim().min(1).max(200),
+  reason: z.string().trim().min(1, "reason is required"),
+});
+
+const controlMintBodySchema = z.object({
+  entityType: z.string().trim().min(1).max(80),
+  action: z.string().trim().min(1).max(80),
+  requestedBy: z.string().trim().min(1).max(200),
+  reason: z.string().trim().min(8).max(2000),
+  agentId: z.string().trim().min(1).max(80).optional(),
+  applicationId: z.string().trim().min(1).max(120).optional(),
+  operation: z.string().trim().min(1).max(80).optional(),
 });
 
 const atlasSelfControlActionSchema = z.enum([
@@ -90,6 +109,48 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
       decisionReason: body.reason,
     });
     return updated;
+  });
+
+  /**
+   * CP SERVICE → list canonical live approvals. Control's dashboard must
+   * not read the empty in-memory `addApprovalRecord` mirror as authority.
+   */
+  app.get(APPROVAL_CONTROL_PATH, async (request) => {
+    requireControlPlaneService(request.headers.authorization);
+    const query = listQuerySchema.parse(request.query ?? {});
+    const items = await listApprovalRequests(query.status);
+    return { items };
+  });
+
+  /** CP SERVICE → mint a pending live approval (gateway REQUIRE_APPROVAL). */
+  app.post(APPROVAL_CONTROL_MINT_PATH, async (request, reply) => {
+    requireControlPlaneService(request.headers.authorization);
+    const body = controlMintBodySchema.parse(request.body ?? {});
+    const created = await createApprovalRequest({
+      entityType: body.entityType,
+      action: body.action,
+      requestedBy: body.requestedBy,
+      reason: body.reason,
+      context: {
+        source: "control-gateway",
+        ...(body.agentId ? { agentId: body.agentId } : {}),
+        ...(body.applicationId ? { applicationId: body.applicationId } : {}),
+        ...(body.operation ? { operation: body.operation } : {}),
+      },
+    });
+    return reply.status(201).send(created);
+  });
+
+  /** CP SERVICE → decide a pending live approval (same store as tenant admin). */
+  app.post(`${APPROVAL_CONTROL_PATH}/:id/decide`, async (request) => {
+    requireControlPlaneService(request.headers.authorization);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = controlDecideBodySchema.parse(request.body ?? {});
+    return decideApprovalRequest(id, {
+      decidedBy: body.decidedBy,
+      approve: body.approve,
+      decisionReason: body.reason,
+    });
   });
 
   /** CP SERVICE → mint a bound Atlas-self control approval. Not a second store. */

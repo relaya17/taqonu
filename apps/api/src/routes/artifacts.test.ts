@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -206,5 +206,48 @@ describe("GET /api/v1/assists/runs", () => {
     expect(ids).toContain(mine.id);
     expect(ids).toContain(global.id);
     expect(ids).not.toContain(foreign.id);
+  });
+});
+
+describe("POST /api/v1/artifacts ownership (B5)", () => {
+  const payload = {
+    filename: "note.txt",
+    mimeType: "text/plain",
+    contentBase64: Buffer.from("hello").toString("base64"),
+  };
+
+  it("stamps the session owner on evidence, not the legacy stub", async () => {
+    const owner = signedInUser();
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/artifacts",
+      payload,
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      evidence: { ownerId: string; uri: string | null };
+    };
+    expect(body.evidence.ownerId).toBe(owner.id);
+    expect(body.evidence.ownerId).not.toBe("00000000-0000-4000-8000-000000000001");
+    if (body.evidence.uri) {
+      try {
+        unlinkSync(body.evidence.uri);
+      } catch {
+        /* best-effort */
+      }
+    }
+  });
+
+  it("403s when uploading into a project owned by someone else", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    getRequestUser.mockReturnValue(otherUser);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/artifacts",
+      payload: { ...payload, projectId },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

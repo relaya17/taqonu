@@ -31,6 +31,10 @@ import {
   refreshPortfolioDiscovery,
 } from "../services/portfolio-discovery.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import {
+  canReadProjectScoped,
+  filterProjectsForCaller,
+} from "../services/project-access.js";
 
 const portfolioPatternsPageSchema = paginatedResponseSchema(
   portfolioPatternSchema,
@@ -126,13 +130,13 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
   });
 
   app.get("/api/v1/portfolio/overview", async (request) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
     const now = new Date().toISOString();
-    const projects = osStore.listProjects();
+    const projects = filterProjectsForCaller(user, osStore.listProjects());
 
     return portfolioOverviewSchema.parse({
-      ownerId: "00000000-0000-4000-8000-000000000001",
+      ownerId: user.id,
       projectCount: projects.length,
       projects: projects.map((project) => {
         const snapshot = osStore.getSnapshot(project.id);
@@ -157,7 +161,7 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
 
   /** Last persisted cross-portfolio health snapshot (if any). */
   app.get("/api/v1/portfolio/health", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const snap = loadPersistedPortfolioHealth();
     if (!snap) {
       return reply.status(200).send({
@@ -193,7 +197,35 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
         persisted: false,
       });
     }
-    return reply.status(200).send({ ...snap, persisted: true });
+    const items = snap.items.filter((item) =>
+      canReadProjectScoped(user, item.projectId),
+    );
+    const worstDimensions = snap.aggregate.worstDimensions.filter((dim) =>
+      canReadProjectScoped(user, dim.projectId),
+    );
+    const sharedPatterns = snap.aggregate.sharedPatterns
+      .map((pattern) => ({
+        ...pattern,
+        projectIds: pattern.projectIds.filter((id) =>
+          canReadProjectScoped(user, id),
+        ),
+      }))
+      .filter((pattern) => pattern.projectIds.length >= 2)
+      .map((pattern) => ({
+        ...pattern,
+        projectCount: pattern.projectIds.length,
+      }));
+    return reply.status(200).send({
+      ...snap,
+      items,
+      projectCount: items.length,
+      aggregate: {
+        ...snap.aggregate,
+        worstDimensions,
+        sharedPatterns,
+      },
+      persisted: true,
+    });
   });
 
   /**
@@ -201,9 +233,13 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
    * else golden root only for the golden slug. Rolls up System Health /
    * Constitution / Verdict-hint signals with worst-of + shared patterns.
    */
-  app.post("/api/v1/portfolio/health", async (_request, reply) => {
+  app.post("/api/v1/portfolio/health", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
-    const projects = osStore.listProjects().slice(0, 12);
+    const projects = filterProjectsForCaller(user, osStore.listProjects()).slice(
+      0,
+      12,
+    );
     const golden =
       app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT || defaultGoldenRoot();
     const goldenSlug = app.atlasEnv.ATLAS_GOLDEN_PROJECT_SLUG ?? "brokeros";
@@ -287,8 +323,8 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
 
   /** P2.2 — Design Partner truth counters side-by-side (linked workspaces only). */
   app.get("/api/v1/portfolio/truth-benchmark", async (request) => {
-    await requireSignedInForWrite(app, request);
-    const projects = osStore.listProjects();
+    const user = await requireSignedInForWrite(app, request);
+    const projects = filterProjectsForCaller(user, osStore.listProjects());
     const items = [];
     for (const project of projects) {
       const root = osStore.getWorkspaceRoot(project.id);
@@ -342,8 +378,8 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
   });
 
   app.get("/api/v1/portfolio/patterns", async (request) => {
-    await requireSignedInForWrite(app, request);
-    const projects = osStore.listProjects();
+    const user = await requireSignedInForWrite(app, request);
+    const projects = filterProjectsForCaller(user, osStore.listProjects());
     const stacks = new Map<string, string[]>();
     for (const project of projects) {
       for (const tech of project.techStack) {

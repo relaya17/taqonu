@@ -31,6 +31,8 @@ import { resolveTier } from "../services/plan-quota.js";
 import { persistArletosAgentMemory } from "../services/arletos-agent-memory.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import { canReadProjectScoped } from "../services/project-access.js";
 import { proposePatch } from "@atlas/code-intelligence";
 import {
   ENGINEERING_MODE_META,
@@ -59,9 +61,14 @@ function toMvpMode(mode: AgentMode): MvpAgentMode {
 }
 
 export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/agent/runs", async () => {
+  app.get("/api/v1/agent/runs", async (request) => {
+    const user = await requireUser(app, request);
     osStore.ensureLoaded();
-    const items = [...osStore.listAgentRuns()];
+    const all = [...osStore.listAgentRuns()];
+    const items =
+      user.role === "admin"
+        ? all
+        : all.filter((run) => run.createdBy === user.id);
     return {
       items,
       page: 1,
@@ -71,6 +78,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/agent/runs", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
     const body = createAgentRunSchema.parse(request.body);
     const intent = classifyIntent(body.userRequest);
@@ -168,26 +176,41 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     // resolveCloudIdentity() call already used further below for
     // persistArletosAgentMemory) so buildMemoryContext() can be scoped to
     // this caller's ownerId instead of returning every tenant's memory
-    // statements in the response. Unauthenticated/system callers still fall
-    // back to the stub owner, same tolerant convention as memory.ts's
-    // POST /api/v1/memory.
+    // statements in the response.
     const identity = await resolveCloudIdentity(app, request);
     if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
 
-    const projects = osStore.listProjects();
-    const projectId = body.projectId ?? null;
-    const snapshot = projectId ? osStore.getSnapshot(projectId) ?? null : null;
-    const decisions = projectId
-      ? [...osStore.getDecisions(projectId), ...osStore.getDecisions("global")]
+    // Same Task 6 boundary as conversation.ts: client-supplied projectId is
+    // not trusted for snapshot/decisions/evidence/knowledge/portfolio list.
+    const requestedProjectId = body.projectId ?? null;
+    const authorizedProjectId =
+      requestedProjectId && canReadProjectScoped(user, requestedProjectId)
+        ? requestedProjectId
+        : null;
+    const projects = osStore
+      .listProjects()
+      .filter((project) => canReadProjectScoped(user, project.id));
+    const snapshot = authorizedProjectId
+      ? osStore.getSnapshot(authorizedProjectId) ?? null
+      : null;
+    const decisions = authorizedProjectId
+      ? [
+          ...osStore.getDecisions(authorizedProjectId),
+          ...osStore.getDecisions("global"),
+        ]
       : [...osStore.getDecisions("global")];
-    const memoryContextResult = buildMemoryContext({
-      projectId,
+    const callerOwnerId = user.role === "admin" ? undefined : identity.ownerId;
+    const memoryContextResult = await buildMemoryContext({
+      projectId: authorizedProjectId,
       query: body.userRequest,
       budget: AGENT_MEMORY_BUDGET,
-      ownerId: identity.ownerId,
+      embeddingEnv: app.atlasEnv,
+      ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
     const { memories, ...memoryContext } = memoryContextResult;
-    const evidence = projectId ? osStore.getEvidence(projectId) : [];
+    const evidence = authorizedProjectId
+      ? osStore.getEvidence(authorizedProjectId)
+      : [];
 
     let knowledge: Awaited<ReturnType<typeof searchEligibleKnowledge>> | null =
       null;
@@ -197,7 +220,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         query: body.userRequest,
         scope: resolveAtlasSurfaceKnowledgeScope({
           sessionOwnerId: identity.ownerId,
-          requestedProjectId: projectId,
+          requestedProjectId: authorizedProjectId,
         }),
         maxResults: 8,
       });
@@ -216,7 +239,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       })),
       hasSnapshot: Boolean(snapshot),
       snapshotLabel: snapshot
-        ? `snapshot:${projectId ?? "portfolio"}`
+        ? `snapshot:${authorizedProjectId ?? "portfolio"}`
         : null,
       projectCount: projects.length,
     });
@@ -224,7 +247,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
 
     const blocks = buildPortfolioContextBlocks({
       projects,
-      projectId,
+      projectId: authorizedProjectId,
       snapshot,
       decisions,
       memories,
@@ -340,7 +363,8 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     if (
       epistemicLabel !== "INSUFFICIENT_EVIDENCE" &&
       shouldPropose &&
-      body.workspaceRoot
+      body.workspaceRoot &&
+      authorizedProjectId
     ) {
       try {
         const proposal = proposePatch({
@@ -358,7 +382,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         } else {
           const patch = patchArtifactSchema.parse({
             id: crypto.randomUUID(),
-            projectId,
+            projectId: authorizedProjectId,
             title: proposal.title,
             reason: proposal.reason,
             mode: proposal.mode,
@@ -425,7 +449,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
 
     const run = agentRunSchema.parse({
       id: crypto.randomUUID(),
-      projectId,
+      projectId: requestedProjectId,
       mode,
       status: writeBlocked || patchId ? "AWAITING_APPROVAL" : "SUCCEEDED",
       userRequest: body.userRequest,
@@ -437,7 +461,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
         `Evidence refs: ${evidenceRefs.length}`,
         `Engineering mode: ${engMode}`,
         `Experts: ${experts.primary}${experts.supporting.length ? ` + ${experts.supporting.join(", ")}` : ""}`,
-        `Scope: ${projectId ? "project" : "portfolio"}`,
+        `Scope: ${authorizedProjectId ? "project" : "portfolio"}`,
         `Intent: ${intent.kind}`,
         verification.passed
           ? "Self-check: passed."
@@ -446,7 +470,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       epistemicState: epistemicLabel,
       startedAt: now,
       completedAt: now,
-      createdBy: "user",
+      createdBy: user.id,
     });
 
     osStore.addAgentRun(run);
@@ -468,7 +492,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       patchId,
       epistemicLabel,
       evidenceRefCount: evidenceRefs.length,
-      projectId,
+      projectId: requestedProjectId,
       status: run.status,
       at: now,
     });
@@ -484,7 +508,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       // POST /api/v1/memory would compute: real user when signed in, stub
       // owner for unauthenticated/system callers), never leave it unset.
       const learned = persistArletosAgentMemory({
-        projectId,
+        projectId: authorizedProjectId,
         userRequest: redactedUserRequest,
         answer: run.answer,
         runId: run.id,

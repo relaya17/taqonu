@@ -56,6 +56,8 @@ import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerGovernedLifecycleHandoffRoutes } from "./routes/governed-lifecycle-handoff.js";
 import { registerAgentRuntimeControlRoutes } from "./routes/agent-runtime-controls.js";
 import { registerKillSwitchRoutes } from "./routes/kill-switches.js";
+import { registerExecutionControlRoutes } from "./routes/executions-control.js";
+import { registerErrorAggregateControlRoutes } from "./routes/error-aggregates-control.js";
 import { registerPersonalSupervisingAgentRoutes } from "./routes/personal-supervising-agent.js";
 import { registerSyntheticUniverseRoutes } from "./routes/synthetic-universe.js";
 import { registerSecuritySarifRoutes } from "./routes/security-sarif.js";
@@ -221,6 +223,8 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerGovernedLifecycleHandoffRoutes(app);
   await registerAgentRuntimeControlRoutes(app);
   await registerKillSwitchRoutes(app);
+  await registerExecutionControlRoutes(app);
+  await registerErrorAggregateControlRoutes(app);
   await registerPersonalSupervisingAgentRoutes(app);
   await registerSyntheticUniverseRoutes(app);
   await registerObserverRoutes(app);

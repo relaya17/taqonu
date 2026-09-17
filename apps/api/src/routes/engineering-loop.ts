@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   AtlasError,
-  STUB_OWNER_ID,
   approveEngineeringLoopSchema,
   atlasProofReportSchema,
   classifyActionRequestSchema,
@@ -83,11 +82,9 @@ export async function registerEngineeringLoopRoutes(
     const body = startEngineeringLoopSchema.parse(request.body);
 
     // Auth: if projectId given, check project write access; otherwise require signed in.
-    if (body.projectId) {
-      await assertProjectWriteAccess(app, request, body.projectId);
-    } else {
-      await requireSignedInForWrite(app, request);
-    }
+    const user = body.projectId
+      ? await assertProjectWriteAccess(app, request, body.projectId)
+      : await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: engineering loop is RECORD.EXECUTE.
     const entityDecision = authorizeEntityAction("RECORD", "EXECUTE", {
@@ -198,6 +195,7 @@ export async function registerEngineeringLoopRoutes(
     appendDomainEvent({
       type: "agent.run.completed",
       projectId: body.projectId ?? null,
+      ownerId: user.id,
       epistemicState: "OBSERVED",
       payload: {
         kind: "engineering-loop",
@@ -344,7 +342,7 @@ export async function registerEngineeringLoopRoutes(
       if (existing.projectId) {
         const evidence = parseEvidenceRecord({
           id: crypto.randomUUID(),
-          ownerId: STUB_OWNER_ID,
+          ownerId: user.id,
           projectId: existing.projectId,
           source: `loop:${existing.id}`,
           sourceType: "SYSTEM",

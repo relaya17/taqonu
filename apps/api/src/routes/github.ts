@@ -306,7 +306,7 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
       routeLabel: "github.discover",
       actorId: user.id,
     });
-    const result = discoverGitHubPortfolio(request.body);
+    const result = discoverGitHubPortfolio(request.body, user.id);
     app.atlasLogger.info("github_discover_completed", {
       created: result.created,
       updated: result.updated,
@@ -329,7 +329,11 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
       actorId: user.id,
       projectId: body.projectId,
     });
-    const { observation, evidence } = ingestGitHubSync(body.projectId, body);
+    const { observation, evidence } = ingestGitHubSync(
+      body.projectId,
+      body,
+      user.id,
+    );
 
     const snapshot = body.reconcile
       ? runStateReconciliation(body.projectId)

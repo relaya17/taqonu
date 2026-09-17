@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   AtlasError,
-  STUB_OWNER_ID,
   parseEvidenceRecord,
   patchArtifactSchema,
   type AuthUser,
@@ -15,6 +14,7 @@ import {
 } from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
+import { learnFromVerifiedPatch } from "./bug-fix-learning.js";
 import { atlasMetrics } from "../routes/metrics.js";
 import { appendOracleAudit } from "./admin-oracle-digest.js";
 import { computeArtifactHash } from "./governed-execution.js";
@@ -214,7 +214,7 @@ export function recordRemediationVerification(input: {
     evidenceId = crypto.randomUUID();
     const evidence = parseEvidenceRecord({
       id: evidenceId,
-      ownerId: STUB_OWNER_ID,
+      ownerId: input.userId,
       projectId: input.patch.projectId,
       source: `remediation-verify:${input.patch.id}`,
       sourceType: "SYSTEM",
@@ -269,6 +269,7 @@ export function recordRemediationVerification(input: {
   appendDomainEvent({
     type: "evaluation.completed",
     projectId: patch.projectId,
+    ownerId: input.userId,
     epistemicState: input.verify.ok ? "OBSERVED" : "CONFLICTED",
     payload: {
       kind: "auto-remediation-verify",
@@ -279,6 +280,19 @@ export function recordRemediationVerification(input: {
       checks: input.verify.checks,
     },
   });
+  if (input.verify.ok && patch.sourceIssueId) {
+    learnFromVerifiedPatch({
+      ownerId: input.userId,
+      projectId: patch.projectId,
+      bugId: patch.sourceIssueId,
+      bugTitle: patch.title,
+      bugDetail: patch.reason,
+      patchId: patch.id,
+      evidenceId,
+      verifySummary: input.verify.summary,
+      workspaceRoot: input.workspaceRoot,
+    });
+  }
   return patch;
 }
 
@@ -331,7 +345,7 @@ export function applyApprovedPatch(input: {
     evidenceId = crypto.randomUUID();
     const evidence = parseEvidenceRecord({
       id: evidenceId,
-      ownerId: STUB_OWNER_ID,
+      ownerId: input.user.id,
       projectId: input.existing.projectId,
       source: `patch:${input.existing.id}`,
       sourceType: "SYSTEM",
@@ -358,6 +372,7 @@ export function applyApprovedPatch(input: {
     appendDomainEvent({
       type: "evidence.recorded",
       projectId: input.existing.projectId,
+      ownerId: input.user.id,
       epistemicState: "OBSERVED",
       payload: {
         evidenceId,
@@ -395,6 +410,7 @@ export function applyApprovedPatch(input: {
   appendDomainEvent({
     type: "patch.applied",
     projectId: input.existing.projectId,
+    ownerId: input.user.id,
     epistemicState: "OBSERVED",
     payload: {
       patchId: input.existing.id,

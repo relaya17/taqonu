@@ -134,6 +134,53 @@ describe("GET /api/v1/audit", () => {
   });
 });
 
+describe("GET /api/v1/audit/mine", () => {
+  it("401s when not signed in", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({ method: "GET", url: "/api/v1/audit/mine" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("lets a regular user read only their own unified entries — never another actor", async () => {
+    getRequestUser.mockReturnValue(regularUser);
+    const res = await app.inject({ method: "GET", url: "/api/v1/audit/mine" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      unified: Array<{ actorId: string | null }>;
+    };
+    expect(body.unified.every((entry) => entry.actorId === regularUser.id)).toBe(
+      true,
+    );
+    expect(JSON.stringify(body)).not.toContain("actor-a");
+    expect(JSON.stringify(body)).not.toContain("actor-b");
+  });
+
+  it("same-tenant allow: entries stamped with the caller actorId are visible", async () => {
+    appendUnifiedAuditEntry({
+      type: "patch.applied",
+      actorId: regularUser.id,
+      actorKind: "USER",
+      reason: "c1-mine-visible-marker",
+      risk: "LOW",
+      approval: "NOT_REQUIRED",
+      result: "SUCCESS",
+    });
+    getRequestUser.mockReturnValue(regularUser);
+    const res = await app.inject({ method: "GET", url: "/api/v1/audit/mine" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      unified: Array<{ actorId: string | null; reason?: string }>;
+    };
+    expect(
+      body.unified.some(
+        (entry) =>
+          entry.actorId === regularUser.id &&
+          entry.reason === "c1-mine-visible-marker",
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("POST /api/v1/audit/cp-import", () => {
   const prevToken = process.env.ATLAS_CONTROL_PLANE_TOKEN;
 
@@ -179,5 +226,43 @@ describe("POST /api/v1/audit/cp-import", () => {
     });
     expect(allowed.statusCode).toBe(201);
     expect(allowed.json().imported).toBe(1);
+  });
+});
+
+describe("GET canonical audit verify (CP SERVICE)", () => {
+  const CP_TOKEN = "audit-verify-cp-token-32chars!!!!";
+
+  beforeEach(() => {
+    process.env.ATLAS_CONTROL_PLANE_TOKEN = CP_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.ATLAS_CONTROL_PLANE_TOKEN;
+  });
+
+  it("401s without a Control Plane service token", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/internal/audit/verify",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns canonical chain status for a valid Control Plane service token", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/internal/audit/verify",
+      headers: { authorization: `Bearer ${CP_TOKEN}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      ok: boolean;
+      status: string;
+      canonical: boolean;
+      checked: number;
+    };
+    expect(body.canonical).toBe(true);
+    expect(["VALID", "BROKEN", "INCOMPLETE", "UNKNOWN"]).toContain(body.status);
+    expect(typeof body.checked).toBe("number");
   });
 });

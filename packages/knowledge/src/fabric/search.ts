@@ -40,7 +40,7 @@ export interface CorpusDoc {
   applicationId?: string | null;
   /** Omit for shared documents; scoped documents require an allowed agent identity. */
   allowedAgentIds?: string[] | null;
-  /** Optional cached local-hash (or other) embedding for durable hybrid search. */
+  /** Optional cached embedding for durable hybrid search (hash or learned). */
   embedding?: number[] | null;
 }
 

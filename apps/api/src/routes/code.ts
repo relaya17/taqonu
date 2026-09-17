@@ -710,12 +710,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       try {
         const user = await getRequestUser(app, request);
         if (user) {
-          const ctx = buildMemoryContext({
+          const ctx = await buildMemoryContext({
             projectId: body.projectId ?? null,
             query: body.userRequest,
             budget: 12,
             ownerId: user.id,
             requestingAgentId: "CODE_ENGINEER",
+            embeddingEnv: app.atlasEnv,
           });
           memoryItems = ctx.items;
         }

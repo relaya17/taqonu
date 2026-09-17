@@ -20,6 +20,7 @@ import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
+import { WEB_NAV_PATHS } from "@/lib/studio-surfaces";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
@@ -62,58 +63,9 @@ const navChrome = {
   },
 } as const;
 
-type NavKey =
-  | "dashboard"
-  | "projects"
-  | "systems"
-  | "studio"
-  | "workbench"
-  | "agents"
-  | "partners"
-  | "patches"
-  | "health"
-  | "truth"
-  | "observer"
-  | "sentinel"
-  | "readiness"
-  | "qa"
-  | "processAudit"
-  | "models"
-  | "experts"
-  | "memory"
-  | "decisions"
-  | "integrations"
-  | "plan"
-  | "welcome"
-  | "legalMedia"
-  | "settings";
+type NavKey = keyof typeof WEB_NAV_PATHS;
 
-const PATHS: Record<NavKey, string> = {
-  dashboard: "/",
-  projects: "/projects",
-  systems: "/systems",
-  studio: "/studio",
-  workbench: "/workbench",
-  agents: "/agents",
-  partners: "/partners",
-  patches: "/patches",
-  health: "/health",
-  truth: "/truth",
-  observer: "/observer",
-  sentinel: "/sentinel",
-  readiness: "/readiness",
-  qa: "/qa",
-  processAudit: "/process-audit",
-  models: "/models",
-  experts: "/experts",
-  memory: "/memory",
-  decisions: "/decisions",
-  integrations: "/integrations",
-  plan: "/plan",
-  welcome: "/welcome",
-  legalMedia: "/legal-media",
-  settings: "/settings",
-};
+const PATHS: Record<NavKey, string> = WEB_NAV_PATHS;
 
 /** Slim primary nav — state/chat/agent/proof removed; QA+health under dashboard ops. */
 const NAV_GROUPS: readonly {

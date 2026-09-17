@@ -300,7 +300,27 @@
     },
     "checksTab": {
       "observer": "צופה",
-      "sentinel": "בדיקת אבטחה"
+      "sentinel": "בדיקת אבטחה",
+      "qa": "QA",
+      "processAudit": "ביקורת תהליך",
+      "health": "בריאות",
+      "readiness": "מוכנות",
+      "truth": "אמת"
+    },
+    "workflow": {
+      "title": "הצעה → סקירה → אישור → החלה → אימות",
+      "help": "הסוכן מציע Patch. סוקרים כאן, מאשרים, ואז מחילים. אין כתיבה לדיסק בלי אישור.",
+      "empty": "בדקו קובץ ואז הציעו שינוי. Patches קיימים לפרויקט יופיעו כאן.",
+      "reviewFiles": "קבצים ב-Patch",
+      "steps": {
+        "inspect": "בדיקה",
+        "analyze": "ניתוח",
+        "propose": "הצעה",
+        "review": "סקירה",
+        "approve": "אישור",
+        "apply": "החלה",
+        "verify": "אימות"
+      }
     }
   },
   "auth": {

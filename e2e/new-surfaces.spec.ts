@@ -30,15 +30,12 @@ test.describe("New product surfaces (EN)", () => {
     }
   });
 
-  test("process-audit page loads", async ({ page, request }) => {
+  test("process-audit route remains and lands in Studio Checks", async ({ page }) => {
     await page.goto("/en/process-audit");
+    await expect(page).toHaveURL(/\/en\/studio\?.*check=processAudit/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    if (await apiHealthy(request)) {
-      await expect(
-        page.getByText(/process|audit|E2E|profile|run/i).first(),
-      ).toBeVisible({ timeout: 20_000 });
-    }
   });
 
   test("dashboard shows onboarding path", async ({ page }) => {
@@ -66,9 +63,11 @@ test.describe("Legacy orphan redirects (EN)", () => {
     await expect(page).toHaveURL(/\/en\/agents/, { timeout: 30_000 });
   });
 
-  test("/proof redirects to readiness", async ({ page }) => {
+  test("/proof redirects to Studio Checks readiness", async ({ page }) => {
     await page.goto("/en/proof");
-    await expect(page).toHaveURL(/\/en\/readiness/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/en\/studio\?.*check=readiness/, {
+      timeout: 30_000,
+    });
   });
 });
 
