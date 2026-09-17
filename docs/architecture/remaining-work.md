@@ -120,6 +120,23 @@ Not a production-readiness claim. Not a 10/10 score.
 - Production ready
 - Completeness of the August vision gap-analysis / staged roadmap
 
+### Runtime completion probes (2026-09-17 night)
+
+Handoff: production evidence. No rewrite of accepted commits. No secrets committed.
+
+| Item | Classification | Evidence |
+| --- | --- | --- |
+| Production PostgreSQL | **INFRASTRUCTURE BLOCKER** | `DATABASE_URL` host `localhost:54322`; TCP closed. `SUPABASE_*` service/anon keys are placeholders (`replace-me`). `environment:gate` `auditLogPersistence.live=false`. API health remains local JSON. |
+| Ubuntu + Tailscale + systemd VM | **INFRASTRUCTURE BLOCKER** | Tailscale peer `ip-172-31-42-218` (`100.93.71.107`) **offline**, last seen ~8d; `tailscale ping` timed out. AWS CLI not installed. Do not fabricate production VM health. |
+| Studio production + browser Apply E2E | **EVIDENCE GAP** + **CREDENTIAL** | `http://localhost:3000/he/studio` HTTP 200 (binds `::1`, not `127.0.0.1`). `NEXT_PUBLIC_SUPABASE_ANON_KEY` is `replace-me`. Signed-in two-identity Apply is not live-proven. SoD not weakened. |
+| Multi-process occupancy vs live Postgres | **EVIDENCE GAP** blocked by Postgres TCP | In-process occupancy tests remain the current proof. `startClaims` is process-local. |
+| Spec consume-before-policy vs live claim path | **DOCUMENTATION/CONTRACT MISMATCH** (spec stale for matching pairs) | Matching execute uses `claim → recheck → STARTED → execute → finalize`. Gateway mismatch (`RECORD.EXECUTE` vs `DOCUMENT.READ`) still consumes the operation approval first. ADR-023 updated. Code not reverted. |
+| Local Docker / supabase CLI | **INFRASTRUCTURE BLOCKER** | Docker Desktop daemon not running (`dockerDesktopLinuxEngine` pipe missing). `supabase` CLI not on PATH. Cannot start local Postgres `:54322` from this workstation either. |
+| Memory omit-`agentId` retrieve | **POLICY DECISION** | `isVisibleToAgent` returns true when `allowedAgents` is set but no requester id is supplied (human conversation / list). Test: “includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)”. Not a silent bug. |
+| ADR-022 sibling execute | **POLICY DECISION** | `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`. No shortcut fulfill. |
+| Sigstore / cosign | **INFRASTRUCTURE BLOCKER** / **EXTERNAL PROVIDER** | `ATLAS_SIGNING_IDENTITY` unset; `cosign` not on PATH. `pnpm supply-chain:sign` REFUSE. SBOM VALID, UNSIGNED, `releaseReady: false`. |
+| External pentest | **EXTERNAL VALIDATION** | Scope package only. Not replaced by unit tests. |
+
 ---
 
 ## 01 BASELINE / FREEZE
@@ -184,6 +201,14 @@ Application → Gateway → Identity → Registries → Capability
 Regression is a **gate on this hop**, not a QA product: optional `baselineObservations`
 on fulfill. No baseline → INCONCLUSIVE (not a pass). Missing a prior observation
 after mutation → FAILED, which overrides VERIFIED. Memory stays OBSERVED.
+
+**Occupancy ordering (not a Phase 02 reopen):** matching entity/action hops use
+`runGovernedClaimedExecution` (`claim → recheck → STARTED → execute →
+finalize`). The historical “consume then execute” wording is stale for that
+path. `request_agent_run` still consumes the operation-level `RECORD.EXECUTE`
+approval before the mapped tool runs, because the tool pair can be
+`DOCUMENT.READ`. Both are intentional; do not merge them by rewriting working
+code.
 
 ## 03 IDENTITY / AUTHZ
 **Status: COMPLETE** for the existing identity model (no redesign).
@@ -277,7 +302,9 @@ still no second system of record.
 
 **Implemented (code + tests):**
 - `executeTool` already has timeout + AbortSignal.
-- Approval consume is one-shot (existing).
+- Approval consume is one-shot on the gateway *mismatch* path
+  (`consumeApprovalRequest` before `executeGovernedAction`). Matching pairs
+  use claim/finalize occupancy instead of consume-before-policy.
 - `executeGovernedAction` accepts optional `idempotencyKey`.
 - **Durable governed idempotency:** EXECUTED outcomes persist to
   `.atlas/governed-idempotency.json` (atomic write). A process restart
@@ -360,6 +387,14 @@ promote a memory. That path returns `unverified_evidence` /
 context in `<<<UNTRUSTED_DATA:...>>>` on `agent.ts` and `conversation.ts`.
 Flagged injection logs `agent_prompt_injection_flagged` /
 `conversation_prompt_injection_flagged`.
+
+**OPEN POLICY DECISION (not a bug):** rows with a non-empty `allowedAgents`
+list remain visible when retrieve is called with no `requestingAgentId` /
+`requestingAgentIds`. That is the documented backward-compat path for human
+conversation and generic memory list. Agent-scoped isolation on plan/dispatch
+(callers that pass `agentId`) is accepted. Owner must decide whether human
+omit-agent retrieve should stay open or hide agent-scoped rows. Do not change
+the filter without that decision.
 
 ## 10 AGENT GOVERNANCE
 **Status: COMPLETE** for the existing catalog + governed execution path.

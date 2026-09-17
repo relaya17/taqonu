@@ -52,13 +52,32 @@ Using Unit 2 for some scopes and Phase 3F for others would be dual authority.
 
 ## Consequences
 
-- Phase 3E consume → `consumedApproval` → dispatch re-check → Policy/Risk →
-  execute continues against the Phase 3F record for every current scope.
+- **Historical (at ADR write time):** Phase 3E consume → `consumedApproval` →
+  dispatch re-check → Policy/Risk → execute against the Phase 3F record.
+- **Live occupancy (matching entity/action):** `runGovernedClaimedExecution`
+  is the acceptance target:
+  `claim → policy/risk re-check → durable STARTED → execute → finalize`
+  (`FULFILLED` | `FAILED` | `OUTCOME_UNKNOWN` | `FINALIZE_INCOMPLETE`).
+  Do not rewrite this path back to consume-before-policy.
+- **Live gateway mismatch (still present):** when the operation pair and the
+  fabric tool pair differ (`request_agent_run` is `RECORD.EXECUTE` even if the
+  tool is `analyze_repo` / `DOCUMENT.READ`), `gateOperationApproval` still
+  calls `consumeApprovalRequest` *before* `executeGovernedAction` and does
+  **not** pass `approvalRequestId` into the claim helper. That is one-shot
+  redemption of the *operation* approval, not a second occupancy engine.
+- This occupancy is **at-most-once attempt** after STARTED. It does not prove
+  exactly-once Git, payment, or other external side effects.
 - Unit 2 claim/receipt/envelope validation stay unused by the live path until
   a later, separately authorized design copies *concepts* into Phase 3F or
   introduces a real tenant+project class.
-- This ADR does not authorize schema or service changes. Implementation of
-  in-place evolution requires a later explicit authorization.
+
+## Implementation status (2026-09-17)
+
+Claim/finalize **was later implemented** on the live Phase 3F path
+(`apps/api/src/services/governed-claimed-execution.ts`). That does not
+amend the original “not decided here” list; it records that subsequent
+authorized work landed occupancy. The original ADR text above is preserved
+as history. The live ordering is the acceptance target.
 
 ## Not decided here
 
