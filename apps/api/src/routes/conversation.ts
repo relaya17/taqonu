@@ -29,6 +29,7 @@ import {
   resolveTier,
 } from "../services/plan-quota.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
+import { canReadProjectScoped } from "../services/project-access.js";
 import {
   resolveAtlasSurfaceKnowledgeScope,
   searchEligibleKnowledge,
@@ -129,6 +130,17 @@ export async function registerConversationRoutes(
     const threadId = body.threadId ?? crypto.randomUUID();
     const messageId = crypto.randomUUID();
     const projectId = body.projectId ?? null;
+    // Tenant boundary (Task 6 fix): projectId is client-supplied and must
+    // not be trusted for project-scoped reads (snapshot/decisions/evidence/
+    // knowledge/portfolio list). Mirrors the canReadProjectScoped convention
+    // already used for list filtering in projects.ts. An unauthorized
+    // projectId degrades to "no project" (portfolio-only context) rather
+    // than throwing, preserving existing no-project behavior. The raw
+    // projectId is still recorded on the agentRun/audit entries below for
+    // traceability of what was requested, and memory retrieval keeps its
+    // own independent ownerId scoping (memory-pipeline.ts) unchanged.
+    const authorizedProjectId =
+      projectId && canReadProjectScoped(user, projectId) ? projectId : null;
     const selectedId = body.aiProviderId ?? "arletos-included";
 
     const catalog =
@@ -153,10 +165,14 @@ export async function registerConversationRoutes(
       }
     }
 
-    const projects = osStore.listProjects();
-    const snapshot = projectId ? osStore.getSnapshot(projectId) ?? null : null;
-    const decisions = projectId
-      ? [...osStore.getDecisions(projectId), ...osStore.getDecisions("global")]
+    const projects = osStore
+      .listProjects()
+      .filter((project) => canReadProjectScoped(user, project.id));
+    const snapshot = authorizedProjectId
+      ? osStore.getSnapshot(authorizedProjectId) ?? null
+      : null;
+    const decisions = authorizedProjectId
+      ? [...osStore.getDecisions(authorizedProjectId), ...osStore.getDecisions("global")]
       : [...osStore.getDecisions("global")];
     // Tenant boundary (P0 fix): scope memory retrieval to the caller so one
     // tenant's conversation never surfaces another tenant's memories.
@@ -169,7 +185,7 @@ export async function registerConversationRoutes(
       ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });
     const { memories, ...memoryContext } = memoryContextResult;
-    const evidenceRecords = projectId ? osStore.getEvidence(projectId) : [];
+    const evidenceRecords = authorizedProjectId ? osStore.getEvidence(authorizedProjectId) : [];
 
     let knowledge: Awaited<ReturnType<typeof searchEligibleKnowledge>> | null =
       null;
@@ -179,7 +195,7 @@ export async function registerConversationRoutes(
         query: body.message,
         scope: resolveAtlasSurfaceKnowledgeScope({
           sessionOwnerId: user.id,
-          requestedProjectId: projectId,
+          requestedProjectId: authorizedProjectId,
         }),
         maxResults: 8,
       });
@@ -198,7 +214,7 @@ export async function registerConversationRoutes(
       })),
       hasSnapshot: Boolean(snapshot),
       snapshotLabel: snapshot
-        ? `snapshot:${projectId ?? "portfolio"}`
+        ? `snapshot:${authorizedProjectId ?? "portfolio"}`
         : null,
       projectCount: projects.length,
     });
@@ -217,7 +233,7 @@ export async function registerConversationRoutes(
     } else {
       const blocks = buildPortfolioContextBlocks({
         projects,
-        projectId,
+        projectId: authorizedProjectId,
         snapshot,
         decisions,
         memories,
