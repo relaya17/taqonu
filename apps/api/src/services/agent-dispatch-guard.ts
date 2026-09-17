@@ -3,12 +3,12 @@ import {
   bucketForRiskScore,
   computeActionRiskScore,
   explainRiskScore,
-  firstActiveKillSwitch,
   type BusinessEntityType,
   type EntityAction,
   type KillSwitchCategory,
   type RiskBucket,
 } from "@atlas/agent-core";
+import { firstActiveEffectiveKillSwitch } from "./kill-switch-runtime.js";
 import {
   agentMayExecute,
   combineAgentRuntimeStatus,
@@ -443,8 +443,12 @@ export async function dispatchAgentAction(
 
   // Kill switch: checked before anything else, including policy/risk. This
   // is an operator emergency stop, not an ordinary governance decision --
-  // see `firstActiveKillSwitch` in `@atlas/agent-core`.
-  const killSwitch = firstActiveKillSwitch(options.killSwitchCategories ?? []);
+  // see `firstActiveKillSwitch` in `@atlas/agent-core`. Resolved against the
+  // EFFECTIVE state (env baseline UNION durable runtime override -- Task 7)
+  // via `firstActiveEffectiveKillSwitch`, which merges `osStore`'s runtime
+  // overrides into a synthetic env before delegating to the unmodified
+  // `firstActiveKillSwitch` primitive. See `kill-switch-runtime.ts`.
+  const killSwitch = firstActiveEffectiveKillSwitch(options.killSwitchCategories ?? []);
   if (killSwitch !== null) {
     const reason = `Kill switch "${killSwitch.category}" is active -- agent/automation dispatch is denied`;
     appendUnifiedAuditEntry({

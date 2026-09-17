@@ -1,12 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+// Task 7 -- Runtime Kill Switch Control: `osStore` is a module-level
+// singleton, so (mirroring `remediation.test.ts`'s established isolation
+// convention) `ATLAS_STORE_PATH` must be redirected to a fresh temp file,
+// and disk persistence skipped, BEFORE the module graph (and therefore
+// `osStore`) is imported below -- otherwise these tests would read/write
+// the real repo's `.atlas/store.json`.
+const killSwitchTestStoreDir = mkdtempSync(
+  join(tmpdir(), "atlas-dispatch-guard-kill-switch-test-"),
+);
+process.env.ATLAS_STORE_PATH = join(killSwitchTestStoreDir, "store.json");
+process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+
 import {
   setAuditLogPathForTests,
   listUnifiedAuditEntries,
   verifyAuditLogChain,
 } from "./audit-log.js";
+import { osStore } from "../store/os-store.js";
 import {
   claimApprovalRequest,
   claimApprovalRequestAsLiveHuman,
@@ -790,6 +804,89 @@ describe("dispatchAgentAction", () => {
       expect(result.decision).toBe("DENIED");
       if (result.decision !== "DENIED") throw new Error("expected DENIED");
       expect(result.reason).toMatch(/Kill switch "payments" is active/);
+    });
+  });
+
+  describe("Task 7 -- runtime kill-switch override (effective = env UNION runtime)", () => {
+    const ORIGINAL_ENV = process.env.ATLAS_KILL_SWITCHES;
+
+    beforeEach(() => {
+      osStore.unloadForTests();
+    });
+
+    afterEach(() => {
+      osStore.unloadForTests();
+      if (ORIGINAL_ENV === undefined) {
+        delete process.env.ATLAS_KILL_SWITCHES;
+      } else {
+        process.env.ATLAS_KILL_SWITCHES = ORIGINAL_ENV;
+      }
+    });
+
+    it("Proof 1: a durable runtime-only override (no env var at all) blocks dispatchAgentAction, exactly like an env-set switch would", async () => {
+      delete process.env.ATLAS_KILL_SWITCHES;
+      osStore.setKillSwitchOverride("agentDispatch", "operator-1", "runtime-only test");
+
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.runtime-only",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/Kill switch "agentDispatch" is active/);
+    });
+
+    it("Proof 4: clearing the runtime override while the env baseline still lists the category CANNOT disable it -- env remains authoritative", async () => {
+      process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
+      osStore.setKillSwitchOverride("agentDispatch", "operator-1", "temporarily also set at runtime");
+      osStore.clearKillSwitchOverride("agentDispatch", "operator-1", "attempted clear");
+
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.clear-cannot-override-env",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+      });
+      expect(result.decision).toBe("DENIED");
+      if (result.decision !== "DENIED") throw new Error("expected DENIED");
+      expect(result.reason).toMatch(/Kill switch "agentDispatch" is active/);
+    });
+
+    it("clearing a runtime-only override (env inactive) restores ALLOWED", async () => {
+      delete process.env.ATLAS_KILL_SWITCHES;
+      osStore.setKillSwitchOverride("agentDispatch", "operator-1", "runtime-only test");
+      osStore.clearKillSwitchOverride("agentDispatch", "operator-1", "no longer needed");
+
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.cleared-and-allowed",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+      });
+      expect(result.decision).toBe("ALLOWED");
+    });
+
+    it("a runtime override on an unrelated declared category does not block when the caller does not declare it", async () => {
+      delete process.env.ATLAS_KILL_SWITCHES;
+      osStore.setKillSwitchOverride("payments", "operator-1", "runtime-only, unrelated category");
+
+      const result = await dispatchAgentAction({
+        actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+        entityType: "RECORD",
+        action: "READ",
+        routeLabel: "test.kill-switch.runtime-unrelated",
+        sourceContext: { origin: "user_message", trustLevel: "trusted" },
+        projectId: PROJECT,
+      });
+      expect(result.decision).toBe("ALLOWED");
     });
   });
 

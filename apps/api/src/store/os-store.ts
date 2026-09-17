@@ -138,6 +138,16 @@ interface PersistedShape {
   meta?: Record<string, string>;
   /** Local absolute paths for BYO project roots (explicit permissions). */
   workspaceRoots?: Record<string, string>;
+  /**
+   * Task 7 -- Runtime Kill Switch Control. Durable operator-set overrides,
+   * keyed by kill-switch category name. Presence in this map = the runtime
+   * override is "active" for that category. This is ONLY a runtime override
+   * signal -- the effective (enforced) state is always the union of this
+   * override with the env-baseline (`ATLAS_KILL_SWITCHES`); clearing an
+   * entry here can never force a category off if the env baseline still
+   * lists it. See `apps/api/src/services/kill-switch-runtime.ts`.
+   */
+  killSwitchOverrides?: Record<string, KillSwitchOverrideRecord>;
   /** Durable conversation threads (survives API restart). */
   conversationThreads?: Record<string, ConversationThreadTurn[]>;
   /** Customer BYO cloud bindings (Cloudflare-first). Keyed by ownerId. */
@@ -250,6 +260,19 @@ export interface StoredByoCloudBinding {
   tokenConfigured: boolean;
 }
 
+/**
+ * Task 7 -- Runtime Kill Switch Control. A single durable runtime override
+ * for one kill-switch category. Presence in `OsStore`'s override map means
+ * an operator has activated this category at runtime; absence means no
+ * runtime override is set (the category may still be active via the env
+ * baseline -- see `apps/api/src/services/kill-switch-runtime.ts`).
+ */
+export interface KillSwitchOverrideRecord {
+  readonly reason: string;
+  readonly setBy: string;
+  readonly setAt: string;
+}
+
 
 function storePath(): string {
   const fromEnv = process.env.ATLAS_STORE_PATH;
@@ -300,6 +323,7 @@ function emptyShape(): PersistedShape {
     readinessCertificates: [],
     meta: {},
     workspaceRoots: {},
+    killSwitchOverrides: {},
     conversationThreads: {},
     byoCloudBindings: {},
     exemplars: [],
@@ -346,6 +370,7 @@ class OsStore {
   private readinessCertificates: ProductionReadinessCertificate[] = [];
   private meta: Record<string, string> = {};
   private workspaceRoots: Record<string, string> = {};
+  private killSwitchOverrides = new Map<string, KillSwitchOverrideRecord>();
   private conversationThreads = new Map<string, ConversationThreadTurn[]>();
   private byoCloudBindings = new Map<string, StoredByoCloudBinding>();
   private exemplars: ExemplarRecord[] = [];
@@ -450,6 +475,9 @@ class OsStore {
     this.exemplars = raw.exemplars ?? [];
     this.meta = raw.meta ?? {};
     this.workspaceRoots = raw.workspaceRoots ?? {};
+    this.killSwitchOverrides = new Map(
+      Object.entries(raw.killSwitchOverrides ?? {}),
+    );
     this.conversationThreads = new Map(
       Object.entries(raw.conversationThreads ?? {}),
     );
@@ -507,6 +535,7 @@ class OsStore {
       exemplars: this.exemplars.slice(-200),
       meta: this.meta,
       workspaceRoots: this.workspaceRoots,
+      killSwitchOverrides: Object.fromEntries(this.killSwitchOverrides),
       conversationThreads: Object.fromEntries(this.conversationThreads),
       byoCloudBindings: Object.fromEntries(this.byoCloudBindings),
       hypotheses: Object.fromEntries(this.hypotheses),
@@ -676,6 +705,7 @@ class OsStore {
     this.exemplars = [];
     this.meta = {};
     this.workspaceRoots = {};
+    this.killSwitchOverrides.clear();
     this.personalSupervisingAgents.clear();
     this.loaded = false;
   }
@@ -1386,6 +1416,65 @@ class OsStore {
   listWorkspaceRoots(): Readonly<Record<string, string>> {
     this.ensureLoaded();
     return { ...this.workspaceRoots };
+  }
+
+  /**
+   * Task 7 -- Runtime Kill Switch Control: durable runtime-override reads
+   * and mutations. These are ONLY the override layer -- callers computing
+   * the effective (enforced) state must merge this with the env baseline
+   * via `apps/api/src/services/kill-switch-runtime.ts`, never treat this
+   * map alone as authoritative.
+   */
+  getKillSwitchOverrides(): Readonly<Record<string, KillSwitchOverrideRecord>> {
+    this.ensureLoaded();
+    return Object.fromEntries(this.killSwitchOverrides);
+  }
+
+  setKillSwitchOverride(
+    category: string,
+    setBy: string,
+    reason: string,
+  ): KillSwitchOverrideRecord {
+    this.ensureLoaded();
+    const previous = this.killSwitchOverrides.get(category) ?? null;
+    const record: KillSwitchOverrideRecord = {
+      reason,
+      setBy,
+      setAt: new Date().toISOString(),
+    };
+    this.killSwitchOverrides.set(category, record);
+    this.persist();
+    this.appendAudit({
+      type: "kill_switch.runtime_override.activated",
+      category,
+      actorId: setBy,
+      reason,
+      previous,
+      next: record,
+    });
+    return record;
+  }
+
+  clearKillSwitchOverride(
+    category: string,
+    setBy: string,
+    reason: string,
+  ): { cleared: boolean } {
+    this.ensureLoaded();
+    const previous = this.killSwitchOverrides.get(category) ?? null;
+    const existed = this.killSwitchOverrides.delete(category);
+    if (existed) {
+      this.persist();
+    }
+    this.appendAudit({
+      type: "kill_switch.runtime_override.cleared",
+      category,
+      actorId: setBy,
+      reason,
+      previous,
+      next: null,
+    });
+    return { cleared: existed };
   }
 
   listExemplars(): readonly ExemplarRecord[] {

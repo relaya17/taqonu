@@ -343,6 +343,88 @@ describe("F-03 kill-switch coverage (ATLAS_KILL_SWITCHES=agentDispatch)", () => 
 });
 
 /**
+ * Task 7 -- Runtime Kill Switch Control, "Proof 2" of the spec's required
+ * 4-point enforcement chain: a durable runtime-only override (set via
+ * `osStore.setKillSwitchOverride`, with NO env var at all) must block the
+ * remediation execution path exactly like `ATLAS_KILL_SWITCHES` does above
+ * -- both go through the same `assertRemediationNotKillSwitched` ->
+ * `firstActiveEffectiveKillSwitch` seam. Also proves the "clearing runtime
+ * cannot disable an env switch" invariant for this second enforcement
+ * chokepoint (mirrors the equivalent proof in
+ * `agent-dispatch-guard.test.ts`'s "Task 7" describe block for the first).
+ */
+describe("Task 7 kill-switch coverage: durable runtime override (no env var)", () => {
+  const ORIGINAL_ENV = process.env.ATLAS_KILL_SWITCHES;
+
+  afterEach(() => {
+    osStore.clearKillSwitchOverride("agentDispatch", "test-cleanup", "test cleanup");
+    if (ORIGINAL_ENV === undefined) {
+      delete process.env.ATLAS_KILL_SWITCHES;
+    } else {
+      process.env.ATLAS_KILL_SWITCHES = ORIGINAL_ENV;
+    }
+  });
+
+  it("Proof 2: a runtime-only override (no env var) blocks POST /drafts/:id/apply, before patch-write.ts ever runs", async () => {
+    delete process.env.ATLAS_KILL_SWITCHES;
+    const projectId = crypto.randomUUID();
+    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const draft = makeAutoFixDraft({ projectId });
+    osStore.upsertPatch(draft);
+
+    osStore.setKillSwitchOverride("agentDispatch", "operator-1", "route-level runtime-only test");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/remediation/drafts/${draft.id}/apply`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/Kill switch "agentDispatch" is active/);
+
+    const stillPending = osStore.getPatch(draft.id);
+    expect(stillPending?.status).toBe("APPROVED");
+    expect(stillPending?.appliedAt).toBeNull();
+  });
+
+  it("Proof 4: clearing the runtime override while the env baseline still lists the category cannot unblock the remediation path", async () => {
+    process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
+    const projectId = crypto.randomUUID();
+    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const draft = makeAutoFixDraft({ projectId });
+    osStore.upsertPatch(draft);
+
+    osStore.setKillSwitchOverride("agentDispatch", "operator-1", "temporarily also set at runtime");
+    osStore.clearKillSwitchOverride("agentDispatch", "operator-1", "attempted clear");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/remediation/drafts/${draft.id}/apply`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/Kill switch "agentDispatch" is active/);
+  });
+
+  it("clearing a runtime-only override (env inactive) restores normal execution", async () => {
+    delete process.env.ATLAS_KILL_SWITCHES;
+    const projectId = crypto.randomUUID();
+    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const draft = makeAutoFixDraft({ projectId });
+    osStore.upsertPatch(draft);
+
+    osStore.setKillSwitchOverride("agentDispatch", "operator-1", "runtime-only test");
+    osStore.clearKillSwitchOverride("agentDispatch", "operator-1", "no longer needed");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/remediation/drafts/${draft.id}/apply`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+/**
  * F-03 remediation: "Audit Verification" requirement -- verify that
  * successful execution of both remediation paths produces the canonical
  * hash-chained Unified Audit Log entry (via `enforceEntityWrite`), and

@@ -310,6 +310,7 @@ export function getDashboardHtml(): string {
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 16px;
       text-align: center;
@@ -322,6 +323,34 @@ export function getDashboardHtml(): string {
       color: var(--text-muted);
       font-size: 13px;
     }
+
+    /* ── Task 7: Kill Switches ─────────────────────────── */
+    .btn-refresh, .btn-kill-switch-action {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 6px 12px;
+      transition: background 0.15s;
+    }
+    .btn-refresh:hover, .btn-kill-switch-action:hover {
+      background: var(--surface-hover);
+    }
+    .btn-kill-switch-action:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .kill-switch-message {
+      min-height: 20px;
+      font-size: 13px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .kill-switch-message-success { color: var(--success); }
+    .kill-switch-message-error { color: var(--danger); }
 
     /* ── Policy grid ───────────────────────────────────── */
     .policy-grid {
@@ -401,6 +430,7 @@ export function getDashboardHtml(): string {
       <button class="tab" data-panel="audit" data-i18n="tabAudit">Audit Trail</button>
       <button class="tab" data-panel="policies" data-i18n="tabPolicies">Policies</button>
       <button class="tab" data-panel="approvals" data-i18n="tabApprovals">Approvals</button>
+      <button class="tab" data-panel="killswitches" data-i18n="tabKillSwitches">Kill Switches</button>
     </div>
 
     <!-- ── Overview Panel ──────────────────────────────── -->
@@ -687,6 +717,36 @@ export function getDashboardHtml(): string {
         </table>
       </div>
     </div>
+
+    <!-- ── Kill Switches Panel (Task 7) ─────────────── -->
+    <div class="panel" id="panel-killswitches">
+      <div class="section-header">
+        <h2 data-i18n="killSwitches">Kill Switches</h2>
+        <span class="count" id="kill-switch-count"></span>
+        <button type="button" class="btn-refresh" id="kill-switch-refresh" data-i18n="refresh">Refresh</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin:4px 0 12px" data-i18n="killSwitchIntro">
+        A kill switch is a global, cross-tenant emergency stop. The effective state is always the environment baseline UNION the runtime override below -- clearing a runtime override can never turn off a category the environment still lists as active.
+      </p>
+      <div id="kill-switch-message" class="kill-switch-message" role="status" aria-live="polite"></div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="thCategory">Category</th>
+              <th data-i18n="thEnvBaseline">Env Baseline</th>
+              <th data-i18n="thRuntimeOverride">Runtime Override</th>
+              <th data-i18n="thEffective">Effective</th>
+              <th data-i18n="thOverrideDetails">Override Details</th>
+              <th data-i18n="thActions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="kill-switches-tbody">
+            <tr><td colspan="6" class="loading" data-i18n="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -736,6 +796,7 @@ export function getDashboardHtml(): string {
           loadAudit();
           loadPolicies();
           loadApprovals();
+          loadKillSwitches();
         }
       }
       document.querySelectorAll(".lang-pills [data-lang]").forEach(function (b) {
@@ -792,6 +853,16 @@ export function getDashboardHtml(): string {
     function truncate(str, len) {
       if (!str) return '';
       return str.length > len ? str.slice(0, len) + '...' : str;
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     // ── Data loading ───────────────────────────────────────────────────
@@ -1191,6 +1262,142 @@ export function getDashboardHtml(): string {
       }
     }
 
+    // ── Task 7: Kill Switches ────────────────────────────────────────
+    //
+    // Every mutation here is a real fetch to Control's own API, which in
+    // turn calls apps/api over the existing Control-Plane-service bearer
+    // hop (see kill-switch-control.ts / lifecycle-handoff.ts). This UI
+    // never assumes success -- it only shows "activated"/"cleared" after
+    // the backend responds 2xx, and always re-fetches real state afterward
+    // rather than optimistically updating the table.
+    var KILL_SWITCH_CATEGORY_LABELS = {
+      agentDispatch: { he: "כל שילוח סוכנים (מתג ראשי)", en: "All agent dispatch (master switch)", ar: "كل إرسال الوكلاء (المفتاح الرئيسي)" },
+      payments: { he: "תשלומים", en: "Payments", ar: "المدفوعات" },
+      webhooksInbound: { he: "Webhooks נכנסים", en: "Inbound webhooks", ar: "Webhooks الواردة" },
+      webhooksOutbound: { he: "Webhooks יוצאים", en: "Outbound webhooks", ar: "Webhooks الصادرة" },
+      aiWorkers: { he: "עובדי AI ברקע", en: "Background AI workers", ar: "عمال الذكاء الاصطناعي في الخلفية" }
+    };
+
+    function killSwitchCategoryLabel(category) {
+      var map = KILL_SWITCH_CATEGORY_LABELS[category];
+      if (map && map[currentLang]) return map[currentLang];
+      return category;
+    }
+
+    function killSwitchMessage(text, isError) {
+      var el = document.getElementById('kill-switch-message');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'kill-switch-message ' + (isError ? 'kill-switch-message-error' : 'kill-switch-message-success');
+    }
+
+    async function loadKillSwitches() {
+      try {
+        var res = await fetch('/api/v1/kill-switches');
+        if (!res.ok) {
+          var errBody = await res.json().catch(function() { return {}; });
+          var tbodyErr = document.getElementById('kill-switches-tbody');
+          if (tbodyErr) tbodyErr.innerHTML = '<tr><td colspan="6" class="loading">' + t("failedLoad") + (errBody.error ? ': ' + escapeHtml(errBody.error) : '') + '</td></tr>';
+          return;
+        }
+        var data = await res.json();
+        var statusList = data.status || [];
+        var countEl = document.getElementById('kill-switch-count');
+        if (countEl) {
+          var activeCount = statusList.filter(function(s) { return s.effectiveActive; }).length;
+          countEl.textContent = activeCount + ' / ' + statusList.length + ' ' + t("activeCount");
+        }
+        var tbody = document.getElementById('kill-switches-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = statusList.map(function(s) {
+          var envPill = s.envActive
+            ? '<span class="pill pill-danger">' + t("active") + '</span>'
+            : '<span class="pill pill-muted">' + t("inactive") + '</span>';
+          var runtimePill = s.runtimeOverrideActive
+            ? '<span class="pill pill-warning">' + t("active") + '</span>'
+            : '<span class="pill pill-muted">' + t("inactive") + '</span>';
+          var effectivePill = s.effectiveActive
+            ? '<span class="pill pill-danger">' + t("active") + '</span>'
+            : '<span class="pill pill-success">' + t("inactive") + '</span>';
+          var details = s.override
+            ? '<div style="font-size:11px;line-height:1.5">' +
+                '<div><strong>' + t("thReason") + ':</strong> ' + escapeHtml(s.override.reason) + '</div>' +
+                '<div class="mono">' + escapeHtml(s.override.setBy) + ' &middot; <span class="ltr" style="display:inline">' + new Date(s.override.setAt).toLocaleString() + '</span></div>' +
+              '</div>'
+            : '<span style="color:var(--text-muted);font-size:12px">' + t("none") + '</span>';
+          var envNote = (s.envActive)
+            ? '<div style="font-size:11px;color:var(--text-muted);margin-top:6px">' + t("envForcedNote") + '</div>'
+            : '';
+          var actionLabel = s.runtimeOverrideActive ? t("clearOverride") : t("activateOverride");
+          var actionName = s.runtimeOverrideActive ? 'deactivate' : 'activate';
+          var rowId = 'kill-switch-row-' + s.category;
+          var actionsCell =
+            '<div style="display:flex;flex-direction:column;gap:6px;min-width:220px">' +
+              '<input type="text" id="' + rowId + '-reason" placeholder="' + t("reasonPlaceholder") + '" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-elevated,transparent);color:inherit" />' +
+              '<button type="button" class="btn-kill-switch-action" data-category="' + s.category + '" data-action="' + actionName + '" data-reason-input="' + rowId + '-reason">' + actionLabel + '</button>' +
+              envNote +
+            '</div>';
+          return '<tr id="' + rowId + '">' +
+            '<td class="mono">' + killSwitchCategoryLabel(s.category) + ' <div style="font-size:11px;color:var(--text-muted)">' + s.category + '</div></td>' +
+            '<td>' + envPill + '</td>' +
+            '<td>' + runtimePill + '</td>' +
+            '<td>' + effectivePill + '</td>' +
+            '<td>' + details + '</td>' +
+            '<td>' + actionsCell + '</td>' +
+            '</tr>';
+        }).join('');
+        tbody.querySelectorAll('.btn-kill-switch-action').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var category = btn.getAttribute('data-category');
+            var action = btn.getAttribute('data-action');
+            var inputId = btn.getAttribute('data-reason-input');
+            var input = document.getElementById(inputId);
+            var reason = input ? input.value.trim() : '';
+            submitKillSwitchAction(category, action, reason, btn);
+          });
+        });
+      } catch (e) {
+        var tbody3 = document.getElementById('kill-switches-tbody');
+        if (tbody3) tbody3.innerHTML = '<tr><td colspan="6" class="loading">' + t("failedLoad") + '</td></tr>';
+      }
+    }
+
+    async function submitKillSwitchAction(category, action, reason, btn) {
+      if (!reason || reason.length < 8) {
+        killSwitchMessage(t("reasonTooShort"), true);
+        return;
+      }
+      if (btn) btn.disabled = true;
+      try {
+        var res = await fetch('/api/v1/kill-switches/' + encodeURIComponent(category), {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-atlas-reason': reason
+          },
+          body: JSON.stringify({ action: action })
+        });
+        var body = await res.json().catch(function() { return {}; });
+        if (!res.ok) {
+          killSwitchMessage(t("actionFailed") + (body.error ? ': ' + body.error : ''), true);
+          if (btn) btn.disabled = false;
+          return;
+        }
+        killSwitchMessage(action === 'activate' ? t("activateSucceeded") : t("clearSucceeded"), false);
+        // Never trust the optimistic local state -- always re-fetch the
+        // real, backend-confirmed status after a mutation.
+        await loadKillSwitches();
+      } catch (e) {
+        killSwitchMessage(t("actionFailed"), true);
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    (function wireKillSwitchRefresh() {
+      var btn = document.getElementById('kill-switch-refresh');
+      if (btn) btn.addEventListener('click', function() { loadKillSwitches(); });
+    })();
+
     // ── Initial load ───────────────────────────────────────────────────
     loadOverview();
     loadAgents();
@@ -1198,6 +1405,7 @@ export function getDashboardHtml(): string {
     loadAudit();
     loadPolicies();
     loadApprovals();
+    loadKillSwitches();
 
     // ── Auto-refresh every 10s ─────────────────────────────────────────
     setInterval(function() {

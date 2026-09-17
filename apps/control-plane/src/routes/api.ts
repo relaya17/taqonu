@@ -32,6 +32,10 @@ import {
   ingestGatewayEvent,
 } from "../services/atlas-gateway.js";
 import { ownerBrief, runSelfAudit } from "../services/self-audit.js";
+import {
+  fetchKillSwitchStatus,
+  setKillSwitchOverride,
+} from "../services/kill-switch-control.js";
 import { buildControlSupervisionSnapshot } from "../services/supervision-snapshot.js";
 import {
   buildControlOperationalFoundation,
@@ -523,6 +527,68 @@ export function createApiRouter(): Router {
       },
       status,
     );
+  });
+
+  // ── Task 7: Runtime Kill Switch Control ────────────────────────────
+  //
+  // Control never reads/writes `osStore` directly and never decides
+  // authorization -- every call here is a real HTTP round-trip to
+  // apps/api's `KILL_SWITCH_CONTROL_PATH` route (Control-Plane-service
+  // bearer, the same boundary as `/api/v1/agents/:id/control` and durable
+  // agent runtime controls). A failed API call is surfaced as a failure
+  // here, never rewritten into a synthetic success -- the dashboard must
+  // never claim success on its own if apps/api did not confirm it.
+
+  router.get("/api/v1/kill-switches", async (_req, res) => {
+    const result = await fetchKillSwitchStatus();
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
+  });
+
+  router.post("/api/v1/kill-switches/:category", async (req, res, params) => {
+    const category = params["category"];
+    if (!category) {
+      json(res, { error: "category is required" }, 400);
+      return;
+    }
+    const reason = headerReason(req);
+    if (!reason) {
+      json(res, { error: "X-Atlas-Reason is required (minimum 8 characters)" }, 400);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      json(
+        res,
+        { error: error instanceof Error ? error.message : "invalid json" },
+        400,
+      );
+      return;
+    }
+    const record = body as Record<string, unknown>;
+    const rawAction = record["action"];
+    const action = rawAction === "activate" || rawAction === "deactivate" ? rawAction : null;
+    if (!action) {
+      json(res, { error: "action must be activate|deactivate" }, 400);
+      return;
+    }
+    const principal = resolveControlPlanePrincipal(req);
+    const result = await setKillSwitchOverride({
+      category,
+      action,
+      setBy: principal.id,
+      reason,
+    });
+    if (!result.ok) {
+      json(res, { error: result.reason }, result.httpStatus);
+      return;
+    }
+    json(res, result.data);
   });
 
   return router;

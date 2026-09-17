@@ -5,9 +5,9 @@ import {
   approvePatchSchema,
   uuidSchema,
 } from "@atlas/shared";
-import { firstActiveKillSwitch } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
+import { firstActiveEffectiveKillSwitch } from "../services/kill-switch-runtime.js";
 import { requireSignedInForWrite } from "../middleware/auth-guards.js";
 import { assertProjectWriteAccess } from "../services/project-access.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
@@ -68,7 +68,9 @@ function assertRemediationNotKillSwitched(input: {
   readonly projectId: string | null;
   readonly input: Record<string, unknown>;
 }): void {
-  const killSwitch = firstActiveKillSwitch();
+  // Resolved against the EFFECTIVE state (env baseline UNION durable
+  // runtime override -- Task 7), same seam `agent-dispatch-guard.ts` uses.
+  const killSwitch = firstActiveEffectiveKillSwitch();
   if (killSwitch === null) return;
   const reason = `Kill switch "${killSwitch.category}" is active -- agent/automation dispatch is denied`;
   appendUnifiedAuditEntry({
