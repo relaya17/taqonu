@@ -83,11 +83,11 @@
   },
   "onboarding": {
     "title": "Start here",
-    "body": "Link a local folder · open Workbench · run an E2E process audit.",
-    "bodyMissing": "{count} projects still need a local folder before Studio, Workbench, and E2E unlock.",
+    "body": "Link a local folder · open Studio · run a readiness audit.",
+    "bodyMissing": "{count} projects still need a local folder before Studio and the readiness audit unlock.",
     "stepProjects": "Link folder",
-    "stepWorkbench": "Workbench",
-    "stepE2e": "E2E audit"
+    "stepWorkbench": "Studio",
+    "stepE2e": "Readiness audit"
   },
   "workspaceLink": {
     "title": "Local workspace folder",
@@ -1447,9 +1447,13 @@
     "spineRun": "Run audit spine",
     "spineRunning": "Running…",
     "spineVerdictChip": "Verdict {status} · {score}/100",
+    "spineIncompleteTitle": "Not a completed readiness assessment",
+    "spineIncompleteChip": "Partial verdict {status} — health not verified",
     "spineHealthSkipped": "Health skipped (no local root)",
     "spineHealthChip": "Health {score} · constitution {constitution}",
     "spineReadinessChip": "Readiness {score}",
+    "spineReadinessIncomplete": "Readiness artifact only — not verified",
+    "scoreUnavailable": "N/A",
     "spineCopyMarkdown": "Copy checklist",
     "spineCopyJson": "Copy JSON",
     "spineCopied": "Copied",

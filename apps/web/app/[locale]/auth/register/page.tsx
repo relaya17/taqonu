@@ -25,6 +25,13 @@ interface AuthProviders {
   cloudAuth: boolean;
 }
 
+function auditReturnPath(locale: string): string | null {
+  if (typeof window === "undefined") return null;
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (next === "/partners" || next === "/experts") return `/${locale}${next}`;
+  return null;
+}
+
 export default function RegisterPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
@@ -52,7 +59,8 @@ export default function RegisterPage() {
       // Hard navigation, not router.push()+router.refresh() -- see the
       // identical fix and explanation in auth/login/page.tsx.
       // Studio is the signed-in working entry. Dashboard stays at `/${locale}`.
-      window.location.href = `/${locale}${WEB_POST_AUTH_PATH}`;
+      window.location.href =
+        auditReturnPath(locale) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 

@@ -61,6 +61,7 @@ describe("buildPartnerChecklist", () => {
     });
 
     expect(markdown).toContain("Health: skipped");
+    expect(markdown).toContain("INCOMPLETE — not a completed readiness assessment");
     expect(markdown).toContain("No workspaceRoot linked");
     expect(json.health).toMatchObject({
       skipped: true,

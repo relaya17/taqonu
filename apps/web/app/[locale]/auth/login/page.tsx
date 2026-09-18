@@ -30,6 +30,13 @@ interface AuthSession {
   user: { email: string; role: string };
 }
 
+function auditReturnPath(locale: string): string | null {
+  if (typeof window === "undefined") return null;
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (next === "/partners" || next === "/experts") return `/${locale}${next}`;
+  return null;
+}
+
 export default function LoginPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
@@ -55,7 +62,8 @@ export default function LoginPage() {
       // page) -- that redirect doesn't look at the session cookie at all.
       // Studio is the signed-in working entry. The dashboard remains at
       // `/${locale}` and is not deleted.
-      window.location.href = `/${locale}${WEB_POST_AUTH_PATH}`;
+      window.location.href =
+        auditReturnPath(locale) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 
@@ -196,7 +204,15 @@ export default function LoginPage() {
 
       <Typography variant="body2">
         {t("noAccount")}{" "}
-        <Link href="/auth/register">{t("registerLink")}</Link>
+        <Link
+          href={
+            auditReturnPath(locale)
+              ? `/auth/register?next=${new URLSearchParams(window.location.search).get("next")}`
+              : "/auth/register"
+          }
+        >
+          {t("registerLink")}
+        </Link>
       </Typography>
 
       <Divider />

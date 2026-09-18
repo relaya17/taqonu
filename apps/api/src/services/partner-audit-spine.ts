@@ -166,6 +166,9 @@ export function buildPartnerChecklist(input: {
     `- Captured: ${input.at}`,
     `- Project: **${input.projectName}** (\`${input.projectSlug}\` / \`${input.projectId}\`)`,
     input.workspaceRoot ? `- Workspace: \`${input.workspaceRoot}\`` : `- Workspace: _(not linked)_`,
+    input.auditSkipped
+      ? `- Assessment: **INCOMPLETE — not a completed readiness assessment** (health skipped)`
+      : null,
     ``,
     `## Snapshot`,
     `- Verdict: **${input.verdictStatus}** · readiness ${input.productionReadiness}/100`,
@@ -360,7 +363,7 @@ export function runPartnerAuditSpine(input: {
     checklistMarkdown: markdown,
     checklistJson: json,
     note: auditSkipped
-      ? "Verdict + readiness captured; health audit skipped until a local workspaceRoot is linked."
+      ? "INCOMPLETE — not a completed readiness assessment. Health was skipped until a reachable workspaceRoot is linked. Any certificate is an artifact only; do not present this as verified readiness."
       : "Audit spine complete — open Verdict, Health, and Readiness; copy the checklist for the champion readout.",
   };
 }

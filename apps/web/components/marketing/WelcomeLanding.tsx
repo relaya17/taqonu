@@ -3,15 +3,35 @@
 import { Box, Button, Stack, Typography } from "@mui/material";
 import { useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
 import { atlasChrome as c } from "@/styles/palette";
+import { apiGet } from "@/lib/api";
 
 export function WelcomeLanding({ children }: { children?: ReactNode }) {
   const t = useTranslations("landing");
   const locale = useLocale();
   const router = useRouter();
   const [promoEnded, setPromoEnded] = useState(false);
+  const session = useQuery({
+    queryKey: ["auth-session"],
+    queryFn: async () => {
+      const state = await apiGet<{
+        authenticated?: boolean;
+        user: { email: string } | null;
+      }>("/api/v1/auth/session");
+      if (!state.authenticated || !state.user) {
+        throw new Error("Not signed in");
+      }
+      return state;
+    },
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const auditHref = session.isSuccess
+    ? `/${locale}/partners`
+    : `/${locale}/auth/login?next=/partners`;
 
   const goPlan = () => {
     router.push("/plan");
@@ -157,7 +177,7 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
             </Button>
             <Button
               component="a"
-              href={`/${locale}/partners`}
+              href={auditHref}
               size="large"
               sx={{
                 width: { xs: "100%", sm: "auto" },

@@ -24,7 +24,7 @@ function StepLabel({ n, label }: { n: number; label: string }) {
   );
 }
 
-/** Shared “link folder → Workbench → E2E” onboarding path. */
+/** Shared “link folder → Studio → readiness audit” onboarding path. */
 export function OnboardingPath({
   missingRootCount = 0,
 }: {

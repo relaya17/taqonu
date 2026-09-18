@@ -109,14 +109,11 @@ export default async function WelcomePage({
         {
           "@type": "Offer",
           name: t("freeName"),
-          price: "0",
-          priceCurrency: "USD",
           description: t("freeDetail"),
         },
         {
           "@type": "Offer",
           name: t("proName"),
-          priceCurrency: "USD",
           description: t("proDetail"),
         },
       ],

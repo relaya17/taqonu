@@ -83,11 +83,11 @@
   },
   "onboarding": {
     "title": "ابدأ هنا",
-    "body": "اربط مجلدًا · Workbench · تدقيق E2E.",
-    "bodyMissing": "ما زال {count} مشروعًا بلا مجلد محلي — Studio / Workbench / E2E محدودة.",
+    "body": "اربط مجلدًا · Studio · تدقيق الجاهزية.",
+    "bodyMissing": "ما زال {count} مشروعًا بلا مجلد محلي — Studio وتدقيق الجاهزية محدودة.",
     "stepProjects": "ربط مجلد",
-    "stepWorkbench": "Workbench",
-    "stepE2e": "تدقيق E2E"
+    "stepWorkbench": "Studio",
+    "stepE2e": "تدقيق الجاهزية"
   },
   "workspaceLink": {
     "title": "مجلد العمل المحلي",
@@ -1447,9 +1447,13 @@
     "spineRun": "تشغيل سلسلة التدقيق",
     "spineRunning": "جارٍ…",
     "spineVerdictChip": "Verdict {status} · {score}/100",
+    "spineIncompleteTitle": "هذا ليس تقييم جاهزية مكتملًا",
+    "spineIncompleteChip": "حكم جزئي {status} — الصحة غير مُحقَّقة",
     "spineHealthSkipped": "تخطّي الصحة (بلا مسار محلي)",
     "spineHealthChip": "صحة {score} · دستور {constitution}",
     "spineReadinessChip": "جاهزية {score}",
+    "spineReadinessIncomplete": "أثر جاهزية فقط — غير مُحقَّق",
+    "scoreUnavailable": "غير متاح",
     "spineCopyMarkdown": "نسخ القائمة",
     "spineCopyJson": "نسخ JSON",
     "spineCopied": "تم النسخ",

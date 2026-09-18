@@ -137,11 +137,11 @@
   },
   "onboarding": {
     "title": "התחילו כאן",
-    "body": "חברו תיקייה · Workbench · בדיקת E2E.",
-    "bodyMissing": "ל־{count} פרויקטים עדיין חסרה תיקייה מקומית — Studio / Workbench / E2E מוגבלים.",
+    "body": "חברו תיקייה · Studio · ביקורת מוכנות.",
+    "bodyMissing": "ל־{count} פרויקטים עדיין חסרה תיקייה מקומית — Studio וביקורת המוכנות מוגבלים.",
     "stepProjects": "חברו תיקייה",
-    "stepWorkbench": "Workbench",
-    "stepE2e": "ביקורת E2E"
+    "stepWorkbench": "Studio",
+    "stepE2e": "ביקורת מוכנות"
   },
   "workspaceLink": {
     "title": "תיקיית עבודה מקומית",
@@ -1447,9 +1447,13 @@
     "spineRun": "הרץ שרשרת ביקורת",
     "spineRunning": "מריץ…",
     "spineVerdictChip": "פסק דין {status} · {score}/100",
+    "spineIncompleteTitle": "זו אינה ביקורת מוכנות שהושלמה",
+    "spineIncompleteChip": "פסק דין חלקי {status} — בריאות לא אומתה",
     "spineHealthSkipped": "בריאות דולגה (אין נתיב מקומי)",
     "spineHealthChip": "בריאות {score} · חוקה {constitution}",
     "spineReadinessChip": "מוכנות {score}",
+    "spineReadinessIncomplete": "תוצר מוכנות בלבד — לא אומת",
+    "scoreUnavailable": "לא זמין",
     "spineCopyMarkdown": "העתק רשימה",
     "spineCopyJson": "העתק JSON",
     "spineCopied": "הועתק",

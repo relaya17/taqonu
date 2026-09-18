@@ -126,17 +126,6 @@ export function PartnerAuditIntake({
       }>("/api/v1/onboarding/storage-policy"),
   });
 
-  const usage = useQuery({
-    queryKey: ["usage-analytics"],
-    queryFn: () =>
-      apiGet<{
-        projectsConnected: number;
-        designPartnerSessions: number;
-        verdictsRequested: number;
-        certificatesIssued: number;
-      }>("/api/v1/analytics/usage"),
-  });
-
   const projects = useQuery({
     queryKey: ["projects"],
     queryFn: () => apiGet<{ items: ProjectItem[] }>("/api/v1/projects"),
@@ -222,7 +211,6 @@ export function PartnerAuditIntake({
       }),
     onSuccess: (data) => {
       onProjectReady?.(data.projectId);
-      void usage.refetch();
     },
   });
 
@@ -345,15 +333,26 @@ export function PartnerAuditIntake({
 
         {spine.data ? (
           <Alert severity={spine.data.auditSkipped ? "warning" : "success"} sx={{ mt: 2 }}>
+            {spine.data.auditSkipped ? (
+              <Typography fontWeight={700} sx={{ mb: 0.75 }}>
+                {t("spineIncompleteTitle")}
+              </Typography>
+            ) : null}
             <Typography variant="body2">{spine.data.note}</Typography>
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
                 color="info"
-                label={t("spineVerdictChip", {
-                  status: spine.data.verdict.status,
-                  score: spine.data.verdict.productionReadiness,
-                })}
+                label={
+                  spine.data.auditSkipped
+                    ? t("spineIncompleteChip", {
+                        status: spine.data.verdict.status,
+                      })
+                    : t("spineVerdictChip", {
+                        status: spine.data.verdict.status,
+                        score: spine.data.verdict.productionReadiness,
+                      })
+                }
               />
               <Chip
                 size="small"
@@ -361,16 +360,21 @@ export function PartnerAuditIntake({
                   spine.data.auditSkipped
                     ? t("spineHealthSkipped")
                     : t("spineHealthChip", {
-                        score: spine.data.health.overallScore ?? "Γאפ",
-                        constitution: spine.data.health.constitutionScore ?? "Γאפ",
+                        score: spine.data.health.overallScore ?? t("scoreUnavailable"),
+                        constitution:
+                          spine.data.health.constitutionScore ?? t("scoreUnavailable"),
                       })
                 }
               />
               <Chip
                 size="small"
-                label={t("spineReadinessChip", {
-                  score: spine.data.readiness.overallScore ?? "Γאפ",
-                })}
+                label={
+                  spine.data.auditSkipped
+                    ? t("spineReadinessIncomplete")
+                    : t("spineReadinessChip", {
+                        score: spine.data.readiness.overallScore ?? t("scoreUnavailable"),
+                      })
+                }
               />
             </Stack>
             {spine.data.auditSkipReason ? (
@@ -621,16 +625,6 @@ export function PartnerAuditIntake({
         <Alert severity="error">{(connect.error as Error).message}</Alert>
       ) : null}
 
-      {usage.data ? (
-        <Typography variant="body2" color="text.secondary">
-          {t("usage", {
-            projects: usage.data.projectsConnected,
-            sessions: usage.data.designPartnerSessions,
-            verdicts: usage.data.verdictsRequested,
-            certs: usage.data.certificatesIssued,
-          })}
-        </Typography>
-      ) : null}
     </Stack>
   );
 }
