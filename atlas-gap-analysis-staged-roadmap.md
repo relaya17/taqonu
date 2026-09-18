@@ -1,4 +1,10 @@
 # ATLAS — Full Gap Analysis & Staged Roadmap
+
+> **HISTORICAL / ROADMAP (2026-08-19).** Track A/B/C items below are not
+> automatically bugs. Organization/SSO/A2A/self-healing are G5 unless a
+> later ADR makes them current product. Current classification:
+> [`docs/architecture/gap-matrix.md`](docs/architecture/gap-matrix.md).
+
 Version: 2026-08-19, Revision 2 / Stage 2 (source-of-truth revision, every codebase claim verified this session; Revision 2 folds in the detailed follow-up roadmap you pasted — same evidence, reorganized into build tracks and a full dependency chain, per "אני רוצה הכל להעביר למסמך... אני רוצה לשאוף הכי גבוה — פערים טכנולוגיים אלה כן אפשר לבנות")
 
 ---

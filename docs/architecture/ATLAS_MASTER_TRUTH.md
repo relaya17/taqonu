@@ -1330,6 +1330,12 @@ signatures, or pentest results were invented.
 remainder at the top of `docs/architecture/remaining-work.md` so stages
 01–19 are not mistaken for an open backlog.
 
+This sentence was later found to be stale (HEAD auth, global-memory
+reconciliation, CP actor binding, connection isolation, ops-surface
+authz, cloud-quota isolation). See remaining-work.md current pointer
+(2026-09-18 closure pass) for the live remainder. Do not quote this
+historical line as current status.
+
 Re-ran 2026-09-04T21:47:58Z–21:48:27Z: `environment:gate` unchanged
 blockers; `supply-chain:verify` SBOM VALID / UNSIGNED / `releaseReady: false`;
 `supply-chain:sign` REFUSE; `production:live-proof` 30 PASS / 0 FAIL /
@@ -1631,3 +1637,61 @@ never invoke the durable-claim path at all. This closes the only
 identified unit-test gap in the P0.1 implementation; it does not change
 real-Postgres or production verification status, which remain as described
 above and in the accompanying closure report.
+
+## 66. 2026-09-18 isolation closure pass
+
+Local code closed on `main` after `212c077`: CP actor binding to
+`cp:service`; per-owner GitHub/local PAT connections; admin-only
+process-global metrics/performance/analytics; owner-scoped cloud-link
+quota; decision `ownerId` + reconciliation filter. N1/N2 remain locally
+proven only. **NOT PRODUCTION READY.** GitHub App installations stay
+instance-level. omit-`agentId` and ADR-022 unchanged.
+
+## 67. 2026-09-18 complete gap landscape
+
+Authoritative classification: `docs/architecture/gap-matrix.md`.
+
+Additional local closures after §66: owner-scoped daily usage meters;
+admin-only eval-run listing and audit/constitution report lists;
+architecture-contract GET project-scoped; intelligence
+verification-lessons / outcome-signals admin-only (they read the unified
+audit trail); constitution and audit-engine run POSTs require a signed-in
+writer and project write access when `projectId` is set; kernel eval/lesson
+writes require signed-in. Historical August gap/audit documents are
+stamped HISTORICAL; do not quote them as current defects.
+
+**CODE-COMPLETABLE remaining: NONE** in this working tree for confirmed
+security/isolation defects that the architecture already supports.
+That is not PRODUCTION READY and is not live-Postgres proof.
+
+**G3 still open:** exclusive STARTED on real PostgreSQL; authenticated
+CP→API hop with the running process token (unauthenticated 401 on
+`/internal/*` and Control dashboard is live-proven this pass;
+`live-session.env` bearer did not match); N1/N2 on a daemon with the
+global session hook.
+
+**G4 still open:** Ubuntu/Tailscale VM, live database, Studio env
+(`replace-me`), offsite DR destination, Sigstore identity, external
+pentest, signed-in Studio browser Apply.
+
+**G5 still open:** omit-`agentId` retrieve; ADR-022 sibling execute;
+SSO/SAML/SCIM; org RBAC; GitHub App instance vs per-owner; SIEM/SAST
+product integrations; memory retention/deletion; diagnosis/self-healing.
+
+**G6 accepted:** HTTP 202 pending is not execution; occupancy is not
+external exactly-once; Web is not Control; unowned projects remain
+readable; Atlas observes siblings unless ADR-022 is amended; workers
+remain workers; Control is the instance operator plane (`cp:service`),
+not a per-company SaaS tenant console.
+
+## 68. 2026-09-18 final verification pass
+
+Lint 46/46. Turbo build 30/30. API 1465 passed (two 5s timeouts under
+concurrent lint reproduced as contention, not defects). Control 276.
+Admin 22. Playwright API security E2E passed. Studio unsigned
+navigation locally proven after clearing a hung `:3000` Next; three
+remaining Playwright failures match **hidden sidebar locators**, not
+missing routes. Authenticated CP→API hop not proven with
+`.atlas/live-session.env`. **NOT PRODUCTION READY.**
+
+

@@ -1,5 +1,10 @@
 # Atlas — ביקורת אבטחה / אמינות / אינטליגנציה (Security · Reliability · Intelligence Audit)
 
+> **HISTORICAL (2026-08-18/19).** Do not treat the P0/P1 tables below as
+> current defects. Current classification:
+> [`docs/architecture/gap-matrix.md`](docs/architecture/gap-matrix.md).
+> Production gate remains NOT PRODUCTION READY.
+
 תאריך: 18-19.08.2026
 נבדק מה קיים בפועל, מה חלש, ומה חסר, לפי הצ'קליסט ששלחת (19 סעיפים). הביקורת המקורית בוצעה ע"י 4 סוכני חיפוש מקבילים, read-only לגמרי, על אשכול נושאים אחר. כל טענה מגובה ב-file:line אמיתי — לא הערכה.
 

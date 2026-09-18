@@ -1,5 +1,9 @@
 # Gap Analysis — Atlas Control Plane Vision מול הקוד הקיים ב-taqonu-main
 
+> **HISTORICAL (2026-08-18).** Vision-vs-code snapshot. Current G1–G7
+> classification: [`docs/architecture/gap-matrix.md`](docs/architecture/gap-matrix.md).
+> Do not convert Track-C/vision rows into code defects.
+
 תאריך: 18.08.2026
 זהו מיפוי שיטתי: לכל יכולת שהוצעה במסמך החזון (`atlas-control-plane-vision.md`), נבדק מה כבר קיים בפועל בקוד, מה קיים חלקית, ומה חסר לגמרי — עם קובץ:שורה כהוכחה, לא הערכה. הבדיקה בוצעה ע"י 5 סוכני חיפוש מקבילים, כל אחד על אשכול יכולות אחר, ואוחדה כאן למסמך אחד.
 

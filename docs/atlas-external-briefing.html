@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Atlas — Technology Briefing</title>
+  <style>
+    :root {
+      --ink: #0b0d10;
+      --panel: #12151b;
+      --line: rgba(232, 228, 220, 0.12);
+      --paper: #e8e4dc;
+      --muted: #9a9488;
+      --soft: #c6c0b4;
+      --gold: #c4a574;
+      --gold-dim: rgba(196, 165, 116, 0.16);
+      --warn: #d4b48a;
+      --shadow: 0 0 0 1px var(--line);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.01em;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    .deck {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header.chrome,
+    footer.chrome {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 40px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    header.chrome strong {
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .progress {
+      height: 2px;
+      background: var(--line);
+    }
+
+    .progress > span {
+      display: block;
+      height: 100%;
+      background: var(--gold);
+      width: 8.33%;
+      transition: width 280ms ease;
+    }
+
+    main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 36px 72px 28px;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      max-width: 1180px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .slide.active { display: flex; }
+
+    .kicker {
+      display: inline-block;
+      color: var(--gold);
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+      font-size: clamp(44px, 6.4vw, 84px);
+      font-weight: 500;
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+    }
+
+    h2 {
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+      font-size: clamp(28px, 3.6vw, 46px);
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      margin-bottom: 18px;
+    }
+
+    h3 {
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin: 28px 0 12px;
+      font-weight: 600;
+    }
+
+    .lede {
+      font-size: clamp(18px, 2vw, 24px);
+      color: var(--soft);
+      max-width: 38rem;
+      line-height: 1.45;
+      margin-top: 18px;
+    }
+
+    p, li {
+      font-size: 16.5px;
+      line-height: 1.55;
+      color: var(--soft);
+    }
+
+    .body {
+      max-width: 46rem;
+      margin-bottom: 22px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .g2 { grid-template-columns: 1fr 1fr; }
+    .g3 { grid-template-columns: 1fr 1fr 1fr; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 20px 22px 22px;
+      min-height: 132px;
+    }
+
+    .card h4 {
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--paper);
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .card p, .card li {
+      font-size: 14.5px;
+      color: var(--muted);
+    }
+
+    .card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .stat {
+      padding: 8px 0 4px;
+      border-top: 1px solid var(--line);
+    }
+
+    .stat b {
+      display: block;
+      font-family: Georgia, serif;
+      font-size: 28px;
+      font-weight: 500;
+      color: var(--paper);
+      margin-bottom: 6px;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.4;
+    }
+
+    .callout {
+      border-left: 2px solid var(--gold);
+      background: var(--gold-dim);
+      padding: 16px 18px;
+      margin: 8px 0 20px;
+    }
+
+    .callout strong {
+      display: block;
+      color: var(--paper);
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 12px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      color: var(--soft);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 7px 11px;
+      border-radius: 999px;
+    }
+
+    .pill.warn {
+      border-color: rgba(196, 165, 116, 0.45);
+      color: var(--gold);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4px 0 16px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14.5px;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    td:first-child {
+      color: var(--paper);
+      font-weight: 600;
+      width: 28%;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stack p { color: var(--soft); font-size: 15.5px; }
+
+    footer.chrome nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button {
+      appearance: none;
+      background: transparent;
+      color: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 7px 12px;
+      font: inherit;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--gold);
+      color: var(--ink);
+      border-color: var(--gold);
+      font-weight: 650;
+    }
+
+    button:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .dots {
+      display: flex;
+      gap: 6px;
+      margin: 0 16px;
+    }
+
+    .dots button {
+      width: 7px;
+      height: 7px;
+      padding: 0;
+      border-radius: 50%;
+      background: var(--line);
+      border: 0;
+    }
+
+    .dots button.on {
+      background: var(--gold);
+    }
+
+    .note {
+      margin-top: 18px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .close {
+      font-family: Georgia, serif;
+      font-size: clamp(22px, 2.6vw, 32px);
+      line-height: 1.3;
+      color: var(--paper);
+      max-width: 38rem;
+    }
+
+    @media (max-width: 860px) {
+      .slide { padding: 28px 24px; }
+      header.chrome, footer.chrome { padding: 14px 20px; }
+      .g2, .g3 { grid-template-columns: 1fr; }
+      .card { min-height: 0; }
+    }
+
+    @media print {
+      @page { size: landscape; margin: 0; }
+      html, body, .deck {
+        overflow: visible !important;
+        height: auto !important;
+        background: #0b0d10 !important;
+        color: #e8e4dc !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      header.chrome, footer.chrome, .progress { display: none !important; }
+      main {
+        overflow: visible !important;
+        height: auto !important;
+        position: relative;
+      }
+      .slide {
+        position: relative !important;
+        display: flex !important;
+        page-break-after: always;
+        break-after: page;
+        min-height: 100vh;
+        color: #e8e4dc;
+        padding: 48px 72px 40px;
+        background: #0b0d10;
+      }
+      .slide:last-child { page-break-after: auto; break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <header class="chrome">
+      <div><strong>Atlas</strong> · Technology briefing</div>
+      <div id="counter">01 / 12</div>
+    </header>
+    <div class="progress"><span id="bar"></span></div>
+    <main id="main"></main>
+    <footer class="chrome">
+      <div>Not a completeness claim. Product in active development.</div>
+      <nav>
+        <button id="prev" type="button">Previous</button>
+        <div class="dots" id="dots"></div>
+        <button id="next" class="primary" type="button">Next</button>
+      </nav>
+    </footer>
+  </div>
+
+  <template id="slides">
+    <section class="slide" data-title="Title">
+      <div class="kicker">External technology briefing</div>
+      <h1>Atlas</h1>
+      <p class="lede">The truth and control layer for AI-native software.</p>
+      <p class="body" style="margin-top:14px">Know whether software is actually ready — before users, auditors, or incidents have to tell you.</p>
+      <div class="grid g3">
+        <div class="stat"><b>Truth</b><span>What is known, proven, and still unverified.</span></div>
+        <div class="stat"><b>Governance</b><span>What may happen next, and under whose authority.</span></div>
+        <div class="stat"><b>Control</b><span>Human oversight of agents, change, and automation.</span></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="The problem">
+      <h2>The problem</h2>
+      <p class="body">Teams now ship with git hosts, AI coding agents, continuous integration, cloud platforms, scanners, and multiple models. Throughput rose. A reliable answer to a simpler question did not.</p>
+      <div class="callout">
+        <strong>What is actually true about this software right now?</strong>
+        Most tools generate, test, deploy, or scan. Few bind claim to evidence, evidence to time, and action to approval.
+      </div>
+      <div class="grid g2">
+        <article class="card">
+          <h4>What teams hear</h4>
+          <p>We think we are ready. The tests passed. The model suggested a patch. The scanner found issues. Someone will review it.</p>
+        </article>
+        <article class="card">
+          <h4>What is missing</h4>
+          <p>A durable record of what was observed, what was verified, what drifted, what is still unknown, and what is allowed to change.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="What Atlas is">
+      <h2>What Atlas is</h2>
+      <p class="body">Atlas is not an AI coding assistant. It does not replace the editor, the agent, or the application. It sits beside them as a truth and control layer for connected systems.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h4>Atlas is</h4>
+          <ul>
+            <li>A system model of what software is supposed to do</li>
+            <li>An evidence graph of what has been observed and proven</li>
+            <li>Governance over what agents and automation may do next</li>
+            <li>A human-gated path from recommendation to action</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>Atlas is not</h4>
+          <ul>
+            <li>A replacement for coding tools or continuous integration</li>
+            <li>An agent embedded inside every connected product</li>
+            <li>A host for customer source code</li>
+            <li>A claim that software is complete because a model said so</li>
+          </ul>
+        </article>
+      </div>
+      <p class="note">Coding tools remain workers. Atlas remains truth, quality, governance, and control.</p>
+    </section>
+
+    <section class="slide" data-title="Why it exists">
+      <h2>Why it exists</h2>
+      <p class="body">AI increased how much software can be produced. The industry did not build an equivalent layer of verification and authority. Atlas exists to close that gap.</p>
+      <div class="grid g3">
+        <article class="card">
+          <h4>Understand</h4>
+          <p>Treat each connected product as a managed system: structure, dependencies, contracts, and expected behavior.</p>
+        </article>
+        <article class="card">
+          <h4>Detect</h4>
+          <p>Continuous audit against evidence — drift, defects, security posture, and readiness — without mistaking a score for proof.</p>
+        </article>
+        <article class="card">
+          <h4>Act, gated</h4>
+          <p>Remediation is last. Recommendation, risk, policy, approval, execution, and verification are separate steps.</p>
+        </article>
+      </div>
+      <div class="callout" style="margin-top:18px">
+        <strong>The intended outcome</strong>
+        Instead of “we think we are ready,” Atlas aims to show what is verified, what is not, what is dangerous, and the evidence behind that judgment.
+      </div>
+    </section>
+
+    <section class="slide" data-title="How it thinks">
+      <h2>How Atlas thinks</h2>
+      <p class="body">Five layers, observed from the outside through connectors. Atlas does not need to live inside the connected application’s codebase.</p>
+      <table>
+        <thead>
+          <tr><th>Layer</th><th>Role</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Truth</td><td>System model: expected versus observed</td></tr>
+          <tr><td>Evidence</td><td>Bound claims — not free-floating scores</td></tr>
+          <tr><td>Governance</td><td>Policy, risk, and approval</td></tr>
+          <tr><td>Intelligence</td><td>Agents and research under constraint</td></tr>
+          <tr><td>Control</td><td>What may execute, and what must wait</td></tr>
+        </tbody>
+      </table>
+      <h3>Operating sequence</h3>
+      <div class="pills">
+        <span class="pill">Discover</span>
+        <span class="pill">Understand</span>
+        <span class="pill">Verify</span>
+        <span class="pill warn">Act, only when gated</span>
+      </div>
+      <p class="note">Act is last on purpose. A successful command is not treated as a successful repair until verification and evidence say so.</p>
+    </section>
+
+    <section class="slide" data-title="The ecosystem">
+      <h2>How the parts relate</h2>
+      <p class="body">Atlas is designed as a control layer over systems that already exist. Connected applications remain themselves. Atlas observes, binds evidence, and governs action.</p>
+      <article class="card" style="min-height:0; margin-bottom:14px">
+        <h4>Ecosystem, at briefing level</h4>
+        <div class="stack" style="margin-top:8px">
+          <p>People and coding agents work in the customer workspace.</p>
+          <p>Connectors observe repositories, delivery, and operational signals from the outside.</p>
+          <p>Atlas maintains a managed-system view: contract, evidence, memory, and verdict.</p>
+          <p>Governance decides whether a proposed action is allowed, denied, or requires a human.</p>
+        </div>
+      </article>
+      <div class="grid g2">
+        <article class="card">
+          <h4>The product people use</h4>
+          <p>Systems, truth, health, readiness, studio, and audit surfaces — so an operator can see posture and evidence without becoming the integration layer.</p>
+        </article>
+        <article class="card">
+          <h4>The control layer</h4>
+          <p>A separate governance plane for oversight of agents, applications, approvals, and automation. Observation and authority stay distinct from the applications being governed.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Memory and evidence">
+      <h2>Memory, knowledge, and evidence</h2>
+      <p class="body">The durable advantage is not a particular model. It is whether Atlas can remember what was true, cite what it used, and refuse to treat generated text as fact.</p>
+      <div class="grid g3">
+        <article class="card">
+          <h4>Evidence</h4>
+          <p>Claims are meant to carry source, time, confidence, and status. A score without evidence is not treated as truth.</p>
+        </article>
+        <article class="card">
+          <h4>Memory</h4>
+          <p>Engineering memory is scoped to the owner of the work. Atlas is not designed to train across tenants. Customer source remains in the customer’s workspace or git host.</p>
+        </article>
+        <article class="card">
+          <h4>Knowledge</h4>
+          <p>Research prefers allow-listed public sources — standards and official documentation — over uncited generation. Generated content stays a hypothesis until verified.</p>
+        </article>
+      </div>
+      <div class="callout" style="margin-top:18px">
+        <strong>Moat, stated honestly</strong>
+        The intended moat is an engineering evidence graph plus historical memory — not the underlying language model.
+      </div>
+    </section>
+
+    <section class="slide" data-title="Agents and oversight">
+      <h2>Agents and human oversight</h2>
+      <p class="body">Atlas can plan and dispatch specialist agents. That is not a license for unsupervised change. Agents propose; governance constrains; people decide when the risk requires it.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h4>Agents</h4>
+          <p>Specialists for engineering, quality, security, research, and related roles. They operate as workers under catalog, policy, and runtime control — not as an unbounded swarm.</p>
+        </article>
+        <article class="card">
+          <h4>Humans</h4>
+          <p>Approvals, emergency stop of agent work, and ownership-gated apply paths keep irreversible work from being implicit. Studio is designed as a human view of proposed change: propose, review, approve, then apply.</p>
+        </article>
+      </div>
+      <p class="note">High-severity and production-facing change is intended to remain human-gated. Low-risk automation is not an excuse to skip verification.</p>
+    </section>
+
+    <section class="slide" data-title="Product experience">
+      <h2>Product experience</h2>
+      <p class="body">The intended commercial motion is a readiness audit of a real system, then continuous truth and control — not seats, quotas, or “another scanner.”</p>
+      <div class="grid g2">
+        <article class="card">
+          <h4>What an operator sees</h4>
+          <ul>
+            <li>Managed systems, with blocking issues shown first</li>
+            <li>Release verdict with evidence</li>
+            <li>Truth, health, and readiness drill-down</li>
+            <li>Studio for governed change</li>
+            <li>Process and quality audits on connected work</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>What the audit is for</h4>
+          <p>Connect a system, discover what is there, model it, verify against evidence, and produce an executive readout: verified, unverified, blockers, and recommended next action. A counsel briefing is an evidence pack for licensed advisors — not legal advice.</p>
+        </article>
+      </div>
+      <p class="note">Storage is bring-your-own. Atlas is designed to hold evidence of what was proven — not to become the customer’s source-code host.</p>
+    </section>
+
+    <section class="slide" data-title="Architecture">
+      <h2>Architecture, at briefing level</h2>
+      <p class="body">Atlas observes connected systems. It does not merge into them, and it does not collapse user work, tenant services, and control into a single public surface.</p>
+      <div class="grid g3">
+        <article class="card">
+          <h4>Observe</h4>
+          <p>Connectors for git, delivery, and related signals. Atlas stays outside the managed application.</p>
+        </article>
+        <article class="card">
+          <h4>Bind</h4>
+          <p>System contract, evidence, memory, and verdict are first-class. Authority is assigned by the platform, not asserted by the agent.</p>
+        </article>
+        <article class="card">
+          <h4>Govern</h4>
+          <p>Policy, approval, and runtime control decide whether a proposed action may execute. Control does not run the customer’s tools itself.</p>
+        </article>
+      </div>
+      <div class="callout" style="margin-top:18px">
+        <strong>Boundary that does not move</strong>
+        Customer source stays with the customer. Workers stay workers. Atlas stays truth, quality, governance, and control.
+      </div>
+    </section>
+
+    <section class="slide" data-title="Trust posture">
+      <h2>Trust posture</h2>
+      <p class="body">External trust is a product requirement, not a slogan. The following are design commitments, not a certification or a production-readiness stamp.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h4>Isolation</h4>
+          <p>Tenant memory and evidence are scoped to the owner of the work. Atlas is not designed to train across customers.</p>
+        </article>
+        <article class="card">
+          <h4>Authority</h4>
+          <p>Agents do not inherit unlimited authority from a previous hop. Write-adjacent work is intended to require explicit approval.</p>
+        </article>
+        <article class="card">
+          <h4>Honesty of state</h4>
+          <p>Epistemic labels matter. Observed is not fact. A generated statement is not verified knowledge.</p>
+        </article>
+        <article class="card">
+          <h4>Honesty of status</h4>
+          <p>Atlas is under active construction. Surfaces exist; completeness varies. This briefing does not treat a roadmap as a shipped guarantee.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Vision">
+      <h2>Long-term vision</h2>
+      <p class="body">If Atlas succeeds, AI-native teams will not have to choose between speed and accountability. They will have a layer that remembers, verifies, and governs — while people and coding agents keep doing the work they already do.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h4>Near</h4>
+          <p>A serious readiness audit of one production system. An executive report grounded in evidence. Design-partner learning on real software, not invented case studies.</p>
+        </article>
+        <article class="card">
+          <h4>Then</h4>
+          <p>Continuous control: drift, governed remediation, system memory, and human authority that remains meaningful as agent volume grows.</p>
+        </article>
+      </div>
+      <h3>The sentence to leave with</h3>
+      <p class="close">Atlas exists so “the model did it” is never the last word on whether software is true, safe, or allowed to change.</p>
+    </section>
+  </template>
+
+  <script>
+    const main = document.getElementById("main");
+    const tpl = document.getElementById("slides");
+    const slides = Array.from(tpl.content.querySelectorAll(".slide"));
+    slides.forEach((s) => main.appendChild(s));
+
+    const n = slides.length;
+    const bar = document.getElementById("bar");
+    const counter = document.getElementById("counter");
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    const dots = document.getElementById("dots");
+    let i = 0;
+
+    slides.forEach((_, idx) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("aria-label", "Go to slide " + (idx + 1));
+      b.addEventListener("click", () => go(idx));
+      dots.appendChild(b);
+    });
+
+    function go(nextIndex) {
+      i = Math.max(0, Math.min(n - 1, nextIndex));
+      slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+      bar.style.width = ((i + 1) / n * 100).toFixed(2) + "%";
+      counter.textContent = String(i + 1).padStart(2, "0") + " / " + String(n).padStart(2, "0");
+      prev.disabled = i === 0;
+      next.disabled = i === n - 1;
+      Array.from(dots.children).forEach((d, idx) => d.classList.toggle("on", idx === i));
+    }
+
+    prev.addEventListener("click", () => go(i - 1));
+    next.addEventListener("click", () => go(i + 1));
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        go(i + 1);
+      }
+      if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        go(i - 1);
+      }
+      if (e.key === "Home") go(0);
+      if (e.key === "End") go(n - 1);
+    });
+
+    go(0);
+  </script>
+</body>
+</html>

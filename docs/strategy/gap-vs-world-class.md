@@ -1,5 +1,10 @@
 # Gap vs world-class — Atlas positioning
 
+> **STRATEGY (living).** The “gaps still between Atlas MVP and world-class”
+> list below is G5/G4 (partners, scanner feeds, HA SaaS), not a G1 defect
+> backlog. Current implementation classification:
+> [`docs/architecture/gap-matrix.md`](../architecture/gap-matrix.md).
+
 **Status:** Living reference (Theme #7)  
 **Date:** 2026-08-12  
 **Purpose:** Compare Atlas to best-in-class peers and academic / standards sources — without turning Atlas into an IDE clone.
