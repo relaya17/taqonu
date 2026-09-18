@@ -216,6 +216,7 @@ export function ProcessAuditPanel({
       <Alert severity="success">{t("partnerNote")}</Alert>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="center">
+        {!boundProjectId ? (
         <TextField
           select
           label={t("project")}
@@ -235,6 +236,7 @@ export function ProcessAuditPanel({
             </MenuItem>
           ))}
         </TextField>
+        ) : null}
         <TextField
           select
           label={t("appProfile")}

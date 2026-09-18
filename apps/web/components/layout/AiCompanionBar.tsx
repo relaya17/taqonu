@@ -88,8 +88,8 @@ export function AiCompanionBar() {
   const title = (p: ProviderItem) =>
     locale === "he" ? p.titleHe : locale === "ar" ? p.titleAr : p.titleEn;
 
-  const activeLabel =
-    options.find((p) => p.id === providerId)?.titleEn ?? "ArletOS";
+  const active = options.find((p) => p.id === providerId);
+  const activeLabel = active ? title(active) : "ArletOS";
 
   return (
     <Box

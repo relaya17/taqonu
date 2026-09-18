@@ -436,10 +436,17 @@ export default function StudioPage() {
         label={t("project")}
         value={projectId}
         onChange={(e) => {
-          setProjectId(e.target.value);
+          const id = e.target.value;
+          setProjectId(id);
           setSelectedPath(null);
           propose.reset();
           saveNote.reset();
+          const projectQs = id ? `&project=${encodeURIComponent(id)}` : "";
+          router.replace(
+            tab === "checks"
+              ? `${pathname}?tab=${tab}&check=${checksTab}${projectQs}`
+              : `${pathname}?tab=${tab}${projectQs}`,
+          );
         }}
         helperText={t("projectHelp")}
         sx={{
@@ -473,6 +480,12 @@ export default function StudioPage() {
         <Alert severity="warning">
           {t("needRoot")}{" "}
           <Link href="/projects">{t("goProjects")}</Link>
+        </Alert>
+      ) : null}
+
+      {projectsQuery.isError ? (
+        <Alert severity="error">
+          {(projectsQuery.error as Error).message}
         </Alert>
       ) : null}
 

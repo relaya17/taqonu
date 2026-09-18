@@ -134,6 +134,7 @@ export function ReadinessPanel({
 
       <Alert severity="info">{t("positioning")}</Alert>
 
+      {!boundProjectId ? (
       <TextField
         select
         size="small"
@@ -150,6 +151,7 @@ export function ReadinessPanel({
           </MenuItem>
         ))}
       </TextField>
+      ) : null}
 
       {projectId ? (
         <LinkWorkspaceRoot

@@ -203,6 +203,7 @@ export function HealthPanel({
         {t("pillars")}
       </Alert>
 
+      {!boundProjectId ? (
       <TextField
         select
         size="small"
@@ -220,6 +221,7 @@ export function HealthPanel({
           </MenuItem>
         ))}
       </TextField>
+      ) : null}
 
       {projectId ? (
         <LinkWorkspaceRoot

@@ -17,6 +17,7 @@ import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { patchGovernedPath } from "@/lib/studio-patch-workflow";
+import { useProjectQueryParam } from "@/lib/use-project-query";
 
 interface ProjectItem {
   id: string;
@@ -44,7 +45,7 @@ interface PatchItem {
 export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   const t = useTranslations("patches");
   const queryClient = useQueryClient();
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useProjectQueryParam("");
   const [root, setRoot] = useState("");
   const [pendingApplyById, setPendingApplyById] = useState<Record<string, string>>(
     {},

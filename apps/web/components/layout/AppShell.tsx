@@ -703,7 +703,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           anchor={anchor}
           open={navOpen}
           onClose={() => setNavOpen(false)}
-          ModalProps={{ keepMounted: true }}
+          ModalProps={{ keepMounted: false }}
           sx={{
             display: { xs: "block", sm: "none" },
             [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
@@ -798,7 +798,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         anchor={anchor}
         open={navOpen}
         onClose={() => setNavOpen(false)}
-        ModalProps={{ keepMounted: true }}
+        ModalProps={{ keepMounted: false }}
         sx={{
           display: { xs: "block", md: "none" },
           [`& .MuiDrawer-paper`]: drawerPaperSx(appMobileToneKey),

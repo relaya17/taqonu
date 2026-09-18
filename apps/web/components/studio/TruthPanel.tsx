@@ -377,6 +377,7 @@ export function TruthPanel({
           spacing={1.5}
           alignItems={{ sm: "center" }}
         >
+          {!boundProjectId ? (
           <TextField
             select
             size="small"
@@ -403,6 +404,7 @@ export function TruthPanel({
               </MenuItem>
             ))}
           </TextField>
+          ) : null}
           <Button
             variant="contained"
             disabled={!activeId || cycle.isPending}

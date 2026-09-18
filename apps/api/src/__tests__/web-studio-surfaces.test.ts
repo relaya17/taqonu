@@ -66,6 +66,13 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(login).toContain("WEB_POST_AUTH_PATH");
     expect(register).toContain("WEB_POST_AUTH_PATH");
     expect(callback).toContain("WEB_POST_AUTH_PATH");
+    expect(login).toContain("useSearchParams");
+    expect(login).toContain("authHrefWithNext");
+    expect(login).not.toContain("window.location.search");
+    expect(register).toContain("authHrefWithNext");
+    expect(callback).toContain("allowlistedAuditNext");
+    expect(appShell).toContain("keepMounted: false");
+    expect(appShell).not.toContain("keepMounted: true");
     const dashboard = readWeb("app/[locale]/page.tsx");
     expect(dashboard).toContain('href="/studio"');
     expect(dashboard).toContain("dashboard.workingHome");
@@ -81,6 +88,8 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(studio).toContain("engineerRole");
     expect(studio).toContain("<SupervisingAgentPanel");
     expect(studio).toContain("/api/v1/studio/ask-agent");
+    expect(studio).toContain("projectsQuery.isError");
+    expect(studio).toContain("&project=${encodeURIComponent(id)}");
   });
 
   it("keeps standalone route files that redirect into Studio Checks", () => {
@@ -112,6 +121,14 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(qa).not.toContain("/api/v1/qa/process-audit");
     expect(qa).toContain("check=processAudit");
     expect(processAudit).toContain("/api/v1/qa/process-audit");
+    const health = readWeb("components/studio/HealthPanel.tsx");
+    const truth = readWeb("components/studio/TruthPanel.tsx");
+    const readiness = readWeb("components/studio/ReadinessPanel.tsx");
+    expect(health).toContain("!boundProjectId");
+    expect(truth).toContain("!boundProjectId");
+    expect(readiness).toContain("!boundProjectId");
+    const patches = readWeb("components/dashboard/PatchesPanel.tsx");
+    expect(patches).toContain("useProjectQueryParam");
   });
 });
 

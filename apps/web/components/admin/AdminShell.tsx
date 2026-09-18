@@ -127,7 +127,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           open={open}
           onClose={() => setOpen(false)}
           anchor="right"
-          ModalProps={{ keepMounted: true }}
+          ModalProps={{ keepMounted: false }}
           PaperProps={{ "aria-label": "ניווט אדמין", id: "admin-nav" }}
         >
           <Stack direction="row" justifyContent="flex-end" sx={{ px: 1, pt: 1 }}>
