@@ -1,7 +1,7 @@
 # Atlas gap matrix (authoritative)
 
 **Date:** 2026-09-18  
-**HEAD baseline:** `212c077` plus the 2026-09-18 working-tree isolation/landscape pass  
+**HEAD baseline:** `ed1e9b24eaf02fd74bc80244b23438b50cb279c3`
 **Production gate:** NOT PRODUCTION READY  
 
 This is the current G1–G7 classification. Do not quote August 2026 audit
@@ -41,7 +41,7 @@ Categories: **G1** code defect · **G2** code-completable hardening ·
 | GAP-024 | Sigstore/cosign signing | Fail-closed unsigned CLI; `ATLAS_SIGNING_IDENTITY` unset | G4 | Prepare only | `pnpm supply-chain:sign` REFUSE | Real signing identity + verifier |
 | GAP-025 | External pentest | Scope package READY; no engagement | G4 | Prepare only | `docs/security/pentest-readiness.md` | Vendor engagement |
 | GAP-026 | omit-`agentId` memory retrieve | Human surfaces still see `allowedAgents` rows; not a silent omit policy | G5 | No | remaining-work B1 | Owner policy: fail-closed vs human visibility |
-| GAP-027 | ADR-022 sibling execute | Observe/evaluate only except `def-000` | G5 | No | `ADR-022-OWNER-DECISION-REQUEST.md` | Owner amend or keep observe-only |
+| GAP-027 | ADR-022 sibling execute | Observe/evaluate only except `def-000` | G5 | No | `docs/archive/2026-09-05/ADR-022-OWNER-DECISION-REQUEST.md` | Owner amend or keep observe-only |
 | GAP-028 | SSO/SAML/SCIM | Local+Supabase OAuth Google/GitHub; no SAML/SCIM | G5 | No | ADR-012 | Enterprise identity product decision |
 | GAP-029 | Organization / workspace RBAC | Tenancy is `ownerId`; `DRAFT_multi_tenant_orgs.sql` stays draft | G5 | No | ADR-012 | Org model decision |
 | GAP-030 | GitHub App installations instance-level | Per-owner PAT maps exist; App install table is instance-wide | G5 | No | `os-store.ts` githubAppInstallations | Per-owner App vs personal-instance |
@@ -61,7 +61,7 @@ Categories: **G1** code defect · **G2** code-completable hardening ·
 | GAP-044 | Connected apps except def-000 | CaseFlow/Civio/HotelOS/BrokerOS/LexStudy/Vantera observe/evaluate/inventory | G6 | No | CONNECTED_APPLICATION_RUNTIME | Until GAP-027 decides execute |
 | GAP-045 | Plugin sandbox / arbitrary tool runtime | Allow-listed internal tools; not general sandbox | G6 | No | staged roadmap historical | Intentional non-goal until G5 |
 | GAP-046 | Historical “CODE-COMPLETABLE NONE” | §64 stamped stale; live pointer is this file + remaining-work 2026-09-18 | G7 | Done | MASTER TRUTH §64 note, §67 | Do not quote §64 as current |
-| GAP-047 | August security audit P0s as live defects | Those P0s were later fixed; file is historical | G7 | Done | banner on `atlas-security-intelligence-audit.md` | Read this matrix |
+| GAP-047 | August security audit P0s as live defects | Those P0s were later fixed; file is historical | G7 | Done | banner on `docs/archive/2026-08/atlas-security-intelligence-audit.md` | Read this matrix |
 | GAP-048 | Staged roadmap Organization=Missing as a bug | Roadmap Track B/C; current tenancy is ownerId | G7 | Done | banner on staged roadmap | G5 not G1 |
 | GAP-049 | `STUB_OWNER_ID` fallback | Only when no identity and no `ATLAS_OWNER_ID`; authenticated paths pass `user.id` | G6 | No | `resolveOwnerId` | Personal-instance billing |
 | GAP-050 | Canonical audit | API NDJSON (+ optional Supabase dual-write when live); CP in-memory is not canonical | G3 | Code done | `audit-log.ts` | Live Postgres chain verify |

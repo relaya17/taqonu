@@ -7,7 +7,7 @@ Scope: what exists in this monorepo vs the pasted master technical specification
 
 **MVP spine is shippable for Design Partners.** Evidence OS, Constitution, Kernel/Fabric, Verdict/Readiness, BYO, Auth-first SaaS path, RAG, Stripe tenant, Proof 1.1 golden, and portfolio discovery are in place. Remaining gaps are deepen/polish and commercial validation — not empty scaffold.
 
-See also: [`docs/strategy/gap-vs-world-class.md`](../strategy/gap-vs-world-class.md) · [`living-request-tracker.md`](../strategy/living-request-tracker.md).
+See also: [`docs/archive/2026-08/gap-vs-world-class.md`](../archive/2026-08/gap-vs-world-class.md) · [`living-request-tracker.md`](../strategy/living-request-tracker.md).
 
 ---
 

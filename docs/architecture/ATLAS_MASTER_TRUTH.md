@@ -1,6 +1,7 @@
 # ATLAS MASTER TRUTH DOCUMENT
 
 **Status:** Current authoritative implementation/governance document for ATLAS.
+**Remainder pointer (2026-09-18):** Current remainder and production-gate status live in [`remaining-work.md`](./remaining-work.md). This file is not the September 18 remainder source.
 **Created:** 2026-09-04
 **Supersedes (as execution authority only — none are deleted):** the Portfolio
 Governance section of `docs/architecture/remaining-work.md` now points here;
@@ -209,7 +210,7 @@ Read-through performed 2026-09-04 (supersedes the grep-only pass):
   Supabase for decisions/account_plans, and cloud-hydrate on startup when
   local state is empty. Not independently re-verified by me this cycle;
   cited as existing, code-referenced evidence from a prior audit trail.
-- **Explicitly NOT implemented**, per `docs/verification/ATLAS_VERIFICATION_REPORT_2026-08-28.md`
+- **Explicitly NOT implemented**, per `docs/archive/2026-08-28/ATLAS_VERIFICATION_REPORT.md`
   line 191: "Backup product / offsite replication — NOT IMPLEMENTED — NDJSON
   restore check only." Multi-region HA is noted in the same tracker as an
   accepted residual gap, not a claimed capability.
@@ -1211,7 +1212,7 @@ Phases 10–14 were not reopened. ADR-022 was not silently overridden.
 
 **OWNER DECISION REQUIRED**
 - ADR-022 sibling/Civio execute contract. Request:
-  `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+  `docs/archive/2026-09-05/ADR-022-OWNER-DECISION-REQUEST.md`.
 
 **Program verdict: NOT PRODUCTION READY.** Local runtime evidence exists for
 Atlas-self governed execution. Sibling connected-app execution is still
@@ -1283,7 +1284,7 @@ remains OWNER DECISION REQUIRED.
   included in a 48-test slice; listen-options: 2; governed-execution file: 54
   with adversarial file (15 + 39).
 - Shared egress + connected-applications: 12.
-- Agent-core tools adversarial: 7 (do not treat `HARDENING_STATUS.md` “21+”
+- Agent-core tools adversarial: 7 (do not treat `docs/archive/DATE_REQUIRES_REVIEW/HARDENING_STATUS.md` “21+”
   as current).
 - Worker: 17.
 - Supply chain: SBOM VALID, UNSIGNED, `releaseReady: false`.

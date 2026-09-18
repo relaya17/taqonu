@@ -4,6 +4,7 @@
 **קובץ זה:** `docs/strategy/ATLAS-TRUTH-10.md`  
 **סטטוס:** Living — מתעדכן בכל התקדמות  
 **עדכון אחרון:** 2026-08-15 (**P2.8b bind Managed System — facets, contract, ACT auth, command path**)  
+**Stale-status note (2026-09-18):** Last known update predates the September 18 current gap/remainder documents. This file is not a live scoreboard. Current remainder: [`docs/architecture/remaining-work.md`](../architecture/remaining-work.md). Current G1–G7: [`docs/architecture/gap-matrix.md`](../architecture/gap-matrix.md).
 **מטרת ציון:** **10/10** — Software Intelligence Platform (לא עוד כלי AI)  
 **סטטוס מוצר (MVP Proof):** P0 `DONE` · Sentinel `DONE` · P1 deepen `PARTIAL→stronger` · GTM packs READY (human ops)
 

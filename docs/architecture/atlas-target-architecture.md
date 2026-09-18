@@ -25,6 +25,8 @@ Atlas is one product with **three distinct surfaces**:
 
 Connected applications (CaseFlow, HotelOS, Civio, BrokerOS, LexStudy, Vantera, and later others) remain **independent runtimes**. Control supervises them through **explicit connectors**, not by embedding those applications.
 
+> **Note (2026-09-18):** The PSA current-state sentence below is historical/target-state context from 2026-09-02. It is superseded by current implementation evidence in [`remaining-work.md`](./remaining-work.md). Do not read it as live remainder.
+
 A **Personal Supervising Agent** (one persistent agent per user) is a target Control capability. It does not exist in the current implementation.
 
 Studio already exists at `apps/web` route `/[locale]/studio`. The target is to **upgrade that Studio**, not replace it.

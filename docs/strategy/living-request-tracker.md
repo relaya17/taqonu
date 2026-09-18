@@ -4,7 +4,7 @@
 **Last updated:** 2026-08-24 — verified against code on disk, not just prior notes (see 2026-08-24 change log entries)  
 **Owner:** product + engineering (ArletOS / Atlas Core)  
 **Companion ADRs:** ADR-005 · ADR-009 · ADR-014–020 (Constitution Accepted)  
-**Companion spec set:** [`01-ATLAS_AGENT_SYSTEM_SPEC.md`](../../01-ATLAS_AGENT_SYSTEM_SPEC.md) · [`02-ATLAS_AGENT_GOVERNANCE_SPEC.md`](../../02-ATLAS_AGENT_GOVERNANCE_SPEC.md) · [`03-ATLAS_ENGINEERING_RUNTIME_SPEC.md`](../../03-ATLAS_ENGINEERING_RUNTIME_SPEC.md) · [`04-ATLAS_PRODUCTION_READINESS_CHECKLIST.md`](../../04-ATLAS_PRODUCTION_READINESS_CHECKLIST.md) — this file covers product/feature asks; the four-doc set covers agent behavior, governance enforcement, runtime internals, and the P0-P70 hardening queue respectively
+**Companion spec set:** [`01-ATLAS_AGENT_SYSTEM_SPEC.md`](../archive/DATE_REQUIRES_REVIEW/01-ATLAS_AGENT_SYSTEM_SPEC.md) · [`02-ATLAS_AGENT_GOVERNANCE_SPEC.md`](../archive/DATE_REQUIRES_REVIEW/02-ATLAS_AGENT_GOVERNANCE_SPEC.md) · [`03-ATLAS_ENGINEERING_RUNTIME_SPEC.md`](../archive/DATE_REQUIRES_REVIEW/03-ATLAS_ENGINEERING_RUNTIME_SPEC.md) · [`04-ATLAS_PRODUCTION_READINESS_CHECKLIST.md`](../archive/DATE_REQUIRES_REVIEW/04-ATLAS_PRODUCTION_READINESS_CHECKLIST.md) — this file covers product/feature asks; the four-doc set covers agent behavior, governance enforcement, runtime internals, and the P0-P70 hardening queue respectively
 
 > מטרת המסמך: רשימה אחת של **מה שביקשת** · **מה בוצע** · **מה נשאר**.  
 > כל בקשה חדשה נכנסת ל־§Remaining / Change log. סטטוסים מתעדכנים תוך כדי ביצוע.

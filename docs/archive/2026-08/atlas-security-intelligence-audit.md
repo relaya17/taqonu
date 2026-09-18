@@ -2,7 +2,7 @@
 
 > **HISTORICAL (2026-08-18/19).** Do not treat the P0/P1 tables below as
 > current defects. Current classification:
-> [`docs/architecture/gap-matrix.md`](docs/architecture/gap-matrix.md).
+> [`docs/architecture/gap-matrix.md`](../../architecture/gap-matrix.md).
 > Production gate remains NOT PRODUCTION READY.
 
 תאריך: 18-19.08.2026

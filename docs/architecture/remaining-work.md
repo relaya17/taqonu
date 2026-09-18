@@ -115,7 +115,7 @@ Live ML training, demo/customer packaging, and Phase 11 re-entry are
 **NOT REQUIRED** for this production gate.
 
 ADR-022 request (not an amendment):
-`docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+`docs/archive/2026-09-05/ADR-022-OWNER-DECISION-REQUEST.md`.
 
 ### Control gap closure (2026-09-17)
 
@@ -236,7 +236,7 @@ Handoff: production evidence. No rewrite of accepted commits. No secrets committ
 | Spec consume-before-policy vs live claim path | **DOCUMENTATION/CONTRACT MISMATCH** (spec stale for matching pairs) | Matching execute uses `claim → recheck → STARTED → execute → finalize`. Gateway mismatch (`RECORD.EXECUTE` vs `DOCUMENT.READ`) still consumes the operation approval first. ADR-023 updated. Code not reverted. |
 | Local Docker / supabase CLI | **INFRASTRUCTURE BLOCKER** | Docker Desktop daemon not running (`dockerDesktopLinuxEngine` pipe missing). `supabase` CLI not on PATH. Cannot start local Postgres `:54322` from this workstation either. |
 | Memory omit-`agentId` retrieve | **POLICY DECISION** | `isVisibleToAgent` returns true when `allowedAgents` is set but no requester id is supplied (human conversation / list). Test: “includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)”. Not a silent bug. |
-| ADR-022 sibling execute | **POLICY DECISION** | `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`. No shortcut fulfill. |
+| ADR-022 sibling execute | **POLICY DECISION** | `docs/archive/2026-09-05/ADR-022-OWNER-DECISION-REQUEST.md`. No shortcut fulfill. |
 | Sigstore / cosign | **INFRASTRUCTURE BLOCKER** / **EXTERNAL PROVIDER** | `ATLAS_SIGNING_IDENTITY` unset; `cosign` not on PATH. `pnpm supply-chain:sign` REFUSE. SBOM VALID, UNSIGNED, `releaseReady: false`. |
 | External pentest | **EXTERNAL VALIDATION** | Scope package only. Not replaced by unit tests. |
 
@@ -757,7 +757,7 @@ HMAC ingest evaluated live (`evaluation.executed: false`,
 not a Civio tool). CaseFlow / HotelOS / BrokerOS / LexStudy / Vantera remain
 inventory-only.
 
-**Owner decision request:** `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`
+**Owner decision request:** `docs/archive/2026-09-05/ADR-022-OWNER-DECISION-REQUEST.md`
 — not an amendment.
 
 **Production gate:** NOT PRODUCTION READY. Cloud DR destination, Sigstore
@@ -775,7 +775,7 @@ Authoritative inventory now includes `reconciliation.classification`
 - BrokerOS / LexStudy / Vantera clones: not on this workstation.
 
 No sibling execute contract exists. No speculative connector was added.
-Owner request updated: `docs/architecture/ADR-022-OWNER-DECISION-REQUEST.md`.
+Owner request updated: `docs/archive/2026-09-05/ADR-022-OWNER-DECISION-REQUEST.md`.
 
 `pnpm environment:gate` reports Studio/DB/DR/signing blockers without inventing secrets.
 

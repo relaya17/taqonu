@@ -1,7 +1,7 @@
 # Gap Analysis — Atlas Control Plane Vision מול הקוד הקיים ב-taqonu-main
 
 > **HISTORICAL (2026-08-18).** Vision-vs-code snapshot. Current G1–G7
-> classification: [`docs/architecture/gap-matrix.md`](docs/architecture/gap-matrix.md).
+> classification: [`docs/architecture/gap-matrix.md`](../../architecture/gap-matrix.md).
 > Do not convert Track-C/vision rows into code defects.
 
 תאריך: 18.08.2026
