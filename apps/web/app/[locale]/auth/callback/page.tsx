@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { apiPost } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 
 export default function AuthCallbackPage() {
   const t = useTranslations("auth");
@@ -52,7 +53,7 @@ export default function AuthCallbackPage() {
           expiresAt: session.expires_at ? session.expires_at * 1000 : null,
         });
         if (!cancelled) {
-          router.replace("/");
+          router.replace(WEB_POST_AUTH_PATH);
           router.refresh();
         }
       } catch (err) {

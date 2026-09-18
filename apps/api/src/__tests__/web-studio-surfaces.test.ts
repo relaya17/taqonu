@@ -55,7 +55,32 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
       expect(surfaces).toContain(`"${route}"`);
     }
     expect(appShell).toContain("WEB_NAV_PATHS");
+    expect(appShell).toContain("WEB_POST_AUTH_PATH");
+    expect(surfaces).toContain('export const WEB_POST_AUTH_PATH = "/studio"');
+    expect(appShell).toContain('items: ["studio", "systems", "dashboard", "projects", "plan"]');
     expect(appShell).toContain('items: ["truth", "health", "readiness", "qa", "processAudit"]');
+    expect(appShell).toContain('items: ["agents", "experts"]');
+    const login = readWeb("app/[locale]/auth/login/page.tsx");
+    const register = readWeb("app/[locale]/auth/register/page.tsx");
+    const callback = readWeb("app/[locale]/auth/callback/page.tsx");
+    expect(login).toContain("WEB_POST_AUTH_PATH");
+    expect(register).toContain("WEB_POST_AUTH_PATH");
+    expect(callback).toContain("WEB_POST_AUTH_PATH");
+    const dashboard = readWeb("app/[locale]/page.tsx");
+    expect(dashboard).toContain('href="/studio"');
+    expect(dashboard).toContain("dashboard.workingHome");
+  });
+
+  it("surfaces PSA memory in Studio without merging CODE_ENGINEER ask-agent", () => {
+    const panel = readWeb("components/studio/SupervisingAgentPanel.tsx");
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    expect(panel).toContain("/api/v1/supervising-agent/memory");
+    expect(panel).toContain("/api/v1/supervising-agent/coordinate");
+    expect(panel).not.toContain("/api/v1/studio/ask-agent");
+    expect(panel).not.toContain("/api/v1/code/patches");
+    expect(studio).toContain("engineerRole");
+    expect(studio).toContain("<SupervisingAgentPanel");
+    expect(studio).toContain("/api/v1/studio/ask-agent");
   });
 
   it("keeps standalone route files that redirect into Studio Checks", () => {

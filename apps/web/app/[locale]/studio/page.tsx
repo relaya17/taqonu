@@ -36,6 +36,7 @@ import { HealthPanel } from "@/components/studio/HealthPanel";
 import { ReadinessPanel } from "@/components/studio/ReadinessPanel";
 import { TruthPanel } from "@/components/studio/TruthPanel";
 import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
+import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel";
 import {
   STUDIO_CHECK_IDS,
   STUDIO_TABS,
@@ -689,9 +690,15 @@ export default function StudioPage() {
                 boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
               }}
             >
-              <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>{t("askTitle")}</Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>{t("askTitle")}</Typography>
+                <Chip size="small" label={t("engineerRole")} />
+              </Stack>
               <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
                 {t("askHelp")}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#8B9099", display: "block", mt: 0.5 }}>
+                {t("engineerNotPsa")}
               </Typography>
 
               <ToggleButtonGroup
@@ -824,6 +831,8 @@ export default function StudioPage() {
                 </Alert>
               ) : null}
             </Box>
+
+            <SupervisingAgentPanel projectId={projectId} />
 
             <StudioPatchWorkflow
               projectId={projectId}

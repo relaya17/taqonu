@@ -22,6 +22,12 @@ export function isStudioCheckId(value: string | null): value is StudioCheckId {
 }
 
 /**
+ * Signed-in working entry. Marketing `/` still redirects to welcome;
+ * the locale dashboard (`/{locale}`) remains reachable and is not deleted.
+ */
+export const WEB_POST_AUTH_PATH = "/studio";
+
+/**
  * Routes that must remain reachable after Studio consolidation.
  * Standalone ops URLs redirect into Studio Checks; they must not be deleted.
  */

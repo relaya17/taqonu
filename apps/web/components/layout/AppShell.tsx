@@ -21,7 +21,7 @@ import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
-import { WEB_NAV_PATHS, type StudioCheckId } from "@/lib/studio-surfaces";
+import { WEB_NAV_PATHS, WEB_POST_AUTH_PATH, type StudioCheckId } from "@/lib/studio-surfaces";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
@@ -77,7 +77,7 @@ const NAV_GROUPS: readonly {
 }[] = [
   {
     id: "main",
-    items: ["systems", "dashboard", "projects", "plan"],
+    items: ["studio", "systems", "dashboard", "projects", "plan"],
   },
   {
     id: "ops",
@@ -88,7 +88,7 @@ const NAV_GROUPS: readonly {
     id: "build",
     labelKey: "buildGroup",
     collapsedByDefault: true,
-    items: ["studio", "agents", "experts"],
+    items: ["agents", "experts"],
   },
   {
     id: "workspace",
@@ -328,7 +328,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <>
         <Stack spacing={0.75} sx={{ px: 1.5, mb: 3 }}>
           <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={0.5}>
-            {brandMark("/", {
+            {brandMark(isAuthed ? WEB_POST_AUTH_PATH : PATHS.dashboard, {
               ...(opts.mobile ? { onClick: () => setNavOpen(false) } : {}),
               tone: opts.tone ?? "dark",
             })}
@@ -883,7 +883,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           }}
         >
           <Box sx={{ display: { xs: "block", md: "none" } }}>
-            {brandMark("/", { size: "sm", tone: appMobileToneKey })}
+            {brandMark(isAuthed ? WEB_POST_AUTH_PATH : PATHS.dashboard, { size: "sm", tone: appMobileToneKey })}
           </Box>
           <Box sx={{ display: { xs: "none", md: "block" }, flex: 1 }} />
           <Stack

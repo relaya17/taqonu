@@ -16,6 +16,7 @@ import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
+import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 
 interface AuthProviders {
   google: boolean;
@@ -50,10 +51,8 @@ export default function RegisterPage() {
     onSuccess: () => {
       // Hard navigation, not router.push()+router.refresh() -- see the
       // identical fix and explanation in auth/login/page.tsx.
-      // Target `/${locale}`, not bare "/": middleware.ts redirects bare
-      // "/" unconditionally to "/he/welcome" regardless of session state --
-      // see the matching fix + comment in auth/login/page.tsx.
-      window.location.href = `/${locale}`;
+      // Studio is the signed-in working entry. Dashboard stays at `/${locale}`.
+      window.location.href = `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 

@@ -284,15 +284,18 @@ export default function DashboardPage() {
                 })
               : t("dashboard.byoDisconnected")}
         </Alert>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          {t("dashboard.workingHome")}
+        </Typography>
         <ResponsiveActions sx={{ mt: 2 }}>
-          <Button component={Link} href="/systems" variant="contained" size="large">
+          <Button component={Link} href="/studio" variant="contained" size="large">
+            {t("dashboard.ctaStudio")}
+          </Button>
+          <Button component={Link} href="/systems" variant="outlined" size="large">
             {t("dashboard.ctaSystems")}
           </Button>
           <Button component={Link} href="/projects" variant="outlined" size="large">
             {t("dashboard.ctaProjects")}
-          </Button>
-          <Button component={Link} href="/studio" variant="outlined" size="large">
-            {t("dashboard.ctaStudio")}
           </Button>
           <Button component={Link} href="/agents" variant="outlined" size="large">
             {t("dashboard.ctaAgents")}

@@ -16,6 +16,7 @@ import { Link } from "@/i18n/routing";
 import { apiGet, apiPost, downloadVerifiedSourcesPack, ADMIN_LOGIN_PATH } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
+import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 
 interface AuthProviders {
   emailPassword: boolean;
@@ -49,16 +50,12 @@ export default function LoginPage() {
       // calls race (refresh() re-fetches the *current* route's server data
       // before push()'s navigation has settled), which was landing the user
       // back on this login page with the form reset instead of logged in.
-      // Target `/${locale}`, not bare "/": middleware.ts redirects bare "/"
-      // unconditionally to "/he/welcome" (the public marketing page) --
-      // that redirect doesn't look at the session cookie at all, so a hard
-      // nav to "/" bounced a freshly-logged-in user straight back out to
-      // the marketing page instead of the dashboard. `/${locale}` is the
-      // actual dashboard route (see middleware.ts's own comment: "Dashboard
-      // stays at /he"). Matches logout()'s existing pattern in
-      // components/layout/AppShell.tsx, which navigates to
-      // `/${locale}/auth/login` for the same reason.
-      window.location.href = `/${locale}`;
+      // Target `/${locale}/studio`, not bare "/": middleware.ts redirects
+      // bare "/" unconditionally to "/he/welcome" (the public marketing
+      // page) -- that redirect doesn't look at the session cookie at all.
+      // Studio is the signed-in working entry. The dashboard remains at
+      // `/${locale}` and is not deleted.
+      window.location.href = `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 

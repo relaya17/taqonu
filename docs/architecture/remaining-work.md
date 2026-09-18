@@ -4,7 +4,7 @@ Do not confuse **missing for stability** with **roadmap**.
 Do not mark a stage Done without implementation + tests + runtime evidence.
 Do not duplicate: `executeGovernedAction`, `dispatchAgentAction`, `executeTool`, `approvals.ts`, `verifyProposal`, `audit-log.ts`.
 
-## CURRENT AUTHORITATIVE REMAINING (2026-09-05)
+## CURRENT AUTHORITATIVE REMAINING (2026-09-18)
 
 This section is the **current** remainder. Sections 01–19 below are
 historical stage records. Do not reopen them. Do not treat them as an
@@ -12,11 +12,38 @@ open engineering backlog.
 
 **Production gate: NOT PRODUCTION READY.**
 
-**CODE-COMPLETABLE REMAINING WORK: NONE** (this pointer is documentation
-synchronization only). The 2026-09-17 Control/Studio/embeddings landing is
-**in git, not production-closed** — see the honest status block below.
+### Application preflight (2026-09-18)
 
-Authoritative narrative: `docs/architecture/ATLAS_MASTER_TRUTH.md` §62–§64.
+Atlas now exposes HMAC `POST /api/v1/governance/application-preflight`.
+This is **not** sibling execute. `execute` remains `NONE` except `def-000`.
+Civio/CaseFlow/HotelOS/BrokerOS local runtimes call preflight before their
+model callers. Remaining direct Gemini/OpenAI/Anthropic paths in those
+repos are now routed through the same preflight contract. LexStudy and
+Vantera remain **NOT ACCESSIBLE**. Civio browser BYOK (user-owned OpenAI
+key) is **INTENTIONALLY UNGATED**. Studio PSA browser proof and live
+Application→Atlas→model multi-process proof remain **NOT PROVEN** unless
+a later pass records them.
+
+**Authoritative G1–G7 landscape:** [`docs/architecture/gap-matrix.md`](gap-matrix.md).
+
+**CODE-COMPLETABLE remaining security/isolation defects: NONE after the
+2026-09-18 landscape pass** (N1/N2 in git `212c077`; S1–S5 plus owner-scoped
+daily meters, eval-run listing, architecture-contract IDOR, audit/constitution
+report admin-gate, intelligence audit-derived GETs, constitution/audit-engine
+write auth in the working tree). That pointer is not production proof. Live
+Postgres, private VM, Studio credentials, signing identity, offsite DR, and
+external pentest remain blockers. N1/N2 live HEAD/reconcile and exclusive
+STARTED on real PostgreSQL are IMPLEMENTED BUT NOT FULLY PROVEN.
+
+Authoritative narrative: `docs/architecture/ATLAS_MASTER_TRUTH.md` §62–§68.
+
+### Final verification pass (2026-09-18)
+
+Lint: turbo 46/46. Build: turbo 30/30. API unit: 1465 passed; two 5s timeouts under concurrent lint were **not** defects (isolated re-run 17/17). Control Plane unit 276/276. Admin 22/22.
+
+Live loopback: API `:4000`, Control `:3100`, Admin `:3200` up. Postgres `:54322` down. `live-session.env` bearer does **not** match the running API (internal routes 401) — unauthenticated denial is live-proven; authenticated CP→API hop is not proven with that file.
+
+Studio Playwright: API security/failure-path E2E passed. After cleaning a hung `::1:3000` Next and a corrupt `.next` cache, critical-path/new-surfaces/security = 21 passed / 3 failed. The three failures resolve to **hidden sidebar duplicates** (`getByText(...).first()`), not missing pages. Signed-in login→Patch→Apply browser flow was not executed (`apps/web/.env.local` still contains `replace-me`).
 
 ### Done — do not redo
 
@@ -69,7 +96,11 @@ not production-verified. Do not treat this list as CLOSED.**
   BLOCKED BY EXTERNAL DEPENDENCY. pgvector dual-write still expects 64-d hash vectors.
 - Bug tracker → memory learning (B3) — OBSERVED SOLUTION memories; unit tests
 - Evidence/memory writes no longer stamp `STUB_OWNER_ID` on the observe/learning
-  paths (B5). Billing `plan-quota` still has a legacy stub fallback.
+  paths (B5). Billing `plan-quota` still has a legacy stub fallback when no
+  request identity and no `ATLAS_OWNER_ID` are present. Cloud-link counts,
+  GitHub/local integrations, and daily eval/audit/message meters are
+  owner-scoped. Instance-wide meter totals remain for operator watchdog
+  only.
 
 ### Web / Studio gap closure (2026-09-17)
 
@@ -84,6 +115,34 @@ Landed in `apps/web` (Studio stays on the user plane). **Partially verified.**
   Studio `check` query.
 
 Dashboard Patches remain. Control Plane was not moved into Web.
+
+### Master gap closure — Studio home + PSA in Studio (2026-09-18)
+
+Studio/PSA slice. **Not production-ready.** Browser: signed-in Studio entry proven; PSA memory slice and patch Apply not proven.
+
+**Agent A (Studio architecture)**
+- Signed-in entry is `/studio` (`WEB_POST_AUTH_PATH`) from login, register, and OAuth callback.
+- Studio is first in the main nav. Brand mark goes to Studio when signed in.
+- Dashboard remains at `/{locale}`. Marketing `/` still redirects to welcome. No Web route deleted.
+
+**Agent B (PSA integration)**
+- Studio PSA panel now retrieves `GET /api/v1/supervising-agent/memory?projectId=` and can `POST /coordinate` (plan only).
+- CODE_ENGINEER `ask-agent` remains a separate Studio control. PSA does not approve/apply patches.
+- `professionalDomain` is **NOT IMPLEMENTED**. Existing Atlas memory already scopes by owner + project; a cosmetic field was not added.
+
+**Agent C (engineering workspace classification)**
+- REQUIRED for this acceptance slice: project picker, tree, file read/save, checks, governed patch, distinct PSA vs CODE_ENGINEER. Already present.
+- OPTIONAL FUTURE: syntax highlighting, multi-file tabs, project search, debugger, Git UI, in-Studio test runner, LSP. Not faked.
+
+**Agent E evidence (2026-09-18, this workstation)**
+- `pnpm --filter @atlas/web typecheck` PASS (before and after Next dev).
+- `pnpm --filter @atlas/api exec vitest run src/__tests__/web-studio-surfaces.test.ts src/services/personal-supervising-agent.test.ts` — 25 PASS.
+- `pnpm --filter @atlas/api exec vitest run src/routes/application-preflight.test.ts` — 14 PASS (ALLOW/DENY/KILLED/REQUIRE_APPROVAL/HMAC/replay/SoD).
+- Live HTTP against current-code API on `127.0.0.1:4010` (stale `:4000` still session-gates preflight as 401 empty): unsigned → `INVALID` `executed:false`; HMAC ALLOW 200 `executed:false`; destructive DENY 409 `executed:false`. Sibling application process was not started, so “application respected Atlas” is **NOT PROVEN**.
+- Browser: signed-in login landed on `/he/studio`. Studio first in nav. Dashboard `/he` and `/en` remain, with Studio as primary CTA. File tree loaded for Atlas Core. Checks tab opened. PSA panel and CODE_ENGINEER labels visible. PSA memory items after ensure were **not** captured. Patch approve/apply not exercised. RTL Hebrew Studio rendered.
+- `pnpm typecheck` (turbo): 45/48 PASS; `@atlas/web` failed TS6053 because concurrent `next dev` removed `.next/types`. Isolated web typecheck PASS. Full `pnpm build` **not re-run** this pass.
+- LexStudy / Vantera: directories absent — **BLOCKED / NOT AUDITABLE**.
+- Production: **NOT PROVEN**. Studio/PSA files committed separately from unrelated isolation/preflight working-tree changes.
 
 ### Verification pass (2026-09-17 evening)
 
@@ -137,7 +196,7 @@ Handoff: production evidence. No rewrite of accepted commits. No secrets committ
 | Sigstore / cosign | **INFRASTRUCTURE BLOCKER** / **EXTERNAL PROVIDER** | `ATLAS_SIGNING_IDENTITY` unset; `cosign` not on PATH. `pnpm supply-chain:sign` REFUSE. SBOM VALID, UNSIGNED, `releaseReady: false`. |
 | External pentest | **EXTERNAL VALIDATION** | Scope package only. Not replaced by unit tests. |
 
-**2026-09-18 remediations (code, local tests):** Control `/api/v1/internal/*` session gate; exclusive STARTED mark; memory export/write owner filter; verdict/report `assertProjectReadAccess`. Live Postgres/VM proof still missing.
+**2026-09-18 remediations (code, local tests):** Control `/api/v1/internal/*` session gate; exclusive STARTED mark; memory export/write owner filter; verdict/report `assertProjectReadAccess` (`1758563`). HEAD follows GET allow-list; global memories tenant-filtered in reconciliation (`212c077`). CP `setBy`/`decidedBy` bound to `cp:service`; per-owner GitHub/local connections; admin-only process-global ops surfaces; owner-scoped cloud-link quota; decision `ownerId` + recon filter. Landscape pass: owner-scoped daily eval/audit/message meters; `GET /eval/runs` admin-only; architecture-contract GET project-scoped; audit/constitution report lists admin-only; intelligence verification-lessons/outcome-signals admin-only; constitution/audit-engine POST signed-in (project write when `projectId` set); kernel eval/lessons writes signed-in. Live Postgres/VM proof still missing. GitHub App installations remain instance-level (not per-user PAT). `STUB_OWNER_ID` remains the personal-instance fallback when no request identity and no `ATLAS_OWNER_ID` are present — authenticated cloud-plan paths pass `identity.ownerId`.
 
 ---
 
