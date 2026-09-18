@@ -47,6 +47,8 @@ Supabase/env). Atlas does not execute sibling tools (ADR-022).
 
 **Authoritative G1–G7 landscape:** [`docs/architecture/gap-matrix.md`](gap-matrix.md).
 
+**Product/readiness inventory (2026-09-18):** [`docs/architecture/product-gap-inventory-2026-09-18.md`](product-gap-inventory-2026-09-18.md). Technical closure ≠ product completion ≠ production proof ≠ commercial validation.
+
 **CODE-COMPLETABLE remaining security/isolation defects: NONE after the
 2026-09-18 landscape pass** (N1/N2 in git `212c077`; S1–S5 plus owner-scoped
 daily meters, eval-run listing, architecture-contract IDOR, audit/constitution
