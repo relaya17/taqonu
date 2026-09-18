@@ -18,6 +18,9 @@ export default defineConfig({
   test: {
     globals: false,
     environment: "node",
+    env: {
+      NODE_ENV: "test",
+    },
     include: ["packages/**/*.test.ts", "apps/**/*.test.ts"],
     coverage: {
       provider: "v8",

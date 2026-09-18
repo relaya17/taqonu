@@ -13,6 +13,10 @@ process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 process.env.ATLAS_SKIP_EVENT_DISPATCH = "1";
+// Isolate from a leaked NODE_ENV=production (turbo/build shells). Production
+// still forbids ATLAS_SKIP_AUDIT_LOG; this pin must not change that throw.
+const previousNodeEnv = process.env.NODE_ENV;
+process.env.NODE_ENV = "test";
 
 const getRequestUser = vi.fn();
 vi.mock("../services/resolve-identity.js", async (importOriginal) => {
@@ -93,6 +97,8 @@ afterAll(async () => {
   await app.close();
   rmSync(tmpDir, { recursive: true, force: true });
   rmSync(workspaceDir, { recursive: true, force: true });
+  if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = previousNodeEnv;
 });
 
 afterEach(() => {
