@@ -14,10 +14,10 @@ open engineering backlog.
 
 ### Gap closure execution (2026-09-18, current :4000 / :3000)
 
-Code-completable Studio/PSA ownership defects in this pass are closed.
-HMAC was re-proven on the **current** API process (`127.0.0.1:4000`),
-not the historical `:4010` result. Git working tree (8 files) is
-uncommitted by instruction. **Production remains NOT PROVEN.**
+Code-completable Studio/PSA ownership defects are closed.
+HMAC was proven on the **current** API process (`127.0.0.1:4000`).
+Final gap-closure pass (same day) proved live Control UI/supervision
+and re-checked sibling/Web blockers. **Production remains NOT PROVEN.**
 
 | Gap | Status | Exact remaining |
 | --- | --- | --- |
@@ -27,11 +27,11 @@ uncommitted by instruction. **Production remains NOT PROVEN.**
 | Patch proposal + human Approve | **BROWSER-PROVEN** | Patch `daaac002-672b-4e26-8c4b-9f5f78e40b78` APPROVED by human. Audit `code.patch.approved`. PSA has no Approve/Apply. |
 | Patch Apply → disk | **PROVEN** | Local Supabase `:54321`/`:54322` started. `apps/api/.env` `replace-me` no longer clobbers process `SUPABASE_*`. Owner Apply → 202 `a3642068-aaba-46b5-b9a5-3531a98f0f43`. Owner self-decide 409 SoD. Operator decide 200. Owner Apply `?approvalId=` 200 `APPLIED` at `2026-09-18T11:04:07.423Z`. Disk: 13 files under `C:\Users\User\AppData\Local\Temp\atlas-studio-apply-proof`; README became Mini SaaS exemplar. Audit `code.patch.applied` hash `179be191…`. Replay 403. Foreign user 403 isolation. Unapproved patch 403. Studio tree + Apply disabled + Verify enabled. No in-memory approval fallback. |
 | Current `:4000` HMAC ALLOW/DENY | **LIVE-PROVEN** | Unsigned 401 INVALID; invalid HMAC 401 INVALID; valid HMAC 200 ALLOW `executed:false`; destructive `civio.record.delete` 409 DENY `executed:false`. |
-| Civio / CaseFlow / HotelOS / BrokerOS | **PROCESS LIVE vs :4000 (bounded)** | HotelOS `:3001` invoke → Atlas `hotelos.gateway.agent.revenue` ALLOW `executed:false` (audit `46ba5bf0…`). HotelOS HITL Suggest→Approve→Act stayed in HotelOS (`4964c41f…` → task `c154844f…`); unsigned decide 401; isolation tenant 404. Civio `:5728` signed-in `POST /api/ai/legal-query` → Atlas `civio.legal.query` ALLOW (audit `386f3e31…`); unsigned 401; Gemini 502 after ALLOW (dummy key, Atlas did not execute). CaseFlow connector ALLOW (audit `9672624d…`); A→B isolation tests 10/10; live HTTP remains DEGRADED 503 missing `ENCRYPTION_KEY`/`SUPABASE_URL`/`SUPABASE_KEY` (do not reuse Atlas keys). Foreign HMAC tenant 403 `OUT_OF_SCOPE`. BrokerOS `assertAtlasPreflight` ALLOW (audit `7de8f540…`); Next `:3010` not started — no `apps/web/.env.local` / Supabase. ADR-022: Atlas still does not execute sibling tools. |
+| Civio / CaseFlow / HotelOS / BrokerOS | **PROCESS LIVE vs :4000 (bounded)** | HotelOS `:3001` invoke → Atlas `hotelos.gateway.agent.revenue` ALLOW `executed:false` (audit `46ba5bf0…`). HotelOS HITL Suggest→Approve→Act stayed in HotelOS (`4964c41f…` → task `c154844f…`); unsigned decide 401; isolation tenant 404. Civio `:5728` signed-in `POST /api/ai/legal-query` → Atlas `civio.legal.query` ALLOW (audit `386f3e31…`); unsigned 401; Gemini 502 after ALLOW (dummy key, Atlas did not execute). This pass: Control HMAC ingest 202 observe-only; unauthenticated `/api/ai/legal-query` 401. CaseFlow connector ALLOW (audit `9672624d…`); A→B isolation tests 10/10; live HTTP remains DEGRADED 503 missing `ENCRYPTION_KEY`/`SUPABASE_URL`/`SUPABASE_KEY` (do not reuse Atlas keys; `.env` still absent). Foreign HMAC tenant 403 `OUT_OF_SCOPE`. BrokerOS `assertAtlasPreflight` ALLOW (audit `7de8f540…`); Next `:3010` not started — no `apps/web/.env.local` / Supabase (reconfirmed). ADR-022: Atlas still does not execute sibling tools. |
 | LexStudy / Vantera | **NOT AVAILABLE IN CURRENT LOCAL REPOSITORY/WORKSPACE** | No app dirs under `C:\Users\User\project` or `github`. Distinct from HMAC contract: `applicationId` lexstudy/vantera valid HMAC → 200 ALLOW on :4000. |
-| Control | **AUDITED** | Control vitest 80/80 PASS. Planes not merged. Live Control UI `:3100`/`:3200` not started this pass. |
-| Browser regression | **PASS** | `/he/studio` RTL; `/en/studio`; `/ar/studio`. Studio first in nav. PSA ≠ CODE_ENGINEER. |
-| Final build / typecheck after this pass | **PASS** | turbo.exe build `--force --concurrency=1` 30/30 exit 0 (2m44s). turbo.exe typecheck `--force --concurrency=1` 53/53 exit 0 (3m01s). |
+| Control | **LIVE-PROVEN** | Control vitest 80/80 PASS. Live `:3100` status `atlas-control-plane` ok; dashboard `/dashboard` (audit + approvals tabs); Admin `:3200` separate. Supervision `surface=CONTROL` not Studio. Unsigned Civio ingest 401; signed `civio.rights.answered` 202 ALLOW `executed:false` `execution=NOT_IMPLEMENTED`. Live audit 2 entries (`governance.decision` seq 1, `civio.connector.event.accepted` seq 2). Canonical approvals/audit-verify hop fail-closed (`ATLAS_CONTROL_PLANE_TOKEN` unset on the running pair) — Control does not locally approve/apply. PSA/API unauthenticated 401. Planes not merged. |
+| Browser regression | **PASS** | After clearing a stale `.next` cache and restarting current Web `:3000`: `/he/studio` RTL 200; `/en/studio` 200; `/ar/studio` 200. Studio first in nav. Control remains `:3100`. |
+| Final build / typecheck after this pass | **PASS** | `node scripts/turbo-run.mjs` build `--force --concurrency=1` 30/30 exit 0 (2m56s, `NODE_ENV=production`). typecheck `--force --concurrency=1` 53/53 exit 0 (3m20s). First build attempt failed only because the Control-start shell leaked `NODE_ENV=development` into `next build`; not a source defect. |
 
 ### Application preflight (2026-09-18)
 
