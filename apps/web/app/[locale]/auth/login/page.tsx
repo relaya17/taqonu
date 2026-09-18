@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import {
   Alert,
   Box,
@@ -11,12 +11,18 @@ import {
   Divider,
 } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost, downloadVerifiedSourcesPack, ADMIN_LOGIN_PATH } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
 import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
+import {
+  auditReturnPath,
+  authHrefWithNext,
+  inputDirForLocale,
+} from "@/lib/audit-return-path";
 
 interface AuthProviders {
   emailPassword: boolean;
@@ -30,19 +36,14 @@ interface AuthSession {
   user: { email: string; role: string };
 }
 
-function auditReturnPath(locale: string): string | null {
-  if (typeof window === "undefined") return null;
-  const next = new URLSearchParams(window.location.search).get("next");
-  if (next === "/partners" || next === "/experts") return `/${locale}${next}`;
-  return null;
-}
-
-export default function LoginPage() {
+function LoginPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
+  const next = useSearchParams().get("next");
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
   const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const fieldDir = inputDirForLocale(locale);
 
   const providers = useQuery({
     queryKey: ["auth-providers"],
@@ -63,7 +64,7 @@ export default function LoginPage() {
       // Studio is the signed-in working entry. The dashboard remains at
       // `/${locale}` and is not deleted.
       window.location.href =
-        auditReturnPath(locale) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
+        auditReturnPath(locale, next) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 
@@ -76,7 +77,7 @@ export default function LoginPage() {
     }
     const { error } = await client.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: oauthRedirectTo(locale) },
+      options: { redirectTo: oauthRedirectTo(locale, next) },
     });
     if (error) setOauthError(error.message);
   };
@@ -135,7 +136,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
             required
-            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+            inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
           />
           <TextField
             label={t("password")}
@@ -145,14 +146,14 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
             required
-            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+            inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
           />
 
           <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>
             {t("login")}
           </Button>
           <Typography variant="body2" sx={{ textAlign: "center" }}>
-            <Link href="/auth/forgot">{t("forgotLink")}</Link>
+            <Link href={authHrefWithNext("/auth/forgot", next)}>{t("forgotLink")}</Link>
           </Typography>
         </Stack>
       </Box>
@@ -204,13 +205,7 @@ export default function LoginPage() {
 
       <Typography variant="body2">
         {t("noAccount")}{" "}
-        <Link
-          href={
-            auditReturnPath(locale)
-              ? `/auth/register?next=${new URLSearchParams(window.location.search).get("next")}`
-              : "/auth/register"
-          }
-        >
+        <Link href={authHrefWithNext("/auth/register", next)}>
           {t("registerLink")}
         </Link>
       </Typography>
@@ -246,5 +241,13 @@ export default function LoginPage() {
         </Box>
       </Typography>
     </Stack>
+  );
+}
+
+export default function LoginPageGate() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPage />
+    </Suspense>
   );
 }

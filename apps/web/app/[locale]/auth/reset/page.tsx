@@ -4,16 +4,24 @@ import { Suspense, useState } from "react";
 import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
 import { useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { Link, useRouter } from "@/i18n/routing";
+import { useLocale, useTranslations } from "next-intl";
+import { Link } from "@/i18n/routing";
 import { apiPost } from "@/lib/api";
+import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
+import {
+  auditReturnPath,
+  authHrefWithNext,
+  inputDirForLocale,
+} from "@/lib/audit-return-path";
 
 function ResetPasswordForm() {
   const t = useTranslations("auth");
-  const router = useRouter();
+  const locale = useLocale();
   const params = useSearchParams();
+  const next = params.get("next");
   const [token, setToken] = useState(params.get("token") ?? "");
   const [password, setPassword] = useState("");
+  const fieldDir = inputDirForLocale(locale);
 
   const reset = useMutation({
     mutationFn: () =>
@@ -22,8 +30,8 @@ function ResetPasswordForm() {
         newPassword: password,
       }),
     onSuccess: () => {
-      router.push("/");
-      router.refresh();
+      window.location.href =
+        auditReturnPath(locale, next) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 
@@ -45,6 +53,7 @@ function ResetPasswordForm() {
           onChange={(e) => setToken(e.target.value)}
           fullWidth
           required
+          inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
         />
         <TextField
           label={t("newPassword")}
@@ -54,6 +63,7 @@ function ResetPasswordForm() {
           fullWidth
           required
           helperText={t("passwordHint")}
+          inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
         />
         <Button
           variant="contained"
@@ -69,7 +79,7 @@ function ResetPasswordForm() {
       ) : null}
 
       <Typography variant="body2">
-        <Link href="/auth/login">{t("loginLink")}</Link>
+        <Link href={authHrefWithNext("/auth/login", next)}>{t("loginLink")}</Link>
       </Typography>
     </Stack>
   );

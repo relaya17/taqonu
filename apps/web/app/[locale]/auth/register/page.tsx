@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import {
   Alert,
   Box,
@@ -11,12 +11,18 @@ import {
   Divider,
 } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
 import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
+import {
+  auditReturnPath,
+  authHrefWithNext,
+  inputDirForLocale,
+} from "@/lib/audit-return-path";
 
 interface AuthProviders {
   google: boolean;
@@ -25,22 +31,17 @@ interface AuthProviders {
   cloudAuth: boolean;
 }
 
-function auditReturnPath(locale: string): string | null {
-  if (typeof window === "undefined") return null;
-  const next = new URLSearchParams(window.location.search).get("next");
-  if (next === "/partners" || next === "/experts") return `/${locale}${next}`;
-  return null;
-}
-
-export default function RegisterPage() {
+function RegisterPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
+  const next = useSearchParams().get("next");
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
   const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
   const [displayName, setDisplayName] = useState(
     isDevLoginPrefill ? DEV_CREDENTIALS.displayName : "",
   );
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const fieldDir = inputDirForLocale(locale);
 
   const providers = useQuery({
     queryKey: ["auth-providers"],
@@ -60,7 +61,7 @@ export default function RegisterPage() {
       // identical fix and explanation in auth/login/page.tsx.
       // Studio is the signed-in working entry. Dashboard stays at `/${locale}`.
       window.location.href =
-        auditReturnPath(locale) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
+        auditReturnPath(locale, next) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
     },
   });
 
@@ -73,7 +74,7 @@ export default function RegisterPage() {
     }
     const { error } = await client.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: oauthRedirectTo(locale) },
+      options: { redirectTo: oauthRedirectTo(locale, next) },
     });
     if (error) setOauthError(error.message);
   };
@@ -123,7 +124,7 @@ export default function RegisterPage() {
             onChange={(e) => setDisplayName(e.target.value)}
             fullWidth
             autoComplete="name"
-            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+            inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
           />
           <TextField
             label={t("email")}
@@ -133,7 +134,7 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
             required
-            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+            inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
           />
           <TextField
             label={t("password")}
@@ -144,7 +145,7 @@ export default function RegisterPage() {
             helperText={t("passwordHint")}
             fullWidth
             required
-            inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
+            inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
             FormHelperTextProps={{ sx: { textAlign: "start" } }}
           />
 
@@ -196,8 +197,16 @@ export default function RegisterPage() {
 
       <Typography variant="body2">
         {t("haveAccount")}{" "}
-        <Link href="/auth/login">{t("loginLink")}</Link>
+        <Link href={authHrefWithNext("/auth/login", next)}>{t("loginLink")}</Link>
       </Typography>
     </Stack>
+  );
+}
+
+export default function RegisterPageGate() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterPage />
+    </Suspense>
   );
 }

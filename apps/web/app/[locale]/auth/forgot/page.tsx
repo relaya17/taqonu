@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
 import { useMutation } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiPost } from "@/lib/api";
+import { authHrefWithNext, inputDirForLocale } from "@/lib/audit-return-path";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordPage() {
   const t = useTranslations("auth");
+  const locale = useLocale();
+  const next = useSearchParams().get("next");
   const [email, setEmail] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  const fieldDir = inputDirForLocale(locale);
 
   const forgot = useMutation({
     mutationFn: () =>
@@ -44,6 +49,7 @@ export default function ForgotPasswordPage() {
           onChange={(e) => setEmail(e.target.value)}
           fullWidth
           required
+          inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
         />
         <Button
           variant="contained"
@@ -68,7 +74,10 @@ export default function ForgotPasswordPage() {
               </Typography>
               <Button
                 component={Link}
-                href={`/auth/reset?token=${encodeURIComponent(token)}`}
+                href={authHrefWithNext(
+                  `/auth/reset?token=${encodeURIComponent(token)}`,
+                  next,
+                )}
                 sx={{ mt: 1 }}
                 size="small"
               >
@@ -83,8 +92,16 @@ export default function ForgotPasswordPage() {
       ) : null}
 
       <Typography variant="body2">
-        <Link href="/auth/login">{t("loginLink")}</Link>
+        <Link href={authHrefWithNext("/auth/login", next)}>{t("loginLink")}</Link>
       </Typography>
     </Stack>
+  );
+}
+
+export default function ForgotPasswordPageGate() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordPage />
+    </Suspense>
   );
 }

@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Alert, CircularProgress, Stack, Typography } from "@mui/material";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { apiPost } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
+import { allowlistedAuditNext } from "@/lib/audit-return-path";
 
-export default function AuthCallbackPage() {
+function AuthCallbackPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
   const router = useRouter();
+  const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export default function AuthCallbackPage() {
           expiresAt: session.expires_at ? session.expires_at * 1000 : null,
         });
         if (!cancelled) {
-          router.replace(WEB_POST_AUTH_PATH);
+          router.replace(allowlistedAuditNext(next) ?? WEB_POST_AUTH_PATH);
           router.refresh();
         }
       } catch (err) {
@@ -65,7 +68,7 @@ export default function AuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [locale, router, t]);
+  }, [locale, router, t, next]);
 
   return (
     <Stack spacing={2} alignItems="center" sx={{ py: 8 }}>
@@ -78,5 +81,13 @@ export default function AuthCallbackPage() {
         <Alert severity="error">{error}</Alert>
       )}
     </Stack>
+  );
+}
+
+export default function AuthCallbackPageGate() {
+  return (
+    <Suspense fallback={null}>
+      <AuthCallbackPage />
+    </Suspense>
   );
 }

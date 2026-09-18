@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { allowlistedAuditNext } from "@/lib/audit-return-path";
 
 let browserClient: SupabaseClient | null = null;
 
@@ -20,9 +21,15 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
   return browserClient;
 }
 
-export function oauthRedirectTo(locale: string): string {
-  if (typeof window === "undefined") {
-    return `http://localhost:3000/${locale}/auth/callback`;
-  }
-  return `${window.location.origin}/${locale}/auth/callback`;
+export function oauthRedirectTo(
+  locale: string,
+  next?: string | null,
+): string {
+  const origin =
+    typeof window === "undefined"
+      ? "http://localhost:3000"
+      : window.location.origin;
+  const base = `${origin}/${locale}/auth/callback`;
+  const allowed = allowlistedAuditNext(next);
+  return allowed ? `${base}?next=${encodeURIComponent(allowed)}` : base;
 }
