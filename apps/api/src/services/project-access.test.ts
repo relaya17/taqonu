@@ -23,6 +23,7 @@ vi.mock("../store/os-store.js", () => ({
 }));
 
 const {
+  assertProjectOwnerOrClaim,
   assertProjectWriteAccess,
   bindProjectOwner,
   getProjectOwnerId,
@@ -96,6 +97,16 @@ describe("project-access", () => {
       expect((e as AtlasError).code).toBe("FORBIDDEN");
       expect(isolationAuditSummary().denied).toBeGreaterThan(0);
     }
+  });
+
+  it("claims an unowned project and denies a foreign owner", () => {
+    const projectId = "22222222-2222-4222-8222-222222222222";
+    const owner = user();
+    assertProjectOwnerOrClaim(projectId, owner.id);
+    expect(getProjectOwnerId(projectId)).toBe(owner.id);
+    expect(() =>
+      assertProjectOwnerOrClaim(projectId, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+    ).toThrow(/not owned by this user/);
   });
 
   it("allows admin across owners", async () => {

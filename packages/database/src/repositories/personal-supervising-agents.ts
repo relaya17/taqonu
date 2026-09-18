@@ -73,7 +73,17 @@ function mergeExisting(
     ...incoming,
     agentClass: existing.agentClass,
     agentId: existing.agentId,
-    scope: existing.scope,
+    scope: {
+      ...existing.scope,
+      projectIds:
+        existing.scope.projectIds.length > 0
+          ? existing.scope.projectIds
+          : incoming.scope.projectIds,
+      applicationIds:
+        existing.scope.applicationIds.length > 0
+          ? existing.scope.applicationIds
+          : incoming.scope.applicationIds,
+    },
     createdAt: existing.createdAt,
   });
 }

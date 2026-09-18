@@ -95,8 +95,47 @@ describe("PersonalSupervisingAgentRepository", () => {
       },
     });
     expect(touched.scope.tenantId).toBe("tenant-alpha");
+    expect(touched.scope.projectIds).toEqual(["project-alpha"]);
     expect(touched.agentId).toBe(created.agentId);
     expect(touched.createdAt).toBe(created.createdAt);
+  });
+
+  it("binds empty project and application lists once, then freezes them", async () => {
+    const repository = new PersonalSupervisingAgentRepository(
+      createInProcessPersonalSupervisingAgentStore(),
+    );
+    const created = await repository.save(
+      record(OWNER_A, {
+        scope: {
+          ownerId: OWNER_A,
+          tenantId: "user-plane",
+          projectIds: [],
+          applicationIds: [],
+        },
+      }),
+    );
+    const bound = await repository.save({
+      ...created,
+      scope: {
+        ownerId: OWNER_A,
+        tenantId: "user-plane",
+        projectIds: ["33333333-3333-4333-8333-333333333333"],
+        applicationIds: ["def-000"],
+      },
+    });
+    expect(bound.scope.projectIds).toEqual(["33333333-3333-4333-8333-333333333333"]);
+    expect(bound.scope.applicationIds).toEqual(["def-000"]);
+    const frozen = await repository.save({
+      ...bound,
+      scope: {
+        ownerId: OWNER_A,
+        tenantId: "user-plane",
+        projectIds: ["other"],
+        applicationIds: ["hotelos"],
+      },
+    });
+    expect(frozen.scope.projectIds).toEqual(["33333333-3333-4333-8333-333333333333"]);
+    expect(frozen.scope.applicationIds).toEqual(["def-000"]);
   });
 
   it("writes snake_case owner/scope columns to postgres", async () => {

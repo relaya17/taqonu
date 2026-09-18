@@ -291,7 +291,7 @@ create table if not exists public.tool_calls (
   run_id uuid not null references public.agent_runs (id) on delete cascade,
   tool text not null,
   project_id uuid,
-  authorization text not null,
+  "authorization" text not null,
   started_at timestamptz not null default now(),
   completed_at timestamptz,
   result text,

@@ -122,4 +122,37 @@ describe("Personal Supervising Agent routes", () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it("allows the owner of a UUID project and denies a foreign owner", async () => {
+    const { bindProjectOwner } = await import("../services/project-access.js");
+    const projectId = "33333333-3333-4333-8333-333333333333";
+    bindProjectOwner(projectId, OWNER_A.id, "bound_on_create");
+
+    const owned = await app.inject({
+      method: "POST",
+      url: PERSONAL_SUPERVISING_AGENT_PATH,
+      payload: {
+        tenantId: "user-plane",
+        projectIds: [projectId],
+        applicationIds: ["def-000"],
+      },
+    });
+    expect(owned.statusCode).toBe(200);
+    expect(owned.json().scope.projectIds).toContain(projectId);
+
+    getRequestUser.mockResolvedValue(OWNER_B);
+    const foreign = await app.inject({
+      method: "POST",
+      url: PERSONAL_SUPERVISING_AGENT_PATH,
+      payload: {
+        tenantId: "user-plane",
+        projectIds: [projectId],
+        applicationIds: ["def-000"],
+      },
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(String(foreign.json().error?.message ?? foreign.json().message ?? "")).toMatch(
+      /not owned by this user/,
+    );
+  });
 });

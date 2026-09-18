@@ -34,7 +34,7 @@ import { appendUnifiedAuditEntry } from "./audit-log.js";
 import { listApprovalRequests } from "./approvals.js";
 import { submitAgentProposal } from "./agent-proposal.js";
 import { buildMemoryContext } from "./memory-pipeline.js";
-import { getProjectOwnerId } from "./project-access.js";
+import { assertProjectOwnerOrClaim, getProjectOwnerId } from "./project-access.js";
 import { osStore } from "../store/os-store.js";
 
 export type {
@@ -240,6 +240,47 @@ function assertCanAct(record: PersonalSupervisingAgentRecord): void {
   }
 }
 
+function assertPresentedProjectsOwned(
+  ownerId: string,
+  projectIds: readonly string[],
+): void {
+  for (const projectId of projectIds) {
+    if (UUID_RE.test(projectId)) {
+      assertProjectOwnerOrClaim(projectId, ownerId);
+    }
+  }
+}
+
+/**
+ * Same-owner ensure may bind the first project/application lists when the
+ * stored scope is still empty. It must not widen a non-empty persisted scope
+ * to foreign or previously excluded ids.
+ */
+function resolveEnsureScope(
+  stored: PsaAuthorizationScope,
+  presented: {
+    readonly tenantId: string;
+    readonly projectIds: readonly string[];
+    readonly applicationIds: readonly string[];
+  },
+): PsaAuthorizationScope | null {
+  if (presented.tenantId !== stored.tenantId) return null;
+  const projectsWithin = presented.projectIds.every((id) =>
+    stored.projectIds.includes(id),
+  );
+  const appsWithin = presented.applicationIds.every((id) =>
+    stored.applicationIds.includes(id),
+  );
+  if (projectsWithin && appsWithin) return stored;
+  if (!projectsWithin && stored.projectIds.length > 0) return null;
+  if (!appsWithin && stored.applicationIds.length > 0) return null;
+  return {
+    ...stored,
+    projectIds: projectsWithin ? stored.projectIds : [...presented.projectIds],
+    applicationIds: appsWithin ? stored.applicationIds : [...presented.applicationIds],
+  };
+}
+
 function assertProjectInScope(scope: PsaAuthorizationScope, projectId: string | null): void {
   if (projectId === null || projectId.length === 0) return;
   if (!scope.projectIds.includes(projectId)) {
@@ -280,6 +321,21 @@ export async function ensurePersonalSupervisingAgent(input: {
     if (existing.status === "REVOKED") {
       return existing;
     }
+    assertPresentedProjectsOwned(input.ownerId, input.projectIds);
+    const nextScope = resolveEnsureScope(existing.scope, input);
+    if (!nextScope) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Presented tenant, project, or application is outside the persisted supervising agent scope",
+        { statusCode: 403 },
+      );
+    }
+    if (
+      nextScope.projectIds !== existing.scope.projectIds ||
+      nextScope.applicationIds !== existing.scope.applicationIds
+    ) {
+      return persist({ ...existing, scope: nextScope, lastActivityAt: new Date().toISOString() });
+    }
     if (!presentedScopeWithin(existing.scope, input)) {
       throw new AtlasError(
         "FORBIDDEN",
@@ -290,16 +346,7 @@ export async function ensurePersonalSupervisingAgent(input: {
     return touch(existing);
   }
 
-  for (const projectId of input.projectIds) {
-    if (UUID_RE.test(projectId)) {
-      const owner = getProjectOwnerId(projectId);
-      if (owner !== input.ownerId) {
-        throw new AtlasError("FORBIDDEN", "Project is not owned by this user", {
-          statusCode: 403,
-        });
-      }
-    }
-  }
+  assertPresentedProjectsOwned(input.ownerId, input.projectIds);
 
   const scope: PsaAuthorizationScope = {
     ownerId: input.ownerId,

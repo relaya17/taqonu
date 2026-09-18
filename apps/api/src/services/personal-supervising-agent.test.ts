@@ -17,7 +17,7 @@ import {
 } from "./audit-log.js";
 import { resetApprovalsForTests } from "./approvals-test-store.js";
 import { createApprovalRequest } from "./approvals.js";
-import { bindProjectOwner } from "./project-access.js";
+import { bindProjectOwner, getProjectOwnerId } from "./project-access.js";
 import {
   configurePersonalSupervisingAgentStore,
   coordinateSpecialists,
@@ -508,6 +508,131 @@ describe("Personal Supervising Agent", () => {
     if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
     else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
     osStore.unloadForTests();
+  });
+
+  it("claims an unowned UUID project for the authorized owner", async () => {
+    const created = await ensurePersonalSupervisingAgent({
+      ownerId: OWNER_A,
+      tenantId: "tenant-alpha",
+      projectIds: [PROJECT_UUID],
+      applicationIds: ["def-000"],
+    });
+    expect(created.scope.ownerId).toBe(OWNER_A);
+    expect(created.scope.projectIds).toContain(PROJECT_UUID);
+    expect(getProjectOwnerId(PROJECT_UUID)).toBe(OWNER_A);
+  });
+
+  it("denies ensuring a UUID project owned by someone else", async () => {
+    bindProjectOwner(PROJECT_UUID, OWNER_A, "bound_on_create");
+    await expect(
+      ensurePersonalSupervisingAgent({
+        ownerId: OWNER_B,
+        tenantId: "tenant-beta",
+        projectIds: [PROJECT_UUID],
+        applicationIds: ["def-000"],
+      }),
+    ).rejects.toThrow(/not owned by this user/);
+  });
+
+  it("binds the first owned project when stored PSA scope is still empty", async () => {
+    const empty = await ensurePersonalSupervisingAgent({
+      ownerId: OWNER_A,
+      tenantId: "user-plane",
+      projectIds: [],
+      applicationIds: [],
+    });
+    expect(empty.scope.projectIds).toEqual([]);
+    bindProjectOwner(PROJECT_UUID, OWNER_A, "bound_on_create");
+    const bound = await ensurePersonalSupervisingAgent({
+      ownerId: OWNER_A,
+      tenantId: "user-plane",
+      projectIds: [PROJECT_UUID],
+      applicationIds: ["def-000"],
+    });
+    expect(bound.agentId).toBe(empty.agentId);
+    expect(bound.scope.projectIds).toEqual([PROJECT_UUID]);
+    expect(bound.scope.applicationIds).toEqual(["def-000"]);
+  });
+
+  it("returns project-scoped memory to the owner and hides the other owner's slice", async () => {
+    bindProjectOwner(PROJECT_UUID, OWNER_A, "bound_on_create");
+    await ensurePersonalSupervisingAgent({
+      ownerId: OWNER_A,
+      tenantId: "tenant-alpha",
+      projectIds: [PROJECT_UUID],
+      applicationIds: ["def-000"],
+    });
+    await ensurePersonalSupervisingAgent({
+      ownerId: OWNER_B,
+      tenantId: "tenant-beta",
+      projectIds: ["project-beta"],
+      applicationIds: ["hotelos"],
+    });
+    const now = new Date().toISOString();
+    osStore.addMemory(
+      memorySchema.parse({
+        id: "12121212-1212-4121-8121-121212121212",
+        ownerId: OWNER_A,
+        type: "TASK",
+        projectId: PROJECT_UUID,
+        statement: "Continue Atlas Studio PSA continuity check after typecheck.",
+        reason: ["studio-reminder"],
+        status: "ACTIVE",
+        confidence: 1,
+        category: "DECISION_MEMORY",
+        epistemicState: "CONFIRMED",
+        observationMode: "CONFIRMED",
+        source: "studio",
+        sourceType: "USER",
+        sourceId: null,
+        evidence: [],
+        supersededBy: null,
+        validFrom: now,
+        validUntil: null,
+        observedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: OWNER_A,
+        scope: "PROJECT",
+        priority: "MEDIUM",
+      }),
+    );
+    osStore.addMemory(
+      memorySchema.parse({
+        id: "13131313-1313-4131-8131-131313131313",
+        ownerId: OWNER_B,
+        type: "TASK",
+        projectId: PROJECT_UUID,
+        statement: "foreign secret reminder",
+        reason: ["studio-reminder"],
+        status: "ACTIVE",
+        confidence: 1,
+        category: "DECISION_MEMORY",
+        epistemicState: "CONFIRMED",
+        observationMode: "CONFIRMED",
+        source: "studio",
+        sourceType: "USER",
+        sourceId: null,
+        evidence: [],
+        supersededBy: null,
+        validFrom: now,
+        validUntil: null,
+        observedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: OWNER_B,
+        scope: "PROJECT",
+        priority: "MEDIUM",
+      }),
+    );
+    const owned = await readPsaMemory(OWNER_A, { projectId: PROJECT_UUID });
+    expect(owned.items.map((item) => item.statement)).toContain(
+      "Continue Atlas Studio PSA continuity check after typecheck.",
+    );
+    expect(owned.items.map((item) => item.statement)).not.toContain("foreign secret reminder");
+    await expect(readPsaMemory(OWNER_B, { projectId: PROJECT_UUID })).rejects.toThrow(
+      /outside the supervising agent scope|not owned by this user/,
+    );
   });
 
   it("does not let a different owner resolve another owner's PSA", async () => {

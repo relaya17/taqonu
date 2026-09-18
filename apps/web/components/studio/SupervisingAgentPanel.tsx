@@ -21,6 +21,11 @@ interface PsaRecord {
   status: string;
   recommendations: Array<{ id: string; reason: string; severity: string }>;
   escalations: Array<{ id: string; reason: string; severity: string }>;
+  scope?: {
+    ownerId?: string;
+    projectIds?: string[];
+    applicationIds?: string[];
+  };
 }
 
 interface PsaObservation {
@@ -82,9 +87,12 @@ export function SupervisingAgentPanel({
     queryFn: () => apiGet<PsaObservation>("/api/v1/supervising-agent/observation"),
   });
 
+  const scopedToProject =
+    Boolean(projectId) && Boolean(psa.data?.scope?.projectIds?.includes(projectId));
+
   const memory = useQuery({
     queryKey: ["supervising-agent-memory", projectId],
-    enabled: Boolean(psa.data?.agentId) && Boolean(projectId),
+    enabled: scopedToProject,
     queryFn: () =>
       apiGet<PsaMemorySlice>(
         `/api/v1/supervising-agent/memory?projectId=${encodeURIComponent(projectId)}`,
@@ -116,7 +124,7 @@ export function SupervisingAgentPanel({
   useEffect(() => {
     if (autoLinked.current) return;
     if (!projectId || psa.isLoading || psa.isError) return;
-    if (psa.data?.agentId) return;
+    if (scopedToProject) return;
     if (ensure.isPending || ensure.isError) return;
     autoLinked.current = true;
     ensure.mutate();
@@ -124,7 +132,7 @@ export function SupervisingAgentPanel({
     projectId,
     psa.isLoading,
     psa.isError,
-    psa.data?.agentId,
+    scopedToProject,
     ensure.isPending,
     ensure.isError,
     ensure.mutate,
@@ -160,7 +168,7 @@ export function SupervisingAgentPanel({
       <Typography variant="body2" sx={{ color: "rgba(220,221,225,0.72)", mb: 1.5 }}>
         {t("help")}
       </Typography>
-      {record?.agentId ? (
+      {record?.agentId && scopedToProject ? (
         <Typography variant="caption" sx={{ color: "rgba(220,221,225,0.55)", display: "block" }}>
           {record.agentId}
         </Typography>

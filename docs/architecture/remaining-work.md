@@ -12,17 +12,38 @@ open engineering backlog.
 
 **Production gate: NOT PRODUCTION READY.**
 
+### Gap closure execution (2026-09-18, current :4000 / :3000)
+
+Code-completable Studio/PSA ownership defects in this pass are closed.
+HMAC was re-proven on the **current** API process (`127.0.0.1:4000`),
+not the historical `:4010` result. Git working tree (8 files) is
+uncommitted by instruction. **Production remains NOT PROVEN.**
+
+| Gap | Status | Exact remaining |
+| --- | --- | --- |
+| PSA ownership 403 on Atlas Core | **PROVEN** | Owner + owned project → 200; foreign project → 403. Claim unowned UUID once via `assertProjectOwnerOrClaim`. Ownership check not removed. |
+| PSA memory API + Studio render | **BROWSER-PROVEN** | `GET /api/v1/supervising-agent/memory?projectId=` returned 1 item; Studio panel rendered it. Empty on apply-proof project (scope). |
+| PSA isolation | **PROVEN** | Owner A memory not returned for other project; foreign ensure 403. |
+| Patch proposal + human Approve | **BROWSER-PROVEN** | Patch `daaac002-672b-4e26-8c4b-9f5f78e40b78` APPROVED by human. Audit `code.patch.approved`. PSA has no Approve/Apply. |
+| Patch Apply → disk | **PROVEN** | Local Supabase `:54321`/`:54322` started. `apps/api/.env` `replace-me` no longer clobbers process `SUPABASE_*`. Owner Apply → 202 `a3642068-aaba-46b5-b9a5-3531a98f0f43`. Owner self-decide 409 SoD. Operator decide 200. Owner Apply `?approvalId=` 200 `APPLIED` at `2026-09-18T11:04:07.423Z`. Disk: 13 files under `C:\Users\User\AppData\Local\Temp\atlas-studio-apply-proof`; README became Mini SaaS exemplar. Audit `code.patch.applied` hash `179be191…`. Replay 403. Foreign user 403 isolation. Unapproved patch 403. Studio tree + Apply disabled + Verify enabled. No in-memory approval fallback. |
+| Current `:4000` HMAC ALLOW/DENY | **LIVE-PROVEN** | Unsigned 401 INVALID; invalid HMAC 401 INVALID; valid HMAC 200 ALLOW `executed:false`; destructive `civio.record.delete` 409 DENY `executed:false`. |
+| Civio / CaseFlow / HotelOS / BrokerOS | **PROCESS LIVE vs :4000 (bounded)** | HotelOS `:3001` invoke → Atlas `hotelos.gateway.agent.revenue` ALLOW `executed:false` (audit `46ba5bf0…`). HotelOS HITL Suggest→Approve→Act stayed in HotelOS (`4964c41f…` → task `c154844f…`); unsigned decide 401; isolation tenant 404. Civio `:5728` signed-in `POST /api/ai/legal-query` → Atlas `civio.legal.query` ALLOW (audit `386f3e31…`); unsigned 401; Gemini 502 after ALLOW (dummy key, Atlas did not execute). CaseFlow connector ALLOW (audit `9672624d…`); A→B isolation tests 10/10; live HTTP remains DEGRADED 503 missing `ENCRYPTION_KEY`/`SUPABASE_URL`/`SUPABASE_KEY` (do not reuse Atlas keys). Foreign HMAC tenant 403 `OUT_OF_SCOPE`. BrokerOS `assertAtlasPreflight` ALLOW (audit `7de8f540…`); Next `:3010` not started — no `apps/web/.env.local` / Supabase. ADR-022: Atlas still does not execute sibling tools. |
+| LexStudy / Vantera | **NOT AVAILABLE IN CURRENT LOCAL REPOSITORY/WORKSPACE** | No app dirs under `C:\Users\User\project` or `github`. Distinct from HMAC contract: `applicationId` lexstudy/vantera valid HMAC → 200 ALLOW on :4000. |
+| Control | **AUDITED** | Control vitest 80/80 PASS. Planes not merged. Live Control UI `:3100`/`:3200` not started this pass. |
+| Browser regression | **PASS** | `/he/studio` RTL; `/en/studio`; `/ar/studio`. Studio first in nav. PSA ≠ CODE_ENGINEER. |
+| Final build / typecheck after this pass | **PASS** | turbo.exe build `--force --concurrency=1` 30/30 exit 0 (2m44s). turbo.exe typecheck `--force --concurrency=1` 53/53 exit 0 (3m01s). |
+
 ### Application preflight (2026-09-18)
 
-Atlas now exposes HMAC `POST /api/v1/governance/application-preflight`.
+Atlas exposes HMAC `POST /api/v1/governance/application-preflight`.
 This is **not** sibling execute. `execute` remains `NONE` except `def-000`.
-Civio/CaseFlow/HotelOS/BrokerOS local runtimes call preflight before their
-model callers. Remaining direct Gemini/OpenAI/Anthropic paths in those
-repos are now routed through the same preflight contract. LexStudy and
-Vantera remain **NOT ACCESSIBLE**. Civio browser BYOK (user-owned OpenAI
-key) is **INTENTIONALLY UNGATED**. Studio PSA browser proof and live
-Application→Atlas→model multi-process proof remain **NOT PROVEN** unless
-a later pass records them.
+Civio/CaseFlow/HotelOS/BrokerOS local runtimes now call preflight against
+current `:4000` (see table). LexStudy and Vantera **application code** is
+**NOT AVAILABLE IN CURRENT LOCAL REPOSITORY/WORKSPACE**; their
+`applicationId` HMAC contract on Atlas is live. Civio browser BYOK
+(user-owned OpenAI key) is **INTENTIONALLY UNGATED**. CaseFlow live
+RBAC over HTTP and BrokerOS Next UI remain **EXTERNAL** (their own
+Supabase/env). Atlas does not execute sibling tools (ADR-022).
 
 **Authoritative G1–G7 landscape:** [`docs/architecture/gap-matrix.md`](gap-matrix.md).
 
@@ -118,7 +139,7 @@ Dashboard Patches remain. Control Plane was not moved into Web.
 
 ### Master gap closure — Studio home + PSA in Studio (2026-09-18)
 
-Studio/PSA slice. **Not production-ready.** Browser: signed-in Studio entry proven; PSA memory slice and patch Apply not proven.
+Studio/PSA slice. **Not production-ready.** Browser: signed-in Studio entry, PSA memory API, and Studio memory render proven this pass. Patch Approve proven. Patch Apply-to-disk is **PROVEN** on local Supabase (see CURRENT table).
 
 **Agent A (Studio architecture)**
 - Signed-in entry is `/studio` (`WEB_POST_AUTH_PATH`) from login, register, and OAuth callback.
@@ -135,14 +156,12 @@ Studio/PSA slice. **Not production-ready.** Browser: signed-in Studio entry prov
 - OPTIONAL FUTURE: syntax highlighting, multi-file tabs, project search, debugger, Git UI, in-Studio test runner, LSP. Not faked.
 
 **Agent E evidence (2026-09-18, this workstation)**
-- `pnpm --filter @atlas/web typecheck` PASS (before and after Next dev).
-- `pnpm --filter @atlas/api exec vitest run src/__tests__/web-studio-surfaces.test.ts src/services/personal-supervising-agent.test.ts` — 25 PASS.
-- `pnpm --filter @atlas/api exec vitest run src/routes/application-preflight.test.ts` — 14 PASS (ALLOW/DENY/KILLED/REQUIRE_APPROVAL/HMAC/replay/SoD).
-- Live HTTP against current-code API on `127.0.0.1:4010` (stale `:4000` still session-gates preflight as 401 empty): unsigned → `INVALID` `executed:false`; HMAC ALLOW 200 `executed:false`; destructive DENY 409 `executed:false`. Sibling application process was not started, so “application respected Atlas” is **NOT PROVEN**.
-- Browser: signed-in login landed on `/he/studio`. Studio first in nav. Dashboard `/he` and `/en` remain, with Studio as primary CTA. File tree loaded for Atlas Core. Checks tab opened. PSA panel and CODE_ENGINEER labels visible. PSA memory items after ensure were **not** captured. Patch approve/apply not exercised. RTL Hebrew Studio rendered.
-- `pnpm typecheck` (turbo): 45/48 PASS; `@atlas/web` failed TS6053 because concurrent `next dev` removed `.next/types`. Isolated web typecheck PASS. Full `pnpm build` **not re-run** this pass.
-- LexStudy / Vantera: directories absent — **BLOCKED / NOT AUDITABLE**.
-- Production: **NOT PROVEN**. Studio/PSA files committed separately from unrelated isolation/preflight working-tree changes.
+- Historical `:4010` HMAC remains historical. Current `:4000` HMAC ALLOW/DENY is LIVE-PROVEN (see CURRENT AUTHORITATIVE table).
+- PSA ensure Atlas Core 200 after ownership claim; memory GET items:1; Studio rendered `PROPOSED : תזכורת סטודיו: ...`. Isolation: apply-proof project empty memory.
+- Patch Approve BROWSER-PROVEN. Apply-to-disk PROVEN on local Supabase (see CURRENT table). Production Postgres is still NOT PROVEN.
+- turbo.exe build 30/30 PASS; turbo.exe typecheck 53/53 PASS after the ownership/memory fixes.
+- LexStudy / Vantera application dirs: **NOT AVAILABLE IN CURRENT LOCAL REPOSITORY/WORKSPACE**. HMAC `applicationId` contract on Atlas is live.
+- Production: **NOT PROVEN**. Eight ownership/memory files plus this remaining-work update remain uncommitted (no commit this pass).
 
 ### Verification pass (2026-09-17 evening)
 

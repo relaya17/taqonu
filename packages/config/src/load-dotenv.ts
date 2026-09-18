@@ -38,10 +38,14 @@ export function loadDotEnv(startDir: string = process.cwd()): string | null {
 
 /**
  * Server secrets live in `apps/api/.env` (not the web app).
- * Loads root `.env` first (shared/non-secret), then `apps/api/.env` with override
- * so API secrets win and stay out of the web tree.
+ * Loads root `.env` first (shared/non-secret), then `apps/api/.env` so API
+ * file secrets win over root. Variables already present in the process
+ * environment (operator/runtime) always win over both files — otherwise a
+ * gitignored `replace-me` placeholder would clobber a live local Supabase
+ * session started with temporary env vars.
  */
 export function loadServerDotEnv(startDir: string = process.cwd()): string | null {
+  const original = { ...process.env };
   const root = findMonorepoRoot(startDir);
   let loaded: string | null = null;
 
@@ -54,9 +58,19 @@ export function loadServerDotEnv(startDir: string = process.cwd()): string | nul
     const apiEnv = resolve(root, "apps/api/.env");
     if (existsSync(apiEnv)) {
       loadDotenvFile({ path: apiEnv, override: true, quiet: true });
+      restoreProcessEnv(original);
       return apiEnv;
     }
   }
 
+  restoreProcessEnv(original);
   return loadDotEnv(startDir) ?? loaded;
+}
+
+function restoreProcessEnv(original: NodeJS.ProcessEnv): void {
+  for (const [key, value] of Object.entries(original)) {
+    if (value !== undefined) {
+      process.env[key] = value;
+    }
+  }
 }

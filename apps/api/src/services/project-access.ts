@@ -135,6 +135,32 @@ export function bindProjectOwner(
 }
 
 /**
+ * Ownership for a known project id: claim if unowned, allow if caller owns it,
+ * deny if another owner is already bound. Does not remove the ownership check.
+ */
+export function assertProjectOwnerOrClaim(
+  projectId: string,
+  actorId: string,
+): void {
+  const ownerId = getProjectOwnerId(projectId);
+  if (!ownerId) {
+    bindProjectOwner(projectId, actorId, "claimed");
+    return;
+  }
+  if (ownerId !== actorId) {
+    appendIsolationAudit({
+      action: "denied",
+      projectId,
+      actorId,
+      detail: `owner mismatch · expected ${ownerId}`,
+    });
+    throw new AtlasError("FORBIDDEN", "Project is not owned by this user", {
+      statusCode: 403,
+    });
+  }
+}
+
+/**
  * Canonical absolute workspace path — rejects missing paths and null bytes.
  */
 export function assertSafeWorkspaceRoot(workspaceRoot: string): string {

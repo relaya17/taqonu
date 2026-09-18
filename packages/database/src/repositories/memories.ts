@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Durable memory persistence — mirrors `apps/api/src/store/os-store.ts`'s
  * local `memories` map into `public.memories` (+ `public.memory_evidence`)
  * when Supabase is live. Schema: `supabase/migrations/20260811000000_init.sql`,
- * `supabase/migrations/20260812010000_memories_created_by.sql`.
+ * `supabase/migrations/20260812010100_memories_created_by.sql`.
  */
 export class MemoryRepository {
   constructor(private readonly client: SupabaseClient) {}
