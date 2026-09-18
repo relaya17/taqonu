@@ -33,6 +33,29 @@ and re-checked sibling/Web blockers. **Production remains NOT PROVEN.**
 | Browser regression | **PASS** | After clearing a stale `.next` cache and restarting current Web `:3000`: `/he/studio` RTL 200; `/en/studio` 200; `/ar/studio` 200. Studio first in nav. Control remains `:3100`. |
 | Final build / typecheck after this pass | **PASS** | `node scripts/turbo-run.mjs` build `--force --concurrency=1` 30/30 exit 0 (2m56s, `NODE_ENV=production`). typecheck `--force --concurrency=1` 53/53 exit 0 (3m20s). First build attempt failed only because the Control-start shell leaked `NODE_ENV=development` into `next build`; not a source defect. |
 
+### Continuous gap closure (2026-09-18, after V1 `1fdcf372`)
+
+V1 checkpoint stays closed. This pass found and fixed additional locally
+actionable G1/G2/G3 items. It does not reopen PSA/Apply/HMAC/isolation/
+Control≠Web/ADR-022.
+
+| ID | Finding | Class | Status |
+| -- | ------- | ----- | ------ |
+| CG-01 | Login→register dropped allowlisted `?next=` on first render (`window.location.search`) | G1 | **FIXED** — `useSearchParams` + `apps/web/lib/audit-return-path.ts`; hops login↔register↔forgot↔reset |
+| CG-02 | EN/HE/AR auth fields hardcoded `dir="rtl"` | G2 | **FIXED** — `inputDirForLocale` |
+| CG-03 | Password reset success sent an authenticated session to `/` | G2 | **FIXED** — Studio / allowlisted `next` |
+| CG-04 | OAuth callback ignored `?next=` | G1 | **FIXED** — `allowlistedAuditNext`; live IdP still G4 |
+| CG-05 | AppShell `keepMounted: true` duplicated nav in the a11y tree | G2 | **FIXED** — `keepMounted: false` (Web + Admin) |
+| CG-06 | `commercial.test.ts` 500 under leaked `NODE_ENV=production` | G3 | **FIXED** — pin `NODE_ENV=test`; vitest `env`; production `ATLAS_SKIP_AUDIT_LOG` throw unchanged |
+| CG-07 | Dashboard Patches ignored `?project=` | G2 | **FIXED** — `useProjectQueryParam` |
+| CG-08 | Studio Checks project pickers were dead when `boundProjectId` set | G2 | **FIXED** — hide picker when bound |
+| CG-09 | Studio project select did not write `?project=`; projects API error looked empty | G2 | **FIXED** — URL sync + error Alert |
+| CG-10 | Companion collapsed chip used `titleEn` | G2 | **FIXED** — locale `title()` |
+
+Browser (local `:3000` next-dev, signed-out): `/en/auth/login?next=/partners` → Register `/en/auth/register?next=/partners` → Sign in `/en/auth/login?next=/partners`; forgot href `/en/auth/forgot?next=/partners`; EN email `dir=ltr`; `/he/auth/login?next=/experts` email `dir=rtl`, html `dir=rtl`. Rejected `next=https://evil.example` is not forwarded to register.
+
+Full turbo `build --force` was **not** re-run in this pass while `next dev` holds `apps/web/.next`. Web `tsc` typecheck exit 0. Production remains **NOT READY**.
+
 ### Application preflight (2026-09-18)
 
 Atlas exposes HMAC `POST /api/v1/governance/application-preflight`.

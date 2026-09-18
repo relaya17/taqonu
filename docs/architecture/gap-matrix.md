@@ -71,6 +71,15 @@ Categories: **G1** code defect · **G2** code-completable hardening ·
 | GAP-054 | GET `/experts`, `/agents`, kernel status | Signed-in catalogs, not tenant records | G6 | No | route handlers | Do not admin-gate catalogs |
 | GAP-055 | Live ML embeddings | Cosine when provider configured; else lexical-hash | G4 | No | remaining-work B2 | External embedding provider |
 | GAP-056 | Design-partner live proof | Strategy remaining, not a code defect | G5 | No | gap-vs-world-class | Human partner runs |
+| GAP-057 | Login→register dropped allowlisted `next` | `useSearchParams` + `audit-return-path.ts` | G1 | Done this pass | auth pages + browser `:3000` | none local |
+| GAP-058 | Auth fields hardcoded `dir="rtl"` | `inputDirForLocale` | G2 | Done this pass | login/register/forgot/reset | none |
+| GAP-059 | AppShell `keepMounted` duplicated nav | `keepMounted: false` | G2 | Done this pass | AppShell, AdminShell | none |
+| GAP-060 | `commercial.test.ts` leaked `NODE_ENV=production` | Pin `NODE_ENV=test`; vitest `env` | G3 | Done this pass | commercial.test.ts 8/8 under leaked production | Do not weaken skip-audit throw |
+| GAP-061 | OAuth callback ignored allowlisted `next` | `allowlistedAuditNext` on callback | G1 | Done this pass | callback/page.tsx | Live IdP is G4 |
+| GAP-062 | Patches desk ignored `?project=` | `useProjectQueryParam` | G2 | Done this pass | PatchesPanel.tsx | none |
+| GAP-063 | Bound Studio check pickers were dead | Hide picker when `boundProjectId` | G2 | Done this pass | Health/Truth/Readiness/ProcessAudit | none |
+| GAP-064 | Studio project URL + projects error | `router.replace` + `isError` Alert | G2 | Done this pass | studio/page.tsx | none |
+| GAP-065 | Companion chip ignored locale title | `title()` for collapsed label | G2 | Done this pass | AiCompanionBar.tsx | none |
 
 ## Counts (this working tree)
 
@@ -78,7 +87,7 @@ Categories: **G1** code defect · **G2** code-completable hardening ·
 | --- | --- | --- |
 | G1 remaining | **0** | No confirmed open code defect after this pass |
 | G2 remaining | **0** | Hardening that the architecture already supports is landed locally |
-| G3 | 001–018, 050–052 (21) | Code+tests exist; live infra proof missing |
+| G3 | 001–018, 050–052, 060 (22) | Code+tests exist; live infra proof missing; GAP-060 is test isolation |
 | G4 | 019–025, 055 (8) | Outside the repository |
 | G5 | 026–037, 056 (13) | Owner/product decisions; do not invent |
 | G6 | 038–045, 049, 053–054 (11) | Intentional boundaries |
