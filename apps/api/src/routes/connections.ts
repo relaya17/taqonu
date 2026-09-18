@@ -25,23 +25,13 @@ import {
 } from "../middleware/auth-guards.js";
 
 /**
- * KNOWN LIMITATION (flagged, not fixed here — see task scope): the GitHub
- * token and local repos-root path are stored as a single global record each
- * in `os-store.ts` (`githubConnection` / `localConnection`), not keyed per
- * owner/actor. Adding `requireUser`/`requireSignedInForWrite` below closes
- * the "fully unauthenticated" hole (anyone on the network could previously
- * read/replace/delete the shared token with zero auth), but it does NOT
- * isolate the token between two different signed-in accounts on the same
- * server — any signed-in user can still see/replace/import via the one
- * shared connection. Properly scoping this per-owner requires reshaping the
- * persisted store shape (`githubConnection`/`localConnection` -> a map keyed
- * by ownerId, with a migration for existing single-record installs), which
- * is a larger change than fits this pass; tracked as a follow-up rather than
- * silently left unaddressed.
+ * GitHub PAT and local folder connections are keyed by the signed-in user's
+ * id. User A cannot read, replace, or use User B's credentials. Metadata
+ * endpoints never return the raw token (`tokenConfigured` only).
  */
 
-function publicGithub() {
-  const raw = osStore.getGithubConnection();
+function publicGithub(ownerId: string) {
+  const raw = osStore.getGithubConnection(ownerId);
   if (!raw) {
     return null;
   }
@@ -59,8 +49,8 @@ function publicGithub() {
   });
 }
 
-function publicLocal() {
-  const raw = osStore.getLocalConnection();
+function publicLocal(ownerId: string) {
+  const raw = osStore.getLocalConnection(ownerId);
   if (!raw) {
     return null;
   }
@@ -82,15 +72,15 @@ export async function registerConnectionRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.get("/api/v1/connections", async (request) => {
-    await requireUser(app, request);
+    const user = await requireUser(app, request);
     return {
-      github: publicGithub(),
-      local: publicLocal(),
+      github: publicGithub(user.id),
+      local: publicLocal(user.id),
     };
   });
 
   app.post("/api/v1/connections/github", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: connecting GitHub is CONFIGURATION.CREATE.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
@@ -110,8 +100,8 @@ export async function registerConnectionRoutes(
     const now = new Date().toISOString();
     try {
       const profile = await verifyGithubToken(body.token);
-      const existing = osStore.getGithubConnection();
-      osStore.setGithubConnection({
+      const existing = osStore.getGithubConnection(user.id);
+      osStore.setGithubConnection(user.id, {
         id: existing?.id ?? crypto.randomUUID(),
         status: "CONNECTED",
         login: profile.login,
@@ -127,7 +117,7 @@ export async function registerConnectionRoutes(
         login: profile.login,
         at: now,
       });
-      return reply.status(201).send({ github: publicGithub() });
+      return reply.status(201).send({ github: publicGithub(user.id) });
     } catch (error) {
       throw new AtlasError(
         "INTEGRATION_ERROR",
@@ -138,7 +128,7 @@ export async function registerConnectionRoutes(
   });
 
   app.delete("/api/v1/connections/github", async (request) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: disconnecting GitHub is CONFIGURATION.DELETE.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "DELETE", {
@@ -154,7 +144,7 @@ export async function registerConnectionRoutes(
       throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
     }
 
-    osStore.setGithubConnection(null);
+    osStore.setGithubConnection(user.id, null);
     osStore.recordEvent({
       type: "connection.github.disconnected",
       at: new Date().toISOString(),
@@ -163,8 +153,8 @@ export async function registerConnectionRoutes(
   });
 
   app.get("/api/v1/connections/github/repos", async (request) => {
-    await requireUser(app, request);
-    const connection = osStore.getGithubConnection();
+    const user = await requireUser(app, request);
+    const connection = osStore.getGithubConnection(user.id);
     if (!connection?.token || connection.status !== "CONNECTED") {
       throw new AtlasError(
         "UNAUTHORIZED",
@@ -189,7 +179,7 @@ export async function registerConnectionRoutes(
       };
     } catch (error) {
       const now = new Date().toISOString();
-      osStore.setGithubConnection({
+      osStore.setGithubConnection(user.id, {
         ...connection,
         status: "ERROR",
         updatedAt: now,
@@ -221,7 +211,7 @@ export async function registerConnectionRoutes(
     }
 
     const body = importGithubReposRequestSchema.parse(request.body ?? {});
-    const connection = osStore.getGithubConnection();
+    const connection = osStore.getGithubConnection(user.id);
     if (!connection?.token || connection.status !== "CONNECTED") {
       throw new AtlasError(
         "UNAUTHORIZED",
@@ -257,7 +247,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/local", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: connecting local is CONFIGURATION.CREATE.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "CREATE", {
@@ -278,8 +268,8 @@ export async function registerConnectionRoutes(
     try {
       // Validate path is readable by scanning (depth 1 ok even if empty)
       scanLocalReposRoot(body.reposRoot, 1);
-      const existing = osStore.getLocalConnection();
-      osStore.setLocalConnection({
+      const existing = osStore.getLocalConnection(user.id);
+      osStore.setLocalConnection(user.id, {
         id: existing?.id ?? crypto.randomUUID(),
         status: "CONNECTED",
         reposRoot: body.reposRoot,
@@ -295,7 +285,7 @@ export async function registerConnectionRoutes(
         reposRoot: body.reposRoot,
         at: now,
       });
-      return reply.status(201).send({ local: publicLocal() });
+      return reply.status(201).send({ local: publicLocal(user.id) });
     } catch (error) {
       throw new AtlasError(
         "VALIDATION_ERROR",
@@ -306,7 +296,7 @@ export async function registerConnectionRoutes(
   });
 
   app.delete("/api/v1/connections/local", async (request) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: disconnecting local is CONFIGURATION.DELETE.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "DELETE", {
@@ -322,7 +312,7 @@ export async function registerConnectionRoutes(
       throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
     }
 
-    osStore.setLocalConnection(null);
+    osStore.setLocalConnection(user.id, null);
     osStore.recordEvent({
       type: "connection.local.disconnected",
       at: new Date().toISOString(),
@@ -331,7 +321,7 @@ export async function registerConnectionRoutes(
   });
 
   app.post("/api/v1/connections/local/scan", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: scanning local repos is CONFIGURATION.EXECUTE.
     const entityDecision = authorizeEntityAction("CONFIGURATION", "EXECUTE", {
@@ -348,7 +338,7 @@ export async function registerConnectionRoutes(
     }
 
     const body = scanLocalRequestSchema.parse(request.body ?? {});
-    const connection = osStore.getLocalConnection();
+    const connection = osStore.getLocalConnection(user.id);
     if (!connection?.reposRoot || connection.status === "DISCONNECTED") {
       throw new AtlasError(
         "UNAUTHORIZED",
@@ -364,7 +354,7 @@ export async function registerConnectionRoutes(
         reconcile: body.reconcile,
         linkLocalRoots: true,
       });
-      osStore.setLocalConnection({
+      osStore.setLocalConnection(user.id, {
         ...connection,
         status: "CONNECTED",
         updatedAt: now,
@@ -382,7 +372,7 @@ export async function registerConnectionRoutes(
         projects: discovered.projects,
       });
     } catch (error) {
-      osStore.setLocalConnection({
+      osStore.setLocalConnection(user.id, {
         ...connection,
         status: "ERROR",
         updatedAt: now,

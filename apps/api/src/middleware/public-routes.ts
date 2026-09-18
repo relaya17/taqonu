@@ -35,6 +35,8 @@ const PUBLIC_EXACT = new Set([
   "POST /api/v1/approvals/verify-atlas-self",
   "POST /api/v1/approvals/atlas-self/control-request",
   "POST /api/v1/audit/cp-import",
+  // HMAC-authenticated application preflight — handler verifies connector identity.
+  "POST /api/v1/governance/application-preflight",
 ]);
 
 const PUBLIC_PREFIXES: ReadonlyArray<{ method: string; prefix: string }> = [

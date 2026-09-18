@@ -177,3 +177,80 @@ describe("entity-policy + resource-access wiring for the contract route", () => 
     expect(result.decision).toBe("DENIED");
   });
 });
+
+describe("GET architecture contract and reports are isolated", () => {
+  it("401s GET /audit-engine/contract when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit-engine/contract",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("404s GET contract for a project the caller cannot read", async () => {
+    const now = new Date().toISOString();
+    const projectA = crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectA,
+      slug: "audit-proj-a",
+      name: "A",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(projectA, signedInUser().id, "bound_on_create");
+    getRequestUser.mockReturnValue(
+      signedInUser({
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        email: "other@example.com",
+      }),
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/audit-engine/contract?projectId=${projectA}`,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("403s GET /audit-engine/reports for a non-admin", async () => {
+    getRequestUser.mockReturnValue(signedInUser());
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit-engine/reports",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("200s GET /audit-engine/reports for admin", async () => {
+    getRequestUser.mockReturnValue(signedInUser({ role: "admin" }));
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit-engine/reports",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.json().items)).toBe(true);
+  });
+
+  it("401s POST /constitution/run when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/constitution/run",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("401s POST /audit-engine/run when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/audit-engine/run",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

@@ -161,7 +161,13 @@ describe("POST /api/v1/kernel/run", () => {
 });
 
 describe("POST /api/v1/kernel/eval/run", () => {
-  it("200s with an empty body (defaults apply) and returns an accuracy score", async () => {
+  it("401s when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({ method: "POST", url: "/api/v1/kernel/eval/run" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("201s with an empty body (defaults apply) and returns an accuracy score", async () => {
     const res = await app.inject({ method: "POST", url: "/api/v1/kernel/eval/run" });
     expect(res.statusCode).toBe(201);
     const body = res.json();
@@ -175,6 +181,20 @@ describe("GET/POST /api/v1/kernel/memory/lessons", () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/kernel/memory/lessons" });
     expect(res.statusCode).toBe(200);
     expect(res.json().items.length).toBeGreaterThan(0);
+  });
+
+  it("POST 401s when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/kernel/memory/lessons",
+      payload: {
+        pattern: "TEST_ROUTE_PATTERN",
+        title: "route test lesson",
+        summary: "a summary",
+      },
+    });
+    expect(res.statusCode).toBe(401);
   });
 
   it("POST 400s when required fields are missing", async () => {

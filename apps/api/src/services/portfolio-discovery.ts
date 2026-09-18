@@ -305,12 +305,14 @@ export function isPathInsideConfiguredRoot(
 }
 
 export function buildPortfolioDiscoveryStatus(input?: {
+  readonly ownerId?: string;
   readonly githubAppConfigured?: boolean;
 }): PortfolioDiscoveryStatus {
   osStore.ensureLoaded();
   const now = new Date().toISOString();
-  const local = osStore.getLocalConnection();
-  const github = osStore.getGithubConnection();
+  const ownerId = input?.ownerId;
+  const local = ownerId ? osStore.getLocalConnection(ownerId) : null;
+  const github = ownerId ? osStore.getGithubConnection(ownerId) : null;
   const installations = osStore.listGithubAppInstallations();
   const localConnected =
     Boolean(local?.reposRoot) && local?.status !== "DISCONNECTED";
@@ -424,6 +426,7 @@ export function buildPortfolioDiscoveryStatus(input?: {
 }
 
 export async function refreshPortfolioDiscovery(input: {
+  readonly ownerId: string;
   readonly body?: PortfolioDiscoveryRefreshRequest;
   readonly githubAppId?: string | undefined;
   readonly githubPrivateKey?: string | undefined;
@@ -443,7 +446,7 @@ export async function refreshPortfolioDiscovery(input: {
   let githubAppResult: PortfolioDiscoveryRefreshResult["githubApp"] = null;
 
   if (want.has("local")) {
-    const connection = osStore.getLocalConnection();
+    const connection = osStore.getLocalConnection(input.ownerId);
     if (connection?.reposRoot && connection.status !== "DISCONNECTED") {
       const now = new Date().toISOString();
       try {
@@ -453,7 +456,7 @@ export async function refreshPortfolioDiscovery(input: {
           reconcile: body.reconcile,
           linkLocalRoots: body.linkLocalRoots,
         });
-        osStore.setLocalConnection({
+        osStore.setLocalConnection(input.ownerId, {
           ...connection,
           status: "CONNECTED",
           updatedAt: now,
@@ -468,7 +471,7 @@ export async function refreshPortfolioDiscovery(input: {
           linked: discovered.linked,
         };
       } catch (error) {
-        osStore.setLocalConnection({
+        osStore.setLocalConnection(input.ownerId, {
           ...connection,
           status: "ERROR",
           updatedAt: now,
@@ -484,7 +487,7 @@ export async function refreshPortfolioDiscovery(input: {
   }
 
   if (want.has("github_token")) {
-    const connection = osStore.getGithubConnection();
+    const connection = osStore.getGithubConnection(input.ownerId);
     if (connection?.token && connection.status === "CONNECTED") {
       const repos = await listGithubReposForToken(connection.token);
       if (repos.length > 0) {
@@ -497,7 +500,7 @@ export async function refreshPortfolioDiscovery(input: {
             description: repo.description ?? null,
           })),
           reconcile: body.reconcile,
-        });
+        }, input.ownerId);
         githubTokenResult = {
           imported: repos.length,
           created: result.created,
@@ -546,7 +549,7 @@ export async function refreshPortfolioDiscovery(input: {
               description: repo.description ?? null,
             })),
             reconcile: body.reconcile,
-          });
+          }, input.ownerId);
           imported += repos.length;
           created += result.created;
           updated += result.updated;
@@ -584,6 +587,7 @@ export async function refreshPortfolioDiscovery(input: {
     githubToken: githubTokenResult,
     githubApp: githubAppResult,
     status: buildPortfolioDiscoveryStatus({
+      ownerId: input.ownerId,
       githubAppConfigured: Boolean(input.githubAppId && input.githubPrivateKey),
     }),
   };
@@ -595,6 +599,7 @@ export async function refreshPortfolioDiscovery(input: {
  */
 export function linkDiscoveredWorkspaceRoot(
   input: PortfolioDiscoveryLinkRequest,
+  ownerId: string,
 ): {
   projectId: string;
   workspaceRoot: string;
@@ -614,7 +619,7 @@ export function linkDiscoveredWorkspaceRoot(
     );
   }
 
-  const local = osStore.getLocalConnection();
+  const local = osStore.getLocalConnection(ownerId);
   if (local?.reposRoot && local.status !== "DISCONNECTED") {
     if (!isPathInsideConfiguredRoot(root, local.reposRoot)) {
       throw new AtlasError(

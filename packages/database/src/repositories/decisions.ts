@@ -70,5 +70,6 @@ function mapDecision(row: Record<string, unknown>): Decision {
     decidedAt: row.decided_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: typeof row.owner_id === "string" ? row.owner_id : null,
   });
 }

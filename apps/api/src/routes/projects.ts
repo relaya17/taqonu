@@ -162,7 +162,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
   app.post("/api/v1/projects/:id/cloud", async (request, reply) => {
     const params = z.object({ id: uuidSchema }).parse(request.params);
-    await assertProjectWriteAccess(app, request, params.id);
+    const user = await assertProjectWriteAccess(app, request, params.id);
 
     // Entity-policy gate: cloud sync is RECORD.UPDATE.
     const entityDecision = authorizeEntityAction("RECORD", "UPDATE", {
@@ -185,7 +185,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
     const existing = osStore.getCloudLink(project.id);
     if (existing) {
-      const plan = await getAccountPlan(app.atlasEnv);
+      const plan = await getAccountPlan(app.atlasEnv, { ownerId: user.id });
       return {
         projectId: project.id,
         cloudProjectId: existing.cloudProjectId,

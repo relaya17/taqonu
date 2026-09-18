@@ -28,6 +28,8 @@ export type ApplicationExecuteKind = "GATEWAY_FULFILL" | "NONE";
 
 export type ApplicationIngestKind = "EVALUATE_ONLY" | "NONE";
 
+export type ApplicationPreflightKind = "HMAC_ATLAS_API" | "NONE";
+
 /**
  * Exactly one classification per application.
  * Execute blocked by ADR-022 is recorded on `adr022Conflict`, not as a second class.
@@ -71,6 +73,7 @@ export interface ConnectedApplicationRuntime {
   readonly connection: ApplicationConnectionKind;
   readonly execute: ApplicationExecuteKind;
   readonly ingest: ApplicationIngestKind;
+  readonly preflight: ApplicationPreflightKind;
   readonly executeGap: ConnectedApplicationExecuteGap;
   readonly reconciliation: ConnectedApplicationReconciliation;
   readonly evidence: string;
@@ -93,6 +96,7 @@ function siblingInventory(
     readonly sourceRepository: string;
     readonly siblingObservePath: string | null;
     readonly evidence: string;
+    readonly preflight?: ApplicationPreflightKind;
   },
 ): ConnectedApplicationRuntime {
   return {
@@ -100,6 +104,7 @@ function siblingInventory(
     connection: "INVENTORY_ONLY",
     execute: "NONE",
     ingest: "NONE",
+    preflight: extra.preflight ?? "NONE",
     executeGap: SIBLING_EXECUTE_GAP,
     reconciliation: {
       classification: "INVENTORY ONLY",
@@ -126,6 +131,7 @@ export const CONNECTED_APPLICATION_RUNTIME: readonly ConnectedApplicationRuntime
       connection: "ATLAS_SELF",
       execute: "GATEWAY_FULFILL",
       ingest: "NONE",
+      preflight: "NONE",
       executeGap: {
         authentication: "PRESENT",
         actions: "PRESENT",
@@ -154,6 +160,7 @@ export const CONNECTED_APPLICATION_RUNTIME: readonly ConnectedApplicationRuntime
       connection: "HMAC_CONNECTOR",
       execute: "NONE",
       ingest: "EVALUATE_ONLY",
+      preflight: "HMAC_ATLAS_API",
       executeGap: {
         authentication: "PRESENT",
         actions: "ABSENT",
@@ -164,52 +171,57 @@ export const CONNECTED_APPLICATION_RUNTIME: readonly ConnectedApplicationRuntime
       reconciliation: {
         classification: "EVALUATE-ONLY",
         authMechanism: "HMAC ATLAS_CIVIO_CONNECTOR_SECRET + tenant/project bind",
-        connector: "POST /api/v1/connectors/civio/events (Civio → Atlas)",
-        action: "none — CIVIO_SUPPORTED_ACTIONS is empty",
+        connector:
+          "POST /api/v1/governance/application-preflight (Civio → Atlas) then POST /api/v1/connectors/civio/events (evaluate-only evidence)",
+        action: "none — CIVIO_SUPPORTED_ACTIONS is empty; Atlas does not execute Civio",
         executionEndpoint: "none",
         missingEndpoint: "No Atlas → Civio inbound action URL in Atlas or in github.com/relaya17/civio",
         missingAction: "CIVIO_SUPPORTED_ACTIONS = [] ; events have no tool/target/artifact",
         missingCredential:
-          "Live Civio runtime needs ATLAS_CIVIO_* on both runtimes; that still does not create an execute action",
+          "Live Civio runtime needs ATLAS_CIVIO_* plus ATLAS_PREFLIGHT_URL / ATLAS_API_URL on Civio",
         adr022Conflict:
-          "ADR-022: Control evaluates ingest and does not execute tools on ingest. Atlas-to-Civio inbound is NOT_IMPLEMENTED.",
-        siblingObservePath: "Civio emitCivioEventToControl → HMAC ingest (evaluate-only)",
+          "ADR-022: Control evaluates ingest and does not execute tools on ingest. Atlas-to-Civio inbound is NOT_IMPLEMENTED. Preflight is Civio→Atlas authorization, not sibling execute.",
+        siblingObservePath: "Civio emitCivioEventToControl → HMAC ingest (evaluate-only evidence after preflight)",
         sourceRepository: "github.com/relaya17/civio",
       },
       evidence:
-        "POST /api/v1/connectors/civio/events evaluates. ALLOW ≠ EXECUTED. Civio local repo only implements outbound emit. inboundAtlasToCivio is NOT_IMPLEMENTED.",
+        "POST /api/v1/governance/application-preflight HMAC-binds civio. ALLOW is required before Civio Gemini (improve/scan/legal-query), community forum AI, and housing-agent Gemini. HMAC ingest remains evaluate-only. inboundAtlasToCivio is NOT_IMPLEMENTED.",
     },
     siblingInventory("caseflow", {
       sourceRepository: "github/CaseFlow-AI-main",
+      preflight: "HMAC_ATLAS_API",
       siblingObservePath:
-        "CaseFlow arletOsGatewayClient emitArletOsEvent → POST /api/v1/gateway/events (observe). CaseFlow /api/atlas is that product's engineering-audit UI, not taqonu execute.",
+        "CaseFlow getOpenAIClient wrap + aiGateway/claude/whisper/analyst assertAtlasPreflight → POST /api/v1/governance/application-preflight. Post-action emitArletOsEvent → POST /api/v1/gateway/events remains observe.",
       evidence:
-        "Portfolio seed github/CaseFlow-AI-main. Local sibling has outbound gateway/events client and an internal /api/atlas module (name collision). No Atlas → CaseFlow action/target/artifact.",
+        "Local sibling github/CaseFlow-AI-main. OpenAI chat/embeddings, Anthropic, Whisper, and security-analyst HTTP are gated. Atlas still has no CaseFlow execute action/target/artifact.",
     }),
     siblingInventory("hotelos", {
       sourceRepository: "github/hotelOS-AI-main",
+      preflight: "HMAC_ATLAS_API",
       siblingObservePath:
-        "HotelOS atlas-telemetry → POST /api/v1/gateway/events (one-way). intelligenceApiAvailable is hardcoded false (HotelOS ADR 0016).",
+        "HotelOS createAiGateway().invoke assertAtlasPreflight → POST /api/v1/governance/application-preflight. atlas-telemetry → gateway/events remains observe.",
       evidence:
-        "Portfolio seed github/hotelOS-AI-main. Sibling telemetry is HotelOS → Atlas observe. No inbound HotelOS execute contract. ADR-022 observe-only.",
+        "Local sibling github/hotelOS-AI-main. Gateway invoke and embed are the gated AI chokes. No inbound HotelOS execute contract.",
     }),
     siblingInventory("brokeros", {
-      sourceRepository: "github/brokerOS",
-      siblingObservePath: null,
+      sourceRepository: "github/brokerOS-main",
+      preflight: "HMAC_ATLAS_API",
+      siblingObservePath:
+        "BrokerOS callGeminiForJson and draftInvoiceFromText assertAtlasPreflight → POST /api/v1/governance/application-preflight. Copilot/listing/price/tRPC use the shared Gemini helper.",
       evidence:
-        "Portfolio seed only. fixtures/golden-brokeros is an exemplar, not a connector. Local github/brokerOS was not present on this workstation.",
+        "Local sibling github/brokerOS-main. Shared Gemini JSON helper and draft-invoice REST caller are gated. Atlas still has no BrokerOS execute contract.",
     }),
     siblingInventory("lexstudy", {
       sourceRepository: "github/LexStudy-main",
       siblingObservePath: null,
       evidence:
-        "Portfolio seed only. ADR-022 observe-only. Local github/LexStudy-main was not present on this workstation.",
+        "NOT ACCESSIBLE on this workstation. Contract is POST /api/v1/governance/application-preflight with applicationId=lexstudy once the runtime is reachable. No implementation claimed.",
     }),
     siblingInventory("vantera", {
       sourceRepository: "github/vantera",
       siblingObservePath: null,
       evidence:
-        "Portfolio seed only. Vantera's own product named Atlas is a knowledge service, not taqonu execute. Local github/vantera was not present on this workstation.",
+        "NOT ACCESSIBLE on this workstation. Contract is POST /api/v1/governance/application-preflight with applicationId=vantera once the runtime is reachable. No implementation claimed.",
     }),
   ];
 

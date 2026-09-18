@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { FastifyInstance } from "fastify";
-import { KILL_SWITCH_CONTROL_PATH } from "@atlas/shared";
+import { CONTROL_PLANE_SERVICE_ID, KILL_SWITCH_CONTROL_PATH } from "@atlas/shared";
 import { buildRouteTestApp } from "./test-helpers/build-route-test-app.js";
 
 const CP_TOKEN = "control-plane-operator-token-32chars!!";
@@ -108,7 +108,10 @@ describe("kill switch control routes", () => {
   it("valid activate POST succeeds, persists a runtime override, and is reflected in the next GET", async () => {
     const res = await post(validBody());
     expect(res.statusCode).toBe(200);
-    expect(res.json().override).toMatchObject({ reason: "route-level test", setBy: "owner-1" });
+    expect(res.json().override).toMatchObject({
+      reason: "route-level test",
+      setBy: CONTROL_PLANE_SERVICE_ID,
+    });
 
     const statusRes = await get();
     const entry = statusRes.json().status.find((s: { category: string }) => s.category === "payments");
@@ -158,6 +161,13 @@ describe("kill switch control routes", () => {
     const statusRes = await get();
     const entry = statusRes.json().status.find((s: { category: string }) => s.category === "payments");
     expect(entry.runtimeOverrideActive).toBe(false);
+  });
+
+  it("binds setBy to cp:service even when the body names another actor", async () => {
+    const res = await post(validBody({ setBy: "atlas-owner" }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().override.setBy).toBe(CONTROL_PLANE_SERVICE_ID);
+    expect(res.json().override.setBy).not.toBe("atlas-owner");
   });
 
   it("POST without valid Control Plane service authentication is rejected (401) and mutates nothing", async () => {

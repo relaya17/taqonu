@@ -7,6 +7,7 @@ import {
   readMetricsLogTail,
   resolveMetricsLogPath,
 } from "../services/metrics-log.js";
+import { requireAdmin } from "../middleware/auth-guards.js";
 
 /** Process-local ring + durable NDJSON under `.atlas/metrics/metrics.ndjson`. */
 export const atlasMetrics = new InMemoryMetrics(METRICS_RING_BUFFER_CAP, {
@@ -50,22 +51,28 @@ function metricsJsonPayload() {
 }
 
 export async function registerMetricsRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/metrics", async () => metricsJsonPayload());
+  app.get("/api/v1/metrics", async (request) => {
+    await requireAdmin(app, request);
+    return metricsJsonPayload();
+  });
 
-  app.get("/api/v1/metrics/prometheus", async (_request, reply) => {
+  app.get("/api/v1/metrics/prometheus", async (request, reply) => {
+    await requireAdmin(app, request);
     return reply
       .type("text/plain; version=0.0.4; charset=utf-8")
       .send(atlasMetrics.toPrometheusText());
   });
 
   /** Common scrape alias for local Prometheus / ops tooling. */
-  app.get("/metrics", async (_request, reply) => {
+  app.get("/metrics", async (request, reply) => {
+    await requireAdmin(app, request);
     return reply
       .type("text/plain; version=0.0.4; charset=utf-8")
       .send(atlasMetrics.toPrometheusText());
   });
 
   app.post("/api/v1/metrics/record", async (request, reply) => {
+    await requireAdmin(app, request);
     const body = z
       .object({
         name: z.enum(metricNames),

@@ -752,21 +752,19 @@ describe("CP2 claim / mark-started / finalize service contract", () => {
     expect(reloaded).toEqual(finalized);
   });
 
-  it("marks execution started idempotently for the same liveExecutionId", async () => {
+  it("rejects a second STARTED mark for the same liveExecutionId (exclusive occupancy)", async () => {
     const claimed = await claimApprovalRequest((await approve()).id, matching);
     const started = await markApprovalExecutionStarted(
       claimed.id,
       claimed.liveExecutionId as string,
     );
     expect(started.executionStartedAt).toEqual(expect.any(String));
-    const replayed = await markApprovalExecutionStarted(
-      claimed.id,
-      claimed.liveExecutionId as string,
-    );
-    expect(replayed.executionStartedAt).toBe(started.executionStartedAt);
+    await expect(
+      markApprovalExecutionStarted(claimed.id, claimed.liveExecutionId as string),
+    ).rejects.toThrow(/already has execution started/);
     await expect(
       markApprovalExecutionStarted(claimed.id, "00000000-0000-4000-8000-000000000099"),
-    ).rejects.toThrow(/liveExecutionId/);
+    ).rejects.toThrow(/liveExecutionId|already has execution started/);
     const pending = await createApprovalRequest({
       entityType: "RECORD",
       action: "CREATE",

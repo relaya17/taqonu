@@ -12,6 +12,7 @@ import {
   isMemoryPressureHigh,
 } from "../services/performance-limits.js";
 import { atlasMetrics } from "./metrics.js";
+import { requireAdmin } from "../middleware/auth-guards.js";
 
 interface PerformanceDashboard {
   timestamp: string;
@@ -44,27 +45,44 @@ function buildDashboard(): PerformanceDashboard {
 }
 
 export async function registerPerformanceRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/performance", async () => buildDashboard());
+  app.get("/api/v1/performance", async (request) => {
+    await requireAdmin(app, request);
+    return buildDashboard();
+  });
 
-  app.get("/api/v1/performance/memory", async () => getMemoryStats());
+  app.get("/api/v1/performance/memory", async (request) => {
+    await requireAdmin(app, request);
+    return getMemoryStats();
+  });
 
-  app.get("/api/v1/performance/cache", async () => readCache.stats());
+  app.get("/api/v1/performance/cache", async (request) => {
+    await requireAdmin(app, request);
+    return readCache.stats();
+  });
 
-  app.post("/api/v1/performance/cache/clear", async (_request, reply) => {
+  app.post("/api/v1/performance/cache/clear", async (request, reply) => {
+    await requireAdmin(app, request);
     readCache.clear();
     return reply.status(200).send({ cleared: true, stats: readCache.stats() });
   });
 
-  app.get("/api/v1/performance/health", async () => ({
-    healthy: !isMemoryPressureHigh(),
-    memoryPressure: isMemoryPressureHigh(),
-    timestamp: new Date().toISOString(),
-  }));
+  app.get("/api/v1/performance/health", async (request) => {
+    await requireAdmin(app, request);
+    return {
+      healthy: !isMemoryPressureHigh(),
+      memoryPressure: isMemoryPressureHigh(),
+      timestamp: new Date().toISOString(),
+    };
+  });
 
-  app.get("/api/v1/performance/limits", async () => PERFORMANCE_LIMITS);
+  app.get("/api/v1/performance/limits", async (request) => {
+    await requireAdmin(app, request);
+    return PERFORMANCE_LIMITS;
+  });
 
   /** Latency percentiles from recent samples */
-  app.get("/api/v1/performance/latency", async () => {
+  app.get("/api/v1/performance/latency", async (request) => {
+    await requireAdmin(app, request);
     const samples = atlasMetrics.list();
     const latencies = samples
       .filter(s => s.name === "http_request_duration_ms")

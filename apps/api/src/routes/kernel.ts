@@ -290,6 +290,7 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
 
   /** P8 Evaluation */
   app.post("/api/v1/kernel/eval/run", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
     const body = runAgentEvalRequestSchema.parse(request.body ?? {});
     const report = runKernelEvaluation({
       ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
@@ -312,6 +313,7 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   }));
 
   app.post("/api/v1/kernel/memory/lessons", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
     const body = z
       .object({
         pattern: z.string().min(1).max(120),

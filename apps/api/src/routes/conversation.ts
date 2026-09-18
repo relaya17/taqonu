@@ -32,7 +32,7 @@ import {
 } from "../services/plan-quota.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
-import { canReadProjectScoped } from "../services/project-access.js";
+import { canReadDecision, canReadProjectScoped } from "../services/project-access.js";
 import {
   resolveAtlasSurfaceKnowledgeScope,
   searchEligibleKnowledge,
@@ -133,7 +133,7 @@ export async function registerConversationRoutes(
     const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
     const body = createConversationMessageSchema.parse(request.body);
-    assertAgentMessageQuota(app.atlasEnv);
+    assertAgentMessageQuota(app.atlasEnv, user.id);
     const now = new Date().toISOString();
     const locale = body.locale ?? "en";
     const threadId = body.threadId ?? crypto.randomUUID();
@@ -206,9 +206,12 @@ export async function registerConversationRoutes(
     const snapshot = authorizedProjectId
       ? osStore.getSnapshot(authorizedProjectId) ?? null
       : null;
+    const globalDecisions = osStore
+      .getDecisions("global")
+      .filter((decision) => canReadDecision(user, decision));
     const decisions = authorizedProjectId
-      ? [...osStore.getDecisions(authorizedProjectId), ...osStore.getDecisions("global")]
-      : [...osStore.getDecisions("global")];
+      ? [...osStore.getDecisions(authorizedProjectId), ...globalDecisions]
+      : globalDecisions;
     // Tenant boundary: memory uses the same authorized project as snapshot/
     // decisions/evidence. A client-supplied projectId the caller cannot read
     // degrades to no-project retrieval (owner-scoped), never a foreign key.
@@ -409,7 +412,7 @@ export async function registerConversationRoutes(
       ownerId: user.id,
       projectId: existingMeta?.projectId ?? authorizedProjectId,
     });
-    recordAgentMessageUsage();
+    recordAgentMessageUsage(user.id);
 
     return reply.status(201).send({
       messageId,

@@ -36,14 +36,17 @@ export async function registerAgentRuntimeControlRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.post(AGENT_RUNTIME_CONTROL_PATH, async (request) => {
-    requireControlPlaneService(request.headers.authorization);
+    const actorId = requireControlPlaneService(request.headers.authorization);
     const parsed = setBodySchema.safeParse(request.body ?? {});
     if (!parsed.success) {
       throw new AtlasError("VALIDATION_ERROR", "Malformed agent runtime control request", {
         statusCode: 400,
       });
     }
-    const record = await setDurableAgentRuntimeStatus(parsed.data);
+    const record = await setDurableAgentRuntimeStatus({
+      ...parsed.data,
+      setBy: actorId,
+    });
     return { record };
   });
 

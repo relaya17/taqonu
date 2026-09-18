@@ -109,8 +109,12 @@ interface PersistedShape {
   openTasks: Record<string, string[]>;
   events: Array<Record<string, unknown>>;
   githubConnection?: StoredGithubConnection | null;
+  /** Per-owner GitHub PAT connections. Preferred over githubConnection. */
+  githubConnections?: Record<string, StoredGithubConnection>;
   githubAppInstallations?: Record<string, StoredGithubAppInstallation>;
   localConnection?: StoredLocalConnection | null;
+  /** Per-owner local folder connections. Preferred over localConnection. */
+  localConnections?: Record<string, StoredLocalConnection>;
   /** Local project id → cloud row id (ADR-011) */
   cloudLinks?: Record<string, CloudProjectLink>;
   /** Legacy single-instance plan (kept for personal deployments). */
@@ -260,6 +264,10 @@ export interface UsageMeters {
   evalRunsByDay: Record<string, number>;
   processAuditsByDay?: Record<string, number>;
   agentMessagesByDay?: Record<string, number>;
+  /** Per-owner daily eval counts. Instance `evalRunsByDay` remains the operator total. */
+  evalRunsByOwnerDay?: Record<string, Record<string, number>>;
+  processAuditsByOwnerDay?: Record<string, Record<string, number>>;
+  agentMessagesByOwnerDay?: Record<string, Record<string, number>>;
   verdictsRequested?: number;
   certificatesIssued?: number;
   reportsGenerated?: number;
@@ -293,6 +301,18 @@ export interface KillSwitchOverrideRecord {
 }
 
 
+function bumpOwnerDayMeter(
+  nest: Record<string, Record<string, number>> | undefined,
+  ownerId: string,
+  dayKey: string,
+): Record<string, Record<string, number>> {
+  const next = { ...(nest ?? {}) };
+  const owner = { ...(next[ownerId] ?? {}) };
+  owner[dayKey] = (owner[dayKey] ?? 0) + 1;
+  next[ownerId] = owner;
+  return next;
+}
+
 function storePath(): string {
   const fromEnv = process.env.ATLAS_STORE_PATH;
   if (fromEnv && fromEnv.length > 0) {
@@ -320,8 +340,10 @@ function emptyShape(): PersistedShape {
     openTasks: {},
     events: [],
     githubConnection: null,
+    githubConnections: {},
     githubAppInstallations: {},
     localConnection: null,
+    localConnections: {},
     cloudLinks: {},
     plan: null,
     tenantSubscriptions: {},
@@ -367,9 +389,9 @@ class OsStore {
   readonly snapshots = new Map<string, ProjectStateSnapshot>();
   readonly openTasks = new Map<string, string[]>();
   events: Array<Record<string, unknown>> = [];
-  private githubConnection: StoredGithubConnection | null = null;
+  private githubConnections = new Map<string, StoredGithubConnection>();
   private githubAppInstallations = new Map<string, StoredGithubAppInstallation>();
-  private localConnection: StoredLocalConnection | null = null;
+  private localConnections = new Map<string, StoredLocalConnection>();
   private cloudLinks = new Map<string, CloudProjectLink>();
   private plan: StoredPlan | null = null;
   private tenantSubscriptions = new Map<string, StoredTenantSubscription>();
@@ -466,11 +488,13 @@ class OsStore {
       this.openTasks.set(k, v);
     }
     this.events = raw.events ?? [];
-    this.githubConnection = raw.githubConnection ?? null;
+    this.githubConnections = new Map(Object.entries(raw.githubConnections ?? {}));
     this.githubAppInstallations = new Map(
       Object.entries(raw.githubAppInstallations ?? {}),
     );
-    this.localConnection = raw.localConnection ?? null;
+    this.localConnections = new Map(Object.entries(raw.localConnections ?? {}));
+    // Legacy unscoped records are not attached to any owner — they must not
+    // become readable/replaceable by every signed-in user. Reconnect per owner.
     this.cloudLinks = new Map(Object.entries(raw.cloudLinks ?? {}));
     this.plan = raw.plan ?? null;
     this.tenantSubscriptions = new Map(
@@ -535,9 +559,11 @@ class OsStore {
       deployFeeds: Object.fromEntries(this.deployFeeds),
       openTasks: Object.fromEntries(this.openTasks),
       events: this.events.slice(-500),
-      githubConnection: this.githubConnection,
+      githubConnection: null,
+      githubConnections: Object.fromEntries(this.githubConnections),
       githubAppInstallations: Object.fromEntries(this.githubAppInstallations),
-      localConnection: this.localConnection,
+      localConnection: null,
+      localConnections: Object.fromEntries(this.localConnections),
       cloudLinks: Object.fromEntries(this.cloudLinks),
       plan: this.plan,
       tenantSubscriptions: Object.fromEntries(this.tenantSubscriptions),
@@ -570,14 +596,21 @@ class OsStore {
     atomicWriteStoreFile(path, JSON.stringify(shape, null, 2));
   }
 
-  getGithubConnection(): StoredGithubConnection | null {
+  getGithubConnection(ownerId: string): StoredGithubConnection | null {
     this.ensureLoaded();
-    return this.githubConnection;
+    return this.githubConnections.get(ownerId) ?? null;
   }
 
-  setGithubConnection(connection: StoredGithubConnection | null): void {
+  setGithubConnection(
+    ownerId: string,
+    connection: StoredGithubConnection | null,
+  ): void {
     this.ensureLoaded();
-    this.githubConnection = connection;
+    if (connection) {
+      this.githubConnections.set(ownerId, connection);
+    } else {
+      this.githubConnections.delete(ownerId);
+    }
     this.persist();
   }
 
@@ -609,14 +642,21 @@ class OsStore {
     );
   }
 
-  getLocalConnection(): StoredLocalConnection | null {
+  getLocalConnection(ownerId: string): StoredLocalConnection | null {
     this.ensureLoaded();
-    return this.localConnection;
+    return this.localConnections.get(ownerId) ?? null;
   }
 
-  setLocalConnection(connection: StoredLocalConnection | null): void {
+  setLocalConnection(
+    ownerId: string,
+    connection: StoredLocalConnection | null,
+  ): void {
     this.ensureLoaded();
-    this.localConnection = connection;
+    if (connection) {
+      this.localConnections.set(ownerId, connection);
+    } else {
+      this.localConnections.delete(ownerId);
+    }
     this.persist();
   }
 
@@ -706,9 +746,9 @@ class OsStore {
     this.snapshots.clear();
     this.openTasks.clear();
     this.events = [];
-    this.githubConnection = null;
+    this.githubConnections.clear();
     this.githubAppInstallations.clear();
-    this.localConnection = null;
+    this.localConnections.clear();
     this.cloudLinks.clear();
     this.plan = null;
     this.tenantSubscriptions.clear();
@@ -1066,21 +1106,28 @@ class OsStore {
     return out.reverse();
   }
 
-  countEvidenceRecords(): number {
+  countEvidenceRecords(ownerId?: string): number {
     this.ensureLoaded();
     let n = 0;
-    for (const list of this.evidence.values()) n += list.length;
+    for (const list of this.evidence.values()) {
+      if (!ownerId) {
+        n += list.length;
+        continue;
+      }
+      for (const record of list) {
+        if (record.ownerId === ownerId) n += 1;
+      }
+    }
     return n;
   }
 
-  countConnectedIntegrations(): number {
+  countConnectedIntegrations(ownerId: string): number {
     this.ensureLoaded();
     let n = 0;
-    if (this.githubConnection?.status === "CONNECTED") n += 1;
-    if (this.localConnection?.status === "CONNECTED") n += 1;
-    for (const binding of this.byoCloudBindings.values()) {
-      if (binding.status === "connected") n += 1;
-    }
+    if (this.githubConnections.get(ownerId)?.status === "CONNECTED") n += 1;
+    if (this.localConnections.get(ownerId)?.status === "CONNECTED") n += 1;
+    const binding = this.byoCloudBindings.get(ownerId);
+    if (binding?.status === "connected") n += 1;
     return n;
   }
 
@@ -1110,51 +1157,87 @@ class OsStore {
     this.persist();
   }
 
-  incrementEvalRunMeter(dayKey: string): number {
+  incrementEvalRunMeter(dayKey: string, ownerId?: string | null): number {
     this.ensureLoaded();
     if (!this.usageMeters.evalRunsByDay) {
       this.usageMeters.evalRunsByDay = {};
     }
     const next = (this.usageMeters.evalRunsByDay[dayKey] ?? 0) + 1;
     this.usageMeters.evalRunsByDay[dayKey] = next;
+    if (ownerId) {
+      this.usageMeters.evalRunsByOwnerDay = bumpOwnerDayMeter(
+        this.usageMeters.evalRunsByOwnerDay,
+        ownerId,
+        dayKey,
+      );
+    }
     this.persist();
-    return next;
+    return ownerId
+      ? (this.usageMeters.evalRunsByOwnerDay?.[ownerId]?.[dayKey] ?? next)
+      : next;
   }
 
-  getEvalRunsToday(dayKey: string): number {
+  getEvalRunsToday(dayKey: string, ownerId?: string | null): number {
     this.ensureLoaded();
+    if (ownerId) {
+      return this.usageMeters.evalRunsByOwnerDay?.[ownerId]?.[dayKey] ?? 0;
+    }
     return this.usageMeters.evalRunsByDay[dayKey] ?? 0;
   }
 
-  incrementProcessAuditMeter(dayKey: string): number {
+  incrementProcessAuditMeter(dayKey: string, ownerId?: string | null): number {
     this.ensureLoaded();
     if (!this.usageMeters.processAuditsByDay) {
       this.usageMeters.processAuditsByDay = {};
     }
     const next = (this.usageMeters.processAuditsByDay[dayKey] ?? 0) + 1;
     this.usageMeters.processAuditsByDay[dayKey] = next;
+    if (ownerId) {
+      this.usageMeters.processAuditsByOwnerDay = bumpOwnerDayMeter(
+        this.usageMeters.processAuditsByOwnerDay,
+        ownerId,
+        dayKey,
+      );
+    }
     this.persist();
-    return next;
+    return ownerId
+      ? (this.usageMeters.processAuditsByOwnerDay?.[ownerId]?.[dayKey] ?? next)
+      : next;
   }
 
-  getProcessAuditsToday(dayKey: string): number {
+  getProcessAuditsToday(dayKey: string, ownerId?: string | null): number {
     this.ensureLoaded();
+    if (ownerId) {
+      return this.usageMeters.processAuditsByOwnerDay?.[ownerId]?.[dayKey] ?? 0;
+    }
     return this.usageMeters.processAuditsByDay?.[dayKey] ?? 0;
   }
 
-  incrementAgentMessageMeter(dayKey: string): number {
+  incrementAgentMessageMeter(dayKey: string, ownerId?: string | null): number {
     this.ensureLoaded();
     if (!this.usageMeters.agentMessagesByDay) {
       this.usageMeters.agentMessagesByDay = {};
     }
     const next = (this.usageMeters.agentMessagesByDay[dayKey] ?? 0) + 1;
     this.usageMeters.agentMessagesByDay[dayKey] = next;
+    if (ownerId) {
+      this.usageMeters.agentMessagesByOwnerDay = bumpOwnerDayMeter(
+        this.usageMeters.agentMessagesByOwnerDay,
+        ownerId,
+        dayKey,
+      );
+    }
     this.persist();
-    return next;
+    return ownerId
+      ? (this.usageMeters.agentMessagesByOwnerDay?.[ownerId]?.[dayKey] ?? next)
+      : next;
   }
 
-  getAgentMessagesToday(dayKey: string): number {
+  getAgentMessagesToday(dayKey: string, ownerId?: string | null): number {
     this.ensureLoaded();
+    if (ownerId) {
+      return this.usageMeters.agentMessagesByOwnerDay?.[ownerId]?.[dayKey] ?? 0;
+    }
     return this.usageMeters.agentMessagesByDay?.[dayKey] ?? 0;
   }
 

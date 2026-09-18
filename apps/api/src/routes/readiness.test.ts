@@ -105,7 +105,8 @@ describe("POST /api/v1/readiness/certificate", () => {
     expect(res.json().error.message).toMatch(/test-forced denial/);
   });
 
-  it("201s for a signed-in caller and threads the real actor id into the evaluation.completed domain event", async () => {
+  it("201s for a signed-in admin on an unscoped certificate and threads the real actor id", async () => {
+    getRequestUser.mockReturnValue(testUser({ role: "admin" }));
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/readiness/certificate",

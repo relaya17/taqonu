@@ -15,11 +15,8 @@ import {
   tryPersistAccountPlanToSupabase,
 } from "@atlas/database";
 import type { ServerEnv } from "@atlas/config";
-import {
-  osStore,
-  type StoredTenantSubscription,
-  type TenantSubscriptionStatus,
-} from "../store/os-store.js";
+import { osStore, type StoredTenantSubscription, type TenantSubscriptionStatus } from "../store/os-store.js";
+import { getProjectOwnerId } from "./project-access.js";
 
 type EnvSlice = Pick<
   ServerEnv,
@@ -43,6 +40,15 @@ type EnvSlice = Pick<
  */
 export function resolveOwnerId(env: EnvSlice, requestOwnerId?: string | null): string {
   return requestOwnerId ?? env.ATLAS_OWNER_ID ?? STUB_OWNER_ID;
+}
+
+/** Tenant quota: cloud links whose project is bound to this owner. */
+export function countOwnedCloudLinks(ownerId: string): number {
+  let n = 0;
+  for (const [projectId] of osStore.listCloudLinks()) {
+    if (getProjectOwnerId(projectId) === ownerId) n += 1;
+  }
+  return n;
 }
 
 export function resolveTier(
@@ -161,7 +167,7 @@ export async function getAccountPlan(
   const cloudConfigured = isLiveSupabase(env);
   const axisLimits = PLAN_AXIS_LIMITS[tier];
 
-  let cloudCount = osStore.countCloudLinkedProjects();
+  let cloudCount = countOwnedCloudLinks(ownerId);
   if (cloudConfigured) {
     const remote = await countCloudProjects(env, ownerId, identity?.userAccessToken);
     if (remote !== null) {
@@ -186,23 +192,23 @@ export async function getAccountPlan(
     preferredCustomerCloud: "cloudflare",
     axes: {
       evidenceRecords: {
-        used: osStore.countEvidenceRecords(),
+        used: osStore.countEvidenceRecords(ownerId),
         limit: axisLimits.evidenceRecords,
       },
       evalRunsPerDay: {
-        used: osStore.getEvalRunsToday(dayKey()),
+        used: osStore.getEvalRunsToday(dayKey(), ownerId),
         limit: axisLimits.evalRunsPerDay,
       },
       processAuditsPerDay: {
-        used: osStore.getProcessAuditsToday(dayKey()),
+        used: osStore.getProcessAuditsToday(dayKey(), ownerId),
         limit: axisLimits.processAuditsPerDay,
       },
       agentMessagesPerDay: {
-        used: osStore.getAgentMessagesToday(dayKey()),
+        used: osStore.getAgentMessagesToday(dayKey(), ownerId),
         limit: axisLimits.agentMessagesPerDay,
       },
       integrations: {
-        used: osStore.countConnectedIntegrations(),
+        used: osStore.countConnectedIntegrations(ownerId),
         limit: axisLimits.integrations,
       },
       retentionDays: {
@@ -292,9 +298,10 @@ export function hasRemainingCloudSlots(input: {
 }
 
 export function assertEvalQuota(env: EnvSlice, ownerId?: string | null): void {
-  const { tier } = resolveTier(env, ownerId);
+  const resolvedOwner = resolveOwnerId(env, ownerId);
+  const { tier } = resolveTier(env, resolvedOwner);
   const limit = PLAN_AXIS_LIMITS[tier].evalRunsPerDay;
-  const used = osStore.getEvalRunsToday(dayKey());
+  const used = osStore.getEvalRunsToday(dayKey(), resolvedOwner);
   if (used >= limit) {
     throw new AtlasError(
       "QUOTA_EXCEEDED",
@@ -304,17 +311,18 @@ export function assertEvalQuota(env: EnvSlice, ownerId?: string | null): void {
   }
 }
 
-export function recordEvalRunUsage(): void {
-  osStore.incrementEvalRunMeter(dayKey());
+export function recordEvalRunUsage(ownerId?: string | null): void {
+  osStore.incrementEvalRunMeter(dayKey(), ownerId);
 }
 
 export function assertProcessAuditQuota(
   env: EnvSlice,
   ownerId?: string | null,
 ): void {
-  const { tier } = resolveTier(env, ownerId);
+  const resolvedOwner = resolveOwnerId(env, ownerId);
+  const { tier } = resolveTier(env, resolvedOwner);
   const limit = PLAN_AXIS_LIMITS[tier].processAuditsPerDay;
-  const used = osStore.getProcessAuditsToday(dayKey());
+  const used = osStore.getProcessAuditsToday(dayKey(), resolvedOwner);
   if (used >= limit) {
     throw new AtlasError(
       "QUOTA_EXCEEDED",
@@ -327,17 +335,18 @@ export function assertProcessAuditQuota(
   }
 }
 
-export function recordProcessAuditUsage(): void {
-  osStore.incrementProcessAuditMeter(dayKey());
+export function recordProcessAuditUsage(ownerId?: string | null): void {
+  osStore.incrementProcessAuditMeter(dayKey(), ownerId);
 }
 
 export function assertAgentMessageQuota(
   env: EnvSlice,
   ownerId?: string | null,
 ): void {
-  const { tier } = resolveTier(env, ownerId);
+  const resolvedOwner = resolveOwnerId(env, ownerId);
+  const { tier } = resolveTier(env, resolvedOwner);
   const limit = PLAN_AXIS_LIMITS[tier].agentMessagesPerDay;
-  const used = osStore.getAgentMessagesToday(dayKey());
+  const used = osStore.getAgentMessagesToday(dayKey(), resolvedOwner);
   if (used >= limit) {
     throw new AtlasError(
       "QUOTA_EXCEEDED",
@@ -350,6 +359,6 @@ export function assertAgentMessageQuota(
   }
 }
 
-export function recordAgentMessageUsage(): void {
-  osStore.incrementAgentMessageMeter(dayKey());
+export function recordAgentMessageUsage(ownerId?: string | null): void {
+  osStore.incrementAgentMessageMeter(dayKey(), ownerId);
 }

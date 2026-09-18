@@ -284,3 +284,22 @@ export function filterProjectsForCaller<T extends { readonly id: string }>(
 ): T[] {
   return projects.filter((project) => canReadProjectScoped(user, project.id));
 }
+
+/**
+ * Decision visibility.
+ * Project-scoped: same as project read.
+ * Global (`projectId` null): owner-only when `ownerId` is set; legacy
+ * unowned global rows remain readable by any signed-in user (unowned contract).
+ */
+export function canReadDecision(
+  user: AuthUser,
+  decision: {
+    readonly projectId: string | null;
+    readonly ownerId?: string | null | undefined;
+  },
+): boolean {
+  if (user.role === "admin" || isControlPlaneRole(user.role)) return true;
+  if (decision.projectId) return canReadProjectScoped(user, decision.projectId);
+  if (!decision.ownerId) return true;
+  return decision.ownerId === user.id;
+}

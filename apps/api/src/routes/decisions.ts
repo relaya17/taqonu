@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import {
+  AtlasError,
   createDecisionSchema,
   decisionSchema,
+  isControlPlaneRole,
   transitionDecisionSchema,
   type Decision,
 } from "@atlas/shared";
@@ -12,7 +14,8 @@ import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import { requireUser } from "../middleware/auth-guards.js";
 import {
   assertEntityReadAccess,
-  canReadProjectScoped,
+  assertProjectWriteAccess,
+  canReadDecision,
 } from "../services/project-access.js";
 
 const listQuerySchema = z.object({
@@ -99,9 +102,8 @@ export async function registerDecisionRoutes(app: FastifyInstance): Promise<void
     let items = osStore.listDecisions();
     if (query.projectId) {
       items = items.filter((d) => d.projectId === query.projectId);
-    } else {
-      items = items.filter((d) => canReadProjectScoped(user, d.projectId));
     }
+    items = items.filter((d) => canReadDecision(user, d));
     if (query.status) {
       items = items.filter((d) => d.status === query.status);
     }
@@ -117,19 +119,24 @@ export async function registerDecisionRoutes(app: FastifyInstance): Promise<void
   });
 
   app.get("/api/v1/decisions/:id", async (request, reply) => {
-    await requireUser(app, request);
+    const user = await requireUser(app, request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const decision = osStore.getDecision(id);
     if (!decision) {
       return reply.status(404).send({ error: "Decision not found" });
     }
-    await assertEntityReadAccess(app, request, decision.projectId);
+    if (!canReadDecision(user, decision)) {
+      throw new AtlasError("FORBIDDEN", "Decision isolation", { statusCode: 403 });
+    }
     return decision;
   });
 
   app.post("/api/v1/decisions", async (request, reply) => {
-    await requireUser(app, request);
+    const user = await requireUser(app, request);
     const body = createDecisionSchema.parse(request.body);
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    }
     const now = new Date().toISOString();
     const status = body.status ?? "PROPOSED";
     const rawEpistemicState =
@@ -150,6 +157,7 @@ export async function registerDecisionRoutes(app: FastifyInstance): Promise<void
       decidedAt: body.decidedAt ?? now,
       createdAt: now,
       updatedAt: now,
+      ownerId: user.id,
     });
     osStore.addDecision(decision);
     osStore.recordEvent({
@@ -172,12 +180,22 @@ export async function registerDecisionRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/decisions/:id/transition", async (request, reply) => {
-    await requireUser(app, request);
+    const user = await requireUser(app, request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = transitionDecisionSchema.parse(request.body);
     const existing = osStore.getDecision(id);
     if (!existing) {
       return reply.status(404).send({ error: "Decision not found" });
+    }
+    if (existing.projectId) {
+      await assertProjectWriteAccess(app, request, existing.projectId);
+    } else if (
+      existing.ownerId &&
+      existing.ownerId !== user.id &&
+      user.role !== "admin" &&
+      !isControlPlaneRole(user.role)
+    ) {
+      throw new AtlasError("FORBIDDEN", "Decision isolation", { statusCode: 403 });
     }
 
     const allowed = allowedTransitions(existing.status);

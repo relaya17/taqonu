@@ -37,7 +37,7 @@ import {
   runPartnerAuditSpine,
 } from "../services/partner-audit-spine.js";
 import { recordSystemHealthReport } from "./engineering-audit.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireAdmin, requireSignedInForWrite } from "../middleware/auth-guards.js";
 import {
   assertProjectReadAccess,
   assertProjectWriteAccess,
@@ -283,7 +283,7 @@ export async function registerCommercialValidationRoutes(
     }
 
     if (body.source === "github") {
-      const connection = osStore.getGithubConnection();
+      const connection = osStore.getGithubConnection(user.id);
       const token =
         body.token?.trim() ||
         (connection?.token && connection.status === "CONNECTED"
@@ -304,9 +304,9 @@ export async function registerCommercialValidationRoutes(
       if (body.token?.trim()) {
         try {
           const profile = await verifyGithubToken(body.token.trim());
-          const existing = osStore.getGithubConnection();
+          const existing = osStore.getGithubConnection(user.id);
           const now = new Date().toISOString();
-          osStore.setGithubConnection({
+          osStore.setGithubConnection(user.id, {
             id: existing?.id ?? crypto.randomUUID(),
             status: "CONNECTED",
             login: profile.login,
@@ -491,7 +491,8 @@ export async function registerCommercialValidationRoutes(
     });
   });
 
-  app.get("/api/v1/analytics/usage", async () => {
+  app.get("/api/v1/analytics/usage", async (request) => {
+    await requireAdmin(app, request);
     const u = osStore.getUsageSnapshot();
     const patches = osStore.listPatches();
     return usageAnalyticsSchema.parse({

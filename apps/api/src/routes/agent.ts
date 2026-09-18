@@ -32,7 +32,7 @@ import { persistArletosAgentMemory } from "../services/arletos-agent-memory.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
-import { canReadProjectScoped } from "../services/project-access.js";
+import { canReadDecision, canReadProjectScoped } from "../services/project-access.js";
 import { proposePatch } from "@atlas/code-intelligence";
 import {
   ENGINEERING_MODE_META,
@@ -193,12 +193,15 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     const snapshot = authorizedProjectId
       ? osStore.getSnapshot(authorizedProjectId) ?? null
       : null;
+    const globalDecisions = osStore
+      .getDecisions("global")
+      .filter((decision) => canReadDecision(user, decision));
     const decisions = authorizedProjectId
       ? [
           ...osStore.getDecisions(authorizedProjectId),
-          ...osStore.getDecisions("global"),
+          ...globalDecisions,
         ]
-      : [...osStore.getDecisions("global")];
+      : globalDecisions;
     const callerOwnerId = user.role === "admin" ? undefined : identity.ownerId;
     const memoryContextResult = await buildMemoryContext({
       projectId: authorizedProjectId,

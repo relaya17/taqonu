@@ -437,7 +437,6 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/v1/qa/process-audit", async (request, reply) => {
     const started = Date.now();
     osStore.ensureLoaded();
-    assertProcessAuditQuota(app.atlasEnv);
     const body = createProcessAuditSchema.parse(request.body ?? {});
     // Auth + ownership gate (P0 fix): this route runs an audit and writes
     // data (report + memory sync) — never usable anonymously. When the
@@ -448,6 +447,7 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     const user = body.projectId
       ? await assertProjectWriteAccess(app, request, body.projectId)
       : await requireSignedInForWrite(app, request);
+    assertProcessAuditQuota(app.atlasEnv, user.id);
     const project = body.projectId ? osStore.getProject(body.projectId) : null;
     const allProjects = filterProjectsForCaller(user, osStore.listProjects());
     const projectId =
@@ -478,7 +478,7 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     );
     rememberProcessAuditId(document.id);
     const memory = syncProcessAuditToMemory(document, user.id);
-    recordProcessAuditUsage();
+    recordProcessAuditUsage(user.id);
     osStore.setMeta(
       "admin.processAudit.last",
       JSON.stringify({ at: document.completedAt, auditId: document.id }),

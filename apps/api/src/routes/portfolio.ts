@@ -62,8 +62,9 @@ function persistPortfolioHealth(
 export async function registerPortfolioRoutes(app: FastifyInstance): Promise<void> {
   /** Portfolio discovery status: sources, unlinked projects, local candidates. */
   app.get("/api/v1/portfolio/discovery", async (request) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     return buildPortfolioDiscoveryStatus({
+      ownerId: user.id,
       githubAppConfigured: Boolean(
         app.atlasEnv.GITHUB_APP_ID && app.atlasEnv.GITHUB_PRIVATE_KEY,
       ),
@@ -75,8 +76,10 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
    * Stays within configured roots / GitHub permissions.
    */
   app.post("/api/v1/portfolio/discovery/refresh", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
     const body = portfolioDiscoveryRefreshRequestSchema.parse(request.body ?? {});
     const result = await refreshPortfolioDiscovery({
+      ownerId: user.id,
       body,
       githubAppId: app.atlasEnv.GITHUB_APP_ID,
       githubPrivateKey: app.atlasEnv.GITHUB_PRIVATE_KEY,
@@ -95,7 +98,7 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
 
   /** Link a discovered local path to a registered project (under configured root). */
   app.post("/api/v1/portfolio/discovery/link", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
 
     // Entity-policy gate: linking a discovered repo creates a new tracked
     // portfolio record. `writeGateOpen: true` + `approved: true` represents
@@ -125,7 +128,7 @@ export async function registerPortfolioRoutes(app: FastifyInstance): Promise<voi
     // to compare against — the calling (signed-in) actor is trivially the
     // intended owner of a record they're creating right now.
     const body = portfolioDiscoveryLinkRequestSchema.parse(request.body);
-    const result = linkDiscoveredWorkspaceRoot(body);
+    const result = linkDiscoveredWorkspaceRoot(body, user.id);
     return reply.status(200).send(result);
   });
 

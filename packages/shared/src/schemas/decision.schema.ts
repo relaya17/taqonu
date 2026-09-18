@@ -29,6 +29,11 @@ export const decisionSchema = z.object({
   decidedAt: isoDateTimeSchema,
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
+  /**
+   * Creator/owner. Optional for records persisted before ownership was
+   * stamped. Cloud `public.decisions.owner_id` already exists.
+   */
+  ownerId: z.string().min(1).max(200).nullable().optional(),
 });
 
 export const createDecisionSchema = z.object({

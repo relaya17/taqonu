@@ -135,7 +135,7 @@ describe("connections routes still work for a signed-in caller (no regression)",
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().github.login).toBe("octocat");
-    expect(osStore.getGithubConnection()?.token).toBe("ghp_1234567890abcdef");
+    expect(osStore.getGithubConnection(signedInUser().id)?.token).toBe("ghp_1234567890abcdef");
   });
 
   it("GET /api/v1/connections/github/repos lists repos once connected", async () => {
@@ -168,7 +168,7 @@ describe("connections routes still work for a signed-in caller (no regression)",
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ github: null });
-    expect(osStore.getGithubConnection()).toBeNull();
+    expect(osStore.getGithubConnection(signedInUser().id)).toBeNull();
   });
 
   it("POST /api/v1/connections/local connects a valid path", async () => {
@@ -216,7 +216,7 @@ describe("Policy Engine (authorizeEntityAction) gate on mutating routes", () => 
       expect.objectContaining({ mode: "WRITE" }),
     );
     // Not actually connected — the gate must run before the mutation.
-    expect(osStore.getGithubConnection()).toBeNull();
+    expect(osStore.getGithubConnection(signedInUser().id)).toBeNull();
   });
 
   it("403s DELETE /api/v1/connections/github when the Policy Engine denies CONFIGURATION.DELETE", async () => {
@@ -329,5 +329,56 @@ describe("Policy Engine (authorizeEntityAction) gate on mutating routes", () => 
       payload: { token: "ghp_1234567890abcdef" },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("connections are isolated per signed-in owner", () => {
+  const ownerA = signedInUser({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    email: "a@example.com",
+  });
+  const ownerB = signedInUser({
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    email: "b@example.com",
+  });
+
+  it("user B cannot read or replace user A's GitHub connection", async () => {
+    osStore.resetInMemoryForTests();
+    getRequestUser.mockReturnValue(ownerA);
+    verifyGithubToken.mockResolvedValue({ login: "octocat-a", name: "A" });
+    const connected = await app.inject({
+      method: "POST",
+      url: "/api/v1/connections/github",
+      payload: { token: "ghp_owner_a_secret_token" },
+    });
+    expect(connected.statusCode).toBe(201);
+    expect(connected.json().github.login).toBe("octocat-a");
+    expect(connected.json().github.tokenConfigured).toBe(true);
+    expect(JSON.stringify(connected.json())).not.toContain("ghp_owner_a_secret_token");
+
+    getRequestUser.mockReturnValue(ownerB);
+    const listed = await app.inject({ method: "GET", url: "/api/v1/connections" });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().github).toBeNull();
+
+    const repos = await app.inject({
+      method: "GET",
+      url: "/api/v1/connections/github/repos",
+    });
+    expect(repos.statusCode).toBe(401);
+
+    verifyGithubToken.mockResolvedValue({ login: "octocat-b", name: "B" });
+    const replaced = await app.inject({
+      method: "POST",
+      url: "/api/v1/connections/github",
+      payload: { token: "ghp_owner_b_other_token" },
+    });
+    expect(replaced.statusCode).toBe(201);
+    expect(osStore.getGithubConnection(ownerA.id)?.token).toBe(
+      "ghp_owner_a_secret_token",
+    );
+    expect(osStore.getGithubConnection(ownerB.id)?.token).toBe(
+      "ghp_owner_b_other_token",
+    );
   });
 });

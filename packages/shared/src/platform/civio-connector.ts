@@ -39,6 +39,7 @@ export const CIVIO_CONNECTOR_CAPABILITIES = [
   "emit.event",
   "report.health",
   "report.process",
+  "preflight.authorize",
 ] as const;
 export type CivioConnectorCapability =
   (typeof CIVIO_CONNECTOR_CAPABILITIES)[number];

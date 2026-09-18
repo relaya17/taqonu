@@ -143,11 +143,14 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
 
   /** CP SERVICE → decide a pending live approval (same store as tenant admin). */
   app.post(`${APPROVAL_CONTROL_PATH}/:id/decide`, async (request) => {
-    requireControlPlaneService(request.headers.authorization);
+    const actorId = requireControlPlaneService(request.headers.authorization);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = controlDecideBodySchema.parse(request.body ?? {});
+    // Body `decidedBy` is wire-compatible with Control Plane's session
+    // principal, but SoD and audit must bind the authenticated SERVICE hop.
+    void body.decidedBy;
     return decideApprovalRequest(id, {
-      decidedBy: body.decidedBy,
+      decidedBy: actorId,
       approve: body.approve,
       decisionReason: body.reason,
     });

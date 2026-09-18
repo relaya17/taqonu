@@ -1,6 +1,7 @@
 import {
   parseEvidenceRecord,
   SYSTEM_OWNER_ID,
+  type Decision,
   type EvidenceRecord,
   type Memory,
   type ProjectStateSnapshot,
@@ -33,6 +34,17 @@ function memoriesForProjectReconciliation(projectId: string): Memory[] {
   const globalVisible = osStore.getMemories("global").filter((memory) => {
     if (memory.ownerId === SYSTEM_OWNER_ID) return true;
     return projectOwnerId !== null && memory.ownerId === projectOwnerId;
+  });
+  return [...onProject, ...globalVisible];
+}
+
+function decisionsForProjectReconciliation(projectId: string): Decision[] {
+  const projectOwnerId = getProjectOwnerId(projectId);
+  const onProject = osStore.getDecisions(projectId);
+  const globalVisible = osStore.getDecisions("global").filter((decision) => {
+    if (!decision.ownerId) return false;
+    if (decision.ownerId === SYSTEM_OWNER_ID) return true;
+    return projectOwnerId !== null && decision.ownerId === projectOwnerId;
   });
   return [...onProject, ...globalVisible];
 }
@@ -93,10 +105,7 @@ export function runStateReconciliation(projectId: string): ProjectStateSnapshot 
     evidence: osStore.getEvidence(projectId),
     claims: osStore.getClaims(projectId),
     memories: memoriesForProjectReconciliation(projectId),
-    decisions: [
-      ...osStore.getDecisions(projectId),
-      ...osStore.getDecisions("global"),
-    ],
+    decisions: decisionsForProjectReconciliation(projectId),
     openTasks: osStore.openTasks.get(projectId) ?? [
       "Keep GitHub sync current",
       "Capture architectural decisions with evidence",

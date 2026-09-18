@@ -22,7 +22,9 @@ const localWebServers = [
   },
   {
     command: "pnpm --filter @atlas/web dev",
-    url: "http://127.0.0.1:3000/he",
+    // apps/web binds `-H localhost` (typically ::1 on Windows). Checking
+    // 127.0.0.1 misses a live Studio and then fails with EADDRINUSE on ::1.
+    url: "http://localhost:3000/he",
     reuseExistingServer: true,
     timeout: 180_000,
   },
@@ -38,7 +40,7 @@ export default defineConfig({
   // them here unless something is already listening (reuseExistingServer).
   webServer: process.env.CI ? undefined : localWebServers,
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
     trace: "on-first-retry",
   },
   projects: [

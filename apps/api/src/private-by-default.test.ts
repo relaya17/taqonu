@@ -115,7 +115,7 @@ describe("private-by-default API hook (ADR-021)", () => {
             headers: { cookie },
           })
         ).statusCode,
-      ).toBe(200);
+      ).toBe(403);
     } finally {
       await app.close();
     }

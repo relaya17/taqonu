@@ -307,7 +307,8 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
     return computeAgentRankings(domain);
   });
 
-  app.get("/api/v1/intelligence/verification-lessons", async () => {
+  app.get("/api/v1/intelligence/verification-lessons", async (request) => {
+    await requireAdmin(app, request);
     const entries = listUnifiedAuditEntries();
     return recommendFromVerificationHistory(
       entries.map((entry) => ({
@@ -321,7 +322,8 @@ export async function registerIntelligenceRoutes(app: FastifyInstance): Promise<
     );
   });
 
-  app.get("/api/v1/intelligence/outcome-signals", async () => {
+  app.get("/api/v1/intelligence/outcome-signals", async (request) => {
+    await requireAdmin(app, request);
     const entries = listUnifiedAuditEntries();
     return scoreHistoricalOutcomes(
       entries.map((entry) => ({

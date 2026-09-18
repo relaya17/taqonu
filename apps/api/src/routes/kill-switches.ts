@@ -44,19 +44,23 @@ export async function registerKillSwitchRoutes(app: FastifyInstance): Promise<vo
   });
 
   app.post(KILL_SWITCH_CONTROL_PATH, async (request) => {
-    requireControlPlaneService(request.headers.authorization);
+    const actorId = requireControlPlaneService(request.headers.authorization);
     const parsed = postBodySchema.safeParse(request.body ?? {});
     if (!parsed.success) {
       throw new AtlasError("VALIDATION_ERROR", "Malformed kill switch control request", {
         statusCode: 400,
       });
     }
-    const { category, action, setBy, reason } = parsed.data;
+    const { category, action, reason } = parsed.data;
+    // Body `setBy` is accepted for wire compatibility with Control Plane
+    // (which still forwards its session principal) but MUST NOT become the
+    // durable actor. The authenticated hop is `cp:service`.
+    void parsed.data.setBy;
     if (action === "activate") {
-      const override = osStore.setKillSwitchOverride(category, setBy, reason);
+      const override = osStore.setKillSwitchOverride(category, actorId, reason);
       return { category, override };
     }
-    const result = osStore.clearKillSwitchOverride(category, setBy, reason);
+    const result = osStore.clearKillSwitchOverride(category, actorId, reason);
     return { category, cleared: result.cleared };
   });
 }

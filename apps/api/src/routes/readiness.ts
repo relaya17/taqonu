@@ -5,7 +5,11 @@ import { issueProductionReadinessCertificate } from "../services/readiness-certi
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { defaultGoldenRoot } from "../services/golden-root.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireAdmin, requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+} from "../services/project-access.js";
 
 export async function registerReadinessRoutes(
   app: FastifyInstance,
@@ -38,6 +42,11 @@ export async function registerReadinessRoutes(
 
     osStore.ensureLoaded();
     const body = issueCertificateSchema.parse(request.body ?? {});
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    } else {
+      await requireAdmin(app, request);
+    }
     const project =
       body.projectId != null ? osStore.getProject(body.projectId) : undefined;
     const workspaceRoot =
@@ -82,16 +91,23 @@ export async function registerReadinessRoutes(
     return reply.status(201).send({ certificate: cert });
   });
 
-  app.get("/api/v1/readiness/certificates", async () => {
-    const items = osStore.listReadinessCertificates();
+  app.get("/api/v1/readiness/certificates", async (request) => {
+    const user = await requireUser(app, request);
+    const items = osStore
+      .listReadinessCertificates()
+      .filter((cert) => canReadProjectScoped(user, cert.projectId));
     return { items, total: items.length };
   });
 
   app.get("/api/v1/readiness/certificates/:id", async (request, reply) => {
+    const user = await requireUser(app, request);
     const id = (request.params as { id: string }).id;
     const cert = osStore.getReadinessCertificate(id);
     if (!cert) {
       return reply.status(404).send({ error: { message: "Not found" } });
+    }
+    if (!canReadProjectScoped(user, cert.projectId)) {
+      return reply.status(403).send({ error: { message: "Forbidden" } });
     }
     return cert;
   });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { AGENT_RUNTIME_CONTROL_PATH } from "@atlas/shared";
+import { AGENT_RUNTIME_CONTROL_PATH, CONTROL_PLANE_SERVICE_ID } from "@atlas/shared";
 import {
   AgentRuntimeControlRepository,
   type AgentRuntimeControlRecord,
@@ -86,10 +86,17 @@ describe("agent runtime control routes", () => {
     expect(res.json().record).toMatchObject({
       agentId: "CODE_ENGINEER",
       status: "PAUSED",
-      setBy: "owner-1",
+      setBy: CONTROL_PLANE_SERVICE_ID,
       reason: "route-level test",
       expiresAt: null,
     });
+  });
+
+  it("binds setBy to cp:service even when the body names another actor", async () => {
+    const res = await post(validBody({ setBy: "atlas-owner" }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().record.setBy).toBe(CONTROL_PLANE_SERVICE_ID);
+    expect(res.json().record.setBy).not.toBe("atlas-owner");
   });
 
   it("malformed POST returns 400", async () => {

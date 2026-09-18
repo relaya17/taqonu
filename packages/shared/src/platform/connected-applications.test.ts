@@ -22,6 +22,7 @@ describe("connected application runtime inventory", () => {
     expect(civio?.connection).toBe("HMAC_CONNECTOR");
     expect(civio?.ingest).toBe("EVALUATE_ONLY");
     expect(civio?.execute).toBe("NONE");
+    expect(civio?.preflight).toBe("HMAC_ATLAS_API");
     expect(civio?.executeGap).toEqual({
       authentication: "PRESENT",
       actions: "ABSENT",
@@ -58,11 +59,16 @@ describe("connected application runtime inventory", () => {
       expect(row?.reconciliation.classification).toBe("INVENTORY ONLY");
       expect(row?.reconciliation.executionEndpoint).toBe("none");
     }
+    expect(getConnectedApplicationRuntime("caseflow")?.preflight).toBe("HMAC_ATLAS_API");
+    expect(getConnectedApplicationRuntime("hotelos")?.preflight).toBe("HMAC_ATLAS_API");
+    expect(getConnectedApplicationRuntime("brokeros")?.preflight).toBe("HMAC_ATLAS_API");
+    expect(getConnectedApplicationRuntime("lexstudy")?.preflight).toBe("NONE");
+    expect(getConnectedApplicationRuntime("vantera")?.preflight).toBe("NONE");
     expect(getConnectedApplicationRuntime("hotelos")?.reconciliation.siblingObservePath).toMatch(
-      /gateway\/events/,
+      /application-preflight/,
     );
     expect(getConnectedApplicationRuntime("caseflow")?.reconciliation.siblingObservePath).toMatch(
-      /gateway\/events/,
+      /application-preflight/,
     );
   });
 });

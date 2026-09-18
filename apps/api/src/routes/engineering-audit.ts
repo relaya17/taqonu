@@ -25,9 +25,17 @@ import {
   saveArchitectureContract,
 } from "../services/architecture-contract-store.js";
 import { architectureContractSchema } from "@atlas/shared";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import {
+  requireAdmin,
+  requireSignedInForWrite,
+  requireUser,
+} from "../middleware/auth-guards.js";
 import { checkResourceAccess } from "../services/resource-access.js";
-import { getProjectOwnerId } from "../services/project-access.js";
+import {
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+  getProjectOwnerId,
+} from "../services/project-access.js";
 import { getRequestUser } from "./auth.js";
 import {
   autoApplyLowRemediations,
@@ -108,9 +116,15 @@ export async function registerEngineeringAuditRoutes(
   });
 
   app.get("/api/v1/audit-engine/contract", async (request) => {
+    const user = await requireUser(app, request);
     const q = z
       .object({ projectId: uuidSchema.nullable().optional() })
       .parse(request.query ?? {});
+    if (q.projectId && !canReadProjectScoped(user, q.projectId)) {
+      throw new AtlasError("NOT_FOUND", "Architecture contract not found", {
+        statusCode: 404,
+      });
+    }
     return loadArchitectureContract(q.projectId ?? null);
   });
 
@@ -177,11 +191,13 @@ export async function registerEngineeringAuditRoutes(
     return reply.status(200).send(saved);
   });
 
-  app.get("/api/v1/audit-engine/reports", async () => ({
-    items: reports.slice(-20).reverse(),
-  }));
+  app.get("/api/v1/audit-engine/reports", async (request) => {
+    await requireAdmin(app, request);
+    return { items: reports.slice(-20).reverse() };
+  });
 
   app.get("/api/v1/audit-engine/reports/:id", async (request, reply) => {
+    await requireAdmin(app, request);
     const id = z.object({ id: uuidSchema }).parse(request.params).id;
     const hit = reports.find((r) => r.id === id);
     if (!hit) {
@@ -199,12 +215,18 @@ export async function registerEngineeringAuditRoutes(
     ],
   }));
 
-  app.get("/api/v1/constitution/reports", async () => ({
-    items: constitutionReports.slice(-20).reverse(),
-  }));
+  app.get("/api/v1/constitution/reports", async (request) => {
+    await requireAdmin(app, request);
+    return { items: constitutionReports.slice(-20).reverse() };
+  });
 
   app.post("/api/v1/constitution/run", async (request, reply) => {
     const body = runConstitutionRequestSchema.parse(request.body ?? {});
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    } else {
+      await requireSignedInForWrite(app, request);
+    }
     const project =
       body.projectId != null ? osStore.getProject(body.projectId) : undefined;
     const workspaceRoot = resolveWorkspace(app, {
@@ -277,6 +299,11 @@ export async function registerEngineeringAuditRoutes(
 
   app.post("/api/v1/audit-engine/run", async (request, reply) => {
     const body = runContinuousAuditRequestSchema.parse(request.body ?? {});
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    } else {
+      await requireSignedInForWrite(app, request);
+    }
     const project =
       body.projectId != null ? osStore.getProject(body.projectId) : undefined;
     const workspaceRoot = resolveWorkspace(app, {

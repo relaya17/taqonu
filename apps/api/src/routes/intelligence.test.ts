@@ -450,7 +450,7 @@ describe("PATCH /api/v1/intelligence/golden-projects/:id/scores (CONFIGURATION.U
   });
 });
 
-describe("Unit 6 read regression: public GET routes remain readable and unauthenticated", () => {
+describe("Unit 6 read regression: catalog GETs stay public; audit-derived GETs are admin-only", () => {
   it("GET /golden-projects does not require a signed-in user", async () => {
     getRequestUser.mockReturnValue(undefined);
     const res = await app.inject({ method: "GET", url: "/api/v1/intelligence/golden-projects" });
@@ -464,7 +464,16 @@ describe("Unit 6 read regression: public GET routes remain readable and unauthen
     expect(res.statusCode).toBe(200);
   });
 
-  it("GET /verification-lessons recommends and does not execute", async () => {
+  it("GET /verification-lessons 403s for a non-admin (audit-derived, cross-tenant)", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/intelligence/verification-lessons",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("GET /verification-lessons recommends and does not execute for admin", async () => {
+    getRequestUser.mockReturnValue(adminUser());
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/intelligence/verification-lessons",
@@ -478,7 +487,16 @@ describe("Unit 6 read regression: public GET routes remain readable and unauthen
     expect(body.lessons.every((lesson) => lesson.autoApply === false)).toBe(true);
   });
 
-  it("GET /outcome-signals scores history and does not execute", async () => {
+  it("GET /outcome-signals 403s for a non-admin", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/intelligence/outcome-signals",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("GET /outcome-signals scores history and does not execute for admin", async () => {
+    getRequestUser.mockReturnValue(adminUser());
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/intelligence/outcome-signals",

@@ -133,3 +133,71 @@ describe("runStateReconciliation memory isolation", () => {
     expect(risks).toContain(ADMIN_ON_PROJECT_BUG);
   });
 });
+
+describe("runStateReconciliation decision isolation", () => {
+  beforeEach(() => {
+    osStore.resetInMemoryForTests();
+  });
+
+  afterEach(() => {
+    osStore.resetInMemoryForTests();
+  });
+
+  it("does not copy another tenant's global decision text into the project snapshot", () => {
+    const now = new Date().toISOString();
+    const projectId = crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectId,
+      slug: `proj-${projectId.slice(0, 8)}`,
+      name: "Owner A project",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(projectId, OWNER_A, "bound_on_create");
+
+    osStore.addDecision({
+      id: crypto.randomUUID(),
+      projectId: null,
+      decision: "TENANT-B-SECRET-ADR keep competitor pricing private",
+      reason: [],
+      alternatives: [],
+      tradeOffs: [],
+      evidence: [],
+      status: "ACTIVE",
+      confidence: 0.9,
+      epistemicState: "CONFIRMED",
+      supersededBy: null,
+      adrPath: null,
+      decidedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      ownerId: OWNER_B,
+    });
+    osStore.addDecision({
+      id: crypto.randomUUID(),
+      projectId: null,
+      decision: "TENANT-A-OWN-ADR use checkout retries",
+      reason: [],
+      alternatives: [],
+      tradeOffs: [],
+      evidence: [],
+      status: "ACTIVE",
+      confidence: 0.9,
+      epistemicState: "CONFIRMED",
+      supersededBy: null,
+      adrPath: null,
+      decidedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      ownerId: OWNER_A,
+    });
+
+    const snapshot = runStateReconciliation(projectId);
+    const joined = snapshot.slices.map((slice) => slice.summary).join("\n");
+    expect(joined).not.toContain("TENANT-B-SECRET-ADR");
+    expect(joined).toContain("TENANT-A-OWN-ADR");
+  });
+});

@@ -75,7 +75,10 @@ function makeProject(owner: AuthUser | null) {
   return id;
 }
 
-function makeDecision(projectId: string | null): Decision {
+function makeDecision(
+  projectId: string | null,
+  ownerId?: string | null,
+): Decision {
   osStore.ensureLoaded();
   const now = new Date().toISOString();
   const decision: Decision = {
@@ -94,6 +97,7 @@ function makeDecision(projectId: string | null): Decision {
     decidedAt: now,
     createdAt: now,
     updatedAt: now,
+    ownerId: ownerId ?? null,
   };
   osStore.addDecision(decision);
   return decision;
@@ -140,6 +144,17 @@ describe("GET /api/v1/decisions", () => {
     expect(ids).toContain(mine.id);
     expect(ids).toContain(global.id);
     expect(ids).not.toContain(foreign.id);
+  });
+
+  it("hides another tenant's owned global decision", async () => {
+    const owner = signedInUser();
+    const secret = makeDecision(null, otherUser.id);
+    secret.decision = "TENANT-B-SECRET-DECISION";
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({ method: "GET", url: "/api/v1/decisions" });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().items.map((d: { id: string }) => d.id);
+    expect(ids).not.toContain(secret.id);
   });
 
   it("403s when explicitly querying by a foreign projectId", async () => {

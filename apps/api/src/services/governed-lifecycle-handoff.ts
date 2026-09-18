@@ -37,7 +37,15 @@ export function isControlPlaneServiceAuthorization(
   }
 }
 
-export function requireControlPlaneService(authorizationHeader: string | undefined): void {
+/**
+ * Authenticate the Control Plane SERVICE hop.
+ *
+ * Returns the only durable actor id this bearer can bind: `cp:service`.
+ * Caller-supplied `setBy` / `decidedBy` strings are not this principal.
+ */
+export function requireControlPlaneService(
+  authorizationHeader: string | undefined,
+): typeof CONTROL_PLANE_SERVICE_ID {
   const current = process.env.ATLAS_CONTROL_PLANE_TOKEN?.trim() ?? "";
   const previous = process.env.ATLAS_CONTROL_PLANE_TOKEN_PREVIOUS?.trim() ?? "";
   if (!current && !previous) {
@@ -54,6 +62,7 @@ export function requireControlPlaneService(authorizationHeader: string | undefin
       statusCode: 401,
     });
   }
+  return CONTROL_PLANE_SERVICE_ID;
 }
 
 function assertExecutionIntent(

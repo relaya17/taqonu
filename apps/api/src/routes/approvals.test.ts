@@ -37,6 +37,7 @@ const {
   ATLAS_SELF_CONTROL_VERIFY_PATH,
   APPROVAL_CONTROL_PATH,
   APPROVAL_CONTROL_MINT_PATH,
+  CONTROL_PLANE_SERVICE_ID,
   approvalControlDecidePath,
   atlasSelfApprovalContext,
 } = await import("@atlas/shared");
@@ -462,7 +463,29 @@ describe("Control Plane SERVICE canonical approval list/decide", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("APPROVED");
-    expect(res.json().decidedBy).toBe("cp:owner");
+    expect(res.json().decidedBy).toBe(CONTROL_PLANE_SERVICE_ID);
+  });
+
+  it("binds decidedBy to cp:service even when the body names another actor", async () => {
+    const created = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "run checks",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: approvalControlDecidePath(created.id),
+      headers: cpHeaders(),
+      payload: {
+        approve: true,
+        decidedBy: "atlas-owner",
+        reason: "operator approved after review",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().decidedBy).toBe(CONTROL_PLANE_SERVICE_ID);
+    expect(res.json().decidedBy).not.toBe("atlas-owner");
   });
 
   it("rejects a pending request through the Control Plane service hop", async () => {
@@ -484,7 +507,7 @@ describe("Control Plane SERVICE canonical approval list/decide", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("REJECTED");
-    expect(res.json().decidedBy).toBe("cp:owner");
+    expect(res.json().decidedBy).toBe(CONTROL_PLANE_SERVICE_ID);
   });
 
   it("401s mint without a Control Plane service token", async () => {

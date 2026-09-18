@@ -91,7 +91,7 @@ describe("portfolio-discovery", () => {
     const outside = join(base, "outside");
     mkdirSync(outside, { recursive: true });
 
-    osStore.setLocalConnection({
+    osStore.setLocalConnection("owner-a", {
       id: crypto.randomUUID(),
       status: "CONNECTED",
       reposRoot,
@@ -119,14 +119,14 @@ describe("portfolio-discovery", () => {
     const linked = linkDiscoveredWorkspaceRoot({
       projectId,
       workspaceRoot: inside,
-    });
+    }, "owner-a");
     expect(linked.workspaceRoot).toBe(inside);
 
     expect(() =>
       linkDiscoveredWorkspaceRoot({
         projectId,
         workspaceRoot: outside,
-      }),
+      }, "owner-a"),
     ).toThrow(/inside the configured local reposRoot/);
   });
 

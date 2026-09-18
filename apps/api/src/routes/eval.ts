@@ -12,6 +12,7 @@ import {
   assertEvalQuota,
   recordEvalRunUsage,
 } from "../services/plan-quota.js";
+import { requireAdmin, requireSignedInForWrite } from "../middleware/auth-guards.js";
 
 const REQUIRED = [
   "ACCURACY",
@@ -135,14 +136,16 @@ export async function registerEvalRoutes(app: FastifyInstance): Promise<void> {
     ],
   }));
 
-  app.get("/api/v1/eval/runs", async () => {
+  app.get("/api/v1/eval/runs", async (request) => {
+    await requireAdmin(app, request);
     const items = osStore.listEvalRuns();
     return { items, total: items.length };
   });
 
   app.post("/api/v1/eval/runs", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
     osStore.ensureLoaded();
-    assertEvalQuota(app.atlasEnv);
+    assertEvalQuota(app.atlasEnv, user.id);
     const body = createEvalRunSchema.parse(request.body);
     const suiteId = body.suiteId || SUITE_WRITE;
     if (suiteId !== SUITE_WRITE && suiteId !== SUITE_SELF) {
@@ -170,7 +173,7 @@ export async function registerEvalRoutes(app: FastifyInstance): Promise<void> {
     });
 
     osStore.addEvalRun(run);
-    recordEvalRunUsage();
+    recordEvalRunUsage(user.id);
     appendDomainEvent({
       type: "evaluation.completed",
       epistemicState: allPassed ? "OBSERVED" : "UNVERIFIED",

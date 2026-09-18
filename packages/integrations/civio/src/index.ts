@@ -10,3 +10,8 @@ export {
   type CivioControlIngestResponse,
   type EmitCivioEventToControlInput,
 } from "./client.js";
+export {
+  requestApplicationPreflight,
+  signApplicationConnectorRequest,
+  operationClassUnavailablePolicy,
+} from "./application-preflight-client.js";

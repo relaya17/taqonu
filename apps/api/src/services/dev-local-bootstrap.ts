@@ -20,6 +20,9 @@ export interface DevLocalBootstrapResult {
  * auto-link matching local folders, and backfill BrokerOS golden fixture root.
  * No-op in production unless ATLAS_LOCAL_REPOS_ROOT is explicitly set.
  */
+/** Dev-only auto-link store key. Never equal to a signed-in user UUID. */
+const DEV_LOCAL_CONNECTION_OWNER = "dev:local-bootstrap";
+
 export function ensureDevLocalPortfolioLink(
   env: ServerEnv,
 ): DevLocalBootstrapResult {
@@ -31,7 +34,8 @@ export function ensureDevLocalPortfolioLink(
     env.NODE_ENV === "test";
 
   let connected = false;
-  let reposRoot: string | null = osStore.getLocalConnection()?.reposRoot ?? null;
+  let reposRoot: string | null =
+    osStore.getLocalConnection(DEV_LOCAL_CONNECTION_OWNER)?.reposRoot ?? null;
   let scanned = 0;
   let linked = 0;
   let note = "skipped";
@@ -43,7 +47,7 @@ export function ensureDevLocalPortfolioLink(
         : resolve(join(findRepoRoot(), ".."));
       if (existsSync(candidate)) {
         const now = new Date().toISOString();
-        osStore.setLocalConnection({
+        osStore.setLocalConnection(DEV_LOCAL_CONNECTION_OWNER, {
           id: crypto.randomUUID(),
           status: "CONNECTED",
           reposRoot: candidate,
@@ -76,10 +80,10 @@ export function ensureDevLocalPortfolioLink(
         scanned = discovered.scanned;
         linked = discovered.linked;
         connected = true;
-        const connection = osStore.getLocalConnection();
+        const connection = osStore.getLocalConnection(DEV_LOCAL_CONNECTION_OWNER);
         if (connection) {
           const now = new Date().toISOString();
-          osStore.setLocalConnection({
+          osStore.setLocalConnection(DEV_LOCAL_CONNECTION_OWNER, {
             ...connection,
             status: "CONNECTED",
             updatedAt: now,
