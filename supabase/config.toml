@@ -2,8 +2,17 @@ project_id = "atlas-arletos"
 
 [api]
 enabled = true
-port = 54321
+port = 15432
 
 [db]
-port = 54322
+port = 15433
 major_version = 15
+
+[studio]
+port = 15434
+
+[local_smtp]
+port = 15435
+
+[analytics]
+port = 15436

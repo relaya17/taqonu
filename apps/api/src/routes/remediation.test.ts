@@ -537,3 +537,55 @@ describe("F-03 canonical Unified Audit Log coverage", () => {
     expect(stillPending?.appliedAt).toBeNull();
   });
 });
+
+describe("POST /api/v1/remediation/drafts/:id/verify", () => {
+  it("404s CODE_ENGINEER patches that are not auto-remediation drafts", async () => {
+    const projectId = crypto.randomUUID();
+    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const now = new Date().toISOString();
+    const patch = patchArtifactSchema.parse({
+      id: crypto.randomUUID(),
+      projectId,
+      title: "CODE_ENGINEER governed patch",
+      reason: "Must not use the auto-remediation verify endpoint",
+      mode: "fix",
+      status: "APPLIED",
+      risk: "LOW",
+      baseCommit: null,
+      targetBranch: null,
+      filesChanged: [
+        {
+          path: "test.txt",
+          action: "modify",
+          summary: "update test file",
+          afterContent: "modified content",
+        },
+      ],
+      evidenceIds: [],
+      claimIds: [],
+      expectedImpact: "trivial",
+      tests: [],
+      evaluationSummary: null,
+      approvals: [{ by: "human@example.com", at: now }],
+      appliedAt: now,
+      verifiedAt: null,
+      rollbackRef: null,
+      rollbackSnapshot: [{ path: "test.txt", previousContent: "original content" }],
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "atlas-code-intelligence",
+      epistemicState: "OBSERVED",
+      confidence: 1,
+      authorityHint: "DEVELOPER_STATEMENT",
+    });
+    osStore.upsertPatch(patch);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/remediation/drafts/${patch.id}/verify`,
+      payload: { workspaceRoot },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.message).toMatch(/Remediation draft not found/i);
+  });
+});

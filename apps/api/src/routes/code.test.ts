@@ -43,6 +43,7 @@ const { resetGovernedClaimStartsForTests } = await import(
   "../services/governed-claimed-execution.js"
 );
 const { osStore } = await import("../store/os-store.js");
+const { bindProjectOwner } = await import("../services/project-access.js");
 const { readAuditLogTail, setAuditLogPathForTests } = await import(
   "../services/audit-log.js"
 );
@@ -662,5 +663,278 @@ describe("POST /api/v1/code/patches/:id/rollback/decide-and-execute (CP7.2 live-
     });
     expect(res.statusCode).toBe(403);
     expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("modified content");
+  });
+});
+
+describe("POST /api/v1/code/patches/:id/verify and Apply memory write-back", () => {
+  const SOD_DECIDER = "99999999-9999-4999-8999-999999999999";
+
+  function makeOwnedProject() {
+    const owner = testUser();
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    osStore.upsertProject({
+      id,
+      slug: `proj-${id.slice(0, 8)}`,
+      name: "Governed patch project",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(id, owner.id, "bound_on_create");
+    osStore.setWorkspaceRoot(id, workspaceRoot);
+    return id;
+  }
+
+  function appliedMemories(projectId: string, ownerId: string) {
+    return osStore
+      .getMemories(projectId, ownerId)
+      .filter(
+        (m) => m.source === "code.patch.apply" && m.reason.includes("code-patch-applied"),
+      );
+  }
+
+  async function sodApply(patch: PatchArtifact) {
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(first.statusCode).toBe(202);
+    const approvalId = first.json().approvalId as string;
+    await decideApprovalRequest(approvalId, {
+      decidedBy: SOD_DECIDER,
+      approve: true,
+      decisionReason: "approved for governed verify test",
+    });
+    return app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${approvalId}`,
+      payload: { workspaceRoot },
+    });
+  }
+
+  it("verifies an applied CODE_ENGINEER patch through the governed path", async () => {
+    const projectId = makeOwnedProject();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+
+    const applied = await sodApply(patch);
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json().patch.status).toBe("APPLIED");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/verify`,
+      payload: { workspaceRoot, projectId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.verify.ok).toBe(true);
+    expect(body.patch.status).toBe("VERIFIED");
+    expect(lastAuditEntry("code.patch.verified")).toBeDefined();
+  });
+
+  it("rejects auto-remediation drafts on the governed verify path", async () => {
+    const projectId = makeOwnedProject();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-auto-remediation",
+      title: "AUTO_FIX: not a CODE_ENGINEER patch",
+      status: "APPLIED",
+      appliedAt: new Date().toISOString(),
+    });
+    osStore.upsertPatch(patch);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/verify`,
+      payload: { workspaceRoot, projectId },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.message).toMatch(/remediation\/drafts/i);
+  });
+
+  it("does not report success for an unapplied CODE_ENGINEER patch", async () => {
+    const projectId = makeOwnedProject();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      status: "APPROVED",
+    });
+    osStore.upsertPatch(patch);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/verify`,
+      payload: { workspaceRoot, projectId },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/apply first/i);
+  });
+
+  it("fails closed when applied content does not match the patch", async () => {
+    const projectId = makeOwnedProject();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+    const applied = await sodApply(patch);
+    expect(applied.statusCode).toBe(200);
+    writeFileSync(join(workspaceRoot, "test.txt"), "tampered after apply", "utf8");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/verify`,
+      payload: { workspaceRoot, projectId },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.message).toMatch(/Verify FAIL/i);
+  });
+
+  it("forbids a foreign user from verifying another project's patch", async () => {
+    const projectId = makeOwnedProject();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+    const applied = await sodApply(patch);
+    expect(applied.statusCode).toBe(200);
+
+    getRequestUser.mockReturnValue(
+      testUser({
+        id: "44444444-4444-4444-8444-444444444444",
+        email: "foreign@example.com",
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/verify`,
+      payload: { workspaceRoot, projectId },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("successful Apply creates exactly one owner/project-scoped applied-result memory", async () => {
+    const projectId = makeOwnedProject();
+    const owner = testUser();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      title: "Governed memory write-back patch",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+
+    expect(appliedMemories(projectId, owner.id)).toHaveLength(0);
+    const applied = await sodApply(patch);
+    expect(applied.statusCode).toBe(200);
+
+    const memories = appliedMemories(projectId, owner.id);
+    expect(memories).toHaveLength(1);
+    expect(memories[0]?.ownerId).toBe(owner.id);
+    expect(memories[0]?.projectId).toBe(projectId);
+    expect(memories[0]?.statement).toContain(patch.id);
+    expect(memories[0]?.statement).not.toMatch(/sk[_-]|password|secret/i);
+    expect(memories[0]?.sourceId).toBe(patch.id);
+  });
+
+  it("202 Apply without SoD decision does not create an applied-result memory", async () => {
+    const projectId = makeOwnedProject();
+    const owner = testUser();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(first.statusCode).toBe(202);
+    expect(appliedMemories(projectId, owner.id)).toHaveLength(0);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
+  });
+
+  it("rejected Apply decision does not create an applied-result memory", async () => {
+    const projectId = makeOwnedProject();
+    const owner = testUser();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(first.statusCode).toBe(202);
+    await decideApprovalRequest(first.json().approvalId, {
+      decidedBy: SOD_DECIDER,
+      approve: false,
+      decisionReason: "rejected for memory write-back test",
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${first.json().approvalId}`,
+      payload: { workspaceRoot },
+    });
+    expect(second.statusCode).not.toBe(200);
+    expect(appliedMemories(projectId, owner.id)).toHaveLength(0);
+    expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
+  });
+
+  it("subsequent ask-agent retrieval includes the memory produced by Apply", async () => {
+    const projectId = makeOwnedProject();
+    const owner = testUser();
+    const patch = makePatch({
+      projectId,
+      createdBy: "atlas-code-intelligence",
+      title: "Governed memory write-back patch",
+      risk: "LOW",
+      confidence: 1,
+    });
+    osStore.upsertPatch(patch);
+
+    const applied = await sodApply(patch);
+    expect(applied.statusCode).toBe(200);
+    const created = appliedMemories(projectId, owner.id);
+    expect(created).toHaveLength(1);
+
+    const ask = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/ask-agent",
+      payload: {
+        projectId,
+        workspaceRoot,
+        mode: "fix",
+        instruction: `Continue from applied governed patch ${patch.id}`,
+      },
+    });
+    expect([200, 201]).toContain(ask.statusCode);
+    expect(ask.json().memoryUsed).toBeGreaterThanOrEqual(1);
+    expect(created[0]?.statement).toContain(patch.id);
   });
 });

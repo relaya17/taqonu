@@ -1,12 +1,14 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   AtlasError,
+  memorySchema,
   parseEvidenceRecord,
   patchArtifactSchema,
   type AuthUser,
   type PatchArtifact,
 } from "@atlas/shared";
+import { redactSecrets } from "@atlas/agent-core";
 import {
   applyPatchFiles,
   verifyRemediationApply,
@@ -205,6 +207,8 @@ export function recordRemediationVerification(input: {
   readonly workspaceRoot: string;
   readonly verify: RemediationVerifyResult;
   readonly userId: string;
+  /** Distinguishes auto-remediation smoke verify from governed CODE_ENGINEER verify. */
+  readonly kind?: "auto-remediation-verify" | "governed-patch-verify";
 }): PatchArtifact {
   const now = new Date().toISOString();
   const evidenceIds = [...input.patch.evidenceIds];
@@ -216,7 +220,7 @@ export function recordRemediationVerification(input: {
       id: evidenceId,
       ownerId: input.userId,
       projectId: input.patch.projectId,
-      source: `remediation-verify:${input.patch.id}`,
+      source: `${input.kind === "governed-patch-verify" ? "governed-patch-verify" : "remediation-verify"}:${input.patch.id}`,
       sourceType: "SYSTEM",
       sourceId: input.patch.id,
       uri: null,
@@ -272,7 +276,7 @@ export function recordRemediationVerification(input: {
     ownerId: input.userId,
     epistemicState: input.verify.ok ? "OBSERVED" : "CONFLICTED",
     payload: {
-      kind: "auto-remediation-verify",
+      kind: input.kind ?? "auto-remediation-verify",
       patchId: patch.id,
       sourceIssueId: patch.sourceIssueId ?? null,
       ok: input.verify.ok,
@@ -280,7 +284,11 @@ export function recordRemediationVerification(input: {
       checks: input.verify.checks,
     },
   });
-  if (input.verify.ok && patch.sourceIssueId) {
+  if (
+    input.verify.ok &&
+    patch.sourceIssueId &&
+    (input.kind ?? "auto-remediation-verify") !== "governed-patch-verify"
+  ) {
     learnFromVerifiedPatch({
       ownerId: input.userId,
       projectId: patch.projectId,
@@ -294,6 +302,189 @@ export function recordRemediationVerification(input: {
     });
   }
   return patch;
+}
+
+/**
+ * Disk/content checks for an already-applied CODE_ENGINEER governed patch.
+ * Does not use AUTO_FIX/issue-marker heuristics — those belong to auto-remediation.
+ */
+export function verifyGovernedPatchApply(input: {
+  readonly workspaceRoot: string;
+  readonly patch: PatchArtifact;
+}): RemediationVerifyResult {
+  const root = resolve(input.workspaceRoot);
+  const checks: Array<{ id: string; passed: boolean; detail: string }> = [];
+
+  for (const file of input.patch.filesChanged) {
+    const rel = file.path;
+    if (rel.includes("..") || rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) {
+      checks.push({
+        id: `path-safe:${rel}`,
+        passed: false,
+        detail: "Path failed traversal safety check",
+      });
+      continue;
+    }
+    const full = join(root, rel);
+    const exists = existsSync(full);
+    if (file.action === "delete") {
+      checks.push({
+        id: `deleted:${rel}`,
+        passed: !exists,
+        detail: exists
+          ? `Deleted path still present: ${rel}`
+          : `Deleted path absent: ${rel}`,
+      });
+      continue;
+    }
+    checks.push({
+      id: `exists:${rel}`,
+      passed: exists,
+      detail: exists
+        ? `Applied file present: ${rel}`
+        : `Missing after apply: ${rel}`,
+    });
+    if (exists && file.afterContent !== undefined) {
+      try {
+        const text = readFileSync(full, "utf8");
+        const matched = text === file.afterContent;
+        checks.push({
+          id: `content:${rel}`,
+          passed: matched,
+          detail: matched
+            ? `Applied content matches patch for ${rel}`
+            : `Applied content does not match patch for ${rel}`,
+        });
+      } catch {
+        checks.push({
+          id: `content:${rel}`,
+          passed: false,
+          detail: `Could not read applied file ${rel}`,
+        });
+      }
+    }
+  }
+
+  if (input.patch.filesChanged.length === 0) {
+    checks.push({
+      id: "applied-paths",
+      passed: false,
+      detail: "No applied paths to verify",
+    });
+  }
+
+  const ok = checks.length > 0 && checks.every((c) => c.passed);
+  const summary = ok
+    ? `Verify PASS — ${checks.length} governed check(s) for patch ${input.patch.id}`
+    : `Verify FAIL — ${checks.filter((c) => !c.passed).length}/${checks.length} check(s) failed for patch ${input.patch.id}`;
+  return { ok, checks, summary };
+}
+
+export function verifyGovernedCodePatch(input: {
+  readonly existing: PatchArtifact;
+  readonly user: AuthUser;
+  readonly bodyWorkspaceRoot?: string | null;
+  readonly projectId?: string | null;
+}): { patch: PatchArtifact; verify: RemediationVerifyResult } {
+  if (isAutoRemediationDraft(input.existing)) {
+    throw new AtlasError(
+      "CONFLICT",
+      "Auto-remediation drafts must be verified via /api/v1/remediation/drafts/:id/verify",
+      { statusCode: 409 },
+    );
+  }
+  if (
+    input.projectId &&
+    input.existing.projectId &&
+    input.projectId !== input.existing.projectId
+  ) {
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Patch does not belong to this project",
+      { statusCode: 403 },
+    );
+  }
+  if (input.existing.status !== "APPLIED" && input.existing.status !== "VERIFIED") {
+    throw new AtlasError(
+      "VALIDATION_ERROR",
+      `Cannot verify patch in status ${input.existing.status} — apply first`,
+      { statusCode: 400 },
+    );
+  }
+
+  const workspaceRoot = resolveApplyWorkspaceRoot({
+    projectId: input.existing.projectId,
+    bodyWorkspaceRoot: input.bodyWorkspaceRoot ?? null,
+    requireProjectRoot: Boolean(input.existing.projectId),
+  });
+  const verify = verifyGovernedPatchApply({
+    workspaceRoot,
+    patch: input.existing,
+  });
+  const patch = recordRemediationVerification({
+    patch: input.existing,
+    workspaceRoot,
+    verify,
+    userId: input.user.id,
+    kind: "governed-patch-verify",
+  });
+  return { patch, verify };
+}
+
+function recordGovernedPatchApplyMemory(input: {
+  readonly patch: PatchArtifact;
+  readonly user: AuthUser;
+  readonly applied: readonly string[];
+}): void {
+  if (isAutoRemediationDraft(input.patch)) return;
+  if (!input.patch.projectId) return;
+  if (input.applied.length === 0) return;
+
+  const now = new Date().toISOString();
+  const files = input.applied.join(", ");
+  const statement = redactSecrets(
+    `Applied governed patch ${input.patch.id} (${input.patch.title}): ${files}.`,
+  ).slice(0, 4000);
+  const memory = memorySchema.parse({
+    id: crypto.randomUUID(),
+    ownerId: input.user.id,
+    type: "PROJECT_STATE",
+    projectId: input.patch.projectId,
+    statement,
+    reason: ["code-patch-applied", `patchId:${input.patch.id}`],
+    status: "ACTIVE",
+    confidence: 0.85,
+    category: "EVENT_MEMORY",
+    epistemicState: "OBSERVED",
+    observationMode: "OBSERVED",
+    source: "code.patch.apply",
+    sourceType: "SYSTEM",
+    sourceId: input.patch.id,
+    evidence: [],
+    supersededBy: null,
+    validFrom: now,
+    validUntil: null,
+    observedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: input.user.email,
+    agentId: "CODE_ENGINEER",
+    scope: "PROJECT",
+    priority: "MEDIUM",
+  });
+  osStore.addMemory(memory);
+  appendDomainEvent({
+    type: "memory.created",
+    projectId: input.patch.projectId,
+    ownerId: input.user.id,
+    epistemicState: "OBSERVED",
+    payload: {
+      memoryId: memory.id,
+      kind: "code-patch-applied",
+      patchId: input.patch.id,
+      applied: input.applied,
+    },
+  });
 }
 
 export function applyApprovedPatch(input: {
@@ -438,6 +629,11 @@ export function applyApprovedPatch(input: {
   atlasMetrics.record("patch_apply_rate", 1, {
     risk: input.existing.risk,
     autoRemediation: isAutoRemediationDraft(input.existing) ? "true" : "false",
+  });
+  recordGovernedPatchApplyMemory({
+    patch,
+    user: input.user,
+    applied: result.applied,
   });
 
   let verify: RemediationVerifyResult | null = null;

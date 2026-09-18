@@ -13,6 +13,7 @@ import {
   canVerifyStudioPatch,
   nextStudioPatchStep,
   patchGovernedPath,
+  patchVerifyPath,
 } from "@/lib/studio-patch-workflow";
 
 interface PatchItem {
@@ -110,10 +111,19 @@ export function StudioPatchWorkflow({
   });
 
   const verify = useMutation({
-    mutationFn: (id: string) =>
-      apiPost(`/api/v1/remediation/drafts/${id}/verify`, {
+    mutationFn: async (id: string) => {
+      const result = await apiPost<{
+        patch?: { status?: string };
+        verify?: { ok?: boolean; summary?: string };
+      }>(patchVerifyPath(id), {
+        projectId,
         ...(root ? { workspaceRoot: root } : {}),
-      }),
+      });
+      if (result?.verify && result.verify.ok === false) {
+        throw new Error(result.verify.summary || "Verification failed");
+      }
+      return result;
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
       onVerified?.();
@@ -163,6 +173,11 @@ export function StudioPatchWorkflow({
       {actionError ? (
         <Alert severity="error" sx={{ mt: 1.5 }}>
           {(actionError as Error).message}
+        </Alert>
+      ) : null}
+      {verify.isSuccess && !verify.isError ? (
+        <Alert severity="success" sx={{ mt: 1.5 }}>
+          {tPatches("verified")}
         </Alert>
       ) : null}
 

@@ -142,9 +142,15 @@ describe("D2 Studio approve/apply does not skip human approval", () => {
     expect(helper).toContain("approvalId");
     const workflow = readWeb("components/studio/StudioPatchWorkflow.tsx");
     expect(workflow).toContain("patchGovernedPath");
+    expect(workflow).toContain("patchVerifyPath");
     expect(workflow).toContain("isApprovalRequiredError");
     expect(workflow).toContain("canApplyStudioPatch(focused.status)");
     expect(workflow).not.toMatch(/apply\.mutate.*approve\.mutate/);
+    expect(workflow).not.toContain("/api/v1/remediation/drafts/");
+    expect(helper).toContain("patchVerifyPath");
+    expect(helper).toContain("/api/v1/code/patches/");
+    const patchesPanel = readWeb("components/dashboard/PatchesPanel.tsx");
+    expect(patchesPanel).toContain("/api/v1/remediation/drafts/");
     const api = readWeb("lib/api.ts");
     expect(api).toContain("APPROVAL_REQUIRED");
     expect(api).toContain("ApprovalRequiredError");

@@ -62,6 +62,7 @@ import {
   applyApprovedPatch,
   assertPatchApprovedForApply,
   patchArtifactHash,
+  verifyGovernedCodePatch,
 } from "../services/patch-write.js";
 import { createApprovalRequest } from "../services/approvals.js";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
@@ -968,6 +969,51 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return result;
+  });
+
+  app.post("/api/v1/code/patches/:id/verify", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
+    const id = (request.params as { id: string }).id;
+    const body = z
+      .object({
+        workspaceRoot: z.string().min(1).max(1000).optional(),
+        projectId: z.string().uuid().optional(),
+      })
+      .parse(request.body ?? {});
+    const existing = osStore.getPatch(id);
+    if (!existing) {
+      return reply.status(404).send({ error: { message: "Patch not found" } });
+    }
+    const user = await assertPatchWrite(app, request, existing);
+    const { patch, verify } = verifyGovernedCodePatch({
+      existing,
+      user,
+      bodyWorkspaceRoot: body.workspaceRoot ?? null,
+      projectId: body.projectId ?? null,
+    });
+
+    appendUnifiedAuditEntry({
+      type: "code.patch.verified",
+      actorId: user.id,
+      actorKind: "USER",
+      reason: verify.summary,
+      input: {
+        patchId: existing.id,
+        patchStatus: existing.status,
+        verifyWorkspaceRoot: body.workspaceRoot ?? null,
+      },
+      output: { status: patch.status, ok: verify.ok },
+      policy: "code.patch.verify",
+      risk: existing.risk,
+      approval: "NOT_REQUIRED",
+      result: verify.ok ? "SUCCESS" : "FAILURE",
+      projectId: existing.projectId,
+    });
+
+    if (!verify.ok) {
+      throw new AtlasError("CONFLICT", verify.summary, { statusCode: 409 });
+    }
+    return { patch, verify, epistemicState: "OBSERVED" as const };
   });
 
   app.post(

@@ -56,3 +56,8 @@ export function patchGovernedPath(
     ? `${path}?approvalId=${encodeURIComponent(approvalId)}`
     : path;
 }
+
+/** Governed CODE_ENGINEER verify — not the auto-remediation draft endpoint. */
+export function patchVerifyPath(id: string): string {
+  return `/api/v1/code/patches/${id}/verify`;
+}
