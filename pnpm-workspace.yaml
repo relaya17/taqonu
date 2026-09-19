@@ -7,3 +7,4 @@ packages:
 # settings from the workspace file and silently ignores the package.json one.
 onlyBuiltDependencies:
   - esbuild
+  - node-pty

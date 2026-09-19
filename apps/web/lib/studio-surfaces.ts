@@ -1,4 +1,4 @@
-export const STUDIO_TABS = ["files", "chat", "run", "cloud", "checks"] as const;
+export const STUDIO_TABS = ["files", "chat", "run", "pty", "cloud", "checks"] as const;
 export type StudioTab = (typeof STUDIO_TABS)[number];
 
 /** Canonical Checks-tab capabilities. Process Audit is the full E2E audit, not the QA subset. */

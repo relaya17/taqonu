@@ -63,6 +63,16 @@ describe("buildStudioSearch", () => {
     expect(run).toContain("tab=run");
     expect(run).not.toContain("file=");
   });
+
+  it("keeps the pty tab without leaking a file query", () => {
+    const pty = buildStudioSearch({
+      tab: "pty",
+      projectId: "00000000-0000-4000-8000-def000000001",
+      file: "README.md",
+    });
+    expect(pty).toContain("tab=pty");
+    expect(pty).not.toContain("file=");
+  });
 });
 
 describe("studio.run i18n", () => {
@@ -152,6 +162,8 @@ describe("studio level-up i18n", () => {
       expect(locale.studio.problems.testUnavailable.length).toBeGreaterThan(0);
       expect(locale.studio.searchTruncated.length).toBeGreaterThan(0);
       expect(locale.studio.run.stderr.length).toBeGreaterThan(0);
+      expect(locale.studio.ptyTerminal.new.length).toBeGreaterThan(0);
+      expect(locale.studio.tab.pty.length).toBeGreaterThan(0);
       expect(locale.studio.run.timedOut.length).toBeGreaterThan(0);
       expect(locale.studio.git.exitCode.length).toBeGreaterThan(0);
       expect(locale.studio.briefing.remediationLine.length).toBeGreaterThan(0);

@@ -41,6 +41,7 @@ import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel
 import { StudioCodeEditor } from "@/components/studio/StudioCodeEditor";
 import { StudioProblemsPanel } from "@/components/studio/StudioProblemsPanel";
 import { StudioRunPanel } from "@/components/studio/StudioRunPanel";
+import { StudioPtyTerminal } from "@/components/studio/StudioPtyTerminal";
 import { StudioGitStatus } from "@/components/studio/StudioGitStatus";
 import { StudioAgentBriefing } from "@/components/studio/StudioAgentBriefing";
 import { StudioContinuity } from "@/components/studio/StudioContinuity";
@@ -1528,6 +1529,14 @@ export default function StudioPage() {
       {tab === "run" ? (
         projectId ? (
           <StudioRunPanel projectId={projectId} />
+        ) : (
+          <Alert severity="info">{t("pickProject")}</Alert>
+        )
+      ) : null}
+
+      {tab === "pty" ? (
+        projectId ? (
+          <StudioPtyTerminal projectId={projectId} />
         ) : (
           <Alert severity="info">{t("pickProject")}</Alert>
         )

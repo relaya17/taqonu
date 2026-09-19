@@ -81,6 +81,15 @@ New local layer after the closed Studio baseline. Does **not** reopen P0 or GAP-
 - Governed Git catalog adds read-only `git.branch` and `git.diff` (still RECORD.EXECUTE + SoD). Not a PTY. Not unrestricted Agent execution.
 - LSP/debugger remain architectural gaps — not faked.
 
+### Interactive user terminal (local, 2026-09-20)
+
+Human-only Studio PTY is separate from governed `commandId` execution.
+
+- Backend: `node-pty` ConPTY on Windows; Fastify WebSocket plus ticketed SSE (`/events`) for browsers that block cross-origin WS; session tickets; start-cwd = linked workspaceRoot (not a filesystem jail; a real shell can `cd` out).
+- Frontend: xterm.js (not a textarea). Each PTY session has its own Terminal instance, SSE stream, and scrollback. Output over SSE/fetch; input over REST. Agent cannot open/inherit a PTY (`x-atlas-actor-kind: AGENT` denied). Transcripts are not stored in Atlas.
+- Reconnect is **MISSING**: sessions are in-memory; the list API does not return tickets.
+- Governed Run tab is unchanged (RECORD.EXECUTE + SoD). LSP/debugger remain out of scope.
+
 Still PARTIAL / NOT PROVEN: cloud dual-write for internal `addMemory`, full keyboard a11y, production VM/signing/DR.
 
 ### Gap closure execution (2026-09-18, current :4000 / :3000)

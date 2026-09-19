@@ -324,6 +324,7 @@
       "files": "Files",
       "chat": "Agent chat",
       "run": "Run",
+      "pty": "Terminal",
       "cloud": "Cloud & Tools",
       "checks": "Checks"
     },
@@ -358,6 +359,25 @@
       "extensionsHelp": "Manifest registry only. No marketplace, no user JavaScript, no host API.",
       "hostReady": "host ready",
       "noHost": "no host"
+    },
+    "ptyTerminal": {
+      "help": "Interactive human terminal in the linked workspace. This is a real process/PTY, not governed commandId execution.",
+      "notAgent": "The Agent cannot use this terminal. Agent execution stays allowlisted commandId + SoD.",
+      "shell": "Shell",
+      "new": "New terminal",
+      "opening": "Opening…",
+      "interrupt": "Ctrl+C",
+      "clear": "Clear",
+      "close": "Close terminal",
+      "closed": "session closed",
+      "status": "Status",
+      "sessions": "Terminal sessions",
+      "session": "Session",
+      "cwd": "Working directory",
+      "empty": "Open a terminal to start an interactive shell in the project workspace.",
+      "terminal": "Interactive terminal",
+      "error": "Terminal failed",
+      "streamError": "Terminal stream failed"
     },
     "workflow": {
       "title": "Propose → review → approve → apply → verify",
