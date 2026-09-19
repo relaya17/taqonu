@@ -21,7 +21,13 @@ import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useTranslations, useLocale } from "next-intl";
 import { Link, usePathname } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
-import { WEB_NAV_PATHS, WEB_POST_AUTH_PATH, type StudioCheckId } from "@/lib/studio-surfaces";
+import {
+  WEB_NAV_PATHS,
+  WEB_POST_AUTH_PATH,
+  isMarketingShellPath,
+  isPublicShellPath,
+  type StudioCheckId,
+} from "@/lib/studio-surfaces";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
@@ -208,15 +214,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     retry: false,
   });
 
-  const isMarketing =
-    pathname === "/welcome" || pathname.startsWith("/welcome/");
+  const isPublicDoor = isPublicShellPath(pathname);
+  const isMarketing = isMarketingShellPath(pathname);
   const showUpgradeCta = planQuery.data?.tier === "free";
-  // The desktop sidebar lists internal product pages (systems, projects,
-  // audit, health...). Showing it -- open, by default -- on /auth/login,
-  // /auth/register etc. let a signed-out visitor see and click into the
-  // full internal nav before authenticating. Defaults to hidden while
-  // meQuery is still loading, not just once it confirms "not signed in".
+  // Product nav (Studio / Checks / Systems) is signed-in only. Do not
+  // default it open on /welcome or /auth — a signed-out visitor must not
+  // see or click the working inventory before register/login. Hidden
+  // while meQuery is still loading, not only after it confirms signed-out.
   const isAuthed = Boolean(meQuery.data?.user);
+  const showProductNav = isAuthed && !isPublicDoor;
 
   const logout = async () => {
     await apiPost("/api/v1/auth/logout", {});
@@ -240,6 +246,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Typography
         component={Link}
         href={href}
+        locale={locale}
         onClick={opts?.onClick}
         aria-label={t("brand.name")}
         dir="ltr"
@@ -625,17 +632,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           {brandMark("/welcome", { size: "sm", tone: "dark" })}
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ display: { xs: "none", sm: "flex" } }}
-            >
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <Button
                 component={Link}
                 href="/plan"
                 size="small"
-                sx={{ color: marketingTone.chrome, fontWeight: 650 }}
+                sx={{
+                  color: marketingTone.chrome,
+                  fontWeight: 650,
+                  display: { xs: "none", sm: "inline-flex" },
+                }}
               >
                 {t("landing.ctaPricing")}
               </Button>
@@ -682,85 +688,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {themeToggle({ tone: "dark" })}
               {langMenu("atlas-lang-menu-marketing", { tone: "dark" })}
-              <IconButton
-                size="small"
-                onClick={() => setNavOpen(true)}
-                aria-label={t("a11y.openMenu")}
-                aria-expanded={navOpen}
-                aria-controls={navId}
-                sx={{
-                  color: marketingTone.textMuted,
-                  display: { xs: "inline-flex", sm: "none" },
-                }}
-              >
-                <MenuIcon />
-              </IconButton>
             </Stack>
           </Stack>
         </Box>
-        <Drawer
-          variant="temporary"
-          anchor={anchor}
-          open={navOpen}
-          onClose={() => setNavOpen(false)}
-          ModalProps={{ keepMounted: false }}
-          sx={{
-            display: { xs: "block", sm: "none" },
-            [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
-          }}
-          PaperProps={{
-            ...drawerPaperProps,
-            id: navId,
-          }}
-        >
-          <Stack direction="row" justifyContent="flex-end" sx={{ px: 0.5, pt: 0.5 }}>
-            <IconButton
-              aria-label={t("a11y.closeMenu")}
-              onClick={() => setNavOpen(false)}
-              sx={{ color: "inherit" }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Stack>
-          <Stack spacing={1} sx={{ px: 1.5, py: 1 }}>
-            <Button
-              component={Link}
-              href="/welcome"
-              onClick={() => setNavOpen(false)}
-              sx={{
-                color: marketingTone.color,
-                justifyContent: "flex-start",
-                fontWeight: 700,
-              }}
-            >
-              {t("nav.welcome")}
-            </Button>
-            <Button
-              component={Link}
-              href="/plan"
-              onClick={() => setNavOpen(false)}
-              sx={{ color: marketingTone.chrome, justifyContent: "flex-start" }}
-            >
-              {t("landing.ctaPricing")}
-            </Button>
-            <Button
-              component="a"
-              href={`/${locale}/auth/register`}
-              onClick={() => setNavOpen(false)}
-              sx={{ color: marketingTone.color, justifyContent: "flex-start" }}
-            >
-              {t("auth.register")}
-            </Button>
-            <Button
-              component="a"
-              href={`/${locale}/auth/login`}
-              onClick={() => setNavOpen(false)}
-              sx={{ color: marketingTone.color, justifyContent: "flex-start" }}
-            >
-              {t("auth.login")}
-            </Button>
-          </Stack>
-        </Drawer>
         <Box
           component="main"
           id="main-content"
@@ -792,52 +722,56 @@ export function AppShell({ children }: { children: ReactNode }) {
         {t("a11y.skipToContent")}
       </a>
 
-      {/* Mobile: same light chrome as top bar — no color flip when opened */}
-      <Drawer
-        variant="temporary"
-        anchor={anchor}
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-        ModalProps={{ keepMounted: false }}
-        sx={{
-          display: { xs: "block", md: "none" },
-          [`& .MuiDrawer-paper`]: drawerPaperSx(appMobileToneKey),
-        }}
-        PaperProps={{
-          ...drawerPaperProps,
-          id: navId,
-        }}
-      >
-        <Stack direction="row" justifyContent="flex-end" sx={{ px: 0.5, pt: 0.5 }}>
-          <IconButton
-            aria-label={t("a11y.closeMenu")}
-            onClick={() => setNavOpen(false)}
-            sx={{ color: "inherit" }}
+      {showProductNav ? (
+        <>
+          {/* Mobile: same light chrome as top bar — no color flip when opened */}
+          <Drawer
+            variant="temporary"
+            anchor={anchor}
+            open={navOpen}
+            onClose={() => setNavOpen(false)}
+            ModalProps={{ keepMounted: false }}
+            sx={{
+              display: { xs: "block", md: "none" },
+              [`& .MuiDrawer-paper`]: drawerPaperSx(appMobileToneKey),
+            }}
+            PaperProps={{
+              ...drawerPaperProps,
+              id: navId,
+            }}
           >
-            <CloseIcon />
-          </IconButton>
-        </Stack>
-        {nav({ mobile: true, tone: appMobileToneKey })}
-      </Drawer>
+            <Stack direction="row" justifyContent="flex-end" sx={{ px: 0.5, pt: 0.5 }}>
+              <IconButton
+                aria-label={t("a11y.closeMenu")}
+                onClick={() => setNavOpen(false)}
+                sx={{ color: "inherit" }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Stack>
+            {nav({ mobile: true, tone: appMobileToneKey })}
+          </Drawer>
 
-      {/* Desktop: docked sidebar — closable; hidden when collapsed */}
-      <Drawer
-        variant="permanent"
-        anchor={anchor}
-        open
-        sx={{
-          display: {
-            xs: "none",
-            md: navCollapsed || !isAuthed ? "none" : "block",
-          },
-          width: DRAWER_WIDTH,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
-        }}
-        PaperProps={drawerPaperProps}
-      >
-        {nav({ mobile: false, tone: "dark" })}
-      </Drawer>
+          {/* Desktop: docked sidebar — closable; hidden when collapsed */}
+          <Drawer
+            variant="permanent"
+            anchor={anchor}
+            open
+            sx={{
+              display: {
+                xs: "none",
+                md: navCollapsed ? "none" : "block",
+              },
+              width: DRAWER_WIDTH,
+              flexShrink: 0,
+              [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
+            }}
+            PaperProps={drawerPaperProps}
+          >
+            {nav({ mobile: false, tone: "dark" })}
+          </Drawer>
+        </>
+      ) : null}
 
       <Box
         component="main"
@@ -851,7 +785,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           width: {
             xs: "100%",
             md:
-              navCollapsed || !isAuthed
+              navCollapsed || !showProductNav
                 ? "100%"
                 : `calc(100% - ${DRAWER_WIDTH}px)`,
           },
@@ -905,37 +839,37 @@ export function AppShell({ children }: { children: ReactNode }) {
             {langMenu("atlas-lang-menu-header", {
               tone: appMobileToneKey,
             })}
-            <IconButton
-              ref={menuButtonRef}
-              edge="end"
-              onClick={() => {
-                if (navCollapsed) {
-                  setNavCollapsed(false);
-                  return;
-                }
-                setNavOpen(true);
-              }}
-              aria-label={t("a11y.openMenu")}
-              aria-expanded={navOpen}
-              aria-controls={navId}
-              sx={{
-                // Hidden while signed out: it only opens the internal nav
-                // drawer, which has nothing for an unauthenticated visitor
-                // (see the matching isAuthed gate on the desktop drawer
-                // above -- this is the same fix for the mobile entry point).
-                display: {
-                  xs: isAuthed ? "inline-flex" : "none",
-                  md: navCollapsed && isAuthed ? "inline-flex" : "none",
-                },
-              }}
-            >
-              <MenuIcon />
-            </IconButton>
+            {showProductNav ? (
+              <IconButton
+                ref={menuButtonRef}
+                edge="end"
+                onClick={() => {
+                  if (navCollapsed) {
+                    setNavCollapsed(false);
+                    return;
+                  }
+                  setNavOpen(true);
+                }}
+                aria-label={t("a11y.openMenu")}
+                aria-expanded={navOpen}
+                aria-controls={navId}
+                sx={{
+                  display: {
+                    xs: "inline-flex",
+                    md: navCollapsed ? "inline-flex" : "none",
+                  },
+                }}
+              >
+                <MenuIcon />
+              </IconButton>
+            ) : null}
           </Stack>
         </Box>
-        <PageContainer maxWidth={920} noPadding>
-          <AiCompanionBar />
-        </PageContainer>
+        {showProductNav ? (
+          <PageContainer maxWidth={920} noPadding>
+            <AiCompanionBar />
+          </PageContainer>
+        ) : null}
         <PageContainer
           maxWidth={920}
           sx={{

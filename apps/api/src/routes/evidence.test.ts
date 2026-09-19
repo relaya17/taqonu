@@ -61,6 +61,7 @@ vi.mock("@atlas/agent-core", async (importOriginal) => {
 const { registerEvidenceRoutes } = await import("./evidence.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 const { osStore } = await import("../store/os-store.js");
+const { bindProjectOwner } = await import("../services/project-access.js");
 
 function signedInUser(
   partial: Pick<Partial<AuthUser>, "id" | "email" | "role"> = {},
@@ -105,6 +106,7 @@ const validPayload = {
   source: "unit-test",
   sourceType: "USER" as const,
   excerpt: "Something observed.",
+  epistemicState: "OBSERVED" as const,
 };
 
 let app: FastifyInstance;
@@ -162,6 +164,22 @@ describe("POST /api/v1/evidence auth", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().source).toBe("unit-test");
+    expect(res.json().epistemicState).toBe("OBSERVED");
+  });
+
+  it("400s when epistemicState is omitted — does not default to FACT", async () => {
+    getRequestUser.mockReturnValue(signedInUser());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evidence",
+      payload: {
+        source: "unit-test",
+        sourceType: "USER",
+        excerpt: "Something observed.",
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).not.toMatch(/"epistemicState":"FACT"/);
   });
 
   it("403s when the Policy Engine denies DOCUMENT.CREATE (entity-policy gate wiring)", async () => {
@@ -197,6 +215,22 @@ describe("evidence tenant isolation", () => {
   const projectId = "55555555-5555-4555-8555-555555555555";
   const secretExcerpt = "OWNER-A-CONFIDENTIAL-EXCERPT-9f3c";
 
+  beforeEach(() => {
+    const now = new Date().toISOString();
+    osStore.ensureLoaded();
+    osStore.upsertProject({
+      id: projectId,
+      slug: "evidence-iso-a",
+      name: "Evidence Iso A",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(projectId, ownerA.id, "bound_on_create");
+  });
+
   async function postAs(user: AuthUser, payload: Record<string, unknown>) {
     getRequestUser.mockReturnValue(user);
     resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(user));
@@ -217,6 +251,18 @@ describe("evidence tenant isolation", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json().ownerId).toBe(ownerA.id);
     expect(res.json().ownerId).not.toBe(LEGACY_STUB_OWNER_ID);
+  });
+
+  it("a body-supplied ownerId cannot override the session-derived one", async () => {
+    const res = await postAs(ownerA, {
+      ...validPayload,
+      projectId,
+      excerpt: "owner-a-cannot-forge-owner",
+      ownerId: ownerB.id,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().ownerId).toBe(ownerA.id);
+    expect(res.json().ownerId).not.toBe(ownerB.id);
   });
 
   it("owner A's own GET still returns A's record (the feature must keep working)", async () => {
@@ -255,19 +301,50 @@ describe("evidence tenant isolation", () => {
     ).toHaveLength(body.items.length);
   });
 
-  it("a body-supplied ownerId cannot override the session-derived one", async () => {
+  it("a foreign project owner cannot plant Evidence into another project's bucket", async () => {
     const res = await postAs(ownerB, {
       ...validPayload,
       projectId,
       excerpt: "owner-b-attempted-injection",
       ownerId: ownerA.id,
     });
-    expect(res.statusCode).toBe(201);
-    expect(res.json().ownerId).toBe(ownerB.id);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("FORBIDDEN");
 
-    // …and the forged record really did land in B's bucket, not A's.
+    expect(
+      osStore
+        .getEvidence(projectId)
+        .some((row) => row.excerpt === "owner-b-attempted-injection"),
+    ).toBe(false);
+
     const aList = await getAs(ownerA);
     expect(aList.body).not.toContain("owner-b-attempted-injection");
+  });
+
+  it("admin may write Evidence into another principal's project", async () => {
+    const res = await postAs(adminUser, {
+      ...validPayload,
+      projectId,
+      excerpt: "admin-authored-row",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().ownerId).toBe(adminUser.id);
+    expect(
+      osStore
+        .getEvidence(projectId)
+        .some((row) => row.excerpt === "admin-authored-row"),
+    ).toBe(true);
+  });
+
+  it("unknown projectId is 404, not a silent plant into a new bucket", async () => {
+    const missing = "66666666-6666-4666-8666-666666666666";
+    const res = await postAs(ownerA, {
+      ...validPayload,
+      projectId: missing,
+      excerpt: "should-not-land",
+    });
+    expect(res.statusCode).toBe(404);
+    expect(osStore.getEvidence(missing)).toHaveLength(0);
   });
 
   it("pre-existing records stamped with the legacy placeholder owner are invisible to a normal caller", async () => {

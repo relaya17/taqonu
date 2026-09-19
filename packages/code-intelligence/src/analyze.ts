@@ -9,6 +9,8 @@ const SKIP = new Set([
   "coverage",
   ".turbo",
   ".atlas",
+  ".temp",
+  "test-results",
 ]);
 
 export interface RepoNode {
@@ -32,8 +34,15 @@ function listImmediate(dir: string): string[] {
   return readdirSync(dir).filter((name) => !SKIP.has(name) && !name.startsWith("."));
 }
 
-function walkFiles(dir: string, root: string, out: string[], limit: number): void {
+function walkFiles(
+  dir: string,
+  root: string,
+  out: string[],
+  limit: number,
+  deadlineMs = Number.POSITIVE_INFINITY,
+): void {
   if (out.length >= limit) return;
+  if (Date.now() > deadlineMs) return;
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -41,7 +50,8 @@ function walkFiles(dir: string, root: string, out: string[], limit: number): voi
     return;
   }
   for (const name of entries) {
-    if (SKIP.has(name)) continue;
+    if (Date.now() > deadlineMs) return;
+    if (SKIP.has(name) || name.startsWith("_tmp")) continue;
     const full = join(dir, name);
     let st;
     try {
@@ -50,7 +60,7 @@ function walkFiles(dir: string, root: string, out: string[], limit: number): voi
       continue;
     }
     if (st.isDirectory()) {
-      walkFiles(full, root, out, limit);
+      walkFiles(full, root, out, limit, deadlineMs);
     } else if (/\.(ts|tsx|js|jsx|json|md)$/i.test(name)) {
       out.push(relative(root, full).split(sep).join("/"));
       if (out.length >= limit) return;
@@ -67,7 +77,7 @@ export function analyzeRepository(root: string): RepoAnalysis {
   const apps = existsSync(appsDir) ? listImmediate(appsDir) : [];
   const packages = existsSync(packagesDir) ? listImmediate(packagesDir) : [];
   const sampleFiles: string[] = [];
-  walkFiles(abs, abs, sampleFiles, 80);
+  walkFiles(abs, abs, sampleFiles, 80, Date.now() + 4_000);
 
   return {
     root: abs,
@@ -163,7 +173,7 @@ export function findFilesByKeyword(
 ): string[] {
   const needle = keyword.toLowerCase();
   const all: string[] = [];
-  walkFiles(root, root, all, 400);
+  walkFiles(root, root, all, 400, Date.now() + 4_000);
   return all
     .filter((p) => p.toLowerCase().includes(needle))
     .slice(0, limit);

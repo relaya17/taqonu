@@ -21,11 +21,15 @@ Atlas surfaces (keep these origins separate)
   Tenant API (not a UI) ..... ${api}
 `);
 
+// Do not `pnpm exec turbo` here. Turbo 2.10.9 on Windows takes a native
+// Ctrl+C pipe (`shouldOwnWindowsCtrlC`) when npm_* env is set AND `--ui`
+// is not `tui`. That path aborts turbo.exe with STATUS_STACK_BUFFER_OVERRUN
+// (exit 3221226505) immediately after the version banner — the same crash
+// `scripts/turbo-run.mjs` already documents and strips for build/lint/test.
 const turbo = spawn(
-  "pnpm",
+  process.execPath,
   [
-    "exec",
-    "turbo",
+    join(root, "scripts", "turbo-run.mjs"),
     "run",
     "dev",
     "--filter=@atlas/web",
@@ -39,8 +43,6 @@ const turbo = spawn(
   {
     cwd: root,
     stdio: "inherit",
-    shell: true,
-    env: process.env,
   },
 );
 

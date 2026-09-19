@@ -213,7 +213,7 @@ export function ProcessAuditPanel({
       </Box>
 
       <Alert severity="info">{t("intro")}</Alert>
-      <Alert severity="success">{t("partnerNote")}</Alert>
+      <Alert severity="info">{t("partnerNote")}</Alert>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="center">
         {!boundProjectId ? (

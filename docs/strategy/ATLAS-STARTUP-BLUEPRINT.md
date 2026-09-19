@@ -54,6 +54,8 @@ Every strong line opens: Claim → Source → Evidence → Timestamp → Confide
 
 Internal lab systems stay **demos only**.
 
+While the AWS private-plane VM is unavailable, sell only the audit wedge on a local instance. Operator checklist: [`pilot-offer.md`](./pilot-offer.md).
+
 ## Offer & test price
 
 | Motion | What they get | Price test |

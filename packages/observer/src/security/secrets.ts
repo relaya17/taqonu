@@ -13,6 +13,8 @@ const SKIP = new Set([
   "coverage",
   ".turbo",
   ".atlas",
+  ".temp",
+  "test-results",
   "pnpm-lock.yaml",
   "package-lock.json",
   "yarn.lock",
@@ -95,8 +97,15 @@ function redact(match: string): string {
   return `${match.slice(0, 4)}…${match.slice(-4)} (len=${match.length})`;
 }
 
-function walkFiles(dir: string, root: string, out: string[], limit: number): void {
+function walkFiles(
+  dir: string,
+  root: string,
+  out: string[],
+  limit: number,
+  deadlineMs: number,
+): void {
   if (out.length >= limit) return;
+  if (Date.now() > deadlineMs) return;
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -104,10 +113,8 @@ function walkFiles(dir: string, root: string, out: string[], limit: number): voi
     return;
   }
   for (const name of entries) {
-    if (SKIP.has(name) || name.startsWith(".env")) {
-      // Still scan .env* explicitly below via name check
-    }
-    if (SKIP.has(name)) continue;
+    if (Date.now() > deadlineMs) return;
+    if (SKIP.has(name) || name.startsWith("_tmp")) continue;
     const full = join(dir, name);
     let st;
     try {
@@ -116,7 +123,7 @@ function walkFiles(dir: string, root: string, out: string[], limit: number): voi
       continue;
     }
     if (st.isDirectory()) {
-      walkFiles(full, root, out, limit);
+      walkFiles(full, root, out, limit, deadlineMs);
     } else if (
       /\.(ts|tsx|js|jsx|mjs|cjs|json|md|yml|yaml|env|local|example|txt|pem|key)$/i.test(
         name,
@@ -131,14 +138,22 @@ function walkFiles(dir: string, root: string, out: string[], limit: number): voi
 
 export function detectSecrets(
   workspaceRoot: string,
-  options?: { readonly maxFiles?: number },
+  options?: { readonly maxFiles?: number; readonly deadlineMs?: number },
 ): SecretFinding[] {
   if (!existsSync(workspaceRoot)) return [];
   const files: string[] = [];
-  walkFiles(workspaceRoot, workspaceRoot, files, options?.maxFiles ?? 120);
+  const deadlineMs = options?.deadlineMs ?? Number.POSITIVE_INFINITY;
+  walkFiles(
+    workspaceRoot,
+    workspaceRoot,
+    files,
+    options?.maxFiles ?? 120,
+    deadlineMs,
+  );
   const findings: SecretFinding[] = [];
 
   for (const rel of files) {
+    if (Date.now() > deadlineMs) break;
     const full = join(workspaceRoot, rel);
     let text: string;
     try {
@@ -147,45 +162,84 @@ export function detectSecrets(
       continue;
     }
     if (text.length > 400_000) continue;
-    const lines = text.split(/\r?\n/);
+    findings.push(...findSecretsInText(rel, text));
+    if (findings.length >= 40) return findings.slice(0, 40);
+  }
 
-    for (const pattern of PATTERNS) {
-      pattern.re.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      const re = new RegExp(pattern.re.source, pattern.re.flags);
-      while ((m = re.exec(text))) {
-        const idx = m.index;
-        const before = text.slice(0, idx);
-        const line = before.split(/\r?\n/).length;
-        const sample = lines[line - 1] ?? m[0]!;
-        // Skip obvious placeholders
-        if (/YOUR_|changeme|example|xxx+|placeholder|<.*>/i.test(sample)) {
-          continue;
-        }
-        findings.push({
-          id: `secret:${rel}:${pattern.kind}:${line}`,
-          kind: pattern.kind,
-          severity: pattern.severity,
-          title: pattern.title,
-          detail: `Potential secret in ${rel}:${line}. Value redacted.`,
-          path: rel,
-          line,
-          redacted: redact(m[0]!),
-          evidenceRefs: [
-            `file:${rel}`,
-            `line:${line}`,
-            `kind:${pattern.kind}`,
-            `redacted:${redact(m[0]!)}`,
-          ],
-          claim: "OBSERVED",
-          epistemicState: "OBSERVED",
-          remediation:
-            "Rotate the credential immediately · remove from git history · use env/secret manager · add to .gitignore",
-        });
-        if (findings.length >= 40) return findings;
+  return findings;
+}
+
+/** Scan a single file's text. Used by GET last-scan verify and remediation checks. */
+export function findSecretsInText(
+  rel: string,
+  text: string,
+): SecretFinding[] {
+  if (text.length > 400_000) return [];
+  const lines = text.split(/\r?\n/);
+  const findings: SecretFinding[] = [];
+
+  for (const pattern of PATTERNS) {
+    const re = new RegExp(pattern.re.source, pattern.re.flags);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      const idx = m.index;
+      const before = text.slice(0, idx);
+      const line = before.split(/\r?\n/).length;
+      const sample = lines[line - 1] ?? m[0]!;
+      if (/YOUR_|changeme|example|xxx+|placeholder|<.*>/i.test(sample)) {
+        continue;
       }
+      findings.push({
+        id: `secret:${rel}:${pattern.kind}:${line}`,
+        kind: pattern.kind,
+        severity: pattern.severity,
+        title: pattern.title,
+        detail: `Potential secret in ${rel}:${line}. Value redacted.`,
+        path: rel,
+        line,
+        redacted: redact(m[0]!),
+        evidenceRefs: [
+          `file:${rel}`,
+          `line:${line}`,
+          `kind:${pattern.kind}`,
+          `redacted:${redact(m[0]!)}`,
+        ],
+        claim: "OBSERVED",
+        epistemicState: "OBSERVED",
+        remediation:
+          "Rotate the credential immediately · remove from git history · use env/secret manager · add to .gitignore",
+      });
+      if (findings.length >= 40) return findings;
     }
   }
 
   return findings;
+}
+
+const ENV_FOR_KIND: Record<string, string> = {
+  aws_access_key: "AWS_ACCESS_KEY_ID",
+  github_pat: "GITHUB_TOKEN",
+  stripe_live: "STRIPE_SECRET_KEY",
+  slack_token: "SLACK_TOKEN",
+  bearer_token: "API_BEARER_TOKEN",
+  generic_api_key: "API_KEY",
+  connection_string_password: "DATABASE_URL",
+  private_key: "PRIVATE_KEY",
+};
+
+/**
+ * Replace quoted secret literals with env reads.
+ * Returns the rewritten text; caller must re-scan before claiming a fix.
+ */
+export function replaceQuotedSecretLiterals(text: string): string {
+  let next = text;
+  for (const pattern of PATTERNS) {
+    const env = ENV_FOR_KIND[pattern.kind] ?? "SECRET";
+    const quoted = new RegExp(
+      `(['"\`])(${pattern.re.source})\\1`,
+      pattern.re.flags.includes("g") ? pattern.re.flags : `${pattern.re.flags}g`,
+    );
+    next = next.replace(quoted, `process.env.${env} ?? ""`);
+  }
+  return next;
 }

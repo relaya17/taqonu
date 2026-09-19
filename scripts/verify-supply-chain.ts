@@ -31,6 +31,7 @@ if (existsSync(provenancePath) && existsSync(sbomPath)) {
   provenance = verifyUnsignedProvenance(
     JSON.parse(readFileSync(provenancePath, "utf8")),
     sbomSha256,
+    process.env.GITHUB_SHA?.trim() || undefined,
   );
 }
 

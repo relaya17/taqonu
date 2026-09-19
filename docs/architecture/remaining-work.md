@@ -11,6 +11,67 @@ historical stage records. Do not reopen them. Do not treat them as an
 open engineering backlog.
 
 **Production gate: NOT PRODUCTION READY.**
+**PRODUCTION: NOT PROVEN** (AWS production suspended; R0 EC2 identity remains **BLOCKED — EXTERNAL DEPENDENCY**).
+
+### CONSOLIDATED PRODUCTION READINESS (2026-09-19) — ACCEPTED
+
+Repository remediation for currently identified closable gaps is closed and locally verified.
+This does **not** prove production. Next evidence gate is R0 when AWS is available. Do not start another generic audit.
+
+| ID | Gap | Status |
+| --- | --- | --- |
+| OG-01 | Production demo-login fail-closed | **LOCALLY PROVEN — PRODUCTION NOT PROVEN** — source ignores demo flags in production; four `vercel.json` defaults are `0`; Web client identity has no password field. Live Vercel HTML/env not rechecked. |
+| OG-02 | Evidence POST defaulted `epistemicState` to FACT | **CLOSED** |
+| OG-03 | Studio 401 looked like empty projects | **CLOSED** |
+| OG-04 | Admin/CP `vercel.json` public Control/Admin hops | **READY FOR PRODUCTION VERIFICATION** — source now loopback; live public Control Plane not changed. Files not deleted. |
+| OG-05 | Unsigned provenance commit mismatch | **CLOSED** (signing remains UNSIGNED / EXTERNAL) |
+| OG-06 | CI failed while Vercel READY | **IMPLEMENTED — NOT PROVEN** — workflow documents that GitHub CI does not control Vercel. Run `35363342909` logs 403. |
+| OG-07 | API typecheck `userAccessToken` | **CLOSED** |
+| P0 | Prior P0 remediation | **CLOSED / PRESERVED** |
+| SLU | Studio Level-Up / World Benchmark | **CLOSED BASELINE** |
+
+Final Production Proof remains **PENDING**. Private trust plane remains **NOT PROVEN / PRIOR FAILURE**. No AWS bypass. No production Vercel/Apply/Verify/DB change in this pass.
+
+Repository publish guard (`pnpm production:publish-guard`) fail-closes unsafe checked-in Vercel defaults and SHA mismatch. It does **not** prove Vercel platform enforcement. DR `offsiteStatus` is `OFFSITE_NOT_CONFIGURED` when no destination is set — not backup success.
+
+### OFFLINE GAP CLOSURE (2026-09-19)
+
+### FINAL CLOSING PASS (2026-09-19)
+
+P0 remains CLOSED. Arlet Studio is not Control. Production remains NOT PROVEN.
+Empty `allowedAgents` stays default-open (INTENTIONAL). Extensions host is a
+deliberate **NON-GOAL** (`STUDIO_EXTENSION_CONTRACT.productGoal: false`).
+
+This is the closing pass after FINAL COMPLETION EXECUTION. Not another audit.
+
+| Track | Status | Evidence |
+| --- | --- | --- |
+| A1 Durable memory SoR | **CLOSED** (local persist + canonical `commitMemory`) / cloud runtime **BLOCKED — EXTERNAL DEPENDENCY** | Product writes (HTTP POST, agent lessons, patch apply, studio write, process-audit, exemplar clone, validated bug-fix) go through `commitMemory` → local `osStore.addMemory` then `tryPersistMemoryToSupabase` when `env` is live. Tests/demo-seed/QA pattern seed stay local-only by design. Live POST `/memory` 201 `cloudSynced: false` because configured Supabase timed out (Docker/engine absent). Unavailable-cloud unit tests PASS (fail-open; `requireCloudSuccess` fails closed with local row kept). Isolation unchanged. |
+| A2 Model gateway + cost | **CLOSED** (honest $0) | Unchanged. |
+| A3–A5 Authority / conflict | **CLOSED** | Unchanged. |
+| B1 Governed Run | **CLOSED** (local) | Prior live SoD `node.version` on AMD. This pass mint 503 — same live-approval SoR outage. |
+| B2 Test Runner | **CLOSED** (local) | Prior live AMD `UNAVAILABLE` / `passed: false`. This pass mint 503 — same SoR outage. |
+| B3 Run UX | **CLOSED** (local) | Unchanged. |
+| B4 a11y / i18n | **CLOSED** (keyboard/focus tested scope) | EN: skip-link first in tab order; main nav reachable when authed; Files→Chat→Run→Cloud→Checks via ArrowRight after `selectionFollowsFocus` + tab `onKeyDown`; Request run, Apply reachable. HE `dir=rtl`: skip `דלג לתוכן`, Run `הרצה`, Request `בקש הרצה`; Space selected `קבצים`. Visible-focus *paint* **NOT PROVEN** (automation window never matched `:focus-visible`). Reduced-motion CSS present, not instrumented. Not WCAG/screen-reader certification. |
+| C Extensions | **OPTIONAL / NON-GOAL** | Unchanged. |
+| D Performance | **OPTIONAL** | Unchanged. No work this pass. |
+| E Security | **CLOSED** (local remaining items) | Unchanged. SoD not weakened. |
+| F E2E | **CLOSED** (local Path 1 re-run) | Fixture `f4db3dc2-…` patch `25c34656-…`: Apply 202 approval `e611ac81-…`; owner self-decide 403 SoD; operator `69ae105a-…` decide-and-execute 200 APPLIED `README.md`; verify 200 PASS / patch VERIFIED / epistemic OBSERVED. Disk marker written. Audit `code.patch.applied` + `code.patch.verified`. Finding unbound (`NOT_ATTEMPTED`) — safe fixture, not a security exception. Project verdict remains BLOCKED (Truth ≠ apply). Production still NOT PROVEN. |
+
+### MASTER GAP CLOSURE (2026-09-19)
+
+P0 remains CLOSED. Arlet Studio is not Control. Production remains NOT PROVEN.
+
+Phase 1 contracts are locked in code:
+
+- `apps/api/src/services/atlas-architecture-contracts.ts`
+- `MEMORY_AGENT_VISIBILITY_CONTRACT` — empty `allowedAgents` is **default-open** (INTENTIONAL). Omit requester id stays human-surface-visible. Tenant/owner isolation is fail-closed.
+- Agent id ≠ model id. Studio `proposePatch` is CODE_ENGINEER **heuristic** (`intelligenceKind: "heuristic"`, `modelInvoked: false`). Model output is not Truth.
+- Governed Studio run: `POST /api/v1/projects/:id/studio/terminal` and `/tests` are RECORD.EXECUTE + live-human `decide-and-execute`. Callers send `commandId` only. Spawn is `shell: false` inside the linked workspace. No unrestricted shell. Extensions are a fail-closed manifest registry — no marketplace, no user JS, no host API.
+
+GAP-043 (full IDE terminal/LSP/debugger) remains a non-goal. This pass implemented a governed subset only.
+
+Still PARTIAL / NOT PROVEN: cloud dual-write for internal `addMemory`, full keyboard a11y, production VM/signing/DR.
 
 ### Gap closure execution (2026-09-18, current :4000 / :3000)
 

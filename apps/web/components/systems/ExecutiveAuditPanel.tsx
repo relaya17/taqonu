@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { studioTruthHref } from "@/lib/studio-truth-href";
 
 interface ExecutiveLine {
   id: string;
@@ -203,13 +204,11 @@ export function ExecutiveAuditPanel(props: {
                         {risk.evidenceRefs.length ? risk.evidenceRefs.join(", ") : "—"}
                       </Typography>
                       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        <Button
-                          component={Link}
-                          href={`/truth?project=${props.projectId}`}
-                          size="small"
-                        >
-                          {t("openTruth")}
-                        </Button>
+                        <Link href={studioTruthHref(props.projectId)}>
+                          <Button component="span" size="small">
+                            {t("openTruth")}
+                          </Button>
+                        </Link>
                         <Button
                           component={Link}
                           href={`/health?project=${props.projectId}`}

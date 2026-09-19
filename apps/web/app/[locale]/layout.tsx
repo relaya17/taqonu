@@ -50,7 +50,7 @@ export default async function LocaleLayout({
   const initialMode = parseColorMode(cookieStore.get(COLOR_MODE_COOKIE)?.value);
 
   return (
-    <html lang={locale} dir={dir}>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -59,12 +59,14 @@ export default async function LocaleLayout({
           rel="stylesheet"
         />
       </head>
-      <body>
-        <NextIntlClientProvider messages={messages}>
+      <body suppressHydrationWarning>
+        <NextIntlClientProvider locale={locale} messages={messages} timeZone="UTC">
           <AppProviders locale={locale} initialMode={initialMode}>
-            <AppShell>
-              <Suspense fallback={null}>{children}</Suspense>
-            </AppShell>
+            <Suspense fallback={null}>
+              <AppShell>
+                <Suspense fallback={null}>{children}</Suspense>
+              </AppShell>
+            </Suspense>
           </AppProviders>
         </NextIntlClientProvider>
       </body>

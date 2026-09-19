@@ -1,8 +1,10 @@
 import { memorySchema, type Memory } from "@atlas/shared";
+import type { MemoryStoreEnv } from "@atlas/database";
+import { commitMemory } from "./memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 
-/** Persist a lesson from the free ArletOS Agent into durable memory (local store → later Supabase). */
-export function persistArletosAgentMemory(input: {
+/** Persist a lesson from the free ArletOS Agent into durable memory. */
+export async function persistArletosAgentMemory(input: {
   projectId: string | null;
   userRequest: string;
   answer: string;
@@ -14,7 +16,9 @@ export function persistArletosAgentMemory(input: {
    * `memorySchema.ownerId` is mandatory.
    */
   ownerId: string;
-}): Memory {
+  env?: MemoryStoreEnv | null;
+  userAccessToken?: string | null;
+}): Promise<Memory> {
   const now = new Date().toISOString();
   const statement = summarizeLesson(input.userRequest, input.answer);
   const memory = memorySchema.parse({
@@ -53,7 +57,11 @@ export function persistArletosAgentMemory(input: {
     scope: input.projectId ? "PROJECT" : "GLOBAL",
     priority: "MEDIUM",
   });
-  osStore.addMemory(memory);
+  await commitMemory({
+    memory,
+    env: input.env ?? null,
+    userAccessToken: input.userAccessToken ?? null,
+  });
   osStore.appendAudit({
     type: "arletos.memory.learned",
     memoryId: memory.id,

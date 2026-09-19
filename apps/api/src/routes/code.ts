@@ -24,6 +24,7 @@ import {
   rankRisks,
   readWorkspaceFile,
   rollbackPatchFiles,
+  searchWorkspaceFiles,
   writeWorkspaceFile,
 } from "@atlas/code-intelligence";
 import {
@@ -50,7 +51,12 @@ import {
   respondAtlasSelfHelper,
 } from "../services/atlas-self-governance.js";
 import { getRequestUser } from "../services/resolve-identity.js";
-import { buildMemoryContext } from "../services/memory-pipeline.js";
+import {
+  buildMemoryContext,
+  commitMemory,
+  toMemoryCitations,
+  type MemoryContextItem,
+} from "../services/memory-pipeline.js";
 import {
   assertEntityReadAccess,
   assertProjectReadAccess,
@@ -71,6 +77,10 @@ import {
   type HelperResult,
 } from "../services/governed-claimed-execution.js";
 import { runLiveHumanDecisionExecution } from "../services/live-human-execution.js";
+import {
+  applySecretRemediationToProposal,
+  parsePatchRemediationTarget,
+} from "../services/patch-remediation-truth.js";
 
 async function assertPatchWrite(
   app: FastifyInstance,
@@ -329,6 +339,8 @@ const proposeBody = z.object({
   mode: z.enum(ENGINEERING_AGENT_MODES).default("generate"),
   projectId: z.string().uuid().nullable().optional(),
   title: z.string().max(200).optional(),
+  focusPath: z.string().min(1).max(1000).optional(),
+  findingId: z.string().min(1).max(200).optional(),
 });
 
 export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
@@ -411,6 +423,31 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /** Bounded Studio file search — linked project workspace only. No raw workspaceRoot. */
+  app.get("/api/v1/studio/search", async (request) => {
+    const q = z
+      .object({
+        projectId: z.string().uuid(),
+        q: z.string().min(2).max(80),
+      })
+      .parse(request.query);
+    const root = await resolveStudioWorkspaceRoot(request, {
+      projectId: q.projectId,
+    });
+    try {
+      const result = searchWorkspaceFiles(root, q.q);
+      return {
+        projectId: q.projectId ?? null,
+        ...result,
+      };
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to search workspace",
+      );
+    }
+  });
+
   /**
    * Studio → agent: propose a Patch (fix/add). Does not apply.
    * Disk writes remain on Approve → Apply only.
@@ -425,14 +462,15 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           .enum(["fix", "generate", "implement", "refactor", "secure"])
           .default("fix"),
         instruction: z.string().min(3).max(4000),
+        findingId: z.string().min(1).max(200).optional(),
       })
       .parse(request.body);
 
-    let root: string | null = body.workspaceRoot ? resolve(body.workspaceRoot) : null;
-    if (body.projectId) {
-      root = osStore.getWorkspaceRoot(body.projectId) ?? root;
-    }
-    if (!root || !existsSync(root)) {
+    const root = await resolveStudioWorkspaceRoot(request, {
+      projectId: body.projectId ?? undefined,
+      workspaceRoot: body.workspaceRoot,
+    });
+    if (!existsSync(root)) {
       throw new AtlasError(
         "VALIDATION_ERROR",
         "Studio ask-agent requires a local workspaceRoot on the API host.",
@@ -451,6 +489,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         title: body.path
           ? `Studio · ${body.mode} · ${body.path}`
           : `Studio · ${body.mode}`,
+        ...(body.path?.trim() ? { focusPath: body.path.trim() } : {}),
+        ...(body.findingId?.trim() ? { findingId: body.findingId.trim() } : {}),
       },
       reply,
       request,
@@ -514,7 +554,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         scope: "PROJECT",
         priority: "MEDIUM",
       });
-      osStore.addMemory(memory);
+      void commitMemory({ memory, env: app.atlasEnv });
       return {
         ...written,
         note: "Saved to disk. Personal agent recorded PROJECT_STATE in memory.",
@@ -702,11 +742,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     reply: { status: (c: number) => { send: (b: unknown) => unknown } },
     request?: FastifyRequest,
   ) {
-    let memoryItems: Array<{
-      statement: string;
-      type: string;
-      epistemicState: string;
-    }> = [];
+    let memoryItems: MemoryContextItem[] = [];
     if (request) {
       try {
         const user = await getRequestUser(app, request);
@@ -730,15 +766,41 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       mode: body.mode as EngineeringAgentMode,
       userRequest: body.userRequest,
       ...(body.title ? { title: body.title } : {}),
+      ...(body.focusPath ? { focusPath: body.focusPath } : {}),
       ...(memoryItems.length > 0 ? { memoryContext: { items: memoryItems } } : {}),
     });
-    if (proposal.filesChanged.length === 0) {
+    const remediationTarget = parsePatchRemediationTarget({
+      findingId: body.findingId ?? null,
+      projectId: body.projectId ?? null,
+      focusPath: body.focusPath ?? null,
+    });
+    const secretRewrite = applySecretRemediationToProposal({
+      workspaceRoot: body.workspaceRoot,
+      filesChanged: proposal.filesChanged,
+      target: remediationTarget,
+      mode: body.mode,
+      focusPath: body.focusPath ?? null,
+    });
+    if (secretRewrite.unsupported) {
+      return reply.status(200).send({
+        patch: null,
+        analysisGraph: proposal.analysisGraph,
+        evaluationSummary: secretRewrite.unsupported.summary,
+        findingRemediation: secretRewrite.unsupported,
+        note: secretRewrite.unsupported.summary,
+        memoryUsed: memoryItems.length,
+        memoryCitations: toMemoryCitations(memoryItems),
+      });
+    }
+    const filesChanged = secretRewrite.filesChanged;
+    if (filesChanged.length === 0) {
       return reply.status(200).send({
         patch: null,
         analysisGraph: proposal.analysisGraph,
         evaluationSummary: proposal.evaluationSummary,
         note: "Analyze/plan — no Patch created. Switch mode to Generate/Fix/… for applyable changes.",
         memoryUsed: memoryItems.length,
+        memoryCitations: toMemoryCitations(memoryItems),
       });
     }
     const now = new Date().toISOString();
@@ -752,7 +814,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       risk: proposal.risk,
       baseCommit: null,
       targetBranch: null,
-      filesChanged: proposal.filesChanged.map((f) => ({
+      filesChanged: filesChanged.map((f) => ({
         path: f.path,
         action: f.action,
         summary: f.summary,
@@ -763,7 +825,16 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       claimIds: [],
       expectedImpact: proposal.expectedImpact,
       tests: proposal.tests,
-      evaluationSummary: proposal.evaluationSummary,
+      evaluationSummary: [
+        proposal.evaluationSummary,
+        remediationTarget
+          ? `Remediation target ${remediationTarget.findingId} (${remediationTarget.findingType}). PATCH_VERIFY ≠ finding remediation.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 4000),
+      ...(remediationTarget ? { remediationTarget } : {}),
       approvals: [],
       appliedAt: null,
       verifiedAt: null,
@@ -782,13 +853,17 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       patchId: patch.id,
       mode: patch.mode,
       risk: patch.risk,
+      findingId: patch.remediationTarget?.findingId ?? null,
       at: now,
     });
     return reply.status(201).send({
       patch,
       analysisGraph: proposal.analysisGraph,
       memoryUsed: memoryItems.length,
-      note: "Patch proposed — Approve then Apply (ADR-015). Not applied yet.",
+      memoryCitations: toMemoryCitations(memoryItems),
+      intelligenceKind: "heuristic",
+      modelInvoked: false,
+      note: "Patch proposed by CODE_ENGINEER heuristic (not an LLM). Approve then Apply (ADR-015). Not applied yet. Not Truth.",
     });
   }
 
@@ -936,6 +1011,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           existing,
           user,
           bodyWorkspaceRoot: body.workspaceRoot ?? null,
+          env: app.atlasEnv,
         }),
       evidence: (value) =>
         JSON.stringify({ status: value.patch.status, applied: value.apply.applied }),
@@ -985,24 +1061,36 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
     const user = await assertPatchWrite(app, request, existing);
-    const { patch, verify } = verifyGovernedCodePatch({
-      existing,
-      user,
-      bodyWorkspaceRoot: body.workspaceRoot ?? null,
-      projectId: body.projectId ?? null,
-    });
+    const { patch, verify, findingRemediation, patchVerifyStatus } =
+      verifyGovernedCodePatch({
+        existing,
+        user,
+        bodyWorkspaceRoot: body.workspaceRoot ?? null,
+        projectId: body.projectId ?? null,
+      });
 
     appendUnifiedAuditEntry({
       type: "code.patch.verified",
       actorId: user.id,
       actorKind: "USER",
-      reason: verify.summary,
+      reason: [
+        verify.summary,
+        findingRemediation.summary,
+      ].join(" | "),
       input: {
         patchId: existing.id,
         patchStatus: existing.status,
         verifyWorkspaceRoot: body.workspaceRoot ?? null,
+        findingId: existing.remediationTarget?.findingId ?? null,
       },
-      output: { status: patch.status, ok: verify.ok },
+      output: {
+        status: patch.status,
+        ok: verify.ok,
+        patchVerifyStatus,
+        remediationResult: findingRemediation.result,
+        remediationVerifyStatus: findingRemediation.verifyStatus,
+        findingPresence: findingRemediation.findingPresence,
+      },
       policy: "code.patch.verify",
       risk: existing.risk,
       approval: "NOT_REQUIRED",
@@ -1013,7 +1101,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     if (!verify.ok) {
       throw new AtlasError("CONFLICT", verify.summary, { statusCode: 409 });
     }
-    return { patch, verify, epistemicState: "OBSERVED" as const };
+    return {
+      patch,
+      verify,
+      patchVerifyStatus,
+      findingRemediation,
+      epistemicState: "OBSERVED" as const,
+    };
   });
 
   app.post(
@@ -1051,6 +1145,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
             existing,
             user,
             bodyWorkspaceRoot: body.workspaceRoot,
+            env: app.atlasEnv,
           }),
         evidence: (value) =>
           JSON.stringify({ status: value.patch.status, applied: value.apply.applied }),

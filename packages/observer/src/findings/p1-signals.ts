@@ -7,7 +7,6 @@ import {
 import { detectAdrConflicts } from "../memory/adr-conflict.js";
 import type { BehaviorDifference } from "@atlas/shared";
 import { loadSentinelLastScan } from "../security/persist.js";
-import { runSentinelScan } from "../security/scan.js";
 
 export interface P1TruthSignals {
   authEdges: number;
@@ -49,7 +48,9 @@ export function collectP1TruthSignals(
     readonly bound: number;
     readonly total: number;
   },
+  options?: { readonly deadlineMs?: number },
 ): P1TruthSignals {
+  const deadline = options?.deadlineMs ?? Date.now() + 4_000;
   const graph = loadSoftwareKnowledgeGraph(workspaceRoot);
   const authEdges =
     graph?.edges.filter((e) => e.type === "AUTHENTICATED_BY").length ?? 0;
@@ -73,13 +74,17 @@ export function collectP1TruthSignals(
         n.type === "INCIDENT" &&
         n.properties?.kind === "dependency_advisory",
     ).length ?? 0;
-  const adrConflicts = detectAdrConflicts(workspaceRoot, behaviorDiffs).length;
-  const prod = detectProductionSignals(workspaceRoot);
+  const adrConflicts =
+    Date.now() > deadline
+      ? 0
+      : detectAdrConflicts(workspaceRoot, behaviorDiffs).length;
+  const prod =
+    Date.now() > deadline ? [] : detectProductionSignals(workspaceRoot);
   const missing = prod.filter((s) => !s.present);
   const deploy = summarizeLastDeploy(loadDeployEvents(workspaceRoot));
-  const last =
-    loadSentinelLastScan(workspaceRoot) ??
-    runSentinelScan(workspaceRoot, { persist: false });
+  // GET Observer must not run a live Sentinel walk. A missing last-scan is
+  // NOT_RUN — never a silent full-repo scan that can stall the API event loop.
+  const last = loadSentinelLastScan(workspaceRoot);
   return {
     authEdges,
     sensitiveEdges,
@@ -94,13 +99,13 @@ export function collectP1TruthSignals(
     productionPresent: prod.filter((s) => s.present).length,
     productionMissing: missing.length,
     missingTitles: missing.map((s) => s.title),
-    sentinelPosture: last.posture,
-    sentinelCritical: last.counts.critical,
-    sentinelHigh: last.counts.high,
-    sentinelSecrets: last.counts.secrets,
-    sentinelAuthz: last.counts.authz,
-    sentinelDeps: last.counts.dependencies,
-    sentinelConfig: last.counts.config,
+    sentinelPosture: last?.posture ?? "NOT_RUN",
+    sentinelCritical: last?.counts.critical ?? 0,
+    sentinelHigh: last?.counts.high ?? 0,
+    sentinelSecrets: last?.counts.secrets ?? 0,
+    sentinelAuthz: last?.counts.authz ?? 0,
+    sentinelDeps: last?.counts.dependencies ?? 0,
+    sentinelConfig: last?.counts.config ?? 0,
     isolationDenied: isolation?.denied ?? 0,
     isolationBound: isolation?.bound ?? 0,
     isolationAuditTotal: isolation?.total ?? 0,

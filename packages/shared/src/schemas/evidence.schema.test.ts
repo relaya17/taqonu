@@ -34,6 +34,15 @@ describe("evidence + claim contracts", () => {
     expect(evidence.category).toBe("CODE");
   });
 
+  it("does not default omitted epistemicState to FACT", () => {
+    expect(() =>
+      createEvidenceRecordSchema.parse({
+        source: "agent-said-it",
+        sourceType: "CONVERSATION",
+      }),
+    ).toThrow();
+  });
+
   it("rejects unknown evidence categories on write", () => {
     expect(() =>
       createEvidenceRecordSchema.parse({

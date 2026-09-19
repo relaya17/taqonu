@@ -1,3 +1,4 @@
+import { isAtlasDemoLoginEnabled } from "@atlas/shared";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApiRouter } from "./routes/api.js";
 import { getDashboardHtml } from "./routes/dashboard.js";
@@ -33,9 +34,10 @@ function loginHtml(
   message = "",
   challenge?: { readonly mfaToken: string; readonly email: string },
 ): string {
-  const demoEnabled =
-    process.env["NODE_ENV"] !== "production" ||
-    process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+  const demoEnabled = isAtlasDemoLoginEnabled({
+    nodeEnv: process.env["NODE_ENV"],
+    flag: process.env["ATLAS_DEMO_LOGIN_ENABLED"],
+  });
   const email = escapeHtml(
     challenge?.email ||
       (demoEnabled ? (process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local") : ""),
@@ -109,9 +111,10 @@ async function requestHandler(
   if (pathname === "/" && method === "GET") {
     const webOrigin = process.env["WEB_ORIGIN"];
     const adminOrigin = process.env["ATLAS_ADMIN_URL"];
-    const demoEnabled =
-      process.env["NODE_ENV"] !== "production" ||
-      process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+    const demoEnabled = isAtlasDemoLoginEnabled({
+      nodeEnv: process.env["NODE_ENV"],
+      flag: process.env["ATLAS_DEMO_LOGIN_ENABLED"],
+    });
     html(res, getLandingHtml({
       ...(webOrigin ? { webOrigin } : {}),
       ...(adminOrigin ? { adminOrigin } : {}),

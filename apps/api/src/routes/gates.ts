@@ -4,22 +4,44 @@ import {
   uuidSchema,
   waiveGateSchema,
   AtlasError,
+  type AuthUser,
 } from "@atlas/shared";
 import { authorizeEntityAction } from "@atlas/agent-core";
 import { z } from "zod";
 import { evaluateReleaseGateGraph } from "../services/gate-engine.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertProjectReadAccess,
+  filterProjectsForCaller,
+} from "../services/project-access.js";
+
+function callerReadableProjectIds(user: AuthUser): string[] {
+  return filterProjectsForCaller(user, osStore.listProjects()).map(
+    (project) => project.id,
+  );
+}
 
 export async function registerGateRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/gates", async (request) => {
     const q = z
       .object({ projectId: uuidSchema.optional() })
       .parse(request.query ?? {});
-    const projectId = q.projectId ?? null;
-    const existing = osStore.getGateGraph(projectId);
-    const graph = existing ?? evaluateReleaseGateGraph(projectId);
+    if (q.projectId) {
+      await assertProjectReadAccess(app, request, q.projectId);
+      const existing = osStore.getGateGraph(q.projectId);
+      const graph = existing ?? evaluateReleaseGateGraph(q.projectId);
+      return { graph };
+    }
+
+    // Portfolio: always recompute for this caller. The null-key store row
+    // is a single shared graph and cannot represent two callers' readable
+    // sets, so it is never served here.
+    const user = await requireUser(app, request);
+    const graph = evaluateReleaseGateGraph(null, {
+      scopedProjectIds: callerReadableProjectIds(user),
+    });
     return { graph };
   });
 
@@ -50,7 +72,13 @@ export async function registerGateRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const projectId = body.projectId ?? null;
-    const graph = evaluateReleaseGateGraph(projectId);
+    if (projectId) {
+      await assertProjectReadAccess(app, request, projectId);
+    }
+    const graph = evaluateReleaseGateGraph(projectId, {
+      scopedProjectIds:
+        projectId == null ? callerReadableProjectIds(user) : [projectId],
+    });
     appendDomainEvent({
       type: "gate.evaluated",
       projectId,

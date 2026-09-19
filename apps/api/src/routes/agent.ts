@@ -50,6 +50,7 @@ import {
 } from "../services/conversation-evidence.js";
 import { SENTINEL_AGENT_KNOWLEDGE } from "../services/sentinel-agent-knowledge.js";
 import { assertLlmEgressAllowed } from "../services/egress-gate.js";
+import { recordLlmInvocation } from "../services/llm-invocation-audit.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -329,6 +330,15 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
               { role: "user", content: userRequest },
             ]);
         llmProvider = llm.provider;
+        recordLlmInvocation({
+          purpose: "llm.agent",
+          provider: llm.provider,
+          usage: llm.usage,
+          cacheHit: llm.cacheHit,
+          projectId: authorizedProjectId,
+          userId: identity.ownerId,
+          agentId: selectedId,
+        });
         answer = redactSecrets(
           `${llm.text}\n\n— provider: ${llm.provider} · catalog: ${catalog.titleEn} (${catalog.billing === "included" ? "included" : `${catalog.creditCost} credits`})`,
         );
@@ -442,7 +452,8 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     const verification = verifyAgentResponse({
       usedRepositoryState: Boolean(snapshot),
       usedRelevantMemory: memories.length > 0,
-      distinguishedFactFromInference: true,
+      distinguishedFactFromInference:
+        epistemicLabel !== "FACT" || evidenceRefs.length > 0,
       verifiedExternalClaims: false,
       detectedConflicts: (snapshot?.conflicts.length ?? 0) > 0,
       citedExternalClaims: false,
@@ -510,12 +521,14 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       // reuse the identity resolved up front (same result memory.ts's
       // POST /api/v1/memory would compute: real user when signed in, stub
       // owner for unauthenticated/system callers), never leave it unset.
-      const learned = persistArletosAgentMemory({
+      const learned = await persistArletosAgentMemory({
         projectId: authorizedProjectId,
         userRequest: redactedUserRequest,
         answer: run.answer,
         runId: run.id,
         ownerId: identity.ownerId,
+        env: app.atlasEnv,
+        userAccessToken: identity.userAccessToken,
       });
       learnedMemoryId = learned.id;
     }

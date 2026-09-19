@@ -11,7 +11,7 @@
   "scripts": {
     "build": "node scripts/turbo-run.mjs run build",
     "dev": "node scripts/dev-surfaces.mjs",
-    "dev:all": "turbo run dev --parallel --ui=stream",
+    "dev:all": "node scripts/turbo-run.mjs run dev --parallel --ui=stream",
     "lint": "node scripts/turbo-run.mjs run lint",
     "typecheck": "turbo run typecheck",
     "test": "node scripts/turbo-run.mjs run test",
@@ -24,6 +24,7 @@
     "test:unit": "vitest run",
     "proof:run": "pnpm --filter @atlas/engineering-loop proof:run",
     "demo:seed": "pnpm --filter @atlas/api exec tsx src/scripts/demo-seed.ts",
+    "pilot:preflight": "node scripts/pilot-preflight.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rimraf node_modules",
@@ -35,7 +36,8 @@
     "runtime:probe": "tsx scripts/runtime-probe.ts",
     "production:live-proof": "tsx scripts/production-live-proof.ts",
     "private-plane:start": "node scripts/start-private-plane.mjs",
-    "environment:gate": "tsx scripts/environment-gate.ts"
+    "environment:gate": "tsx scripts/environment-gate.ts",
+    "production:publish-guard": "tsx scripts/production-publish-guard.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

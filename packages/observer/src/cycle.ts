@@ -33,6 +33,7 @@ import {
 } from "./production/deploy-events.js";
 import { detectAdrConflicts } from "./memory/adr-conflict.js";
 import { selectTopTruthFinding } from "./findings/top.js";
+import { saveLastTruthFindings } from "./findings/last.js";
 import { runSentinelScan } from "./security/scan.js";
 import { mergeSentinelIntoGraph } from "./security/graph-ingest.js";
 import { evaluateSecurityGraphPolicy } from "./security/graph-policy.js";
@@ -87,6 +88,7 @@ export function runObserveCycle(input: {
 
   const sentinel = runSentinelScan(input.workspaceRoot, {
     persist,
+    maxMs: 32_000,
   });
   graph = mergeSentinelIntoGraph(graph, sentinel);
 
@@ -401,6 +403,11 @@ export function runObserveCycle(input: {
       graphEdges: graph.edges.length,
       trigger,
       topFindingTitle: top?.title ?? null,
+    });
+    saveLastTruthFindings(input.workspaceRoot, {
+      at: startedAt,
+      cycleId,
+      findings,
     });
   }
 

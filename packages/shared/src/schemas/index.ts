@@ -27,6 +27,7 @@ export * from "./api-contracts.schema.js";
 export * from "./benchmark.schema.js";
 export * from "./authority.schema.js";
 export * from "./patch.schema.js";
+export * from "./remediation-truth.schema.js";
 export * from "./gate.schema.js";
 export * from "./provider-adapter.schema.js";
 export * from "./engineering-loop.schema.js";

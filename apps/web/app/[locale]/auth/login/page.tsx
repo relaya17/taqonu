@@ -41,7 +41,7 @@ function LoginPage() {
   const locale = useLocale();
   const next = useSearchParams().get("next");
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
-  const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
+  const [password, setPassword] = useState("");
   const [oauthError, setOauthError] = useState<string | null>(null);
   const fieldDir = inputDirForLocale(locale);
 
@@ -106,7 +106,7 @@ function LoginPage() {
         </Typography>
         {isDevLoginPrefill ? (
           <Alert severity="info" sx={{ mt: 2, textAlign: "start" }}>
-            מצב פיתוח — {DEV_CREDENTIALS.domain} · {DEV_CREDENTIALS.email} · {DEV_CREDENTIALS.password}
+            מצב פיתוח — {DEV_CREDENTIALS.domain} · {DEV_CREDENTIALS.email}
           </Alert>
         ) : null}
         <Stack direction="row" spacing={2} sx={{ mt: 1.5, justifyContent: "center" }}>

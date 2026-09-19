@@ -42,6 +42,7 @@ interface SentinelScan {
 function postureSeverity(
   posture: string,
 ): "success" | "info" | "warning" | "error" {
+  if (posture === "NOT_RUN") return "info";
   if (posture === "CLEAR" || posture === "LOW") return "success";
   if (posture === "MEDIUM") return "warning";
   return "error";

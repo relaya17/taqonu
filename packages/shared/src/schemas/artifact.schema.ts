@@ -87,7 +87,7 @@ export const conflictListItemSchema = z.object({
   sliceKey: z.string(),
   resolution: z.string().nullable(),
   detectedAt: isoDateTimeSchema,
-  epistemicState: z.literal("CONFLICTED"),
+  epistemicState: z.enum(["CONFLICTED", "UNKNOWN"]),
   resolved: z.boolean(),
 });
 

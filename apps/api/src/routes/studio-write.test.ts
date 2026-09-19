@@ -125,6 +125,11 @@ describe("PUT /api/v1/studio/file", () => {
       url: "/api/v1/studio/file?path=readme.md",
     });
     expect(file.statusCode).toBe(401);
+    const search = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/search?projectId=${crypto.randomUUID()}&q=original`,
+    });
+    expect(search.statusCode).toBe(401);
   });
 
   it("401s when not signed in", async () => {
@@ -134,6 +139,20 @@ describe("PUT /api/v1/studio/file", () => {
       method: "PUT",
       url: "/api/v1/studio/file",
       payload: { projectId, path: "readme.md", content: "x" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("401s ask-agent when not signed in", async () => {
+    getRequestUser.mockResolvedValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/ask-agent",
+      payload: {
+        projectId: crypto.randomUUID(),
+        mode: "fix",
+        instruction: "Add validation to this handler",
+      },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -703,5 +722,123 @@ describe("PUT /api/v1/studio/file", () => {
     });
     expect(res.statusCode).toBe(403);
     expect(existsSync(targetOnDisk)).toBe(false);
+  });
+
+  it("403s ask-agent when the project belongs to someone else", async () => {
+    const owner = testUser();
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspaceRoot);
+
+    getRequestUser.mockResolvedValue(
+      testUser({
+        id: "33333333-3333-4333-8333-333333333333",
+        email: "other@example.com",
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/ask-agent",
+      payload: {
+        projectId,
+        workspaceRoot,
+        mode: "fix",
+        instruction: "Add validation to this handler",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("403s tenant ask-agent that only passes a raw workspaceRoot", async () => {
+    getRequestUser.mockResolvedValue(testUser());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/ask-agent",
+      payload: {
+        workspaceRoot,
+        mode: "fix",
+        instruction: "Add validation to this handler",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("403s tree and file reads for a foreign owner", async () => {
+    const owner = testUser();
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspaceRoot);
+    getRequestUser.mockResolvedValue(
+      testUser({
+        id: "33333333-3333-4333-8333-333333333333",
+        email: "other@example.com",
+      }),
+    );
+    const tree = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/tree?projectId=${projectId}`,
+    });
+    expect(tree.statusCode).toBe(403);
+    const file = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/file?projectId=${projectId}&path=readme.md`,
+    });
+    expect(file.statusCode).toBe(403);
+    const search = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/search?projectId=${projectId}&q=original`,
+    });
+    expect(search.statusCode).toBe(403);
+  });
+
+  it("rejects Studio search that only passes a raw workspaceRoot", async () => {
+    getRequestUser.mockResolvedValue(
+      testUser({ role: "owner", email: "owner@atlas.local" }),
+    );
+    const search = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/search?workspaceRoot=${encodeURIComponent(workspaceRoot)}&q=original`,
+    });
+    expect(search.statusCode).toBe(400);
+  });
+
+  it("200s tree and file for the owner and scopes ask-agent to that project", async () => {
+    const actor = testUser();
+    getRequestUser.mockResolvedValue(actor);
+    const projectId = seedOwnedProject(actor, workspaceRoot);
+    const tree = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/tree?projectId=${projectId}`,
+    });
+    expect(tree.statusCode).toBe(200);
+    expect(tree.json().projectId).toBe(projectId);
+    const file = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/file?projectId=${projectId}&path=readme.md`,
+    });
+    expect(file.statusCode).toBe(200);
+    expect(file.json().content).toContain("# original");
+    const search = await app.inject({
+      method: "GET",
+      url: `/api/v1/studio/search?projectId=${projectId}&q=original`,
+    });
+    expect(search.statusCode).toBe(200);
+    expect(search.json().projectId).toBe(projectId);
+    expect(
+      (search.json().items as Array<{ path: string }>).some(
+        (h) => h.path === "readme.md",
+      ),
+    ).toBe(true);
+    const ask = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/ask-agent",
+      payload: {
+        projectId,
+        path: "readme.md",
+        mode: "fix",
+        instruction: "Clarify the README heading",
+      },
+    });
+    expect([200, 201]).toContain(ask.statusCode);
+    const patch = ask.json().patch as { projectId?: string } | null;
+    if (patch) expect(patch.projectId).toBe(projectId);
   });
 });

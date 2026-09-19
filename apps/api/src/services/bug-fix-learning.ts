@@ -21,8 +21,9 @@ import {
 import { redactSecrets } from "@atlas/agent-core";
 import { markBugVerified } from "@atlas/observer";
 import { osStore } from "../store/os-store.js";
-import { appendDomainEvent } from "./memory-pipeline.js";
+import { appendDomainEvent, commitMemory } from "./memory-pipeline.js";
 import { resolveEvidenceOwnerId } from "./write-owner.js";
+import type { MemoryStoreEnv } from "@atlas/database";
 
 export const BUG_FIX_MEMORY_SOURCE = "bug-fix-learning";
 export const BUG_FIX_LEARNING_AGENT_ID = "DEBUGGER";
@@ -54,6 +55,7 @@ export type BugFixLearningInput = {
   readonly patchId?: string | null;
   readonly agentId?: string | null;
   readonly allowedAgents?: readonly string[] | null;
+  readonly env?: MemoryStoreEnv | null;
 };
 
 export type PersistBugFixMemoryResult =
@@ -244,7 +246,7 @@ export function persistValidatedBugFixMemory(
       ? { allowedAgents: input.allowedAgents ? [...input.allowedAgents] : null }
       : {}),
   });
-  osStore.addMemory(memory);
+  void commitMemory({ memory, env: input.env ?? null });
   osStore.appendAudit({
     type: "bug.fix.learned",
     memoryId: memory.id,
@@ -275,6 +277,7 @@ export function learnFromObserverBugs(input: {
   readonly ownerId: string;
   readonly projectId: string | null;
   readonly bugs: readonly ObserverBug[];
+  readonly env?: MemoryStoreEnv | null;
 }): Memory[] {
   const written: Memory[] = [];
   for (const bug of input.bugs) {
@@ -292,6 +295,7 @@ export function learnFromObserverBugs(input: {
       verifiedFix: false,
       evidence,
       agentId: BUG_FIX_LEARNING_AGENT_ID,
+      env: input.env ?? null,
     });
     if (result.status === "written") {
       written.push(result.memory);
@@ -314,6 +318,7 @@ export function learnFromVerifiedPatch(input: {
   readonly evidenceId: string | null;
   readonly verifySummary: string;
   readonly workspaceRoot?: string | null;
+  readonly env?: MemoryStoreEnv | null;
 }): PersistBugFixMemoryResult {
   const evidenceRef = input.evidenceId ?? input.patchId;
   const result = persistValidatedBugFixMemory({
@@ -333,6 +338,7 @@ export function learnFromVerifiedPatch(input: {
     ],
     patchId: input.patchId,
     agentId: BUG_FIX_LEARNING_AGENT_ID,
+    env: input.env ?? null,
   });
   if (input.workspaceRoot) {
     markBugVerified(input.workspaceRoot, input.bugId, [evidenceRef]);

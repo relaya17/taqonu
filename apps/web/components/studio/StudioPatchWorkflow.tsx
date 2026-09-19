@@ -2,19 +2,26 @@
 
 import { Alert, Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { StudioPatchDiff } from "@/components/studio/StudioPatchDiff";
 import {
   STUDIO_PATCH_STEPS,
   canApplyStudioPatch,
   canApproveStudioPatch,
+  canRollbackStudioPatch,
   canVerifyStudioPatch,
   nextStudioPatchStep,
   patchGovernedPath,
   patchVerifyPath,
 } from "@/lib/studio-patch-workflow";
+import {
+  formatPatchVerifyLabel,
+  studioRemediationAlertSeverity,
+  studioRemediationIsGreen,
+} from "@/lib/studio-remediation-truth";
 
 interface PatchItem {
   id: string;
@@ -26,7 +33,13 @@ interface PatchItem {
   expectedImpact: string;
   evaluationSummary: string | null;
   verifiedAt?: string | null;
-  filesChanged: Array<{ path: string; action: string; summary: string }>;
+  filesChanged: Array<{
+    path: string;
+    action: string;
+    summary: string;
+    unifiedDiff?: string;
+    afterContent?: string;
+  }>;
   approvals: Array<{ by: string; at: string }>;
 }
 
@@ -54,6 +67,9 @@ export function StudioPatchWorkflow({
   const [pendingApplyById, setPendingApplyById] = useState<Record<string, string>>(
     {},
   );
+  const [pendingRollbackById, setPendingRollbackById] = useState<
+    Record<string, string>
+  >({});
 
   const patches = useQuery({
     queryKey: ["patches", projectId],
@@ -63,6 +79,11 @@ export function StudioPatchWorkflow({
         `/api/v1/code/patches?projectId=${encodeURIComponent(projectId)}`,
       ),
   });
+
+  useEffect(() => {
+    if (!projectId || !focusPatchId) return;
+    void queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
+  }, [focusPatchId, projectId, queryClient]);
 
   const items = patches.data?.items ?? [];
   const focused =
@@ -106,7 +127,40 @@ export function StudioPatchWorkflow({
         return next;
       });
       await queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["studio-file"] });
+      await queryClient.invalidateQueries({ queryKey: ["studio-tree"] });
       onVerified?.();
+    },
+  });
+
+  const rollback = useMutation({
+    mutationFn: async (id: string) => {
+      try {
+        return await apiPost(
+          patchGovernedPath(id, "rollback", pendingRollbackById[id]),
+          {
+            ...(root ? { workspaceRoot: root } : {}),
+          },
+        );
+      } catch (error) {
+        if (isApprovalRequiredError(error)) {
+          setPendingRollbackById((current) => ({
+            ...current,
+            [id]: error.approvalId,
+          }));
+        }
+        throw error;
+      }
+    },
+    onSuccess: async (_data, id) => {
+      setPendingRollbackById((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      await queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["studio-file"] });
+      await queryClient.invalidateQueries({ queryKey: ["studio-tree"] });
     },
   });
 
@@ -115,6 +169,13 @@ export function StudioPatchWorkflow({
       const result = await apiPost<{
         patch?: { status?: string };
         verify?: { ok?: boolean; summary?: string };
+        patchVerifyStatus?: string;
+        findingRemediation?: {
+          result: string;
+          verifyStatus: string;
+          findingPresence: string;
+          summary: string;
+        };
       }>(patchVerifyPath(id), {
         projectId,
         ...(root ? { workspaceRoot: root } : {}),
@@ -130,8 +191,9 @@ export function StudioPatchWorkflow({
     },
   });
 
-  const busy = approve.isPending || apply.isPending || verify.isPending;
-  const actionError = approve.error || apply.error || verify.error;
+  const busy =
+    approve.isPending || apply.isPending || verify.isPending || rollback.isPending;
+  const actionError = approve.error || apply.error || verify.error || rollback.error;
 
   return (
     <Box
@@ -147,6 +209,9 @@ export function StudioPatchWorkflow({
       </Typography>
       <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
         {t("workflow.help")}
+      </Typography>
+      <Typography variant="caption" sx={{ display: "block", mt: 0.5, color: "#8B9099" }}>
+        {t("workflow.rollbackHelp")}
       </Typography>
       <Alert severity="info" sx={{ mt: 1.5 }}>
         {tPatches("gateNote")}
@@ -176,8 +241,29 @@ export function StudioPatchWorkflow({
         </Alert>
       ) : null}
       {verify.isSuccess && !verify.isError ? (
-        <Alert severity="success" sx={{ mt: 1.5 }}>
-          {tPatches("verified")}
+        <Alert
+          severity={studioRemediationAlertSeverity(
+            verify.data?.verify?.ok !== false,
+            verify.data?.findingRemediation,
+          )}
+          sx={{ mt: 1.5 }}
+        >
+          {`PATCH_VERIFY: ${formatPatchVerifyLabel(
+            verify.data?.patchVerifyStatus,
+            verify.data?.verify?.ok,
+          )}`}
+          {verify.data?.findingRemediation
+            ? ` · REMEDIATION: ${verify.data.findingRemediation.result} · FINDING: ${verify.data.findingRemediation.findingPresence}`
+            : ""}
+          {studioRemediationIsGreen(
+            verify.data?.verify?.ok !== false,
+            verify.data?.findingRemediation,
+          )
+            ? ` — ${tPatches("remediationFixed")}`
+            : verify.data?.findingRemediation?.result === "NOT_FIXED" ||
+                verify.data?.findingRemediation?.result === "UNSUPPORTED"
+              ? ` — ${tPatches("remediationNotFixed")}`
+              : ` — ${tPatches("patchVerifyOnly")}`}
         </Alert>
       ) : null}
 
@@ -213,17 +299,12 @@ export function StudioPatchWorkflow({
               {tPatches("approvalPending", { id: pendingApplyById[focused.id] })}
             </Alert>
           ) : null}
-          <Typography variant="overline" sx={{ display: "block", mt: 1.25, color: "#8B9099" }}>
-            {t("workflow.reviewFiles")}
-          </Typography>
-          <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-            {focused.filesChanged.map((file) => (
-              <Typography key={`${file.action}:${file.path}`} variant="body2" sx={{ color: "#DCDDE1" }}>
-                {file.action} · {file.path}
-                {file.summary ? ` — ${file.summary}` : ""}
-              </Typography>
-            ))}
-          </Stack>
+          {pendingRollbackById[focused.id] ? (
+            <Alert severity="warning" sx={{ mt: 1.5 }}>
+              {tPatches("approvalPending", { id: pendingRollbackById[focused.id] })}
+            </Alert>
+          ) : null}
+          <StudioPatchDiff filesChanged={focused.filesChanged} />
           <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
             <Button
               size="small"
@@ -251,6 +332,18 @@ export function StudioPatchWorkflow({
               onClick={() => verify.mutate(focused.id)}
             >
               {tPatches("verify")}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              color="warning"
+              disabled={busy || !canRollbackStudioPatch(focused.status) || !root}
+              onClick={() => rollback.mutate(focused.id)}
+              aria-label={tPatches("rollback")}
+            >
+              {pendingRollbackById[focused.id]
+                ? tPatches("retryRollback")
+                : tPatches("rollback")}
             </Button>
             <Button component={Link} href="/patches" size="small" variant="text">
               {t("openPatches")}

@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { AuthUser } from "@atlas/shared";
 
@@ -122,6 +122,101 @@ describe("GET /api/v1/projects/:id/sentinel", () => {
       url: `/api/v1/projects/${projectId}/sentinel`,
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("returns the persisted last-scan without requiring a live walk", async () => {
+    const { atlasObserverPaths } = await import("@atlas/observer");
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    const workspace = mkdtempSync(join(tmpdir(), "atlas-sentinel-last-"));
+    const lastScanPath = atlasObserverPaths(workspace).sentinelLastScan;
+    mkdirSync(dirname(lastScanPath), { recursive: true });
+    writeFileSync(
+      lastScanPath,
+      JSON.stringify({
+        scannedAt: "2026-09-19T12:00:00.000Z",
+        workspaceRoot: workspace,
+        posture: "HIGH",
+        summary: "fixture last-scan",
+        secrets: [],
+        authz: [],
+        dependencies: [],
+        config: [],
+        packs: [],
+        findings: [
+          {
+            id: "secret:fixture.ts:aws_access_key:2",
+            kind: "aws_access_key",
+            severity: "CRITICAL",
+            title: "Possible AWS access key id",
+            detail: "Potential secret in fixture.ts:2. Value redacted.",
+            path: "fixture.ts",
+            line: 2,
+            redacted: "AKIA…0001 (len=20)",
+            evidenceRefs: ["file:fixture.ts", "line:2"],
+            claim: "OBSERVED",
+            epistemicState: "OBSERVED",
+            remediation: "Rotate",
+          },
+        ],
+        counts: {
+          secrets: 1,
+          authz: 0,
+          dependencies: 0,
+          config: 0,
+          packs: 0,
+          critical: 1,
+          high: 0,
+        },
+        nextActions: ["Rotate"],
+      }),
+      "utf8",
+    );
+    osStore.setWorkspaceRoot(projectId, workspace);
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectId}/sentinel`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      scanSource: string;
+      posture: string;
+      findings: Array<{ path?: string; line?: number }>;
+    };
+    expect(body.scanSource).toBe("last-scan");
+    expect(body.posture).toBe("HIGH");
+    expect(body.findings[0]?.path).toBe("fixture.ts");
+    expect(body.findings[0]?.line).toBe(2);
+  });
+
+  it("returns NOT_RUN without a live workspace walk when last-scan is absent", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    const workspace = mkdtempSync(join(tmpdir(), "atlas-sentinel-norun-"));
+    let cursor = workspace;
+    for (let i = 0; i < 80; i += 1) {
+      cursor = join(cursor, `n${i}`);
+      mkdirSync(cursor, { recursive: true });
+      writeFileSync(join(cursor, "noise.bin"), "x".repeat(64), "utf8");
+    }
+    osStore.setWorkspaceRoot(projectId, workspace);
+    getRequestUser.mockReturnValue(owner);
+    const started = Date.now();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectId}/sentinel`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const body = res.json() as {
+      scanSource: string;
+      posture: string;
+      findings: unknown[];
+    };
+    expect(body.scanSource).toBe("not-run");
+    expect(body.posture).toBe("NOT_RUN");
+    expect(body.findings).toEqual([]);
   });
 });
 

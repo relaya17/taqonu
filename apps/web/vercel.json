@@ -7,6 +7,6 @@
   "env": {
     "TURBO_TEAM": "",
     "TURBO_REMOTE_ONLY": "true",
-    "NEXT_PUBLIC_DEMO_LOGIN_ENABLED": "1"
+    "NEXT_PUBLIC_DEMO_LOGIN_ENABLED": "0"
   }
 }

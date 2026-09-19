@@ -1,4 +1,4 @@
-export const STUDIO_TABS = ["files", "chat", "cloud", "checks"] as const;
+export const STUDIO_TABS = ["files", "chat", "run", "cloud", "checks"] as const;
 export type StudioTab = (typeof STUDIO_TABS)[number];
 
 /** Canonical Checks-tab capabilities. Process Audit is the full E2E audit, not the QA subset. */
@@ -22,10 +22,80 @@ export function isStudioCheckId(value: string | null): value is StudioCheckId {
 }
 
 /**
+ * Auth failure must not look like an empty workspace. A 401/network error
+ * leaves projectCount at 0; showing "no projects" would mislead operators.
+ */
+export function shouldShowStudioEmptyProjects(input: {
+  readonly isError: boolean;
+  readonly isLoading: boolean;
+  readonly projectId: string | null | undefined;
+  readonly projectCount: number;
+}): boolean {
+  return (
+    !input.isError &&
+    !input.isLoading &&
+    !input.projectId &&
+    input.projectCount === 0
+  );
+}
+
+/**
+ * Studio query string. Files tab may carry `file`; other tabs drop it so a
+ * Checks URL cannot strand an unreachable editor path.
+ */
+export function buildStudioSearch(input: {
+  readonly tab?: string | null;
+  readonly check?: string | null;
+  readonly projectId?: string | null;
+  readonly file?: string | null;
+}): string {
+  const params = new URLSearchParams();
+  const requestedTab = input.tab ?? null;
+  const tab = isStudioTab(requestedTab) ? requestedTab : "files";
+  params.set("tab", tab);
+  if (tab === "checks") {
+    params.set(
+      "check",
+      isStudioCheckId(input.check ?? null) ? input.check! : "observer",
+    );
+  }
+  const projectId = input.projectId?.trim();
+  if (projectId) params.set("project", projectId);
+  const file = input.file?.trim();
+  if (tab === "files" && file) params.set("file", file);
+  return `?${params.toString()}`;
+}
+
+/**
  * Signed-in working entry. Marketing `/` still redirects to welcome;
  * the locale dashboard (`/{locale}`) remains reachable and is not deleted.
  */
 export const WEB_POST_AUTH_PATH = "/studio";
+
+function stripLocalePrefix(pathname: string): string {
+  return pathname.replace(/^\/(he|en|ar)(?=\/|$)/, "") || "/";
+}
+
+/**
+ * Public doors: no product nav (Studio / Checks / Systems) until sign-in.
+ * Locale prefix is stripped so both next-intl (`/welcome`) and raw
+ * (`/he/welcome`) paths classify the same.
+ */
+export function isPublicShellPath(pathname: string): boolean {
+  const path = stripLocalePrefix(pathname);
+  return (
+    path === "/welcome" ||
+    path.startsWith("/welcome/") ||
+    path === "/auth" ||
+    path.startsWith("/auth/")
+  );
+}
+
+/** Marketing landing chrome — welcome only, not login/register. */
+export function isMarketingShellPath(pathname: string): boolean {
+  const path = stripLocalePrefix(pathname);
+  return path === "/welcome" || path.startsWith("/welcome/");
+}
 
 /**
  * Routes that must remain reachable after Studio consolidation.

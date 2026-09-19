@@ -27,5 +27,6 @@ export function atlasObserverPaths(workspaceRoot: string) {
     sentinel,
     sentinelLastScan: join(sentinel, "last-scan.json"),
     sentinelAuthzBaseline: join(sentinel, "authz-baseline.json"),
+    lastFindings: join(cycles, "last-findings.json"),
   };
 }

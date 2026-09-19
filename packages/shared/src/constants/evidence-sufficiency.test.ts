@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessEvidenceSufficiency, memoryEpistemicAfterAction } from "./evidence-sufficiency.js";
+import { assessEvidenceSufficiency, memoryEpistemicAfterAction, epistemicStateWhenConflicting } from "./evidence-sufficiency.js";
 
 describe("assessEvidenceSufficiency", () => {
   it("lets inspect continue with no prior evidence — gathering is not concluding", () => {
@@ -56,5 +56,18 @@ describe("assessEvidenceSufficiency", () => {
 
   it("records an execution result as OBSERVED, never FACT", () => {
     expect(memoryEpistemicAfterAction()).toBe("OBSERVED");
+  });
+
+  it("maps conflicting evidence to CONFLICTED, never PASS/VERIFIED", () => {
+    expect(epistemicStateWhenConflicting({ conflicting: true })).toBe(
+      "CONFLICTED",
+    );
+    expect(
+      epistemicStateWhenConflicting({
+        conflicting: true,
+        conflictEstablished: false,
+      }),
+    ).toBe("UNKNOWN");
+    expect(epistemicStateWhenConflicting({ conflicting: false })).toBeNull();
   });
 });

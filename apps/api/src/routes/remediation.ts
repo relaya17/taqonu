@@ -200,6 +200,7 @@ export async function registerRemediationRoutes(
       user,
       bodyWorkspaceRoot: body.workspaceRoot ?? null,
       requireProjectRoot: true,
+      env: app.atlasEnv,
     });
   });
 
@@ -360,6 +361,7 @@ export async function registerRemediationRoutes(
       drafts,
       user,
       bodyWorkspaceRoot: body.workspaceRoot ?? null,
+      env: app.atlasEnv,
     });
 
     return reply.status(200).send({

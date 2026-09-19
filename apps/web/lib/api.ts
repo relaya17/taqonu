@@ -45,14 +45,16 @@ export function downloadVerifiedSourcesPack(
 /** Live DOCUMENT.EXECUTE (and similar) gates mint a PENDING approval and return 202. */
 export class ApprovalRequiredError extends Error {
   readonly approvalId: string;
+  readonly executionId: string | null;
 
-  constructor(approvalId: string, message?: string) {
+  constructor(approvalId: string, message?: string, executionId?: string | null) {
     super(
       message ??
         `Live approval ${approvalId} must be decided by a different identity before retrying.`,
     );
     this.name = "ApprovalRequiredError";
     this.approvalId = approvalId;
+    this.executionId = executionId ?? null;
   }
 }
 
@@ -64,7 +66,7 @@ export function isApprovalRequiredError(
 
 function isApprovalRequiredPayload(
   value: unknown,
-): value is { approvalId: string; message?: string } {
+): value is { approvalId: string; message?: string; executionId?: string } {
   if (value === null || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
@@ -100,7 +102,11 @@ async function readSuccessJson<T>(response: Response): Promise<T> {
   }
   const json = (await response.json()) as unknown;
   if (response.status === 202 && isApprovalRequiredPayload(json)) {
-    throw new ApprovalRequiredError(json.approvalId, json.message);
+    throw new ApprovalRequiredError(
+      json.approvalId,
+      json.message,
+      typeof json.executionId === "string" ? json.executionId : null,
+    );
   }
   return json as T;
 }

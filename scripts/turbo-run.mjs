@@ -16,8 +16,11 @@
 // set) does not hit this path and completes normally (verified: 30/30 tasks
 // successful). This wrapper reproduces that working invocation from inside
 // a pnpm script by stripping the two variables before spawning Turbo, so
-// `pnpm build` / `pnpm lint` / `pnpm test` behave the same as the verified
-// direct call.
+// `pnpm build` / `pnpm lint` / `pnpm test` / `pnpm dev` (via
+// scripts/dev-surfaces.mjs) behave the same as the verified direct call.
+// `--ui=stream` is what makes this path lethal: turbo.json defaults to TUI,
+// and shouldOwnWindowsCtrlC() returns false for `--ui=tui`. Dev previously
+// spawned `pnpm exec turbo ... --ui=stream` and crashed every time.
 //
 // Safe to remove once upstream Turbo fixes/guards this Windows code path.
 import { spawnSync } from "node:child_process";

@@ -6,20 +6,23 @@ import {
   parseEvidenceRecord,
   patchArtifactSchema,
   type AuthUser,
+  type FindingRemediationVerdict,
   type PatchArtifact,
 } from "@atlas/shared";
 import { redactSecrets } from "@atlas/agent-core";
+import type { MemoryStoreEnv } from "@atlas/database";
 import {
   applyPatchFiles,
   verifyRemediationApply,
   type RemediationVerifyResult,
 } from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
-import { appendDomainEvent } from "./memory-pipeline.js";
+import { appendDomainEvent, commitMemory } from "./memory-pipeline.js";
 import { learnFromVerifiedPatch } from "./bug-fix-learning.js";
 import { atlasMetrics } from "../routes/metrics.js";
 import { appendOracleAudit } from "./admin-oracle-digest.js";
 import { computeArtifactHash } from "./governed-execution.js";
+import { evaluateFindingRemediation } from "./patch-remediation-truth.js";
 
 /**
  * Step 4 Decision A. Moved here (from `routes/code.ts`, which still
@@ -209,10 +212,19 @@ export function recordRemediationVerification(input: {
   readonly userId: string;
   /** Distinguishes auto-remediation smoke verify from governed CODE_ENGINEER verify. */
   readonly kind?: "auto-remediation-verify" | "governed-patch-verify";
+  readonly findingRemediation?: FindingRemediationVerdict;
 }): PatchArtifact {
   const now = new Date().toISOString();
   const evidenceIds = [...input.patch.evidenceIds];
   let evidenceId: string | null = null;
+  const combinedSummary = [
+    `PATCH_VERIFY: ${input.verify.ok ? "PASS" : "FAIL"} — ${input.verify.summary}`,
+    input.findingRemediation
+      ? `REMEDIATION: ${input.findingRemediation.result} · FINDING: ${input.findingRemediation.findingPresence} — ${input.findingRemediation.summary}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   if (input.patch.projectId) {
     evidenceId = crypto.randomUUID();
@@ -224,7 +236,7 @@ export function recordRemediationVerification(input: {
       sourceType: "SYSTEM",
       sourceId: input.patch.id,
       uri: null,
-      excerpt: input.verify.summary,
+      excerpt: combinedSummary.slice(0, 8000),
       version: null,
       observedAt: now,
       createdAt: now,
@@ -237,6 +249,9 @@ export function recordRemediationVerification(input: {
         patchId: input.patch.id,
         sourceIssueId: input.patch.sourceIssueId ?? null,
         ok: input.verify.ok,
+        patchVerifyStatus: input.verify.ok ? "PASS" : "FAIL",
+        remediationResult: input.findingRemediation?.result ?? null,
+        findingPresence: input.findingRemediation?.findingPresence ?? null,
         checks: input.verify.checks
           .map((c) => `${c.id}:${c.passed ? "pass" : "fail"}`)
           .join("; "),
@@ -255,10 +270,11 @@ export function recordRemediationVerification(input: {
     updatedAt: now,
     evaluationSummary: [
       input.patch.evaluationSummary ?? "",
-      input.verify.summary,
+      combinedSummary,
     ]
       .filter(Boolean)
-      .join(" "),
+      .join(" ")
+      .slice(0, 4000),
     epistemicState: input.verify.ok ? "OBSERVED" : input.patch.epistemicState,
   });
   osStore.upsertPatch(patch);
@@ -266,6 +282,11 @@ export function recordRemediationVerification(input: {
     type: "code.patch.verified",
     patchId: patch.id,
     ok: input.verify.ok,
+    patchVerifyStatus: input.verify.ok ? "PASS" : "FAIL",
+    remediationResult: input.findingRemediation?.result ?? null,
+    remediationVerifyStatus: input.findingRemediation?.verifyStatus ?? null,
+    findingPresence: input.findingRemediation?.findingPresence ?? null,
+    findingId: input.findingRemediation?.findingId ?? patch.remediationTarget?.findingId ?? null,
     sourceIssueId: patch.sourceIssueId ?? null,
     at: now,
     by: input.userId,
@@ -280,6 +301,9 @@ export function recordRemediationVerification(input: {
       patchId: patch.id,
       sourceIssueId: patch.sourceIssueId ?? null,
       ok: input.verify.ok,
+      patchVerifyStatus: input.verify.ok ? "PASS" : "FAIL",
+      remediationResult: input.findingRemediation?.result ?? null,
+      findingPresence: input.findingRemediation?.findingPresence ?? null,
       evidenceId,
       checks: input.verify.checks,
     },
@@ -385,7 +409,7 @@ export function verifyGovernedCodePatch(input: {
   readonly user: AuthUser;
   readonly bodyWorkspaceRoot?: string | null;
   readonly projectId?: string | null;
-}): { patch: PatchArtifact; verify: RemediationVerifyResult } {
+}): { patch: PatchArtifact; verify: RemediationVerifyResult; findingRemediation: FindingRemediationVerdict; patchVerifyStatus: "PASS" | "FAIL" } {
   if (isAutoRemediationDraft(input.existing)) {
     throw new AtlasError(
       "CONFLICT",
@@ -421,20 +445,34 @@ export function verifyGovernedCodePatch(input: {
     workspaceRoot,
     patch: input.existing,
   });
+  const findingRemediation = evaluateFindingRemediation({
+    workspaceRoot,
+    executionOk: verify.ok,
+    ...(input.existing.remediationTarget
+      ? { target: input.existing.remediationTarget }
+      : {}),
+  });
   const patch = recordRemediationVerification({
     patch: input.existing,
     workspaceRoot,
     verify,
     userId: input.user.id,
     kind: "governed-patch-verify",
+    findingRemediation,
   });
-  return { patch, verify };
+  return {
+    patch,
+    verify,
+    findingRemediation,
+    patchVerifyStatus: verify.ok ? "PASS" : "FAIL",
+  };
 }
 
 function recordGovernedPatchApplyMemory(input: {
   readonly patch: PatchArtifact;
   readonly user: AuthUser;
   readonly applied: readonly string[];
+  readonly env?: MemoryStoreEnv | null;
 }): void {
   if (isAutoRemediationDraft(input.patch)) return;
   if (!input.patch.projectId) return;
@@ -472,7 +510,7 @@ function recordGovernedPatchApplyMemory(input: {
     scope: "PROJECT",
     priority: "MEDIUM",
   });
-  osStore.addMemory(memory);
+  void commitMemory({ memory, env: input.env ?? null });
   appendDomainEvent({
     type: "memory.created",
     projectId: input.patch.projectId,
@@ -494,6 +532,7 @@ export function applyApprovedPatch(input: {
   readonly requireProjectRoot?: boolean | undefined;
   /** When true, caller runs verify separately (auto-apply loop). */
   readonly skipVerify?: boolean | undefined;
+  readonly env?: MemoryStoreEnv | null;
 }): {
   patch: PatchArtifact;
   apply: ReturnType<typeof applyPatchFiles>;
@@ -634,6 +673,7 @@ export function applyApprovedPatch(input: {
     patch,
     user: input.user,
     applied: result.applied,
+    env: input.env ?? null,
   });
 
   let verify: RemediationVerifyResult | null = null;

@@ -36,7 +36,7 @@ function RegisterPage() {
   const locale = useLocale();
   const next = useSearchParams().get("next");
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
-  const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
+  const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState(
     isDevLoginPrefill ? DEV_CREDENTIALS.displayName : "",
   );
@@ -104,7 +104,7 @@ function RegisterPage() {
         </Typography>
         {isDevLoginPrefill ? (
           <Alert severity="info" sx={{ mt: 2, textAlign: "start" }}>
-            מצב פיתוח — {DEV_CREDENTIALS.domain} · {DEV_CREDENTIALS.email} · {DEV_CREDENTIALS.password}
+            מצב פיתוח — {DEV_CREDENTIALS.domain} · {DEV_CREDENTIALS.email}
           </Alert>
         ) : null}
       </Box>

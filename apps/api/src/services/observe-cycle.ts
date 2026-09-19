@@ -22,6 +22,7 @@ import {
   verifyAgainstExpected,
   collectP1TruthSignals,
   recordDeployEvent,
+  resolveTruthTopFinding,
 } from "@atlas/observer";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
@@ -29,6 +30,7 @@ import { defaultGoldenRoot } from "./golden-root.js";
 import { isolationAuditSummary } from "./project-access.js";
 import { resolveEvidenceOwnerId } from "./write-owner.js";
 import { learnFromObserverBugs } from "./bug-fix-learning.js";
+import type { MemoryStoreEnv } from "@atlas/database";
 
 export function resolveObserverWorkspace(input: {
   projectId?: string | null;
@@ -79,6 +81,7 @@ export function executeObserveCycle(input: {
   envGoldenRoot?: string | null;
   /** Authenticated owner — required to persist validated bug-fix memories. */
   ownerId?: string | null;
+  env?: MemoryStoreEnv | null;
 }): ObserveCycleResult {
   const body = observeCycleRequestSchema.parse(input.body);
   const resolved = resolveObserverWorkspace({
@@ -155,6 +158,7 @@ export function executeObserveCycle(input: {
       ownerId: input.ownerId,
       projectId: resolved.projectId,
       bugs: result.bugs,
+      env: input.env ?? null,
     });
   }
 
@@ -203,6 +207,7 @@ export function executeBugIngest(input: {
   envGoldenRoot?: string | null;
   /** Authenticated owner — required to persist validated bug-fix memories. */
   ownerId?: string | null;
+  env?: MemoryStoreEnv | null;
 }) {
   const body = ingestBugsRequestSchema.parse(input.body);
   const resolved = resolveObserverWorkspace({
@@ -229,6 +234,7 @@ export function executeBugIngest(input: {
           ownerId: input.ownerId,
           projectId: resolved.projectId,
           bugs,
+          env: input.env ?? null,
         })
       : [];
   return {
@@ -250,14 +256,22 @@ export function readObserverState(input: {
     const expected = loadExpectedBehavior(resolved.workspaceRoot);
     const drifts = verifyAgainstExpected(expected, genome?.apis ?? []);
     const isolation = isolationAuditSummary();
-    const p1Signals = collectP1TruthSignals(resolved.workspaceRoot, drifts, {
-      denied: isolation.denied,
-      bound: isolation.bound,
-      total: isolation.total,
-    });
+    const p1Signals = collectP1TruthSignals(
+      resolved.workspaceRoot,
+      drifts,
+      {
+        denied: isolation.denied,
+        bound: isolation.bound,
+        total: isolation.total,
+      },
+      { deadlineMs: Date.now() + 4_000 },
+    );
+    const truth = resolveTruthTopFinding(resolved.workspaceRoot);
     return {
       workspaceRoot: resolved.workspaceRoot,
       projectId: resolved.projectId,
+      lastFindings: truth.lastFindings,
+      topFinding: truth.topFinding,
       genome,
       bugs: loadBugs(resolved.workspaceRoot),
       expected,
@@ -279,6 +293,8 @@ export function readObserverState(input: {
     return {
       workspaceRoot: null,
       projectId: input.projectId ?? null,
+      lastFindings: [],
+      topFinding: null,
       genome: null,
       bugs: [],
       expected: null,

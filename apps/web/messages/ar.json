@@ -168,13 +168,73 @@
     "saveFile": "حفظ الملف",
     "savedFile": "حُفظ الملف على القرص.",
     "dirty": "غير محفوظ",
+    "unsavedConfirm": "لديك تعديلات غير محفوظة في مساحة العمل. هل تريد تجاهلها؟",
+    "diskChanged": "تغير الملف على القرص أثناء وجود مسودة غير محفوظة. أُبقيت مسودتك.",
+    "reloadFile": "أعد التحميل من القرص",
+    "openFiles": "الملفات المفتوحة",
+    "closeFile": "أغلق الملف",
     "loadingTree": "تحميل الشجرة…",
+    "loadingProjects": "تحميل المشاريع…",
     "emptyTree": "لا ملفات للعرض",
     "pickFile": "اختر ملفاً",
     "noEdit": "الوكيل وحده يغيّر",
     "loadingFile": "تحميل الملف…",
     "viewerHint": "اختر ملفاً من الشجرة. يمكن التحرير والحفظ، أو طلب اقتراح من الوكيل.",
     "fileTruncated": "(مقتطع للعرض)",
+    "search": "بحث في الملفات",
+    "searchPlaceholder": "ابحث في الملفات والنص…",
+    "searchEmpty": "لا نتائج في مساحة العمل.",
+    "projectState": "حالة المشروع",
+    "boundFinding": "Finding مرتبط للاقتراح",
+    "continuity": {
+      "title": "الآن في هذا المشروع",
+      "help": "آخر Patch، آخر تشغيل محكوم، والتكلفة المسجّلة من Atlas — ليست درجة Truth، وليست Control.",
+      "patch": "Patch",
+      "noPatch": "لا Patch بعد",
+      "noRun": "لا تشغيل محكوم بعد",
+      "cost": "تكلفة مسجّلة USD",
+      "costUnknown": "التكلفة غير متاحة",
+      "finding": "Finding مرتبط"
+    },
+    "git": {
+      "title": "حالة Git",
+      "help": "قائمة قراءة فقط من أمر git.status المحكوم. التحديث ما زال يتطلب هوية ثانية. Studio لا يُنشئ commits هنا.",
+      "empty": "لا توجد نتيجة git.status محكومة بعد. اطلب واحدة لعرض الملفات المتغيرة.",
+      "request": "اطلب حالة Git",
+      "requesting": "يُطلب الموافقة…",
+      "notTruth": "حالة Git دليل مساحة عمل، وليست حكم Truth.",
+      "clean": "شجرة العمل نظيفة (porcelain فارغ).",
+      "kind": {
+        "modified": "معدّل",
+        "added": "مضاف",
+        "deleted": "محذوف",
+        "untracked": "غير متتبَّع",
+        "renamed": "أُعيدت تسميته",
+        "other": "متغيّر"
+      }
+    },
+    "problems": {
+      "title": "المشكلات",
+      "empty": "لا توجد نتائج Sentinel أو بوابات جودة أو اختبارات محكومة لهذا المشروع.",
+      "notCompiler": "نتائج Atlas فقط — ليست تشخيصات مُصرّف TypeScript.",
+    "proposeFix": "اقترح إصلاحاً",
+      "source": {
+        "sentinel": "Sentinel",
+        "gate": "بوابة الجودة",
+        "test": "اختبارات محكومة"
+      }
+    },
+    "diff": {
+      "title": "مجموعة التغييرات",
+      "summary": "{files} ملفات · +{adds} −{dels}",
+      "noDiff": "لا يوجد unified diff مخزّن؛ يُعرض after-content عند وجوده.",
+      "deleteNotApplied": "الحذف موجود في عقد الـ Patch لكنه لا يُطبَّق على القرص.",
+      "action": {
+        "add": "مضاف",
+        "modify": "معدّل",
+        "delete": "محذوف"
+      }
+    },
     "askTitle": "CODE_ENGINEER — تصحيح محكوم",
     "askHelp": "هذا متخصص هندسة Fabric، وليس الـ PSA الشخصي. يقترح Patch. توافقان ثم تطبّقان. التذكيرات والملخصات تكتب ذاكرة Atlas فقط.",
     "engineerRole": "CODE_ENGINEER",
@@ -243,6 +303,7 @@
     "tab": {
       "files": "الملفات",
       "chat": "محادثة الوكيل",
+      "run": "تشغيل",
       "cloud": "السحابة والأدوات",
       "checks": "الفحوصات"
     },
@@ -255,9 +316,29 @@
       "readiness": "الجاهزية",
       "truth": "الحقيقة"
     },
+    "run": {
+      "help": "معرّف أمر من القائمة فقط. يجب أن تقرر هوية ثانية ثم تنفّذ. المخرجات دليل وليست حقيقة.",
+      "noShell": "لا صدفة مفتوحة. يُرفض argv من العميل. التشغيل shell:false داخل مساحة العمل المرتبطة.",
+      "command": "الأمر",
+      "request": "طلب التشغيل",
+      "requesting": "يطلب الموافقة…",
+      "secondIdentity": "هوية ثانية — قرّر ونفّذ",
+      "decisionReason": "سبب القرار",
+      "decide": "قرّر ونفّذ",
+      "kill": "أوقف التشغيل الجاري",
+      "error": "فشل التشغيل",
+      "passed": "exit 0",
+      "failed": "فشل",
+      "notRun": "لا تشغيل محكوم مسجّل لهذا المشروع بعد.",
+      "extensions": "الإضافات",
+      "extensionsHelp": "سجل بيان فقط. لا سوق، لا JavaScript للمستخدم، لا مضيف.",
+      "hostReady": "المضيف جاهز",
+      "noHost": "لا مضيف"
+    },
     "workflow": {
       "title": "اقتراح → مراجعة → موافقة → تطبيق → تحقق",
       "help": "الوكيل يقترح Patch. تراجع وتوافق هنا. Apply يُنشئ موافقة كتابة حية يجب أن تقررها هوية أخرى قبل الكتابة على القرص.",
+      "rollbackHelp": "التراجع يستخدم مسار الفصل بين الواجبات نفسه كـ Apply. فقط APPLIED أو VERIFIED. استعادة القرص ليست حكم Truth.",
       "empty": "افحص ملفًا ثم اقترح تغييرًا. تظهر هنا الـ Patches الحالية للمشروع.",
       "reviewFiles": "ملفات هذا الـ Patch",
       "steps": {
@@ -269,6 +350,17 @@
         "apply": "تطبيق",
         "verify": "تحقق"
       }
+    },
+    "briefing": {
+      "title": "ما اقترحه الوكيل",
+      "intelligence": "الذكاء",
+      "modelInvoked": "تم استدعاء نموذج",
+      "modelNotInvoked": "لم يُستدعَ نموذج",
+      "memoryUsed": "ذكريات Atlas المستخدمة",
+      "files": "الملفات التي سيلمسها هذا الـ Patch",
+      "notChainOfThought": "هذا ملخص الاقتراح المحكوم (النوع، عدد الذكريات، الملفات، الحالة المعرفية). ليس سلسلة تفكير مخفية.",
+      "citations": "ذكريات Atlas المستخدمة (أصل، ليست Truth)",
+      "noCitations": "لم تُحقَن ذكريات Atlas في هذا الاقتراح."
     },
     "psa": {
       "title": "الوكيل المشرف الشخصي",
@@ -1328,7 +1420,10 @@
     "rollback": "تراجع",
     "autoFix": "AUTO_FIX",
     "verify": "تحقق",
-    "verified": "تم التحقق"
+    "verified": "تم التحقق",
+    "patchVerifyOnly": "PATCH_VERIFY فقط — الكتابة طابقت الـ Patch. هذا ليس نتيجة معالجة للملاحظة.",
+    "remediationNotFixed": "REMEDIATION NOT_FIXED — الملاحظة الأصلية ما زالت موجودة.",
+    "remediationFixed": "REMEDIATION FIXED — الكاشف لم يعد يرى الملاحظة الأصلية."
   },
   "gates": {
     "title": "بوابات الجودة",

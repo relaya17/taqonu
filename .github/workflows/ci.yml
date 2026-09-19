@@ -1,5 +1,8 @@
 name: CI
 
+# Repository quality gate. This workflow does not control Vercel Git
+# auto-deploy. A Vercel READY status is not proof this job passed.
+
 on:
   push:
     branches: [main]
@@ -44,3 +47,5 @@ jobs:
         run: pnpm sbom:generate && pnpm supply-chain:verify
       - name: Supply-chain sign refusal (do not mint a placeholder)
         run: pnpm supply-chain:sign
+      - name: Repository publish guard (does not control Vercel)
+        run: pnpm production:publish-guard

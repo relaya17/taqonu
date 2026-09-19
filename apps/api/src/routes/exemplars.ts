@@ -77,6 +77,7 @@ export async function registerExemplarRoutes(
       ...(body.targetPrefix !== undefined ? { targetPrefix: body.targetPrefix } : {}),
       createdBy: user.email,
       ownerId: user.id,
+      env: app.atlasEnv,
     });
     return reply.status(201).send({
       patch: result.patch,

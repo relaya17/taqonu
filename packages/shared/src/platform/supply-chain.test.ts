@@ -77,6 +77,9 @@ describe("unsigned SLSA-shaped provenance", () => {
       repository: "relaya17/taqonu-main",
     });
     expect(verifyUnsignedProvenance(statement, "b".repeat(64)).ok).toBe(false);
+    expect(
+      verifyUnsignedProvenance(statement, "a".repeat(64), "other-sha").ok,
+    ).toBe(false);
     const forged = {
       ...statement,
       predicate: {

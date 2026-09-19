@@ -21,10 +21,18 @@ export type SentinelFinding =
   | ConfigFinding
   | PackFinding;
 
+export type SentinelPosture =
+  | "CRITICAL"
+  | "HIGH"
+  | "MEDIUM"
+  | "LOW"
+  | "CLEAR"
+  | "NOT_RUN";
+
 export interface SentinelScanResult {
   readonly scannedAt: string;
   readonly workspaceRoot: string;
-  readonly posture: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "CLEAR";
+  readonly posture: SentinelPosture;
   readonly summary: string;
   readonly secrets: readonly SecretFinding[];
   readonly authz: readonly AuthzRegressionFinding[];
@@ -46,7 +54,7 @@ export interface SentinelScanResult {
 
 function postureOf(
   findings: readonly SentinelFinding[],
-): SentinelScanResult["posture"] {
+): Exclude<SentinelScanResult["posture"], "NOT_RUN"> {
   if (findings.some((f) => f.severity === "CRITICAL")) return "CRITICAL";
   if (findings.some((f) => f.severity === "HIGH")) return "HIGH";
   if (findings.some((f) => f.severity === "MEDIUM")) return "MEDIUM";
@@ -54,17 +62,62 @@ function postureOf(
   return "CLEAR";
 }
 
+/** GET/read envelope when no last-scan exists. Must not claim CLEAR. */
+export function emptySentinelNotRun(workspaceRoot: string): SentinelScanResult {
+  return {
+    scannedAt: new Date().toISOString(),
+    workspaceRoot,
+    posture: "NOT_RUN",
+    summary:
+      "No persisted Sentinel last-scan. Run a governed POST .../sentinel/scan to produce findings.",
+    secrets: [],
+    authz: [],
+    dependencies: [],
+    config: [],
+    packs: [],
+    findings: [],
+    counts: {
+      secrets: 0,
+      authz: 0,
+      dependencies: 0,
+      config: 0,
+      packs: 0,
+      critical: 0,
+      high: 0,
+    },
+    nextActions: [
+      "POST /api/v1/projects/:id/sentinel/scan (governed) to persist last-scan evidence",
+    ],
+  };
+}
+
+/** Bound for GET/read paths. POST scan may use a larger budget. */
+export const SENTINEL_READ_BUDGET_MS = 8_000;
+
 export function runSentinelScan(
   workspaceRoot: string,
-  options?: { readonly persist?: boolean },
+  options?: { readonly persist?: boolean; readonly maxMs?: number },
 ): SentinelScanResult {
-  const secrets = detectSecrets(workspaceRoot);
-  const authz = detectAuthzRegressions(workspaceRoot, {
-    persistBaseline: options?.persist !== false,
-  });
-  const dependencies = detectDependencyAdvisories(workspaceRoot);
-  const config = detectConfigSecurity(workspaceRoot);
-  const packs = runSpecialistPacks(workspaceRoot);
+  const deadline =
+    typeof options?.maxMs === "number" && Number.isFinite(options.maxMs)
+      ? Date.now() + Math.max(1, options.maxMs)
+      : Number.POSITIVE_INFINITY;
+  const remaining = () => deadline - Date.now();
+
+  const secrets =
+    remaining() > 0
+      ? detectSecrets(workspaceRoot, { deadlineMs: deadline })
+      : [];
+  const authz =
+    remaining() > 0
+      ? detectAuthzRegressions(workspaceRoot, {
+          persistBaseline: options?.persist !== false,
+        })
+      : [];
+  const dependencies =
+    remaining() > 0 ? detectDependencyAdvisories(workspaceRoot) : [];
+  const config = remaining() > 0 ? detectConfigSecurity(workspaceRoot) : [];
+  const packs = remaining() > 0 ? runSpecialistPacks(workspaceRoot) : [];
   const findings = [
     ...secrets,
     ...authz,

@@ -89,7 +89,13 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(studio).toContain("<SupervisingAgentPanel");
     expect(studio).toContain("/api/v1/studio/ask-agent");
     expect(studio).toContain("projectsQuery.isError");
-    expect(studio).toContain("&project=${encodeURIComponent(id)}");
+    expect(studio).toContain("buildStudioSearch");
+    expect(studio).toContain("StudioCodeEditor");
+    expect(studio).toContain("StudioProblemsPanel");
+    expect(studio).toContain("StudioRunPanel");
+    expect(studio).not.toContain("monaco");
+    expect(studio).toContain("buildStudioSearch");
+    expect(studio).toContain("enabled: Boolean(projectId)");
   });
 
   it("keeps standalone route files that redirect into Studio Checks", () => {
@@ -145,6 +151,7 @@ describe("D2 Studio approve/apply does not skip human approval", () => {
     expect(workflow).toContain("patchVerifyPath");
     expect(workflow).toContain("isApprovalRequiredError");
     expect(workflow).toContain("canApplyStudioPatch(focused.status)");
+    expect(workflow).toContain("StudioPatchDiff");
     expect(workflow).not.toMatch(/apply\.mutate.*approve\.mutate/);
     expect(workflow).not.toContain("/api/v1/remediation/drafts/");
     expect(helper).toContain("patchVerifyPath");
@@ -154,5 +161,69 @@ describe("D2 Studio approve/apply does not skip human approval", () => {
     const api = readWeb("lib/api.ts");
     expect(api).toContain("APPROVAL_REQUIRED");
     expect(api).toContain("ApprovalRequiredError");
+  });
+});
+
+describe("Finding → Truth href preserves project query", () => {
+  it("uses studioTruthHref object, not a concatenated /truth?project= string", () => {
+    const href = readWeb("lib/studio-truth-href.ts");
+    expect(href).toContain('pathname: "/truth"');
+    expect(href).toContain("query: { project: projectId }");
+    const panel = readWeb("components/systems/ExecutiveAuditPanel.tsx");
+    expect(panel).toContain("studioTruthHref(props.projectId)");
+    expect(panel).not.toContain("`/truth?project=");
+  });
+});
+
+describe("Studio files URL and tree independence", () => {
+  it("builds Studio hrefs from buildStudioSearch and loads the tree from projectId alone", () => {
+    const surfaces = readWeb("lib/studio-surfaces.ts");
+    expect(surfaces).toContain("export function buildStudioSearch");
+    expect(surfaces).toContain('params.set("file"');
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    expect(studio).toContain("buildStudioSearch");
+    expect(studio).toContain('queryKey: ["studio-tree", projectId]');
+    expect(studio).toMatch(
+      /queryKey: \["studio-tree", projectId\][\s\S]{0,120}enabled: Boolean\(projectId\),/,
+    );
+    expect(studio).toContain("hasRoot && trimmedSearch.length >= 2");
+  });
+});
+
+describe("Studio level-up workspace safety and agent briefing", () => {
+  it("protects unsaved buffers and keeps Git/rollback on governed paths", () => {
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    expect(studio).toContain("beforeunload");
+    expect(studio).toContain("unsavedConfirm");
+    expect(studio).toContain("StudioGitStatus");
+    expect(studio).toContain("StudioAgentBriefing");
+    expect(studio).toContain("StudioContinuity");
+    expect(studio).toContain("anyStudioBufferDirty");
+    expect(studio).toContain("studioProblemRemediationId");
+    expect(studio).not.toContain("selectStudioFile(path, line, problem.id)");
+    const git = readWeb("components/studio/StudioGitStatus.tsx");
+    expect(git).toContain('commandId: "git.status"');
+    expect(git).toContain("decide-and-execute");
+    expect(git).not.toContain("git commit");
+    const workflow = readWeb("components/studio/StudioPatchWorkflow.tsx");
+    expect(workflow).toContain("canRollbackStudioPatch");
+    expect(workflow).toContain('patchGovernedPath(id, "rollback"');
+    const helper = readWeb("lib/studio-patch-workflow.ts");
+    expect(helper).toContain("canRollbackStudioPatch");
+    expect(helper).toMatch(/status === "APPLIED"/);
+  });
+});
+
+describe("locale layout hydration contract", () => {
+  it("passes locale and timeZone into NextIntlClientProvider and suspends AppShell for useSearchParams", () => {
+    const layout = readWeb("app/[locale]/layout.tsx");
+    expect(layout).toContain("locale={locale}");
+    expect(layout).toContain('timeZone="UTC"');
+    expect(layout).toContain("suppressHydrationWarning");
+    expect(layout).toMatch(/<Suspense fallback=\{null\}>[\s\S]*<AppShell>/);
+    const appShell = readWeb("components/layout/AppShell.tsx");
+    expect(appShell).toContain("locale={locale}");
+    const request = readWeb("i18n/request.ts");
+    expect(request).toContain('timeZone: "UTC"');
   });
 });

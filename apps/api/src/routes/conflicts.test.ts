@@ -193,6 +193,42 @@ describe("GET /api/v1/conflicts", () => {
     expect(item).toBeDefined();
     expect(item.authoritySuggestion).toContain("Prefer claimA");
     expect(item.resolved).toBe(false);
+    expect(item.epistemicState).toBe("CONFLICTED");
+  });
+
+  it("labels an open conflict UNKNOWN when the opposing claims cannot be established — never PASS", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    const now = new Date().toISOString();
+    const conflictId = crypto.randomUUID();
+    osStore.setSnapshot({
+      id: crypto.randomUUID(),
+      projectId,
+      asOf: now,
+      reconciledAt: now,
+      slices: [],
+      conflicts: [
+        {
+          id: conflictId,
+          sliceKey: "DATABASE",
+          claimAId: crypto.randomUUID(),
+          claimBId: crypto.randomUUID(),
+          resolution: null,
+          epistemicState: "CONFLICTED",
+          detectedAt: now,
+        },
+      ],
+      overallEpistemicState: "UNKNOWN",
+      sourceConnectors: ["github"],
+    });
+
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({ method: "GET", url: "/api/v1/conflicts" });
+    expect(res.statusCode).toBe(200);
+    const item = res.json().items.find((i: { id: string }) => i.id === conflictId);
+    expect(item.epistemicState).toBe("UNKNOWN");
+    expect(item.epistemicState).not.toBe("PASS");
+    expect(item.resolved).toBe(false);
   });
 });
 

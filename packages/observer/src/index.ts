@@ -48,6 +48,12 @@ export {
 } from "./history/snapshots.js";
 export type { GenomeSnapshotMeta } from "./history/snapshots.js";
 export { selectTopTruthFinding, isTruthPriorityFinding } from "./findings/top.js";
+export {
+  saveLastTruthFindings,
+  loadLastTruthFindings,
+  resolveTruthTopFinding,
+} from "./findings/last.js";
+export type { LastTruthFindings } from "./findings/last.js";
 export { collectP1TruthSignals } from "./findings/p1-signals.js";
 export type { P1TruthSignals } from "./findings/p1-signals.js";
 export { detectProductionSignals } from "./production/signals.js";
@@ -61,8 +67,17 @@ export {
 export type { DeployEvent } from "./production/deploy-events.js";
 export { detectAdrConflicts } from "./memory/adr-conflict.js";
 export type { AdrConflict } from "./memory/adr-conflict.js";
-export { detectSecrets } from "./security/secrets.js";
+export {
+  detectSecrets,
+  findSecretsInText,
+  replaceQuotedSecretLiterals,
+} from "./security/secrets.js";
 export type { SecretFinding } from "./security/secrets.js";
+export {
+  proposeSecretLiteralRemoval,
+  evaluateSecretRemediation,
+  commentOnlySecretChange,
+} from "./security/secret-remediation.js";
 export { detectAuthzRegressions } from "./security/authz-regression.js";
 export type { AuthzRegressionFinding } from "./security/authz-regression.js";
 export { detectDependencyAdvisories } from "./security/deps.js";
@@ -74,10 +89,15 @@ export {
   isVersionBelow,
 } from "./security/advisories.js";
 export type { DefensiveAdvisory } from "./security/advisories.js";
-export { runSentinelScan } from "./security/scan.js";
+export {
+  runSentinelScan,
+  SENTINEL_READ_BUDGET_MS,
+  emptySentinelNotRun,
+} from "./security/scan.js";
 export type {
   SentinelScanResult,
   SentinelFinding,
+  SentinelPosture,
 } from "./security/scan.js";
 export { mergeSentinelIntoGraph } from "./security/graph-ingest.js";
 export { verifySentinelFinding } from "./security/verify.js";
@@ -86,5 +106,5 @@ export { evaluateSecurityGraphPolicy } from "./security/graph-policy.js";
 export type { SecurityGraphPolicyFinding } from "./security/graph-policy.js";
 export { runSpecialistPacks } from "./security/packs.js";
 export type { PackFinding, SpecialistPackId } from "./security/packs.js";
-export { loadSentinelLastScan } from "./security/persist.js";
+export { loadSentinelLastScan, saveSentinelLastScan } from "./security/persist.js";
 export { runCiSecretScan } from "./security/ci-secrets-scan.js";

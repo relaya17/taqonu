@@ -33,6 +33,19 @@ describe("detectSecrets", () => {
     const findings = detectSecrets(root);
     expect(findings.every((f) => !/placeholder/i.test(f.detail))).toBe(true);
   });
+
+  it("stops walking when the deadline has already passed", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-sentinel-deadline-"));
+    writeFileSync(
+      join(root, "leak.ts"),
+      'const t = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";\n',
+      "utf8",
+    );
+    const started = Date.now();
+    const findings = detectSecrets(root, { deadlineMs: Date.now() - 1 });
+    expect(findings).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(250);
+  });
 });
 
 describe("runSentinelScan", () => {
@@ -42,5 +55,15 @@ describe("runSentinelScan", () => {
     expect(result.posture).toBe("CLEAR");
     expect(result.mode).toBeUndefined();
     expect(result.findings).toEqual([]);
+  });
+});
+
+describe("emptySentinelNotRun", () => {
+  it("does not claim CLEAR when no scan has run", async () => {
+    const { emptySentinelNotRun } = await import("./scan.js");
+    const result = emptySentinelNotRun("/tmp/unused");
+    expect(result.posture).toBe("NOT_RUN");
+    expect(result.findings).toEqual([]);
+    expect(result.summary).toMatch(/last-scan/i);
   });
 });

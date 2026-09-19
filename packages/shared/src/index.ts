@@ -12,6 +12,9 @@ export * from "./platform/governed-lifecycle-handoff.js";
 export * from "./platform/personal-supervising-agent.js";
 export * from "./platform/connected-applications.js";
 export * from "./platform/supply-chain.js";
+export * from "./platform/demo-login.js";
+export * from "./platform/vercel-trust-plane-contract.js";
+export * from "./platform/production-publish-guard.js";
 export * from "./approval/canonicalization.js";
 
 export type AgentReputationSummary = { score: number; details?: string; };

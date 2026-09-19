@@ -78,4 +78,22 @@ describe("selectTopTruthFinding", () => {
     ]);
     expect(top?.id.startsWith("sentinel:")).toBe(true);
   });
+
+  it("prefers a CRITICAL Sentinel secret over sentinel-posture at the same band", () => {
+    const top = selectTopTruthFinding([
+      finding({
+        id: "sentinel-posture",
+        title: "Sentinel posture",
+        riskBand: "CRITICAL",
+        category: "SECURITY",
+      }),
+      finding({
+        id: "sentinel:secret:leaked-credential.ts:aws_access_key:1",
+        title: "Possible AWS access key id",
+        riskBand: "CRITICAL",
+        category: "SECURITY",
+      }),
+    ]);
+    expect(top?.id).toBe("sentinel:secret:leaked-credential.ts:aws_access_key:1");
+  });
 });

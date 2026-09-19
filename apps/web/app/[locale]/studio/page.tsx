@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -19,7 +19,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Link, usePathname, useRouter } from "@/i18n/routing";
@@ -37,14 +37,34 @@ import { ReadinessPanel } from "@/components/studio/ReadinessPanel";
 import { TruthPanel } from "@/components/studio/TruthPanel";
 import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
 import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel";
+import { StudioCodeEditor } from "@/components/studio/StudioCodeEditor";
+import { StudioProblemsPanel } from "@/components/studio/StudioProblemsPanel";
+import { StudioRunPanel } from "@/components/studio/StudioRunPanel";
+import { StudioGitStatus } from "@/components/studio/StudioGitStatus";
+import { StudioAgentBriefing } from "@/components/studio/StudioAgentBriefing";
+import { StudioContinuity } from "@/components/studio/StudioContinuity";
+import type { StudioProblem } from "@/lib/studio-problems";
+import { studioProblemRemediationId } from "@/lib/studio-problems";
 import {
   STUDIO_CHECK_IDS,
   STUDIO_TABS,
+  buildStudioSearch,
   isStudioCheckId,
   isStudioTab,
+  shouldShowStudioEmptyProjects,
   type StudioCheckId,
   type StudioTab,
 } from "@/lib/studio-surfaces";
+import {
+  addOpenStudioFile,
+  anyStudioBufferDirty,
+  closeOpenStudioFile,
+  markStudioFileSaved,
+  mergeStudioFileFromDisk,
+  studioBufferIsDirty,
+  studioFileBaseName,
+  type StudioFileBuffer,
+} from "@/lib/studio-workspace";
 
 interface Project {
   id: string;
@@ -82,9 +102,34 @@ interface FileResponse {
 }
 
 interface AskResult {
-  patch: { id: string; title: string; status: string } | null;
+  patch: {
+    id: string;
+    title: string;
+    status: string;
+    filesChanged?: Array<{ path: string; action: string; summary?: string }>;
+    evaluationSummary?: string | null;
+    epistemicState?: string;
+    confidence?: number;
+    authorityHint?: string;
+  } | null;
   note: string;
   memoryUsed?: number;
+  memoryCitations?: Array<{
+    id: string;
+    type: string;
+    epistemicState: string;
+    category?: string;
+    source?: string;
+    statement: string;
+  }>;
+  intelligenceKind?: string;
+  modelInvoked?: boolean;
+  findingRemediation?: {
+    result: string;
+    verifyStatus: string;
+    findingPresence: string;
+    summary: string;
+  } | null;
 }
 
 interface ExemplarUnit {
@@ -182,6 +227,7 @@ function TreeBranch({
 
 export default function StudioPage() {
   const t = useTranslations("studio");
+  const queryClient = useQueryClient();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -200,11 +246,13 @@ export default function StudioPage() {
 
   const selectTab = (next: StudioTab) => {
     setTab(next);
-    const projectQs = projectId ? `&project=${encodeURIComponent(projectId)}` : "";
     router.replace(
-      next === "checks"
-        ? `${pathname}?tab=${next}&check=${checksTab}${projectQs}`
-        : `${pathname}?tab=${next}${projectQs}`,
+      `${pathname}${buildStudioSearch({
+        tab: next,
+        check: checksTab,
+        projectId,
+        file: selectedPath,
+      })}`,
     );
   };
 
@@ -221,26 +269,101 @@ export default function StudioPage() {
 
   const selectChecksTab = (next: StudioCheckId) => {
     setChecksTab(next);
-    const projectQs = projectId ? `&project=${encodeURIComponent(projectId)}` : "";
-    router.replace(`${pathname}?tab=checks&check=${next}${projectQs}`);
+    router.replace(
+      `${pathname}${buildStudioSearch({
+        tab: "checks",
+        check: next,
+        projectId,
+      })}`,
+    );
   };
 
+  const fileFromUrl = searchParams.get("file");
   const [projectId, setProjectId] = useState(projectFromUrl ?? "");
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(fileFromUrl);
+  const [revealLine, setRevealLine] = useState<number | null>(null);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [fileSearch, setFileSearch] = useState("");
+  const [instruction, setInstruction] = useState("");
+  const [intent, setIntent] = useState<StudioIntent>("propose");
+  const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
+  const [buffers, setBuffers] = useState<Record<string, StudioFileBuffer>>({});
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [diskChangedPath, setDiskChangedPath] = useState<string | null>(null);
+  const [cloneUnitId, setCloneUnitId] = useState("WHOLE");
+  const buffersRef = useRef(buffers);
+  buffersRef.current = buffers;
 
   useEffect(() => {
     if (projectFromUrl) setProjectId(projectFromUrl);
   }, [projectFromUrl]);
-  const [instruction, setInstruction] = useState("");
-  const [intent, setIntent] = useState<StudioIntent>("propose");
-  const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
-  const [draft, setDraft] = useState<string | null>(null);
-  const [cloneUnitId, setCloneUnitId] = useState("WHOLE");
+
+  useEffect(() => {
+    setSelectedPath(fileFromUrl);
+    if (fileFromUrl) {
+      setOpenFiles((prev) => addOpenStudioFile(prev, fileFromUrl));
+    }
+  }, [fileFromUrl]);
+
+  const selectStudioFile = (
+    path: string,
+    line: number | null = null,
+  ) => {
+    setSelectedPath(path);
+    setRevealLine(line);
+    setOpenFiles((prev) => addOpenStudioFile(prev, path));
+    setTab("files");
+    router.replace(
+      `${pathname}${buildStudioSearch({
+        tab: "files",
+        projectId,
+        file: path,
+      })}`,
+    );
+  };
+
+  const closeStudioFile = (path: string) => {
+    if (
+      studioBufferIsDirty(buffersRef.current[path]) &&
+      !window.confirm(t("unsavedConfirm"))
+    ) {
+      return;
+    }
+    const closed = closeOpenStudioFile(openFiles, path);
+    setOpenFiles(closed.open);
+    setBuffers((prev) => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
+    if (diskChangedPath === path) setDiskChangedPath(null);
+    if (selectedPath !== path) return;
+    if (closed.nextActive) {
+      selectStudioFile(closed.nextActive);
+      return;
+    }
+    setSelectedPath(null);
+    router.replace(
+      `${pathname}${buildStudioSearch({
+        tab: "files",
+        projectId,
+      })}`,
+    );
+  };
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!anyStudioBufferDirty(buffersRef.current)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   // Studio-only dark surface — does not flip the rest of the app.
   const panelBorder = "1px solid rgba(232,234,238,0.12)";
   const panelBg = "rgba(28,31,38,0.92)";
-  const codeBg = "rgba(14,17,22,0.9)";
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -257,7 +380,9 @@ export default function StudioPage() {
 
   const treeQuery = useQuery({
     queryKey: ["studio-tree", projectId],
-    enabled: Boolean(projectId) && hasRoot,
+    enabled: Boolean(projectId),
+    staleTime: 0,
+    refetchOnMount: "always",
     queryFn: () =>
       apiGet<TreeResponse>(
         `/api/v1/studio/tree?projectId=${encodeURIComponent(projectId)}`,
@@ -266,16 +391,48 @@ export default function StudioPage() {
 
   const fileQuery = useQuery({
     queryKey: ["studio-file", projectId, selectedPath],
-    enabled: Boolean(projectId) && Boolean(selectedPath) && hasRoot,
+    enabled: Boolean(projectId) && Boolean(selectedPath),
+    staleTime: 0,
+    refetchOnMount: "always",
     queryFn: () =>
       apiGet<FileResponse>(
         `/api/v1/studio/file?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(selectedPath!)}`,
       ),
   });
 
+  const trimmedSearch = fileSearch.trim();
+  const searchQuery = useQuery({
+    queryKey: ["studio-search", projectId, trimmedSearch],
+    enabled: Boolean(projectId) && hasRoot && trimmedSearch.length >= 2,
+    staleTime: 0,
+    queryFn: () =>
+      apiGet<{
+        items: Array<{ path: string; line: number; preview: string }>;
+        truncated: boolean;
+      }>(
+        `/api/v1/studio/search?projectId=${encodeURIComponent(projectId)}&q=${encodeURIComponent(trimmedSearch)}`,
+      ),
+  });
+
   useEffect(() => {
-    setDraft(fileQuery.data?.content ?? null);
-  }, [fileQuery.data?.path, fileQuery.data?.content]);
+    if (!fileQuery.data) return;
+    const path = fileQuery.data.path;
+    const merged = mergeStudioFileFromDisk(
+      buffersRef.current,
+      path,
+      fileQuery.data.content,
+    );
+    setBuffers(merged.buffers);
+    setOpenFiles((prev) => addOpenStudioFile(prev, path));
+    if (merged.diskChangedWhileDirty) {
+      setDiskChangedPath(path);
+    } else {
+      setDiskChangedPath((current) => (current === path ? null : current));
+    }
+  }, [fileQuery.data]);
+
+  const currentBuffer = selectedPath ? buffers[selectedPath] : undefined;
+  const isDirty = studioBufferIsDirty(currentBuffer);
 
   const exemplarsQuery = useQuery({
     queryKey: ["exemplars"],
@@ -292,9 +449,15 @@ export default function StudioPage() {
       apiPut("/api/v1/studio/file", {
         projectId,
         path: selectedPath,
-        content: draft ?? "",
+        content: currentBuffer?.draft ?? "",
       }),
     onSuccess: () => {
+      if (selectedPath) {
+        setBuffers((prev) => markStudioFileSaved(prev, selectedPath));
+        setDiskChangedPath((current) =>
+          current === selectedPath ? null : current,
+        );
+      }
       void fileQuery.refetch();
       void treeQuery.refetch();
     },
@@ -318,7 +481,13 @@ export default function StudioPage() {
         path: selectedPath ?? undefined,
         mode: modeAsk,
         instruction,
+        ...(selectedFindingId ? { findingId: selectedFindingId } : {}),
       }),
+    onSuccess: (data) => {
+      if (projectId && data.patch?.id) {
+        void queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
+      }
+    },
   });
 
   // Invokes the existing Engineering Loop (packages/engineering-loop via
@@ -437,15 +606,26 @@ export default function StudioPage() {
         value={projectId}
         onChange={(e) => {
           const id = e.target.value;
+          if (
+            anyStudioBufferDirty(buffersRef.current) &&
+            !window.confirm(t("unsavedConfirm"))
+          ) {
+            return;
+          }
           setProjectId(id);
           setSelectedPath(null);
+          setSelectedFindingId(null);
+          setOpenFiles([]);
+          setBuffers({});
+          setDiskChangedPath(null);
           propose.reset();
           saveNote.reset();
-          const projectQs = id ? `&project=${encodeURIComponent(id)}` : "";
           router.replace(
-            tab === "checks"
-              ? `${pathname}?tab=${tab}&check=${checksTab}${projectQs}`
-              : `${pathname}?tab=${tab}${projectQs}`,
+            `${pathname}${buildStudioSearch({
+              tab,
+              check: checksTab,
+              projectId: id,
+            })}`,
           );
         }}
         helperText={t("projectHelp")}
@@ -460,6 +640,11 @@ export default function StudioPage() {
           "& .MuiFormHelperText-root": { color: "#8B9099" },
         }}
       >
+        {projectId && !projects.some((p) => p.id === projectId) ? (
+          <MenuItem value={projectId}>
+            {projectsQuery.isPending ? t("loadingProjects") : projectId}
+          </MenuItem>
+        ) : null}
         {projects.map((p) => (
           <MenuItem key={p.id} value={p.id}>
             {p.name}
@@ -467,6 +652,17 @@ export default function StudioPage() {
           </MenuItem>
         ))}
       </TextField>
+
+      {projectId ? (
+        <Button
+          component={Link}
+          href={`/projects/${projectId}/state`}
+          size="small"
+          sx={{ alignSelf: { sm: "center" }, color: "#9A9EA8" }}
+        >
+          {t("projectState")}
+        </Button>
+      ) : null}
 
       {projectId ? (
         <LinkWorkspaceRoot
@@ -483,13 +679,25 @@ export default function StudioPage() {
         </Alert>
       ) : null}
 
+      {projectId ? (
+        <StudioContinuity
+          projectId={projectId}
+          boundFindingId={selectedFindingId}
+        />
+      ) : null}
+
       {projectsQuery.isError ? (
         <Alert severity="error">
           {(projectsQuery.error as Error).message}
         </Alert>
       ) : null}
 
-      {!projectId && !projectsQuery.isLoading && projects.length === 0 ? (
+      {shouldShowStudioEmptyProjects({
+        isError: projectsQuery.isError,
+        isLoading: projectsQuery.isLoading,
+        projectId,
+        projectCount: projects.length,
+      }) ? (
         <Alert severity="info">
           {t("noProjects")}{" "}
           <Link href="/projects">{t("goProjects")}</Link>
@@ -503,6 +711,15 @@ export default function StudioPage() {
       <Tabs
         value={tab}
         onChange={(_, v: StudioTab) => selectTab(v)}
+        selectionFollowsFocus
+        aria-label={t("title")}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+          requestAnimationFrame(() => {
+            const id = document.activeElement?.getAttribute("data-studio-tab");
+            if (id && isStudioTab(id) && id !== tab) selectTab(id);
+          });
+        }}
         sx={{
           borderBottom: panelBorder,
           minHeight: 40,
@@ -516,7 +733,18 @@ export default function StudioPage() {
         }}
       >
         {STUDIO_TABS.map((id) => (
-          <Tab key={id} value={id} label={t(`tab.${id}`)} />
+          <Tab
+            key={id}
+            value={id}
+            label={t(`tab.${id}`)}
+            data-studio-tab={id}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                selectTab(id);
+              }
+            }}
+          />
         ))}
       </Tabs>
 
@@ -526,7 +754,7 @@ export default function StudioPage() {
         <Alert severity="error">{(treeQuery.error as Error).message}</Alert>
       ) : null}
 
-      {projectId && hasRoot ? (
+      {projectId ? (
         <Box
           sx={{
             display: "grid",
@@ -536,6 +764,7 @@ export default function StudioPage() {
             minHeight: { md: 560 },
           }}
         >
+          <Stack spacing={2} sx={{ minWidth: 0 }}>
           <Box
             sx={{
               border: panelBorder,
@@ -568,6 +797,46 @@ export default function StudioPage() {
               ) : null}
               <Chip size="small" variant="outlined" label={t("editable")} sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }} />
             </Stack>
+            <TextField
+              size="small"
+              value={fileSearch}
+              onChange={(e) => setFileSearch(e.target.value)}
+              placeholder={t("searchPlaceholder")}
+              inputProps={{ "aria-label": t("search") }}
+              sx={{
+                mx: 1.5,
+                mt: 1,
+                mb: 0.5,
+                "& .MuiOutlinedInput-root": {
+                  color: "#DCDDE1",
+                  bgcolor: "rgba(255,255,255,0.04)",
+                  "& fieldset": { borderColor: "rgba(232,234,238,0.2)" },
+                },
+              }}
+            />
+            {trimmedSearch.length >= 2 ? (
+              <List dense disablePadding sx={{ px: 0.5, pb: 1 }}>
+                {(searchQuery.data?.items ?? []).map((hit) => (
+                  <ListItemButton
+                    key={`${hit.path}:${hit.line}:${hit.preview}`}
+                    onClick={() => selectStudioFile(hit.path, hit.line)}
+                    sx={{ color: "#DCDDE1", borderRadius: 1 }}
+                  >
+                    <ListItemText
+                      primary={hit.path}
+                      secondary={`${hit.line}: ${hit.preview}`}
+                      primaryTypographyProps={{ noWrap: true, fontSize: "0.8rem" }}
+                      secondaryTypographyProps={{ noWrap: true, color: "#8B9099" }}
+                    />
+                  </ListItemButton>
+                ))}
+                {searchQuery.isSuccess && (searchQuery.data?.items.length ?? 0) === 0 ? (
+                  <Typography variant="caption" sx={{ px: 1.5, color: "#8B9099" }}>
+                    {t("searchEmpty")}
+                  </Typography>
+                ) : null}
+              </List>
+            ) : null}
             {treeQuery.data ? (
               <List dense disablePadding sx={{ py: 0.75 }}>
                 <TreeBranch
@@ -575,7 +844,7 @@ export default function StudioPage() {
                   depth={0}
                   selectedPath={selectedPath}
                   onSelect={(path, kind) => {
-                    if (kind === "file") setSelectedPath(path);
+                    if (kind === "file") selectStudioFile(path);
                   }}
                 />
               </List>
@@ -585,6 +854,11 @@ export default function StudioPage() {
               </Typography>
             )}
           </Box>
+          <StudioGitStatus
+            projectId={projectId}
+            onOpenFile={(path) => selectStudioFile(path)}
+          />
+          </Stack>
 
           <Stack spacing={2} sx={{ minWidth: 0 }}>
             <Box
@@ -600,6 +874,37 @@ export default function StudioPage() {
                 boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
               }}
             >
+              {openFiles.length > 0 ? (
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  flexWrap="wrap"
+                  useFlexGap
+                  role="tablist"
+                  aria-label={t("openFiles")}
+                  sx={{ px: 1.5, pt: 1, borderBottom: panelBorder }}
+                >
+                  {openFiles.map((path) => (
+                    <Chip
+                      key={path}
+                      size="small"
+                      color={path === selectedPath ? "primary" : "default"}
+                      variant={path === selectedPath ? "filled" : "outlined"}
+                      label={`${studioFileBaseName(path)}${
+                        studioBufferIsDirty(buffers[path]) ? " •" : ""
+                      }`}
+                      onClick={() => selectStudioFile(path)}
+                      onDelete={() => closeStudioFile(path)}
+                      aria-label={path}
+                      sx={{
+                        maxWidth: 220,
+                        color: "#DCDDE1",
+                        borderColor: "rgba(232,234,238,0.25)",
+                      }}
+                    />
+                  ))}
+                </Stack>
+              ) : null}
               <Stack
                 direction="row"
                 spacing={1}
@@ -614,28 +919,59 @@ export default function StudioPage() {
                 >
                   {selectedPath ?? t("pickFile")}
                 </Typography>
+                {fileQuery.data?.languageHint ? (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={fileQuery.data.languageHint}
+                    sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }}
+                  />
+                ) : null}
                 <Chip
                   size="small"
                   label={
                     fileQuery.data?.truncated
                       ? t("fileTruncated")
-                      : draft !== null &&
-                          fileQuery.data &&
-                          draft !== fileQuery.data.content
+                      : isDirty
                         ? t("dirty")
                         : t("editable")
                   }
                 />
                 <Button
                   size="small"
+                  variant="outlined"
+                  disabled={!selectedPath || fileQuery.isFetching}
+                  onClick={() => {
+                    if (
+                      isDirty &&
+                      !window.confirm(t("unsavedConfirm"))
+                    ) {
+                      return;
+                    }
+                    if (!selectedPath) return;
+                    setBuffers((prev) => {
+                      const next = { ...prev };
+                      delete next[selectedPath];
+                      return next;
+                    });
+                    setDiskChangedPath((current) =>
+                      current === selectedPath ? null : current,
+                    );
+                    void fileQuery.refetch();
+                  }}
+                >
+                  {t("reloadFile")}
+                </Button>
+                <Button
+                  size="small"
                   variant="contained"
                   disabled={
                     saveFile.isPending ||
                     !selectedPath ||
-                    draft === null ||
+                    !currentBuffer ||
                     Boolean(fileQuery.data?.truncated) ||
                     Boolean(fileQuery.data?.readOnly) ||
-                    draft === fileQuery.data?.content
+                    !isDirty
                   }
                   onClick={() => saveFile.mutate()}
                 >
@@ -657,33 +993,34 @@ export default function StudioPage() {
                   {t("savedFile")}
                 </Alert>
               ) : null}
+              {diskChangedPath && diskChangedPath === selectedPath ? (
+                <Alert severity="warning" sx={{ m: 1.5 }}>
+                  {t("diskChanged")}
+                </Alert>
+              ) : null}
               {fileQuery.data ? (
-                <Box
-                  component="textarea"
-                  value={draft ?? ""}
-                  onChange={(e) => setDraft(e.target.value)}
-                  disabled={
+                <StudioCodeEditor
+                  value={currentBuffer?.draft ?? fileQuery.data.content}
+                  onChange={(value) => {
+                    if (!selectedPath) return;
+                    setBuffers((prev) => {
+                      const existing = prev[selectedPath] ?? {
+                        draft: fileQuery.data.content,
+                        saved: fileQuery.data.content,
+                      };
+                      return {
+                        ...prev,
+                        [selectedPath]: { ...existing, draft: value },
+                      };
+                    });
+                  }}
+                  languageHint={fileQuery.data.languageHint}
+                  readOnly={
                     Boolean(fileQuery.data.truncated) ||
                     fileQuery.data.readOnly
                   }
-                  spellCheck={false}
-                  aria-label={selectedPath ?? t("pickFile")}
-                  sx={{
-                    m: 0,
-                    p: 2,
-                    flex: 1,
-                    overflow: "auto",
-                    maxHeight: 440,
-                    fontSize: 12.5,
-                    lineHeight: 1.55,
-                    fontFamily:
-                      "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-                    bgcolor: codeBg,
-                    color: "#DCDDE1",
-                    border: 0,
-                    resize: "vertical",
-                    outline: "none",
-                  }}
+                  ariaLabel={selectedPath ?? t("pickFile")}
+                  revealLine={revealLine}
                 />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 2.5 }}>
@@ -693,6 +1030,21 @@ export default function StudioPage() {
                 </Typography>
               )}
             </Box>
+
+            <StudioProblemsPanel
+              projectId={projectId}
+              enabled={Boolean(projectId)}
+              onOpenFile={(path, line) => {
+                selectStudioFile(path, line);
+              }}
+              onProposeFix={(problem: StudioProblem) => {
+                const findingId = studioProblemRemediationId(problem);
+                if (findingId) setSelectedFindingId(findingId);
+                if (problem.file) selectStudioFile(problem.file, problem.line);
+                if (problem.source === "sentinel") setModeAsk("secure");
+                setIntent("propose");
+              }}
+            />
 
             <Box
               sx={{
@@ -713,6 +1065,15 @@ export default function StudioPage() {
               <Typography variant="caption" sx={{ color: "#8B9099", display: "block", mt: 0.5 }}>
                 {t("engineerNotPsa")}
               </Typography>
+              {selectedFindingId ? (
+                <Chip
+                  size="small"
+                  color="warning"
+                  label={`${t("boundFinding")}: ${selectedFindingId}`}
+                  onDelete={() => setSelectedFindingId(null)}
+                  sx={{ mt: 1 }}
+                />
+              ) : null}
 
               <ToggleButtonGroup
                 exclusive
@@ -818,10 +1179,13 @@ export default function StudioPage() {
               {resultNote ? (
                 <Alert
                   severity={
-                    (intent === "propose" && !propose.data?.patch) ||
-                    (intent === "loop" && runLoop.data?.status !== "APPLIED")
-                      ? "info"
-                      : "success"
+                    propose.data?.findingRemediation?.result === "UNSUPPORTED" ||
+                    propose.data?.findingRemediation?.result === "NOT_FIXED"
+                      ? "warning"
+                      : (intent === "propose" && !propose.data?.patch) ||
+                          (intent === "loop" && runLoop.data?.status !== "APPLIED")
+                        ? "info"
+                        : "success"
                   }
                   sx={{ mt: 1.5 }}
                 >
@@ -843,6 +1207,12 @@ export default function StudioPage() {
                   ) : null}
                 </Alert>
               ) : null}
+              {propose.data && intent === "propose" ? (
+                <StudioAgentBriefing
+                  result={propose.data}
+                  onOpenFile={(path) => selectStudioFile(path)}
+                />
+              ) : null}
             </Box>
 
             <SupervisingAgentPanel projectId={projectId} />
@@ -852,6 +1222,15 @@ export default function StudioPage() {
               workspaceRoot={selectedProject?.workspaceRoot}
               focusPatchId={propose.data?.patch?.id ?? runLoop.data?.patchId ?? null}
               onVerified={() => {
+                void queryClient.invalidateQueries({ queryKey: ["studio-file"] });
+                void queryClient.invalidateQueries({ queryKey: ["studio-tree"] });
+                void queryClient.invalidateQueries({ queryKey: ["studio-search"] });
+                void queryClient.invalidateQueries({
+                  queryKey: ["studio-problems-sentinel"],
+                });
+                void queryClient.invalidateQueries({
+                  queryKey: ["studio-problems-gates"],
+                });
                 void fileQuery.refetch();
                 void treeQuery.refetch();
               }}
@@ -969,6 +1348,14 @@ export default function StudioPage() {
         )
       ) : null}
 
+      {tab === "run" ? (
+        projectId ? (
+          <StudioRunPanel projectId={projectId} />
+        ) : (
+          <Alert severity="info">{t("pickProject")}</Alert>
+        )
+      ) : null}
+
       {tab === "cloud" ? <CloudToolsPanel embedded /> : null}
 
       {tab === "checks" ? (
@@ -977,6 +1364,15 @@ export default function StudioPage() {
             <Tabs
               value={checksTab}
               onChange={(_, v: StudioCheckId) => selectChecksTab(v)}
+              selectionFollowsFocus
+              aria-label={t("tab.checks")}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                requestAnimationFrame(() => {
+                  const id = document.activeElement?.getAttribute("data-studio-check");
+                  if (id && isStudioCheckId(id) && id !== checksTab) selectChecksTab(id);
+                });
+              }}
               variant="scrollable"
               scrollButtons="auto"
               sx={{
@@ -993,7 +1389,18 @@ export default function StudioPage() {
               }}
             >
               {STUDIO_CHECK_IDS.map((id) => (
-                <Tab key={id} value={id} label={t(`checksTab.${id}`)} />
+                <Tab
+                  key={id}
+                  value={id}
+                  label={t(`checksTab.${id}`)}
+                  data-studio-check={id}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectChecksTab(id);
+                    }
+                  }}
+                />
               ))}
             </Tabs>
             {checksTab === "observer" && projectId ? (

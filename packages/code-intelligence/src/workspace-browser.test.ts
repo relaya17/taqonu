@@ -13,6 +13,7 @@ import {
   listWorkspaceTree,
   readWorkspaceFile,
   resolveUnderWorkspace,
+  searchWorkspaceFiles,
   writeWorkspaceFile,
 } from "./workspace-browser.js";
 
@@ -96,5 +97,25 @@ describe("workspace-browser", () => {
     expect(existsSync(join(outside, "evil.ts"))).toBe(false);
 
     rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("searches file contents with a budget and redacts secret-like lines", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-studio-search-"));
+    writeFileSync(join(root, "readme.md"), "hello unique-token-xyz\n");
+    writeFileSync(
+      join(root, "leaked.ts"),
+      "export const k = 'AKIA0000000000000001';\n",
+    );
+    writeFileSync(join(root, ".env"), "SECRET=should-not-search\n");
+
+    const hits = searchWorkspaceFiles(root, "unique-token-xyz");
+    expect(hits.items.some((h) => h.path === "readme.md")).toBe(true);
+    expect(hits.items.some((h) => h.preview.includes("unique-token-xyz"))).toBe(
+      true,
+    );
+
+    const secrets = searchWorkspaceFiles(root, "AKIA");
+    expect(secrets.items.every((h) => h.preview === "[redacted]")).toBe(true);
+    expect(secrets.items.some((h) => h.path === ".env")).toBe(false);
   });
 });

@@ -99,6 +99,7 @@ async function runRemediationLoop(input: {
         drafts,
         user,
         bodyWorkspaceRoot: input.workspaceRoot,
+        env: input.app.atlasEnv,
       })
     : [];
   return {

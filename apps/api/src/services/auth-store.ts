@@ -2,7 +2,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { AuthUser, UserRole } from "@atlas/shared";
-import { authUserSchema, parseAtlasRole } from "@atlas/shared";
+import { authUserSchema, isAtlasDemoLoginEnabled, parseAtlasRole } from "@atlas/shared";
 import {
   generateSecret as generateTotpSecret,
   generateURI as generateTotpUri,
@@ -653,16 +653,21 @@ export const DEV_LOCAL_PASSWORD = "AtlasDev1!";
 
 /**
  * Development-only: keep a known admin on atlas.local so every surface can
- * log in with the same email/password. Never runs in production.
+ * log in with the same email/password. Never runs in production. The demo
+ * flag cannot override NODE_ENV=production.
  */
 export function ensureDevLocalUser(): {
   readonly email: string;
   readonly created: boolean;
 } | null {
-  const demoEnabled =
-    process.env.NODE_ENV !== "production" ||
-    process.env.ATLAS_DEMO_LOGIN_ENABLED === "1";
-  if (!demoEnabled) return null;
+  if (
+    !isAtlasDemoLoginEnabled({
+      nodeEnv: process.env.NODE_ENV,
+      flag: process.env.ATLAS_DEMO_LOGIN_ENABLED,
+    })
+  ) {
+    return null;
+  }
   const email = (process.env.ATLAS_DEV_EMAIL ?? DEV_LOCAL_EMAIL).trim().toLowerCase();
   const password = process.env.ATLAS_DEV_PASSWORD ?? DEV_LOCAL_PASSWORD;
   const existing = findUserByEmail(email);

@@ -222,13 +222,73 @@
     "saveFile": "שמור קובץ",
     "savedFile": "הקובץ נשמר לדיסק.",
     "dirty": "לא נשמר",
+    "unsavedConfirm": "יש עריכות שלא נשמרו בסביבת העבודה. למחוק אותן?",
+    "diskChanged": "הקובץ בדיסק השתנה בזמן שהטיוטה לא נשמרה. הטיוטה נשמרת.",
+    "reloadFile": "טען מחדש מהדיסק",
+    "openFiles": "קבצים פתוחים",
+    "closeFile": "סגור קובץ",
     "loadingTree": "טוען עץ…",
+    "loadingProjects": "טוען פרויקטים…",
     "emptyTree": "אין קבצים להצגה",
     "pickFile": "בחרו קובץ",
     "noEdit": "רק הסוכן משנה",
     "loadingFile": "טוען קובץ…",
     "viewerHint": "בחרו קובץ מהעץ. אפשר לערוך ולשמור, או לבקש מהסוכן הצעה.",
     "fileTruncated": "(קוצר לתצוגה)",
+    "search": "חיפוש קבצים",
+    "searchPlaceholder": "חיפוש קבצים וטקסט…",
+    "searchEmpty": "אין התאמות בסביבת העבודה.",
+    "projectState": "מצב פרויקט",
+    "boundFinding": "ממצא קשור להצעה",
+    "continuity": {
+      "title": "עכשיו בפרויקט",
+      "help": "ה-Patch האחרון, ההרצה הממשלת האחרונה, ועלות מתועדת מ-Atlas — לא ציון Truth, לא Control.",
+      "patch": "Patch",
+      "noPatch": "אין Patch עדיין",
+      "noRun": "אין הרצה ממשלת עדיין",
+      "cost": "עלות מתועדת USD",
+      "costUnknown": "עלות לא זמינה",
+      "finding": "ממצא קשור"
+    },
+    "git": {
+      "title": "מצב Git",
+      "help": "רשימת קריאה בלבד מפקודת git.status הממשלת. רענון עדיין דורש זהות שנייה. Studio לא יוצר כאן commits.",
+      "empty": "אין עדיין תוצאת git.status ממשלת. בקשו אחת כדי לראות קבצים שהשתנו.",
+      "request": "בקש מצב Git",
+      "requesting": "מבקש אישור…",
+      "notTruth": "מצב Git הוא ראיה מסביבת העבודה, לא פסק Truth.",
+      "clean": "עץ העבודה נקי (porcelain ריק).",
+      "kind": {
+        "modified": "שונה",
+        "added": "נוסף",
+        "deleted": "נמחק",
+        "untracked": "לא במעקב",
+        "renamed": "שונה שם",
+        "other": "השתנה"
+      }
+    },
+    "problems": {
+      "title": "בעיות",
+      "empty": "אין ממצאי Sentinel, שערי איכות או בדיקות ממשליות לפרויקט זה.",
+      "notCompiler": "ממצאי Atlas בלבד — לא אבחנות מהדר TypeScript.",
+    "proposeFix": "הצע תיקון",
+      "source": {
+        "sentinel": "Sentinel",
+        "gate": "שער איכות",
+        "test": "בדיקות ממשליות"
+      }
+    },
+    "diff": {
+      "title": "ערכת שינויים",
+      "summary": "{files} קבצים · +{adds} −{dels}",
+      "noDiff": "אין unified diff שמור; מוצג after-content כשקיים.",
+      "deleteNotApplied": "מחיקה קיימת בחוזה ה-Patch אך אינה מוחלת לדיסק.",
+      "action": {
+        "add": "נוסף",
+        "modify": "שונה",
+        "delete": "נמחק"
+      }
+    },
     "askTitle": "CODE_ENGINEER — תיקון ממשל",
     "askHelp": "זה מומחה ההנדסה של Fabric, לא ה-PSA האישי. הוא מציע Patch. אתם מאשרים ואז מחילים. תזכורות וסיכומים כותבים לזיכרון Atlas בלבד.",
     "engineerRole": "CODE_ENGINEER",
@@ -297,6 +357,7 @@
     "tab": {
       "files": "קבצים",
       "chat": "שיח עם הסוכן",
+      "run": "הרצה",
       "cloud": "ענן וכלים",
       "checks": "בדיקות"
     },
@@ -309,9 +370,29 @@
       "readiness": "מוכנות",
       "truth": "אמת"
     },
+    "run": {
+      "help": "רק commandId מרשימת ההיתר. זהות שנייה חייבת להחליט ולהריץ. הפלט הוא ראיה, לא אמת.",
+      "noShell": "אין מעטפת פתוחה. argv מהלקוח נדחה. ההרצה היא shell:false בתוך תיקיית הפרויקט.",
+      "command": "פקודה",
+      "request": "בקש הרצה",
+      "requesting": "מבקש אישור…",
+      "secondIdentity": "זהות שנייה — החלטה והרצה",
+      "decisionReason": "סיבת ההחלטה",
+      "decide": "החלט והרץ",
+      "kill": "עצור הרצה פעילה",
+      "error": "ההרצה נכשלה",
+      "passed": "exit 0",
+      "failed": "נכשל",
+      "notRun": "אין הרצה ממשלית מתועדת לפרויקט זה.",
+      "extensions": "הרחבות",
+      "extensionsHelp": "רישום מניפסט בלבד. אין חנות, אין JavaScript משתמש, אין מארח.",
+      "hostReady": "מארח מוכן",
+      "noHost": "אין מארח"
+    },
     "workflow": {
       "title": "הצעה → סקירה → אישור → החלה → אימות",
       "help": "הסוכן מציע Patch. סוקרים ומאשרים כאן. Apply יוצר אישור כתיבה חי שזהות אחרת חייבת להחליט עליו לפני כתיבה לדיסק.",
+      "rollbackHelp": "שחזור משתמש באותו מסלול SoD כמו Apply. רק APPLIED או VERIFIED. שחזור דיסק אינו פסק Truth.",
       "empty": "בדקו קובץ ואז הציעו שינוי. Patches קיימים לפרויקט יופיעו כאן.",
       "reviewFiles": "קבצים ב-Patch",
       "steps": {
@@ -323,6 +404,17 @@
         "apply": "החלה",
         "verify": "אימות"
       }
+    },
+    "briefing": {
+      "title": "מה הסוכן הציע",
+      "intelligence": "סוג בינה",
+      "modelInvoked": "מודל הופעל",
+      "modelNotInvoked": "לא הופעל מודל",
+      "memoryUsed": "זיכרונות Atlas בשימוש",
+      "files": "קבצים שה-Patch ייגע בהם",
+      "notChainOfThought": "זה סיכום ההצעה הממשלת (סוג, מספר זיכרונות, קבצים, מצב אפיסטמי). זה אינו שרשרת מחשבה חבויה.",
+      "citations": "זיכרונות Atlas בשימוש (מקור, לא Truth)",
+      "noCitations": "לא הוזרקו זיכרונות Atlas להצעה זו."
     },
     "psa": {
       "title": "סוכן פיקוח אישי",
@@ -1328,7 +1420,10 @@
     "rollback": "שחזור",
     "autoFix": "AUTO_FIX",
     "verify": "אימות",
-    "verified": "מאומת"
+    "verified": "מאומת",
+    "patchVerifyOnly": "PATCH_VERIFY בלבד — הכתיבה תואמת את ה־Patch. זו אינה תוצאת תיקון ממצא.",
+    "remediationNotFixed": "REMEDIATION NOT_FIXED — הממצא המקורי עדיין קיים.",
+    "remediationFixed": "REMEDIATION FIXED — הגלאי כבר לא רואה את הממצא המקורי."
   },
   "gates": {
     "title": "שערי איכות",

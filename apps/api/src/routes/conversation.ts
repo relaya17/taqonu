@@ -43,6 +43,7 @@ import {
   resolveConversationEpistemic,
 } from "../services/conversation-evidence.js";
 import { assertLlmEgressAllowed } from "../services/egress-gate.js";
+import { recordLlmInvocation } from "../services/llm-invocation-audit.js";
 
 const AGENT_MEMORY_BUDGET = 12;
 
@@ -326,7 +327,7 @@ export async function registerConversationRoutes(
       });
       let llm: { provider: string; text: string };
       try {
-        llm = paidRun
+        const completion = paidRun
           ? await completeStrict(llmEnv, [
               { role: "system", content: system },
               { role: "user", content: userMessage },
@@ -335,6 +336,16 @@ export async function registerConversationRoutes(
               { role: "system", content: system },
               { role: "user", content: userMessage },
             ]);
+        recordLlmInvocation({
+          purpose: "llm.conversation",
+          provider: completion.provider,
+          usage: completion.usage,
+          cacheHit: completion.cacheHit,
+          projectId,
+          userId: user.id,
+          agentId: "conversation",
+        });
+        llm = { provider: completion.provider, text: completion.text };
         if (paidRun) {
           chargeCredits(catalog.creditCost);
         }

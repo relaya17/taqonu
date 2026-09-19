@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendAuditLogLine, setAuditLogPathForTests } from "./audit-log.js";
 import {
+  classifyOffsiteBackupClaim,
+  offsiteRequirementBlocks,
   rejectNonFilesystemOffsiteDir,
   restoreCanonicalAuditFromReplica,
   runCanonicalAuditRestoreDrill,
@@ -38,6 +40,10 @@ describe("canonical audit restore drill", () => {
     expect(result.offsite).toBe(false);
     expect(result.cloudObjectStore).toBe(false);
     expect(result.destinationKind).toBe("UNSET");
+    expect(result.offsiteStatus).toBe("OFFSITE_NOT_CONFIGURED");
+    expect(classifyOffsiteBackupClaim(result)).toBe("OFFSITE_NOT_CONFIGURED");
+    expect(offsiteRequirementBlocks(result, true)).toBe(true);
+    expect(offsiteRequirementBlocks(result, false)).toBe(false);
     expect(result.sourceChecksum).toMatch(/^[a-f0-9]{64}$/);
     expect(result.restoredChecksum).toBe(result.sourceChecksum);
     expect(result.checked).toBe(2);
@@ -61,6 +67,8 @@ describe("canonical audit restore drill", () => {
     expect(result.offsiteChecksum).toMatch(/^[a-f0-9]{64}$/);
     expect(result.offsiteChecksum).toBe(result.restoredChecksum);
     expect(result.destinationKind).toBe("FILESYSTEM_DIRECTORY");
+    expect(result.offsiteStatus).toBe("VERIFIED");
+    expect(classifyOffsiteBackupClaim(result)).toBe("OFFSITE_VERIFIED");
     expect(result.cloudObjectStore).toBe(false);
     rmSync(offsiteDir, { recursive: true, force: true });
   });
@@ -89,7 +97,8 @@ describe("canonical audit restore drill", () => {
     expect(result.ok).toBe(false);
     expect(result.offsite).toBe(false);
     expect(result.destinationKind).toBe("REJECTED");
-    expect(result.cloudObjectStore).toBe(false);
+    expect(result.offsiteStatus).toBe("REJECTED");
+    expect(classifyOffsiteBackupClaim(result)).toBe("OFFSITE_REJECTED");
   });
 
   it("rejects an offsite path that is a file, not a directory", () => {
@@ -103,6 +112,7 @@ describe("canonical audit restore drill", () => {
     expect(result.ok).toBe(false);
     expect(result.offsite).toBe(false);
     expect(result.destinationKind).toBe("REJECTED");
+    expect(result.offsiteStatus).toBe("REJECTED");
   });
 
   it("restores from the replica into an isolated directory and never overwrites canonical", () => {

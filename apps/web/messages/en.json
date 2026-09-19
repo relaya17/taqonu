@@ -168,13 +168,73 @@
     "saveFile": "Save file",
     "savedFile": "File saved to disk.",
     "dirty": "Unsaved",
+    "unsavedConfirm": "You have unsaved edits in this workspace. Discard them?",
+    "diskChanged": "The file on disk changed while this buffer was unsaved. Your draft is kept.",
+    "reloadFile": "Reload from disk",
+    "openFiles": "Open files",
+    "closeFile": "Close file",
     "loadingTree": "Loading tree…",
+    "loadingProjects": "Loading projects…",
     "emptyTree": "No files to show",
     "pickFile": "Select a file",
     "noEdit": "Only agent changes",
     "loadingFile": "Loading file…",
     "viewerHint": "Pick a file from the tree. You can edit and save, or ask the agent for a patch.",
     "fileTruncated": "(truncated for display)",
+    "search": "Search files",
+    "searchPlaceholder": "Search files and text…",
+    "searchEmpty": "No matches in this workspace.",
+    "projectState": "Project state",
+    "boundFinding": "Finding bound for Propose",
+    "continuity": {
+      "title": "Now in this project",
+      "help": "Last Patch, last governed run, and recorded project cost from Atlas — not a Truth score, not Control.",
+      "patch": "Patch",
+      "noPatch": "No Patch yet",
+      "noRun": "No governed run yet",
+      "cost": "Recorded cost USD",
+      "costUnknown": "Cost not available",
+      "finding": "Bound finding"
+    },
+    "git": {
+      "title": "Git status",
+      "help": "Read-only porcelain from the governed git.status command. Refresh still requires a second identity. Studio never creates commits here.",
+      "empty": "No governed git.status result yet. Request one to list changed files.",
+      "request": "Request git status",
+      "requesting": "Requesting approval…",
+      "notTruth": "Git status is workspace evidence, not a Truth verdict.",
+      "clean": "Working tree clean (porcelain empty).",
+      "kind": {
+        "modified": "modified",
+        "added": "added",
+        "deleted": "deleted",
+        "untracked": "untracked",
+        "renamed": "renamed",
+        "other": "changed"
+      }
+    },
+    "problems": {
+      "title": "Problems",
+    "empty": "No Sentinel, Quality Gate, or governed test findings for this project.",
+    "notCompiler": "Atlas findings only — not TypeScript compiler diagnostics.",
+    "proposeFix": "Propose fix",
+    "source": {
+      "sentinel": "Sentinel",
+      "gate": "Quality gate",
+      "test": "Governed tests"
+    }
+    },
+    "diff": {
+      "title": "Change set",
+      "summary": "{files} files · +{adds} −{dels}",
+      "noDiff": "No unified diff stored; showing after-content when present.",
+      "deleteNotApplied": "Delete is in the Patch contract but is not applied to disk.",
+      "action": {
+        "add": "added",
+        "modify": "modified",
+        "delete": "deleted"
+      }
+    },
     "askTitle": "CODE_ENGINEER — governed patch",
     "askHelp": "This is the Fabric engineering specialist, not your Personal Supervising Agent. It proposes a Patch. You Approve, then Apply. Reminders and summaries write Atlas memory only.",
     "engineerRole": "CODE_ENGINEER",
@@ -243,6 +303,7 @@
     "tab": {
       "files": "Files",
       "chat": "Agent chat",
+      "run": "Run",
       "cloud": "Cloud & Tools",
       "checks": "Checks"
     },
@@ -255,9 +316,29 @@
       "readiness": "Readiness",
       "truth": "Truth"
     },
+    "run": {
+      "help": "Allowlisted commandId only. A second identity must decide-and-execute. Output is evidence, not Truth.",
+      "noShell": "No unrestricted shell. Client argv is rejected. Spawn is shell:false inside the linked workspace.",
+      "command": "Command",
+      "request": "Request run",
+      "requesting": "Requesting approval…",
+      "secondIdentity": "Second identity — decide and execute",
+      "decisionReason": "Decision reason",
+      "decide": "Decide and execute",
+      "kill": "Kill in-flight run",
+      "error": "Run failed",
+      "passed": "exit 0",
+      "failed": "failed",
+      "notRun": "No governed run recorded yet for this project.",
+      "extensions": "Extensions",
+      "extensionsHelp": "Manifest registry only. No marketplace, no user JavaScript, no host API.",
+      "hostReady": "host ready",
+      "noHost": "no host"
+    },
     "workflow": {
       "title": "Propose → review → approve → apply → verify",
       "help": "The agent proposes a Patch. You review and Approve it here. Apply then mints a live write approval that a different identity must decide before the disk write can retry.",
+      "rollbackHelp": "Rollback uses the same live SoD path as Apply. Only APPLIED or VERIFIED patches can restore disk. Restoring files is not a Truth verdict.",
       "empty": "Inspect a file, then Propose a change. Existing Patches for this project appear here.",
       "reviewFiles": "Files in this Patch",
       "steps": {
@@ -269,6 +350,17 @@
         "apply": "Apply",
         "verify": "Verify"
       }
+    },
+    "briefing": {
+      "title": "What the agent proposed",
+      "intelligence": "Intelligence",
+      "modelInvoked": "Model invoked",
+      "modelNotInvoked": "No model invoked",
+      "memoryUsed": "Atlas memories used",
+      "files": "Files this patch would touch",
+      "notChainOfThought": "This is the governed proposal summary (kind, memory count, files, epistemic state). It is not hidden chain-of-thought.",
+      "citations": "Atlas memories used (provenance, not Truth)",
+      "noCitations": "No Atlas memories were injected into this proposal."
     },
     "psa": {
       "title": "Personal Supervising Agent",
@@ -1328,7 +1420,10 @@
     "rollback": "Rollback",
     "autoFix": "AUTO_FIX",
     "verify": "Verify",
-    "verified": "Verified"
+    "verified": "Verified",
+    "patchVerifyOnly": "PATCH_VERIFY only — file write matched the patch. This is not a finding-remediation result.",
+    "remediationNotFixed": "REMEDIATION NOT_FIXED — the original finding is still present.",
+    "remediationFixed": "REMEDIATION FIXED — the original detector no longer observes the finding."
   },
   "gates": {
     "title": "Quality gates",

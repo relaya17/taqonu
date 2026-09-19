@@ -10,6 +10,11 @@ import {
   approveMemory,
   retrieveMemories,
   seedPortfolioPatternMemories,
+  commitMemory,
+  toMemoryCitations,
+  MEMORY_AGENT_VISIBILITY_CONTRACT,
+  MEMORY_DURABILITY_CONTRACT,
+  memoryIsVisibleToAgent,
 } from "./memory-pipeline.js";
 
 const PROJECT_A = "11111111-1111-4111-8111-111111111111";
@@ -353,6 +358,68 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     );
   });
 
+  it("locks the allowedAgents contract: empty is default-open, omit-requester stays human-visible", () => {
+    expect(MEMORY_AGENT_VISIBILITY_CONTRACT.emptyAllowedAgents).toBe(
+      "default-open",
+    );
+    expect(MEMORY_AGENT_VISIBILITY_CONTRACT.omitRequesterId).toBe(
+      "human-surface-visible",
+    );
+    const open = memory(null, "open", OWNER_A, []);
+    const restricted = memory(null, "restricted", OWNER_A, ["JUDGE"]);
+    expect(memoryIsVisibleToAgent(open, "ORCHESTRATOR")).toBe(true);
+    expect(memoryIsVisibleToAgent(restricted, "ORCHESTRATOR")).toBe(false);
+    expect(memoryIsVisibleToAgent(restricted, "JUDGE")).toBe(true);
+    expect(memoryIsVisibleToAgent(restricted)).toBe(true);
+  });
+
+  it("locks durable memory SoR: RAM is cache; persist file is local SoR; cloud is dual-write", () => {
+    expect(MEMORY_DURABILITY_CONTRACT.ramIsSoR).toBe(false);
+    expect(MEMORY_DURABILITY_CONTRACT.localPersist).toBe(
+      "osStore.persist store.json",
+    );
+    expect(MEMORY_DURABILITY_CONTRACT.cloudDualWrite).toBe(
+      "commitMemory → tryPersistMemoryToSupabase when env is live",
+    );
+    expect(MEMORY_DURABILITY_CONTRACT.localOnlyByDesign).toBe(
+      "tests, demo-seed, qa portfolio pattern seed",
+    );
+  });
+
+  it("commitMemory always writes locally and does not throw when cloud is unavailable", async () => {
+    const row = memory(PROJECT_A, "durable dual-write candidate", OWNER_A);
+    const result = await commitMemory({
+      memory: row,
+      env: {
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_ANON_KEY: "anon-key",
+        SUPABASE_SERVICE_ROLE_KEY: "replace-me",
+      },
+    });
+    expect(result.cloudSynced).toBe(false);
+    expect(osStore.getMemories(PROJECT_A, OWNER_A).some((m) => m.id === row.id)).toBe(
+      true,
+    );
+  });
+
+  it("commitMemory requireCloudSuccess fails closed when cloud is not configured", async () => {
+    const row = memory(PROJECT_A, "require cloud", OWNER_A);
+    await expect(
+      commitMemory({
+        memory: row,
+        env: {
+          SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_ANON_KEY: "anon-key",
+          SUPABASE_SERVICE_ROLE_KEY: "replace-me",
+        },
+        requireCloudSuccess: true,
+      }),
+    ).rejects.toThrow(/Cloud database is not configured/);
+    expect(osStore.getMemories(PROJECT_A, OWNER_A).some((m) => m.id === row.id)).toBe(
+      true,
+    );
+  });
+
   it("includes an agent-scoped memory when any requestingAgentIds candidate is allowed", async () => {
     const { items } = await retrieveMemories({
       budget: 20,
@@ -498,5 +565,24 @@ describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {
       .getMemories("global")
       .find((m) => m.id === memory.id);
     expect(stored?.statement).not.toContain(fakeSecret);
+  });
+});
+
+describe("toMemoryCitations", () => {
+  it("caps citations and truncates statements without copying evidence", () => {
+    const citations = toMemoryCitations([
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        type: "LESSON",
+        epistemicState: "CONFIRMED",
+        category: "DECISION_MEMORY",
+        source: "studio",
+        statement: "x".repeat(300),
+      },
+    ]);
+    expect(citations).toHaveLength(1);
+    expect(citations[0]?.statement).toHaveLength(240);
+    expect(citations[0]).not.toHaveProperty("evidence");
+    expect(toMemoryCitations([])).toEqual([]);
   });
 });

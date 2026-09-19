@@ -334,4 +334,43 @@ describe("computeCostIntelligenceSummary", () => {
       { agentId: "SECURITY", totalUsd: 0.02, runCount: 1 },
     ]);
   });
+
+  it("aggregates real llm.invocation costUsd without treating it as a fabric dispatch", () => {
+    osStore.appendAudit({
+      type: "llm.invocation",
+      purpose: "llm.conversation",
+      provider: "echo",
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+      cacheHit: false,
+      projectId: PROJECT_A,
+      agentId: "conversation",
+      at: "2026-09-19T13:00:00.000Z",
+    });
+    osStore.appendAudit({
+      type: "llm.invocation",
+      purpose: "llm.agent",
+      provider: "openai",
+      promptTokens: 10,
+      completionTokens: 20,
+      totalTokens: 30,
+      costUsd: 0.004,
+      cacheHit: false,
+      projectId: PROJECT_A,
+      agentId: "arletos-included",
+      at: "2026-09-19T13:01:00.000Z",
+    });
+    const summary = computeCostIntelligenceSummary({ projectId: PROJECT_A });
+    expect(summary.totalUsd).toBeCloseTo(0.004, 6);
+    expect(summary.runCount).toBe(2);
+    expect(summary.dispatchCount).toBe(0);
+    expect(summary.byAgent).toEqual(
+      expect.arrayContaining([
+        { agentId: "arletos-included", totalUsd: 0.004, runCount: 1 },
+        { agentId: "conversation", totalUsd: 0, runCount: 1 },
+      ]),
+    );
+  });
 });

@@ -40,6 +40,8 @@ are operator ratings — not marketing.
 
 Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
 
+Paid **pilot without the production VM:** [`docs/strategy/pilot-offer.md`](docs/strategy/pilot-offer.md) — `pnpm pilot:preflight`. Not a production claim.
+
 ## Where to sell (in the app)
 
 The offer is a **Readiness Audit**. Usage meters exist so the product stays

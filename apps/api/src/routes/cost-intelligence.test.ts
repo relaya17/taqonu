@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
+import type { AuthUser } from "@atlas/shared";
 
 // Same isolation pattern as
 // apps/api/src/services/cost-intelligence.test.ts — a per-file temp store
@@ -13,13 +14,34 @@ process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 
+const getRequestUser = vi.fn();
+vi.mock("../services/resolve-identity.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/resolve-identity.js")>();
+  return {
+    ...actual,
+    getRequestUser: (...args: unknown[]) => getRequestUser(...args),
+  };
+});
+
 const { osStore } = await import("../store/os-store.js");
+const { bindProjectOwner } = await import("../services/project-access.js");
 const { registerCostIntelligenceRoutes } = await import("./cost-intelligence.js");
 const { buildRouteTestApp } = await import("./test-helpers/build-route-test-app.js");
 
 let app: FastifyInstance;
 
 const PROJECT_A = "11111111-1111-4111-8111-111111111111";
+
+const admin: AuthUser = {
+  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  email: "admin@example.com",
+  displayName: "Admin",
+  role: "admin",
+  locale: "en",
+  provider: "local",
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
 
 function seedDispatchAuditAt(entry: {
   projectId: string | null;
@@ -50,9 +72,19 @@ afterAll(async () => {
 
 beforeEach(() => {
   osStore.unloadForTests();
+  getRequestUser.mockReset();
+  getRequestUser.mockResolvedValue(admin);
 });
 
 describe("GET /api/v1/cost-intelligence/anomalies", () => {
+  it("401s when not signed in", async () => {
+    getRequestUser.mockResolvedValue(null);
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/cost-intelligence/anomalies",
+    });
+    expect(response.statusCode).toBe(401);
+  });
   it("returns an empty byProject list when there is no audit data", async () => {
     const response = await app.inject({
       method: "GET",
@@ -120,6 +152,18 @@ describe("GET /api/v1/cost-intelligence/anomalies", () => {
 
   it("filters to a single project when projectId is provided", async () => {
     const PROJECT_B = "22222222-2222-4222-8222-222222222222";
+    const now = new Date().toISOString();
+    osStore.upsertProject({
+      id: PROJECT_A,
+      slug: "cost-a",
+      name: "Cost A",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(PROJECT_A, admin.id, "bound_on_create");
     for (let day = 1; day <= 3; day++) {
       seedDispatchAuditAt({
         projectId: PROJECT_A,

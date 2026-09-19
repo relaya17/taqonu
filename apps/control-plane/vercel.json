@@ -7,9 +7,9 @@
   "env": {
     "TURBO_TEAM": "",
     "TURBO_REMOTE_ONLY": "true",
-    "ATLAS_DEMO_LOGIN_ENABLED": "1",
+    "ATLAS_DEMO_LOGIN_ENABLED": "0",
     "WEB_ORIGIN": "https://taqonu-web.vercel.app",
-    "ATLAS_ADMIN_URL": "https://taqonu-admin.vercel.app"
+    "ATLAS_ADMIN_URL": "http://127.0.0.1:3200"
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }

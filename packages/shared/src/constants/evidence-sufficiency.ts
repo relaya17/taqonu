@@ -92,3 +92,17 @@ export function assessEvidenceSufficiency(
 export function memoryEpistemicAfterAction(): "OBSERVED" {
   return "OBSERVED";
 }
+
+/**
+ * Conflicting evidence is CONFLICTED (or UNKNOWN if the conflict itself
+ * cannot be established). Authority ranking may prefer a source; it does
+ * not manufacture PASS/VERIFIED/FACT.
+ */
+export function epistemicStateWhenConflicting(input: {
+  readonly conflicting: boolean;
+  readonly conflictEstablished?: boolean;
+}): "CONFLICTED" | "UNKNOWN" | null {
+  if (!input.conflicting) return null;
+  if (input.conflictEstablished === false) return "UNKNOWN";
+  return "CONFLICTED";
+}

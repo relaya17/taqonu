@@ -113,6 +113,28 @@ describe("GET /api/v1/projects/:id/observer", () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it("returns within a bound when the workspace has no last Sentinel scan", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    const workspace = mkdtempSync(join(tmpdir(), "atlas-observer-fast-"));
+    osStore.setWorkspaceRoot(projectId, workspace);
+    getRequestUser.mockReturnValue(owner);
+    const started = Date.now();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectId}/observer`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(Date.now() - started).toBeLessThan(8_000);
+    const body = res.json() as {
+      error?: string | null;
+      p1Signals?: { sentinelPosture?: string };
+    };
+    expect(body.p1Signals?.sentinelPosture === "NOT_RUN" || body.p1Signals?.sentinelPosture === "CLEAR").toBe(
+      true,
+    );
+  });
 });
 
 describe("GET /api/v1/observer/state", () => {
@@ -129,6 +151,42 @@ describe("GET /api/v1/observer/state", () => {
       url: `/api/v1/observer/state?projectId=${projectId}`,
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it("403s raw workspaceRoot on observer state for a tenant user", async () => {
+    getRequestUser.mockReturnValue(signedInUser());
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/observer/state?workspaceRoot=${encodeURIComponent(tmpDir)}`,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("401s raw workspaceRoot on observer state when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/observer/state?workspaceRoot=${encodeURIComponent(tmpDir)}`,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("GET /api/v1/projects/:id/observer/expected|snapshots", () => {
+  it("403s observer expected and snapshots for a non-owner", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    getRequestUser.mockReturnValue(otherUser);
+    const expected = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectId}/observer/expected`,
+    });
+    expect(expected.statusCode).toBe(403);
+    const snapshots = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectId}/observer/snapshots`,
+    });
+    expect(snapshots.statusCode).toBe(403);
   });
 });
 

@@ -148,7 +148,7 @@ export const createEvidenceRecordSchema = z.object({
   version: z.string().max(120).nullable().optional(),
   observedAt: isoDateTimeSchema.optional(),
   confidence: confidenceSchema.optional(),
-  epistemicState: epistemicStateSchema.default("FACT"),
+  epistemicState: epistemicStateSchema,
   category: evidenceCategorySchema.optional(),
   classification: dataClassificationSchema.optional(),
   authorityRank: sourceAuthorityRankSchema.optional(),

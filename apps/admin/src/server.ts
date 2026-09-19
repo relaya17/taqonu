@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { platformHierarchyDocument } from "@atlas/shared";
+import { isAtlasDemoLoginEnabled, platformHierarchyDocument } from "@atlas/shared";
 import { authorizeAdminRequest } from "./admin-auth.js";
 import { renderPlatformHtml } from "./platform-html.js";
 import { composePlatformOverview } from "./platform-overview.js";
@@ -25,16 +25,19 @@ const WEB_ORIGIN = (process.env["WEB_ORIGIN"] ?? "http://localhost:3000").replac
   /\/$/,
   "",
 );
-const DEMO_LOGIN_ENABLED =
-  process.env["NODE_ENV"] !== "production" ||
-  process.env["ATLAS_DEMO_LOGIN_ENABLED"] === "1";
+function demoLoginEnabled(): boolean {
+  return isAtlasDemoLoginEnabled({
+    nodeEnv: process.env["NODE_ENV"],
+    flag: process.env["ATLAS_DEMO_LOGIN_ENABLED"],
+  });
+}
 
 function adminOrigin(): string {
   return `http://${HOST}:${PORT}`;
 }
 
 function demoFields(): { demoEmail?: string; demoPassword?: string } {
-  if (!DEMO_LOGIN_ENABLED) return {};
+  if (!demoLoginEnabled()) return {};
   return {
     demoEmail: process.env["ATLAS_DEV_EMAIL"] ?? "dev@atlas.local",
     demoPassword: process.env["ATLAS_DEV_PASSWORD"] ?? "AtlasDev1!",

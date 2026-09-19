@@ -6,7 +6,7 @@ import {
   type AuthUser,
   type Memory,
 } from "@atlas/shared";
-import { tryApproveMemoryInSupabase, tryPersistMemoryToSupabase } from "@atlas/database";
+import { tryApproveMemoryInSupabase } from "@atlas/database";
 import { authorizeEntityAction, redactSecrets } from "@atlas/agent-core";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
@@ -16,6 +16,7 @@ import {
   appendDomainEvent,
   approveMemory,
   classifyMemoryType,
+  commitMemory,
   retrieveMemories,
   supersedeMatchingMemories,
 } from "../services/memory-pipeline.js";
@@ -180,7 +181,11 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
       agentId: body.agentId ?? null,
       allowedAgents: body.allowedAgents ?? null,
     });
-    osStore.addMemory(memory);
+    const { cloudSynced } = await commitMemory({
+      memory,
+      env: app.atlasEnv,
+      userAccessToken: identity.userAccessToken,
+    });
     atlasMetrics.record("memory_write_rate", 1, { kind: "create" });
     appendDomainEvent({
       type: "memory.created",
@@ -200,14 +205,6 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
       statementContains: memory.statement.slice(0, 48),
       newerMemoryId: memory.id,
     });
-
-    // Best-effort durable dual-write — local osStore remains the source of
-    // truth and this never blocks the response (see AUTH_RLS.md).
-    const cloudSynced = Boolean(
-      await tryPersistMemoryToSupabase(app.atlasEnv, memory, identity.ownerId, {
-        userAccessToken: identity.userAccessToken,
-      }),
-    );
 
     return reply.status(201).send({
       ...memory,

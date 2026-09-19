@@ -46,6 +46,11 @@ export function canVerifyStudioPatch(status: string | null | undefined): boolean
   return status === "APPLIED" || status === "VERIFIED";
 }
 
+/** Same gate as POST /patches/:id/rollback — APPLIED or VERIFIED only. */
+export function canRollbackStudioPatch(status: string | null | undefined): boolean {
+  return status === "APPLIED" || status === "VERIFIED";
+}
+
 export function patchGovernedPath(
   id: string,
   action: "apply" | "rollback",

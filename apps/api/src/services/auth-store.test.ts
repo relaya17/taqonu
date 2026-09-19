@@ -102,12 +102,18 @@ describe("auth user system", () => {
     expect(verifyLocalPassword("member@example.com", "freshpass")).toBeNull();
   });
 
-  it("enables the demo owner in production only with an explicit flag", () => {
+  it("never enables the demo owner in production, even with an explicit flag", () => {
     sandbox();
     process.env.NODE_ENV = "production";
     expect(ensureDevLocalUser()).toBeNull();
 
     process.env.ATLAS_DEMO_LOGIN_ENABLED = "1";
+    expect(ensureDevLocalUser()).toBeNull();
+  });
+
+  it("creates the demo owner outside production", () => {
+    sandbox();
+    process.env.NODE_ENV = "test";
     expect(ensureDevLocalUser()).toEqual({
       email: "dev@atlas.local",
       created: true,

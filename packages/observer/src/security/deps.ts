@@ -41,8 +41,17 @@ function readPackageJson(root: string): {
   }
 }
 
-/** Best-effort exact version from lockfiles when present. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Best-effort exact version from lockfiles.
+ * Must not use nested `.*\\n` matchers — those ReDoS the GET/POST scan path
+ * on large pnpm-lock.yaml files and stall the API event loop.
+ */
 function lockfileHint(root: string, packageName: string): string | null {
+  const escaped = escapeRegExp(packageName);
   for (const lock of ["pnpm-lock.yaml", "package-lock.json", "yarn.lock"]) {
     const full = join(root, lock);
     if (!existsSync(full)) continue;
@@ -54,16 +63,18 @@ function lockfileHint(root: string, packageName: string): string | null {
     }
     if (text.length > 2_000_000) continue;
     const pnpm = new RegExp(
-      `^\\s{2}${packageName}@[^:\\n]+:\\s*\\n(?:.*\\n)*?\\s{4}version:\\s*['"]?([0-9][^\\s'"]+)`,
+      `^[ \\t]{2}${escaped}@(?:npm:)?([^:\\s]+):`,
       "m",
     );
     const m1 = pnpm.exec(text);
-    if (m1?.[1]) return m1[1];
-    const npm = new RegExp(
-      `"node_modules/${packageName}"\\s*:\\s*\\{[\\s\\S]*?"version"\\s*:\\s*"([^"]+)"`,
-    );
-    const m2 = npm.exec(text);
-    if (m2?.[1]) return m2[1];
+    if (m1?.[1] && /^\d/.test(m1[1])) return m1[1];
+    const npmKey = `"node_modules/${packageName}"`;
+    const idx = text.indexOf(npmKey);
+    if (idx >= 0) {
+      const window = text.slice(idx, idx + 400);
+      const m2 = /"version"\s*:\s*"([^"]+)"/.exec(window);
+      if (m2?.[1]) return m2[1];
+    }
   }
   return null;
 }

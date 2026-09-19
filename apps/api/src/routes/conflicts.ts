@@ -3,6 +3,7 @@ import {
   AtlasError,
   compareSourceAuthority,
   conflictListItemSchema,
+  epistemicStateWhenConflicting,
   resolveConflictSchema,
   uuidSchema,
   type SourceAuthorityRank,
@@ -79,7 +80,11 @@ export async function registerConflictRoutes(app: FastifyInstance): Promise<void
             sliceKey: conflict.sliceKey,
             resolution,
             detectedAt: conflict.detectedAt,
-            epistemicState: "CONFLICTED",
+            epistemicState:
+              epistemicStateWhenConflicting({
+                conflicting: !resolution,
+                conflictEstablished: Boolean(claimA && claimB),
+              }) ?? "CONFLICTED",
             resolved: Boolean(resolution),
           }),
         );

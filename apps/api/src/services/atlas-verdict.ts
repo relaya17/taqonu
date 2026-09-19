@@ -10,6 +10,7 @@ import {
 import { issueProductionReadinessCertificate } from "./readiness-certificate.js";
 import { evaluateReleaseGateGraph } from "./gate-engine.js";
 import { osStore } from "../store/os-store.js";
+import { evidenceForGovernedProject } from "./evidence-for-project.js";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -73,7 +74,7 @@ export function buildAtlasVerdict(input: {
   const certificateId = latestStored?.id ?? cert.id;
 
   const graph = evaluateReleaseGateGraph(project.id);
-  const evidence = osStore.getEvidence(project.id);
+  const evidence = evidenceForGovernedProject(project.id);
   const claims = osStore.getClaims(project.id);
   const snap = osStore.getSnapshot(project.id);
   const patches = osStore.listPatches(project.id);
@@ -142,6 +143,8 @@ export function buildAtlasVerdict(input: {
 
   let status: AtlasVerdict["status"] = "READY";
   if (criticalBlockers > 0) status = "BLOCKED";
+  else if (openConflicts > 0)
+    status = "CONDITIONAL";
   else if (highRisks > 0 || unverifiedClaims > 5 || cert.overallScore < 70)
     status = "CONDITIONAL";
   else if (cert.overallScore < 50 || evidence.length === 0) status = "UNKNOWN";
@@ -293,7 +296,7 @@ export function buildEvidenceReport(input: {
   }
   const verdict = buildAtlasVerdict(verdictInput);
   const project = osStore.getProject(input.projectId)!;
-  const evidence = osStore.getEvidence(input.projectId);
+  const evidence = evidenceForGovernedProject(input.projectId);
   const now = new Date().toISOString();
   const byCategory = groupEvidenceByCategory(evidence);
   const categoryInventory = byCategory

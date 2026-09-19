@@ -7,6 +7,7 @@ import {
 } from "@atlas/shared";
 import { detectSecrets, redactSecrets } from "@atlas/agent-core";
 import { osStore } from "../store/os-store.js";
+import { evidenceForGovernedProject } from "./evidence-for-project.js";
 
 function node(
   id: keyof typeof DEFAULT_RELEASE_GATE_META,
@@ -46,6 +47,14 @@ function summarize(nodes: QualityGateNode[]): string {
 /** Evaluate the default portfolio/project release DAG from durable store signals. */
 export function evaluateReleaseGateGraph(
   projectId: string | null,
+  options?: {
+    /**
+     * USER-plane portfolio (`projectId` null): only these project ids.
+     * Omitted/empty with a null `projectId` evaluates an empty set — never
+     * the whole store. Project-scoped calls ignore this and use `projectId`.
+     */
+    readonly scopedProjectIds?: readonly string[];
+  },
 ): QualityGateGraph {
   osStore.ensureLoaded();
   const now = new Date().toISOString();
@@ -54,16 +63,23 @@ export function evaluateReleaseGateGraph(
     "api_key=sk_test_should_redact_abcdefghijklmnopqrstuvwxyz and ghp_abcdefghijklmnopqrstuvwxyz123456";
   const secretsOk = detectSecrets(redactSecrets(sample)).length === 0;
 
-  const projects = osStore.listProjects();
-  const evidenceCount =
+  const scopedIds =
     projectId != null
-      ? osStore.getEvidence(projectId).length
-      : projects.reduce((n, p) => n + osStore.getEvidence(p.id).length, 0);
+      ? [projectId]
+      : [...new Set(options?.scopedProjectIds ?? [])];
+  const scopedIdSet = new Set(scopedIds);
+  const projects = osStore
+    .listProjects()
+    .filter((project) => scopedIdSet.has(project.id));
+
+  const evidenceCount = scopedIds.reduce(
+    (n, id) => n + evidenceForGovernedProject(id).length,
+    0,
+  );
   const hasEvidence = evidenceCount > 0;
 
   let openConflicts = 0;
   for (const project of projects) {
-    if (projectId && project.id !== projectId) continue;
     const snap = osStore.getSnapshot(project.id);
     if (!snap) continue;
     for (const c of snap.conflicts) {
@@ -72,18 +88,25 @@ export function evaluateReleaseGateGraph(
     }
   }
 
+  // EvalRun has no projectId. Do not invent an association.
   const latestEval = osStore.listEvalRuns()[0];
   const evalOk = latestEval?.writeGateOpen === true;
 
-  const pendingDangerous = osStore
-    .listPatches(projectId ?? undefined)
-    .filter(
-      (p) =>
-        (p.risk === "HIGH" || p.risk === "CRITICAL") &&
-        (p.status === "AWAITING_APPROVAL" || p.status === "PROPOSED"),
-    ).length;
+  let pendingDangerous = 0;
+  for (const id of scopedIds) {
+    pendingDangerous += osStore
+      .listPatches(id)
+      .filter(
+        (p) =>
+          (p.risk === "HIGH" || p.risk === "CRITICAL") &&
+          (p.status === "AWAITING_APPROVAL" || p.status === "PROPOSED"),
+      ).length;
+  }
 
-  const prior = osStore.getGateGraph(projectId);
+  // Null-key graphs are a single shared row and cannot represent two
+  // callers' readable sets. Project-scoped graphs remain persistable.
+  const persist = projectId != null;
+  const prior = persist ? osStore.getGateGraph(projectId) : undefined;
   const waived = new Map(
     (prior?.nodes ?? [])
       .filter((n) => n.status === "WAIVED")
@@ -195,6 +218,6 @@ export function evaluateReleaseGateGraph(
     createdAt: prior?.createdAt ?? now,
     updatedAt: now,
   });
-  osStore.upsertGateGraph(graph);
+  if (persist) osStore.upsertGateGraph(graph);
   return graph;
 }

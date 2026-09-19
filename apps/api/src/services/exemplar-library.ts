@@ -22,6 +22,8 @@ import {
   type WorkspaceTreeNode,
 } from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
+import { commitMemory } from "./memory-pipeline.js";
+import type { MemoryStoreEnv } from "@atlas/database";
 import { findRepoRoot } from "./repo-root.js";
 
 const CATALOG_SLUG = "exemplar-saas-mini";
@@ -223,6 +225,7 @@ export function buildClonePatch(input: {
   readonly targetPrefix?: string;
   readonly createdBy: string;
   readonly ownerId: string;
+  readonly env?: MemoryStoreEnv | null;
 }): { patch: PatchArtifact; memory: Memory; cloneReady: boolean } {
   const units = unitById(input.exemplar, input.unitId);
   const declared = units.flatMap((u) => u.paths);
@@ -336,7 +339,7 @@ export function buildClonePatch(input: {
     priority: "HIGH",
     agentId: "CODE_ENGINEER",
   });
-  osStore.addMemory(memory);
+  void commitMemory({ memory, env: input.env ?? null });
   osStore.appendAudit({
     type: "exemplar.cloned",
     exemplarId: input.exemplar.id,

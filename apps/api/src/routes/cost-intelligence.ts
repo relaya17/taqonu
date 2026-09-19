@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { uuidSchema } from "@atlas/shared";
 import { detectAnomalies, type AnomalyResult } from "@atlas/agent-core";
 import { z } from "zod";
+import { requireAdmin } from "../middleware/auth-guards.js";
+import { assertProjectReadAccess } from "../services/project-access.js";
 import {
   computeCostIntelligenceDailySeriesByProject,
   computeCostIntelligenceSummary,
@@ -12,6 +14,8 @@ import {
  * apps/api/src/services/cost-intelligence.ts for exactly which real,
  * already-persisted data source this aggregates (osStore.listAudit()) and
  * an honest accounting of how "real" costUsd currently is in this codebase.
+ *
+ * Global (no projectId) is admin-only. A project query requires read access.
  */
 export async function registerCostIntelligenceRoutes(
   app: FastifyInstance,
@@ -20,10 +24,14 @@ export async function registerCostIntelligenceRoutes(
     const query = z
       .object({ projectId: uuidSchema.optional() })
       .parse(request.query ?? {});
-    const summary = computeCostIntelligenceSummary({
+    if (query.projectId) {
+      await assertProjectReadAccess(app, request, query.projectId);
+    } else {
+      await requireAdmin(app, request);
+    }
+    return computeCostIntelligenceSummary({
       ...(query.projectId !== undefined ? { projectId: query.projectId } : {}),
     });
-    return summary;
   });
 
   /**
@@ -43,6 +51,12 @@ export async function registerCostIntelligenceRoutes(
         method: z.enum(["zscore", "iqr"]).optional(),
       })
       .parse(request.query ?? {});
+
+    if (query.projectId) {
+      await assertProjectReadAccess(app, request, query.projectId);
+    } else {
+      await requireAdmin(app, request);
+    }
 
     const series = computeCostIntelligenceDailySeriesByProject({
       ...(query.projectId !== undefined ? { projectId: query.projectId } : {}),
@@ -67,7 +81,7 @@ export async function registerCostIntelligenceRoutes(
       source:
         "detectAnomalies (@atlas/agent-core, classical z-score/IQR statistics) " +
         "over computeCostIntelligenceDailySeriesByProject (osStore.listAudit(), " +
-        "type=agents.dispatch, grouped by UTC calendar day)",
+        "type=agents.dispatch | llm.invocation, grouped by UTC calendar day)",
       note:
         "Purely statistical, not ML — no training data required, but also " +
         "no anomaly detection possible with fewer data points than " +
@@ -77,3 +91,4 @@ export async function registerCostIntelligenceRoutes(
     };
   });
 }
+

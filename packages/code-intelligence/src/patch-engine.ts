@@ -4,7 +4,7 @@ import {
 } from "@atlas/shared";
 import { analyzeImpact } from "./impact.js";
 import { analyzeRepository, findFilesByKeyword, readTextFile } from "./analyze.js";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export interface ProposedFileChange {
@@ -69,6 +69,8 @@ export function proposePatch(input: {
   mode: EngineeringAgentMode;
   userRequest: string;
   title?: string;
+  /** Explicit Studio file. Preferred over keyword search (P0-C). */
+  focusPath?: string;
   memoryContext?: {
     items: Array<{ statement: string; type: string; epistemicState: string }>;
   };
@@ -104,15 +106,45 @@ export function proposePatch(input: {
     };
   }
 
+  // Explicit delete intent: "delete disposable.ts" / "remove the file notes.md"
+  const deleteHint = input.userRequest.match(
+    /\b(?:delete|remove)\s+(?:the\s+file\s+)?([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)/i,
+  );
+  if (deleteHint?.[1]) {
+    const rel = safeRelPath(deleteHint[1]);
+    const previous = readTextFile(root, rel);
+    if (previous !== null && !rel.includes("..")) {
+      filesChanged.push({
+        path: rel,
+        action: "delete",
+        summary: `Delete ${rel}`,
+        previousContent: previous,
+        unifiedDiff: [
+          `--- a/${rel}`,
+          "+++ /dev/null",
+          ...previous.split("\n").map((line) => `-${line}`),
+        ].join("\n"),
+      });
+    }
+  }
+
   // Prefer an existing matching file to modify; else add a guided stub under docs/atlas/patches
+  const focus = input.focusPath ? safeRelPath(input.focusPath) : "";
   const keyword =
     input.userRequest.match(/[A-Za-z][A-Za-z0-9_-]{2,}/)?.[0] ?? "change";
   const matches = findFilesByKeyword(root, keyword, 5);
+  const focused =
+    focus && !focus.includes("..") && readTextFile(root, focus) !== null
+      ? focus
+      : null;
   const target =
+    focused ??
     matches.find((m) => /\.(ts|tsx)$/.test(m) && !/\.test\./.test(m)) ??
     matches[0];
 
-  if (target) {
+  // Secure mode must never claim remediation via an ATLAS-PATCH comment.
+  // Secret literal removal is applied by the API using the Sentinel detector.
+  if (filesChanged.length === 0 && target && input.mode !== "secure") {
     const previous = readTextFile(root, target);
     const banner = [
       "",
@@ -137,7 +169,7 @@ export function proposePatch(input: {
         ...banner.split("\n").map((l) => `+${l}`),
       ].join("\n"),
     });
-  } else {
+  } else if (filesChanged.length === 0 && input.mode !== "secure") {
     const path = `docs/atlas/patches/${input.mode}-${Date.now()}.md`;
     const body = [
       `# Patch proposal — ${modeMeta.titleEn}`,
@@ -244,7 +276,12 @@ export function applyPatchFiles(
     rollbackSnapshot.push({ path: rel, previousContent: previous });
 
     if (file.action === "delete") {
-      skipped.push(rel); // delete reserved for later dual-approval flows
+      if (existsSync(full)) {
+        unlinkSync(full);
+        applied.push(rel);
+      } else {
+        skipped.push(rel);
+      }
       continue;
     }
     if (file.afterContent === undefined) {

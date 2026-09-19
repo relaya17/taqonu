@@ -7,6 +7,7 @@ import {
   uuidSchema,
 } from "./common.schema.js";
 import { sourceAuthorityRankSchema } from "./authority.schema.js";
+import { patchRemediationTargetSchema } from "./remediation-truth.schema.js";
 
 export const engineeringAgentModeSchema = z.enum(ENGINEERING_AGENT_MODES);
 
@@ -50,6 +51,8 @@ export const patchArtifactSchema = z.object({
   evaluationSummary: z.string().max(4000).nullable(),
   /** Audit/constitution finding this AUTO_FIX draft remediates (when set). */
   sourceIssueId: uuidSchema.nullable().optional(),
+  /** Sentinel/Observer finding this governed patch intends to remediate. */
+  remediationTarget: patchRemediationTargetSchema.optional(),
   approvals: z
     .array(
       z.object({

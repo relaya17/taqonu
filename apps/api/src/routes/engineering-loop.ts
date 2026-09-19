@@ -302,6 +302,7 @@ export async function registerEngineeringLoopRoutes(
               existing: approved,
               user,
               bodyWorkspaceRoot: existing.workspaceRoot,
+              env: app.atlasEnv,
             });
             return {
               kind: "SUCCESS" as const,

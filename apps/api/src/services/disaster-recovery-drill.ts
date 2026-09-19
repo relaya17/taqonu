@@ -30,6 +30,7 @@ export interface DisasterRecoveryDrillResult {
   readonly offsitePath: string | null;
   readonly offsiteChecksum: string | null;
   readonly destinationKind: "UNSET" | "FILESYSTEM_DIRECTORY" | "REJECTED";
+  readonly offsiteStatus: "OFFSITE_NOT_CONFIGURED" | "REJECTED" | "VERIFIED";
   readonly cloudObjectStore: false;
 }
 
@@ -85,6 +86,7 @@ function emptyResult(
     offsitePath: null,
     offsiteChecksum: null,
     destinationKind: "UNSET",
+    offsiteStatus: "OFFSITE_NOT_CONFIGURED",
     cloudObjectStore: false,
   };
 }
@@ -189,6 +191,11 @@ export function runCanonicalAuditRestoreDrill(input?: {
     offsitePath,
     offsiteChecksum,
     destinationKind,
+    offsiteStatus: offsite
+      ? "VERIFIED"
+      : destinationKind === "REJECTED"
+        ? "REJECTED"
+        : "OFFSITE_NOT_CONFIGURED",
     cloudObjectStore: false,
   };
   writeFileSync(
@@ -197,6 +204,21 @@ export function runCanonicalAuditRestoreDrill(input?: {
     "utf8",
   );
   return result;
+}
+
+export function classifyOffsiteBackupClaim(
+  result: Pick<DisasterRecoveryDrillResult, "offsite" | "offsiteStatus">,
+): "OFFSITE_NOT_CONFIGURED" | "OFFSITE_REJECTED" | "OFFSITE_VERIFIED" {
+  if (result.offsiteStatus === "VERIFIED" && result.offsite) return "OFFSITE_VERIFIED";
+  if (result.offsiteStatus === "REJECTED") return "OFFSITE_REJECTED";
+  return "OFFSITE_NOT_CONFIGURED";
+}
+
+export function offsiteRequirementBlocks(
+  result: Pick<DisasterRecoveryDrillResult, "offsiteStatus">,
+  requireOffsite: boolean,
+): boolean {
+  return requireOffsite && result.offsiteStatus === "OFFSITE_NOT_CONFIGURED";
 }
 
 export interface CanonicalAuditRestoreResult {

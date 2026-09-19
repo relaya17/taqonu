@@ -12,6 +12,10 @@ import {
 } from "@atlas/shared";
 import { domainEventBus, redactSecrets } from "@atlas/agent-core";
 import {
+  tryPersistMemoryToSupabase,
+  type MemoryStoreEnv,
+} from "@atlas/database";
+import {
   cosineSimilarity,
   resolveEmbeddingProvider,
   safeEmbed,
@@ -35,6 +39,35 @@ export type MemoryContextItem = {
   projectId: string | null;
   priority: Memory["priority"];
 };
+
+/** Provenance shown to humans — not full evidence, not chain-of-thought. */
+export type MemoryCitation = {
+  id: string;
+  type: string;
+  epistemicState: string;
+  category: string;
+  source: string;
+  statement: string;
+};
+
+export const MEMORY_CITATION_MAX = 8;
+export const MEMORY_CITATION_STATEMENT_MAX = 240;
+
+export function toMemoryCitations(
+  items: readonly Pick<
+    MemoryContextItem,
+    "id" | "type" | "epistemicState" | "category" | "source" | "statement"
+  >[],
+): MemoryCitation[] {
+  return items.slice(0, MEMORY_CITATION_MAX).map((item) => ({
+    id: item.id,
+    type: item.type,
+    epistemicState: item.epistemicState,
+    category: item.category,
+    source: item.source,
+    statement: item.statement.slice(0, MEMORY_CITATION_STATEMENT_MAX),
+  }));
+}
 
 export type MemoryContextPayload = {
   items: MemoryContextItem[];
@@ -529,8 +562,62 @@ export function approveMemory(input: {
  * (conversation, generic agent run, memory list) that never identify an
  * agent. Enforcement only kicks in for callers that opt in by passing
  * requester identity.
+ *
+ * INTENTIONAL CONTRACT — do not flip empty allowedAgents to fail-closed
+ * without an explicit product decision. Tenant/owner isolation is a
+ * different axis and is already fail-closed.
  */
-function isVisibleToAgent(
+export const MEMORY_AGENT_VISIBILITY_CONTRACT = {
+  emptyAllowedAgents: "default-open",
+  omitRequesterId: "human-surface-visible",
+  nonEmptyAllowedAgents: "restricted-to-listed-agents",
+  tenantOwnerIsolation: "fail-closed",
+} as const;
+
+/**
+ * Local JSON persist (`osStore.persist`) is the offline-first durable write.
+ * Live Supabase is a dual-write via `commitMemory` when `env` is passed.
+ * Tests, demo-seed, and QA portfolio pattern seeds stay local-only by design.
+ * The in-memory Map is a cache loaded from that file / hydrate — not a silent SoR.
+ */
+export const MEMORY_DURABILITY_CONTRACT = {
+  ramIsSoR: false,
+  localPersist: "osStore.persist store.json",
+  cloudDualWrite: "commitMemory → tryPersistMemoryToSupabase when env is live",
+  testsSkipPersist: "ATLAS_SKIP_STORE_PERSIST=1",
+  localOnlyByDesign: "tests, demo-seed, qa portfolio pattern seed",
+} as const;
+
+/**
+ * Canonical product-memory write. Always persists locally first.
+ * Cloud dual-write runs only when `env` is provided; unavailable cloud is
+ * fail-open (`cloudSynced: false`) unless `requireCloudSuccess`.
+ */
+export async function commitMemory(input: {
+  readonly memory: Memory;
+  readonly env?: MemoryStoreEnv | null;
+  readonly userAccessToken?: string | null;
+  readonly requireCloudSuccess?: boolean;
+}): Promise<{ readonly cloudSynced: boolean }> {
+  osStore.addMemory(input.memory);
+  if (!input.env) {
+    return { cloudSynced: false };
+  }
+  const row = await tryPersistMemoryToSupabase(
+    input.env,
+    input.memory,
+    input.memory.ownerId,
+    {
+      ...(input.requireCloudSuccess ? { requireSuccess: true } : {}),
+      ...(input.userAccessToken !== undefined
+        ? { userAccessToken: input.userAccessToken }
+        : {}),
+    },
+  );
+  return { cloudSynced: Boolean(row) };
+}
+
+export function memoryIsVisibleToAgent(
   memory: Memory,
   requestingAgentId?: string,
   requestingAgentIds?: readonly string[],
@@ -543,6 +630,18 @@ function isVisibleToAgent(
   ];
   if (candidates.length === 0) return true;
   return candidates.some((id) => allowed.includes(id));
+}
+
+function isVisibleToAgent(
+  memory: Memory,
+  requestingAgentId?: string,
+  requestingAgentIds?: readonly string[],
+): boolean {
+  return memoryIsVisibleToAgent(
+    memory,
+    requestingAgentId,
+    requestingAgentIds,
+  );
 }
 
 function heuristicMemoryScore(memory: Memory, queryLower: string): number {

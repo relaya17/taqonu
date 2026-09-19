@@ -35,6 +35,7 @@ import { registerArtifactRoutes } from "./routes/artifacts.js";
 import { registerContactRoutes } from "./routes/contact.js";
 import { registerAiProviderRoutes } from "./routes/ai-providers.js";
 import { registerCodeRoutes } from "./routes/code.js";
+import { registerStudioExecutionRoutes } from "./routes/studio-execution.js";
 import { registerExemplarRoutes } from "./routes/exemplars.js";
 import { registerGateRoutes } from "./routes/gates.js";
 import { registerEventRoutes } from "./routes/events.js";
@@ -66,6 +67,7 @@ import { registerObserverRoutes } from "./routes/observer.js";
 import { registerSentinelRoutes } from "./routes/sentinel.js";
 import { registerPerformanceRoutes } from "./routes/performance.js";
 import { registerIntelligenceRoutes } from "./routes/intelligence.js";
+import { registerCostIntelligenceRoutes } from "./routes/cost-intelligence.js";
 import { registerApplicationPreflightRoutes } from "./routes/application-preflight.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { registerAtlasSessionGate } from "./middleware/atlas-session-gate.js";
@@ -162,7 +164,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
     logger.info("dev_local_user_ready", {
       email: devUser.email,
       created: devUser.created,
-      note: "Development login: dev@atlas.local / AtlasDev1!",
+      note: "Development login identity is available for the local owner account",
     });
   }
 
@@ -198,6 +200,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerContactRoutes(app);
   await registerAiProviderRoutes(app);
   await registerCodeRoutes(app);
+  await registerStudioExecutionRoutes(app);
   await registerExemplarRoutes(app);
   await registerGateRoutes(app);
   await registerEventRoutes(app);
@@ -228,6 +231,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerSentinelRoutes(app);
   await registerPerformanceRoutes(app);
   await registerIntelligenceRoutes(app);
+  await registerCostIntelligenceRoutes(app);
   await registerApplicationPreflightRoutes(app);
 
   void maybeRefreshVerifiedKnowledge({ env }).catch((err) => {

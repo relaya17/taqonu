@@ -45,6 +45,7 @@
 import { osStore } from "../store/os-store.js";
 
 const AGENT_DISPATCH_AUDIT_TYPE = "agents.dispatch";
+const LLM_INVOCATION_AUDIT_TYPE = "llm.invocation";
 
 export interface CostIntelligenceProjectBreakdown {
   /** null = dispatch runs not scoped to a project (portfolio-level requests). */
@@ -172,7 +173,8 @@ export function computeCostIntelligenceDailySeriesByProject(input?: {
       (entry) =>
         typeof entry === "object" &&
         entry !== null &&
-        (entry as { type?: unknown }).type === AGENT_DISPATCH_AUDIT_TYPE,
+        (entry as { type?: unknown }).type === AGENT_DISPATCH_AUDIT_TYPE ||
+        (entry as { type?: unknown }).type === LLM_INVOCATION_AUDIT_TYPE,
     );
 
   const buckets = new Map<
@@ -196,7 +198,9 @@ export function computeCostIntelligenceDailySeriesByProject(input?: {
       dispatchCount: 0,
     };
     dayBucket.totalUsd += cost;
-    dayBucket.dispatchCount += 1;
+    if (record.type !== LLM_INVOCATION_AUDIT_TYPE) {
+      dayBucket.dispatchCount += 1;
+    }
     projectBucket.set(dateKey, dayBucket);
     buckets.set(projectId, projectBucket);
   }
@@ -225,7 +229,8 @@ export function computeCostIntelligenceSummary(input?: {
       (entry) =>
         typeof entry === "object" &&
         entry !== null &&
-        (entry as { type?: unknown }).type === AGENT_DISPATCH_AUDIT_TYPE,
+        (entry as { type?: unknown }).type === AGENT_DISPATCH_AUDIT_TYPE ||
+        (entry as { type?: unknown }).type === LLM_INVOCATION_AUDIT_TYPE,
     );
 
   const buckets = new Map<
@@ -249,12 +254,17 @@ export function computeCostIntelligenceSummary(input?: {
     // falls back to a legacy flat `costUsd` field, then 0, for older
     // audit entries that predate this change — read defensively either way.
     const cost = toEntryCostUsd(record);
-    const runs = toRunCount(record.runs);
-    const runCosts = toRunCosts(record.runCosts);
+    const isInvocation = record.type === LLM_INVOCATION_AUDIT_TYPE;
+    const runs = isInvocation ? 1 : toRunCount(record.runs);
+    const runCosts = isInvocation
+      ? typeof record.agentId === "string"
+        ? [{ agentId: record.agentId, costUsd: cost }]
+        : []
+      : toRunCosts(record.runCosts);
 
     totalUsd += cost;
     runCount += runs;
-    dispatchCount += 1;
+    if (!isInvocation) dispatchCount += 1;
 
     const bucket = buckets.get(projectId) ?? {
       totalUsd: 0,
@@ -263,7 +273,7 @@ export function computeCostIntelligenceSummary(input?: {
     };
     bucket.totalUsd += cost;
     bucket.runCount += runs;
-    bucket.dispatchCount += 1;
+    if (!isInvocation) bucket.dispatchCount += 1;
     buckets.set(projectId, bucket);
 
     // Only entries carrying a real `runCosts` breakdown contribute to
@@ -304,14 +314,15 @@ export function computeCostIntelligenceSummary(input?: {
     byProject,
     byAgent,
     generatedAt: new Date().toISOString(),
-    source: "osStore.listAudit() (type=agents.dispatch)",
+    source:
+      "osStore.listAudit() (type=agents.dispatch | llm.invocation)",
     note:
-      "costUsd is aggregated from totalCostUsd (falling back to a legacy " +
-      "flat costUsd field, then 0) on each agents.dispatch audit entry. " +
-      "Real specialist paths that never call an LLM provider " +
-      "(security-sentinel-dispatch, legal-media-dispatch, the generic " +
-      "dispatch stub) accurately report $0 — that is not a gap in this " +
-      "aggregator, it is the real cost of those paths today. byAgent is " +
-      "populated from the runCosts breakdown on entries that carry it.",
+      "costUsd is aggregated from real audit fields only — never invented. " +
+      "agents.dispatch uses totalCostUsd (falling back to a legacy flat " +
+      "costUsd field, then 0). llm.invocation uses the provider usage " +
+      "object recorded at call time (echo/Ollama/unknown-model $0 is an " +
+      "honest zero). llm.invocation increments runCount, not dispatchCount. " +
+      "byAgent comes from runCosts on dispatch entries and agentId on " +
+      "invocation entries.",
   };
 }

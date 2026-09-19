@@ -936,5 +936,13 @@ describe("POST /api/v1/code/patches/:id/verify and Apply memory write-back", () 
     expect([200, 201]).toContain(ask.statusCode);
     expect(ask.json().memoryUsed).toBeGreaterThanOrEqual(1);
     expect(created[0]?.statement).toContain(patch.id);
+    const citations = ask.json().memoryCitations as Array<{
+      id: string;
+      epistemicState: string;
+      statement: string;
+    }>;
+    expect(Array.isArray(citations)).toBe(true);
+    expect(citations.some((item) => item.id === created[0]?.id)).toBe(true);
+    expect(citations[0]).not.toHaveProperty("evidence");
   });
 });

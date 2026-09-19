@@ -8,6 +8,8 @@ import {
 } from "@atlas/shared";
 import { redactSecrets } from "@atlas/agent-core";
 import { osStore } from "../store/os-store.js";
+import { commitMemory } from "./memory-pipeline.js";
+import type { MemoryStoreEnv } from "@atlas/database";
 
 const PROCESS_AUDIT_INDEX = "qa.processAudit.index";
 const MAX_INDEX = 50;
@@ -160,6 +162,7 @@ export function resolveProjectReachability(projectId: string): ProjectReachabili
 export function syncProcessAuditToMemory(
   doc: ProcessAuditDocument,
   ownerId: string,
+  env?: MemoryStoreEnv | null,
 ): Memory {
   const now = new Date().toISOString();
   const blockers = doc.sections.blockers.slice(0, 5).join("; ") || "none";
@@ -210,7 +213,7 @@ export function syncProcessAuditToMemory(
     scope: doc.projectId ? "PROJECT" : "GLOBAL",
     priority: doc.verdict === "NO_GO" ? "CRITICAL" : "HIGH",
   });
-  osStore.addMemory(memory);
+  void commitMemory({ memory, env: env ?? null });
   return memory;
 }
 

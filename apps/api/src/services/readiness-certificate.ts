@@ -7,6 +7,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { evaluateReleaseGateGraph } from "./gate-engine.js";
 import { osStore } from "../store/os-store.js";
+import { evidenceForGovernedProject } from "./evidence-for-project.js";
 
 function clamp(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
@@ -91,7 +92,7 @@ export function issueProductionReadinessCertificate(input: {
 
   const evidenceCount =
     input.projectId != null
-      ? osStore.getEvidence(input.projectId).length
+      ? evidenceForGovernedProject(input.projectId).length
       : osStore.countEvidenceRecords();
   const openConflicts = (() => {
     let n = 0;

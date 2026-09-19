@@ -18,6 +18,7 @@ import {
   type EngineeringIssue,
   type PatchArtifact,
 } from "@atlas/shared";
+import type { MemoryStoreEnv } from "@atlas/database";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
 import {
@@ -240,6 +241,7 @@ export function autoApplyLowRemediations(input: {
   readonly drafts: readonly AutoRemediationDraft[];
   readonly user: AuthUser;
   readonly bodyWorkspaceRoot?: string | null;
+  readonly env?: MemoryStoreEnv | null;
 }): AutoApplyOutcome[] {
   const outcomes: AutoApplyOutcome[] = [];
 
@@ -293,6 +295,7 @@ export function autoApplyLowRemediations(input: {
         bodyWorkspaceRoot: input.bodyWorkspaceRoot ?? null,
         requireProjectRoot: Boolean(approved.projectId),
         skipVerify: true,
+        env: input.env ?? null,
       });
       const verified = verifyAppliedRemediation({
         patch,

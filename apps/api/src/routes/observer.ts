@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AtlasError, uuidSchema } from "@atlas/shared";
+import { AtlasError, isControlPlaneRole, uuidSchema } from "@atlas/shared";
 import { authorizeEntityAction } from "@atlas/agent-core";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import {
   assertProjectReadAccess,
   assertProjectWriteAccess,
@@ -38,6 +38,7 @@ export async function registerObserverRoutes(
       body: request.body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       ownerId: user.id,
+      env: app.atlasEnv,
     });
     return reply.send(result);
   });
@@ -53,6 +54,7 @@ export async function registerObserverRoutes(
       body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       ownerId: user.id,
+      env: app.atlasEnv,
     });
     return reply.send(result);
   });
@@ -68,6 +70,7 @@ export async function registerObserverRoutes(
 
   app.get("/api/v1/projects/:id/observer/expected", async (request) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    await assertProjectReadAccess(app, request, projectId);
     const state = readObserverState({
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
@@ -92,6 +95,7 @@ export async function registerObserverRoutes(
 
   app.get("/api/v1/projects/:id/observer/snapshots", async (request) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    await assertProjectReadAccess(app, request, projectId);
     const state = readObserverState({
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
@@ -111,7 +115,16 @@ export async function registerObserverRoutes(
       })
       .parse(request.query);
 
-    // When projectId is provided, require auth and project access.
+    if (q.workspaceRoot) {
+      const user = await requireUser(app, request);
+      if (!isControlPlaneRole(user.role)) {
+        throw new AtlasError(
+          "FORBIDDEN",
+          "Raw workspaceRoot is Control Plane only.",
+          { statusCode: 403 },
+        );
+      }
+    }
     if (q.projectId) {
       await assertProjectReadAccess(app, request, q.projectId);
     }
@@ -129,6 +142,7 @@ export async function registerObserverRoutes(
       body: request.body,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
       ownerId: user.id,
+      env: app.atlasEnv,
     });
     return reply.status(201).send(result);
   });

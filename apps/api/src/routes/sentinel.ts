@@ -5,7 +5,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AtlasError, uuidSchema } from "@atlas/shared";
-import { runSentinelScan, verifySentinelFinding } from "@atlas/observer";
+import {
+  runSentinelScan,
+  verifySentinelFinding,
+  loadSentinelLastScan,
+  emptySentinelNotRun,
+} from "@atlas/observer";
 import { resolveObserverWorkspace } from "../services/observe-cycle.js";
 import { proposeTruthFindingRemediation } from "../services/remediation-pipeline.js";
 import {
@@ -17,6 +22,9 @@ import {
   type HelperResult,
 } from "../services/governed-claimed-execution.js";
 import { runLiveHumanDecisionExecution } from "../services/live-human-execution.js";
+
+/** GET/read budget. POST scan uses 4x. Local constant so API does not depend on a rebuilt observer dist for the name. */
+const SENTINEL_GET_BUDGET_MS = 8_000;
 
 /**
  * F-02 Phase 2, Gap 3. `POST .../sentinel/scan` used to call
@@ -109,7 +117,10 @@ export async function registerSentinelRoutes(
           workspaceRoot: body.workspaceRoot ?? null,
           envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
         });
-        const result = runSentinelScan(resolved.workspaceRoot, { persist: true });
+          const result = runSentinelScan(resolved.workspaceRoot, {
+            persist: true,
+            maxMs: SENTINEL_GET_BUDGET_MS * 4,
+          });
         const value = {
           ...result,
           projectId,
@@ -175,7 +186,10 @@ export async function registerSentinelRoutes(
             workspaceRoot: body.workspaceRoot ?? null,
             envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
           });
-          const result = runSentinelScan(resolved.workspaceRoot, { persist: true });
+          const result = runSentinelScan(resolved.workspaceRoot, {
+            persist: true,
+            maxMs: SENTINEL_GET_BUDGET_MS * 4,
+          });
           const value = {
             ...result,
             projectId,
@@ -220,9 +234,13 @@ export async function registerSentinelRoutes(
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
-    const result = runSentinelScan(resolved.workspaceRoot, { persist: false });
+    const last = loadSentinelLastScan(resolved.workspaceRoot);
+    // GET must not live-walk the workspace. A missing last-scan is NOT_RUN —
+    // never a silent full-repo scan that can stall the API event loop (P0-A).
+    const result = last ?? emptySentinelNotRun(resolved.workspaceRoot);
     return {
       ...result,
+      scanSource: last ? ("last-scan" as const) : ("not-run" as const),
       projectId,
       projectSlug: resolved.projectSlug,
       agent: "Atlas Sentinel",
@@ -242,7 +260,10 @@ export async function registerSentinelRoutes(
       projectId,
       envGoldenRoot: app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ?? null,
     });
-    const scan = runSentinelScan(resolved.workspaceRoot, { persist: false });
+    const scan = runSentinelScan(resolved.workspaceRoot, {
+      persist: false,
+      maxMs: SENTINEL_GET_BUDGET_MS * 4,
+    });
     const finding = scan.findings.find((f) => f.id === body.findingId);
     if (!finding) {
       return reply.status(404).send({

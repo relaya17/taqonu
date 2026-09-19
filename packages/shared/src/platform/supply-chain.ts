@@ -150,6 +150,7 @@ export function buildUnsignedProvenance(input: {
 export function verifyUnsignedProvenance(
   statement: unknown,
   expectedSbomSha256?: string,
+  expectedCommit?: string,
 ): { readonly ok: boolean; readonly signed: false; readonly evidence: string } {
   if (!statement || typeof statement !== "object") {
     return { ok: false, signed: false, evidence: "provenance statement missing" };
@@ -158,7 +159,12 @@ export function verifyUnsignedProvenance(
     readonly _type?: unknown;
     readonly predicateType?: unknown;
     readonly subject?: readonly { readonly digest?: { readonly sha256?: unknown } }[];
-    readonly predicate?: { readonly runDetails?: { readonly signed?: unknown } };
+    readonly predicate?: {
+      readonly runDetails?: { readonly signed?: unknown };
+      readonly buildDefinition?: {
+        readonly externalParameters?: { readonly commit?: unknown };
+      };
+    };
   };
   if (row._type !== "https://in-toto.io/Statement/v1") {
     return { ok: false, signed: false, evidence: "not an in-toto Statement" };
@@ -176,6 +182,14 @@ export function verifyUnsignedProvenance(
   const digest = row.subject?.[0]?.digest?.sha256;
   if (typeof digest !== "string" || !digest || (expectedSbomSha256 && digest !== expectedSbomSha256)) {
     return { ok: false, signed: false, evidence: "SBOM digest mismatch or missing" };
+  }
+  const commit = row.predicate?.buildDefinition?.externalParameters?.commit;
+  if (expectedCommit && commit !== expectedCommit) {
+    return {
+      ok: false,
+      signed: false,
+      evidence: "provenance commit does not match expected SHA",
+    };
   }
   return {
     ok: true,

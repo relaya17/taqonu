@@ -272,6 +272,127 @@ export function listWorkspaceTree(
   };
 }
 
+export interface WorkspaceSearchHit {
+  readonly path: string;
+  readonly line: number;
+  readonly preview: string;
+}
+
+const SEARCH_MAX_MATCHES = 40;
+const SEARCH_MAX_FILES = 400;
+const SEARCH_MAX_MS = 1_500;
+const SEARCH_PREVIEW = 120;
+const SECRETISH =
+  /\b(AKIA[0-9A-Z]{16}|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|AWS_SECRET|PASSWORD\s*=)\b/i;
+
+function isEnvSecretFile(name: string): boolean {
+  return name === ".env" || /^\.env\./.test(name);
+}
+
+/**
+ * Bounded workspace search for Studio. Path-contained, budgeted, no symlink
+ * follow, no .env contents. Does not replace Sentinel.
+ */
+export function searchWorkspaceFiles(
+  workspaceRoot: string,
+  query: string,
+  opts?: {
+    readonly maxMatches?: number;
+    readonly maxFiles?: number;
+    readonly maxMs?: number;
+  },
+): {
+  readonly query: string;
+  readonly items: readonly WorkspaceSearchHit[];
+  readonly truncated: boolean;
+  readonly scannedFiles: number;
+} {
+  const needle = query.trim().slice(0, 80).toLowerCase();
+  if (needle.length < 2) {
+    return { query: needle, items: [], truncated: false, scannedFiles: 0 };
+  }
+  const root = resolve(workspaceRoot);
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    throw new Error(`workspaceRoot not found: ${root}`);
+  }
+  const maxMatches = opts?.maxMatches ?? SEARCH_MAX_MATCHES;
+  const maxFiles = opts?.maxFiles ?? SEARCH_MAX_FILES;
+  const deadline = Date.now() + (opts?.maxMs ?? SEARCH_MAX_MS);
+  const items: WorkspaceSearchHit[] = [];
+  let scannedFiles = 0;
+  let truncated = false;
+
+  function walk(dir: string, depth: number): void {
+    if (truncated || depth > MAX_DEPTH || Date.now() > deadline) {
+      truncated = true;
+      return;
+    }
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (truncated) return;
+      if (SKIP_DIRS.has(name)) continue;
+      if (name.startsWith(".") && name !== ".env.example") continue;
+      const full = join(dir, name);
+      let st;
+      try {
+        st = lstatSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isSymbolicLink()) continue;
+      if (st.isDirectory()) {
+        walk(full, depth + 1);
+        continue;
+      }
+      if (!st.isFile()) continue;
+      if (isEnvSecretFile(name)) continue;
+      if (scannedFiles >= maxFiles || Date.now() > deadline) {
+        truncated = true;
+        return;
+      }
+      if (!TEXT_EXT.test(name) && st.size > 64_000) continue;
+      scannedFiles += 1;
+      const rel = toPosix(relative(root, full));
+      if (rel.toLowerCase().includes(needle) && items.length < maxMatches) {
+        items.push({ path: rel, line: 1, preview: rel });
+      }
+      if (st.size > MAX_FILE_BYTES) continue;
+      let text: string;
+      try {
+        const buf = readFileSync(full);
+        if (!isProbablyText(name, buf)) continue;
+        text = buf.toString("utf8");
+      } catch {
+        continue;
+      }
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i += 1) {
+        if (items.length >= maxMatches) {
+          truncated = true;
+          return;
+        }
+        const line = lines[i] ?? "";
+        if (!line.toLowerCase().includes(needle)) continue;
+        items.push({
+          path: rel,
+          line: i + 1,
+          preview: SECRETISH.test(line)
+            ? "[redacted]"
+            : line.trim().slice(0, SEARCH_PREVIEW),
+        });
+      }
+    }
+  }
+
+  walk(root, 0);
+  return { query: needle, items, truncated, scannedFiles };
+}
+
 /** Read a single text file under the workspace — never writes. */
 export function readWorkspaceFile(
   workspaceRoot: string,

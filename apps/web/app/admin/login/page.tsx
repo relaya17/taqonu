@@ -16,7 +16,7 @@ import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
-  const [password, setPassword] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.password : "");
+  const [password, setPassword] = useState("");
 
   const login = useMutation({
     mutationFn: () =>
@@ -75,7 +75,7 @@ export default function AdminLoginPage() {
           </Typography>
           {isDevLoginPrefill ? (
             <Alert severity="info" sx={{ mt: 2, textAlign: "start" }}>
-              מצב פיתוח — {DEV_CREDENTIALS.email} · {DEV_CREDENTIALS.password}
+              מצב פיתוח — {DEV_CREDENTIALS.email}
             </Alert>
           ) : null}
         </Box>

@@ -9,6 +9,7 @@ import { authorizeEntityAction } from "@atlas/agent-core";
 import { osStore } from "../store/os-store.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js"; // POST still needs this
+import { assertProjectWriteAccess } from "../services/project-access.js";
 
 /**
  * Tenant-scoped evidence list. POST stamps the session owner. Other
@@ -50,8 +51,11 @@ export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void
 
   /**
    * Tenant-scoped evidence creation (P0 fix): stamps the record with the
-   * session owner's ID, not a shared stub. This closes the write-side of
-   * the cross-tenant leak.
+   * session owner's ID, not a shared stub. When `projectId` is present the
+   * write uses the same `assertProjectWriteAccess` gate as SARIF / DB /
+   * deploy feeds and provider observe (admin/control-plane bypass; unowned
+   * projects are claimed). Project-less POSTs stay allowed and are not
+   * stored under a project key.
    */
   app.post("/api/v1/evidence", async (request, reply) => {
     await requireSignedInForWrite(app, request);
@@ -78,6 +82,9 @@ export async function registerEvidenceRoutes(app: FastifyInstance): Promise<void
     }
 
     const body = createEvidenceRecordSchema.parse(request.body);
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    }
     const now = new Date().toISOString();
     const record = parseEvidenceRecord({
       id: crypto.randomUUID(),

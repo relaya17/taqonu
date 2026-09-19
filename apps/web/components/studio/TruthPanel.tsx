@@ -18,6 +18,7 @@ import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { useProjectQueryParam } from "@/lib/use-project-query";
+import { selectStudioTopTruthFinding } from "@/lib/studio-truth-finding";
 
 interface ProjectItem {
   id: string;
@@ -194,6 +195,8 @@ export function TruthPanel({
           } | null;
         };
         error?: string | null;
+        topFinding?: Finding | null;
+        lastFindings?: Finding[];
       }>(`/api/v1/projects/${activeId}/observer`),
   });
 
@@ -293,35 +296,10 @@ export function TruthPanel({
   }, [result, graph.data, p1Signals]);
 
   const topFinding =
-    result?.findings
-      .filter((f) => {
-        if (f.id.startsWith("behavior-")) return true;
-        if (f.id.startsWith("adr-conflict-")) return true;
-        if (f.id.startsWith("sentinel:") && f.riskBand !== "LOW") return true;
-        if (f.id === "sentinel-posture" && f.riskBand !== "LOW") return true;
-        if (f.id === "security-graph" && f.riskBand !== "LOW") return true;
-        if (f.id === "production-intelligence" && f.riskBand !== "LOW") return true;
-        if (f.id === "production-deploy" && f.riskBand !== "LOW") return true;
-        if (f.category === "BUG" && f.riskBand !== "LOW") return true;
-        if (f.category === "SECURITY" && f.riskBand !== "LOW") return true;
-        return false;
-      })
-      .sort((a, b) => {
-        const rank = (x: string) =>
-          x === "CRITICAL" ? 4 : x === "HIGH" ? 3 : x === "MEDIUM" ? 2 : 1;
-        const weight = (id: string) =>
-          id.startsWith("adr-conflict-")
-            ? 4
-            : id.startsWith("sentinel:")
-              ? 3
-              : id.startsWith("behavior-")
-                ? 2
-                : id.startsWith("bug-")
-                  ? 1
-                  : 0;
-        const band = rank(b.riskBand) - rank(a.riskBand);
-        return band !== 0 ? band : weight(b.id) - weight(a.id);
-      })[0] ?? null;
+    selectStudioTopTruthFinding(result?.findings ?? []) ??
+    state.data?.topFinding ??
+    selectStudioTopTruthFinding(state.data?.lastFindings ?? []) ??
+    null;
 
   const critical = counters?.meaningfulRisks ?? 0;
   const drifts = result?.behaviorDiffs.length ?? 0;
