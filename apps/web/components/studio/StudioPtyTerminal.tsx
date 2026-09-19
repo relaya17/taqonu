@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
   Alert,
   Box,
@@ -70,6 +70,10 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [termHeight, setTermHeight] = useState(360);
+  const reconnectingRef = useRef(new Set<string>());
+  const failedReconnectRef = useRef(new Set<string>());
+  const dragRef = useRef<{ y: number; h: number } | null>(null);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -182,12 +186,19 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
         parent: hostRef.current,
         sendInput: (sessionId, data) => sendInputRef.current(sessionId, data),
         onCopy: (text) => {
-          void navigator.clipboard.writeText(text);
+          void navigator.clipboard.writeText(text).catch(() => {
+            setError(t("clipboardDenied"));
+          });
         },
         onPaste: (sessionId) => {
-          void navigator.clipboard.readText().then((text) => {
-            if (text) void sendInputRef.current(sessionId, text);
-          });
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text) void sendInputRef.current(sessionId, text);
+            })
+            .catch(() => {
+              setError(t("clipboardDenied"));
+            });
         },
         factory: {
           create() {
@@ -246,6 +257,21 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
       })
       .catch((err: Error) => setError(err.message));
   }, [projectId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    for (const row of sessions) {
+      if (
+        row.ticket ||
+        row.snapshot.status !== "running" ||
+        reconnectingRef.current.has(row.snapshot.sessionId) ||
+        failedReconnectRef.current.has(row.snapshot.sessionId)
+      ) {
+        continue;
+      }
+      void reconnectAndAttach(row);
+    }
+  }, [ready, sessions]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -331,14 +357,107 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
     void sendInput(sessionId, "\u0003").catch((err: Error) => setError(err.message));
   }
 
+  function sendEof() {
+    const sessionId = activeIdRef.current;
+    if (!sessionId) return;
+    void sendInput(sessionId, "\u0004").catch((err: Error) => setError(err.message));
+  }
+
   function clearScreen() {
     if (activeId) registryRef.current?.clear(activeId);
   }
 
+  async function reconnectAndAttach(row: SessionHandle) {
+    const sessionId = row.snapshot.sessionId;
+    const registry = registryRef.current;
+    if (!registry) return;
+    registry.create(sessionId);
+    registry.activate(sessionId);
+    setActiveId(sessionId);
+    if (row.ticket) {
+      attachStream(row);
+      return;
+    }
+    if (reconnectingRef.current.has(sessionId)) return;
+    reconnectingRef.current.add(sessionId);
+    setBusy(true);
+    try {
+      const result = await apiPost<StudioPtyCreated>(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/studio/pty/sessions/${sessionId}/reconnect`,
+        {},
+      );
+      const handle: SessionHandle = {
+        snapshot: result.session,
+        ticket: result.ticket,
+        streamPath: result.streamPath,
+        eventsPath:
+          result.eventsPath || result.streamPath.replace(/\/stream$/, "/events"),
+      };
+      setSessions((rows) =>
+        rows.map((current) => (current.snapshot.sessionId === sessionId ? handle : current)),
+      );
+      attachStream(handle);
+      setStatus("running");
+      failedReconnectRef.current.delete(sessionId);
+    } catch (err) {
+      failedReconnectRef.current.add(sessionId);
+      setError(err instanceof Error ? err.message : t("error"));
+    } finally {
+      reconnectingRef.current.delete(sessionId);
+      setBusy(false);
+    }
+  }
+
+  async function copySelection() {
+    const text = registryRef.current?.get(activeId ?? "")?.term.getSelection?.() ?? "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setError(t("clipboardDenied"));
+    }
+  }
+
+  async function pasteClipboard() {
+    const sessionId = activeIdRef.current;
+    if (!sessionId) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) await sendInput(sessionId, text);
+    } catch {
+      setError(t("clipboardDenied"));
+    }
+  }
+
   function selectSession(row: SessionHandle) {
-    setActiveId(row.snapshot.sessionId);
-    registryRef.current?.activate(row.snapshot.sessionId);
-    if (row.ticket) attachStream(row);
+    failedReconnectRef.current.delete(row.snapshot.sessionId);
+    void reconnectAndAttach(row);
+  }
+
+  function onResizePointerDown(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { y: event.clientY, h: termHeight };
+  }
+
+  function onResizePointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return;
+    const next = Math.min(720, Math.max(160, dragRef.current.h + (event.clientY - dragRef.current.y)));
+    setTermHeight(next);
+  }
+
+  function onResizePointerUp() {
+    dragRef.current = null;
+  }
+
+  function onResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setTermHeight((height) => Math.max(160, height - 24));
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setTermHeight((height) => Math.min(720, height + 24));
+    }
   }
 
   const active = sessions.find((row) => row.snapshot.sessionId === activeId);
@@ -376,6 +495,15 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
         </Button>
         <Button variant="outlined" disabled={!activeId} onClick={interrupt} aria-label={t("interrupt")}>
           {t("interrupt")}
+        </Button>
+        <Button variant="outlined" disabled={!activeId} onClick={sendEof} aria-label={t("eof")}>
+          {t("eof")}
+        </Button>
+        <Button variant="outlined" disabled={!activeId} onClick={() => void copySelection()} aria-label={t("copy")}>
+          {t("copy")}
+        </Button>
+        <Button variant="outlined" disabled={!activeId} onClick={() => void pasteClipboard()} aria-label={t("paste")}>
+          {t("paste")}
         </Button>
         <Button variant="outlined" onClick={clearScreen} aria-label={t("clear")}>
           {t("clear")}
@@ -425,15 +553,40 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
         tabIndex={0}
         onClick={() => registryRef.current?.focusActive()}
         sx={{
-          height: { xs: 280, md: 420 },
+          height: { xs: Math.min(termHeight, 280), md: termHeight },
           bgcolor: "#0E1014",
           border: "1px solid rgba(232,234,238,0.12)",
-          borderRadius: 2,
+          borderRadius: "8px 8px 0 0",
           overflow: "hidden",
           p: 0.5,
           position: "relative",
           "& .xterm": { height: "100%" },
           "& .xterm-viewport": { overflowY: "auto" },
+        }}
+      />
+      <Box
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t("resize")}
+        aria-valuemin={160}
+        aria-valuemax={720}
+        aria-valuenow={termHeight}
+        tabIndex={0}
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={onResizePointerUp}
+        onKeyDown={onResizeKeyDown}
+        sx={{
+          height: 10,
+          cursor: "ns-resize",
+          bgcolor: "rgba(232,234,238,0.12)",
+          borderRadius: "0 0 8px 8px",
+          border: "1px solid rgba(232,234,238,0.12)",
+          borderTop: "none",
+          "&:focus-visible": {
+            outline: "2px solid #7C5CFF",
+            outlineOffset: 2,
+          },
         }}
       />
     </Stack>

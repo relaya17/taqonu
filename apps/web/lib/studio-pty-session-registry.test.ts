@@ -12,6 +12,8 @@ class MemoryTerm implements PtyTerminalSurface {
   focused = false;
   opened = false;
   input: ((data: string) => void) | undefined;
+  selection = "";
+  keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
 
   write(data: string): void {
     this.bufferText += data;
@@ -36,6 +38,15 @@ class MemoryTerm implements PtyTerminalSurface {
         this.input = undefined;
       },
     };
+  }
+  attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void {
+    this.keyHandler = handler;
+  }
+  hasSelection(): boolean {
+    return this.selection.length > 0;
+  }
+  getSelection(): string {
+    return this.selection;
   }
   type(data: string): void {
     this.input?.(data);
@@ -210,5 +221,44 @@ describe("PtySessionTerminalRegistry session isolation", () => {
     registry.clear("s2");
     expect(registry.inspect("s1")?.buffer).toBe("ONE");
     expect(registry.inspect("s2")?.buffer).toBe("");
+  });
+
+  it("routes Ctrl+C copy and Ctrl+V paste without sending those chords to the PTY", () => {
+    const copied: string[] = [];
+    const pasted: string[] = [];
+    const parent = fakeParent();
+    const created: MemoryTerm[] = [];
+    const inputs: Array<{ sessionId: string; data: string }> = [];
+    const registry = createPtySessionTerminalRegistry({
+      parent,
+      createHost: (sessionId) => fakeHost(sessionId),
+      sendInput: (sessionId, data) => {
+        inputs.push({ sessionId, data });
+      },
+      onCopy: (text) => copied.push(text),
+      onPaste: (sessionId) => pasted.push(sessionId),
+      factory: {
+        create() {
+          const term = new MemoryTerm();
+          created.push(term);
+          return { term, fit: { fit() {} } };
+        },
+      },
+    });
+    registry.create("s1");
+    const term = created[0];
+    if (!term) throw new Error("expected terminal");
+    term.selection = "copied-text";
+    const copyConsumed = term.keyHandler?.(
+      { ctrlKey: true, metaKey: false, key: "c" } as KeyboardEvent,
+    );
+    const pasteConsumed = term.keyHandler?.(
+      { ctrlKey: true, metaKey: false, key: "v" } as KeyboardEvent,
+    );
+    expect(copyConsumed).toBe(false);
+    expect(pasteConsumed).toBe(false);
+    expect(copied).toEqual(["copied-text"]);
+    expect(pasted).toEqual(["s1"]);
+    expect(inputs).toEqual([]);
   });
 });

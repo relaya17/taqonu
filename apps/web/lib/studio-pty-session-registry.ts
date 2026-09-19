@@ -5,8 +5,10 @@
  * shows/hides hosts; it does not share, clear, or mix scrollback.
  * Closing one session disposes only that session's terminal.
  *
- * Reconnect is intentionally out of scope here: ticketless listed sessions
- * are not attached. start-cwd is not a filesystem jail.
+ * Reload/unmount abort the SSE stream only. The backend process stays
+ * running until Close, idle timeout, or lifetime timeout. Reattach uses
+ * cookie-authenticated POST .../reconnect, which rotates the stream ticket.
+ * start-cwd is not a filesystem jail.
  */
 
 export interface PtyTerminalSurface {

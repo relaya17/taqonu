@@ -377,7 +377,14 @@
       "empty": "Open a terminal to start an interactive shell in the project workspace.",
       "terminal": "Interactive terminal",
       "error": "Terminal failed",
-      "streamError": "Terminal stream failed"
+      "streamError": "Terminal stream failed",
+      "reconnect": "Reconnect",
+      "reconnecting": "Reconnecting…",
+      "eof": "EOF",
+      "copy": "Copy",
+      "paste": "Paste",
+      "resize": "Resize terminal",
+      "clipboardDenied": "Clipboard is blocked in this browser context. Use the Copy or Paste button, or type in the terminal."
     },
     "workflow": {
       "title": "Propose → review → approve → apply → verify",

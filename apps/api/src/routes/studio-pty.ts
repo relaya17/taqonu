@@ -21,6 +21,7 @@ import {
   interruptStudioPty,
   isAgentPtyRequest,
   listStudioPtySessions,
+  reconnectStudioPty,
   resizeStudioPty,
   studioPtyLimits,
   subscribeStudioPtyByTicket,
@@ -63,6 +64,18 @@ function linkedWorkspace(projectId: string): string {
 
 function headerMap(request: FastifyRequest): Record<string, unknown> {
   return request.headers as Record<string, unknown>;
+}
+
+function assertSessionProject(sessionId: string, projectId: string): void {
+  const existing = getStudioPtySession(sessionId);
+  if (!existing) {
+    throw new AtlasError("NOT_FOUND", "Terminal session is not running.", { statusCode: 404 });
+  }
+  if (existing.snapshot.projectId !== projectId) {
+    throw new AtlasError("FORBIDDEN", "Terminal session belongs to another project.", {
+      statusCode: 403,
+    });
+  }
 }
 
 function auditPty(
@@ -126,11 +139,34 @@ export async function registerStudioPtyRoutes(app: FastifyInstance): Promise<voi
     };
   });
 
+  app.post("/api/v1/projects/:id/studio/pty/sessions/:sessionId/reconnect", async (request) => {
+    const projectId = uuidSchema.parse((request.params as { id: string }).id);
+    const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
+    if (isAgentPtyRequest(headerMap(request))) denyAgentPty();
+    const user = await assertProjectWriteAccess(app, request, projectId);
+    const reconnected = reconnectStudioPty({
+      sessionId,
+      ownerId: user.id,
+      projectId,
+    });
+    auditPty("studio.pty.reconnected", projectId, user.id, {
+      sessionId,
+      pid: reconnected.snapshot.pid,
+    });
+    return {
+      session: reconnected.snapshot,
+      ticket: reconnected.ticket,
+      streamPath: `/api/v1/projects/${projectId}/studio/pty/sessions/${sessionId}/stream`,
+      eventsPath: `/api/v1/projects/${projectId}/studio/pty/sessions/${sessionId}/events`,
+    };
+  });
+
   app.post("/api/v1/projects/:id/studio/pty/sessions/:sessionId/input", async (request) => {
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     if (isAgentPtyRequest(headerMap(request))) denyAgentPty();
     const user = await assertProjectWriteAccess(app, request, projectId);
+    assertSessionProject(sessionId, projectId);
     const body = inputBodySchema.parse(request.body ?? {});
     writeStudioPty(sessionId, user.id, body.data);
     return { ok: true as const };
@@ -141,6 +177,7 @@ export async function registerStudioPtyRoutes(app: FastifyInstance): Promise<voi
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     if (isAgentPtyRequest(headerMap(request))) denyAgentPty();
     const user = await assertProjectWriteAccess(app, request, projectId);
+    assertSessionProject(sessionId, projectId);
     interruptStudioPty(sessionId, user.id);
     return { ok: true as const };
   });
@@ -150,6 +187,7 @@ export async function registerStudioPtyRoutes(app: FastifyInstance): Promise<voi
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     if (isAgentPtyRequest(headerMap(request))) denyAgentPty();
     const user = await assertProjectWriteAccess(app, request, projectId);
+    assertSessionProject(sessionId, projectId);
     eofStudioPty(sessionId, user.id);
     return { ok: true as const };
   });
@@ -159,6 +197,7 @@ export async function registerStudioPtyRoutes(app: FastifyInstance): Promise<voi
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     if (isAgentPtyRequest(headerMap(request))) denyAgentPty();
     const user = await assertProjectWriteAccess(app, request, projectId);
+    assertSessionProject(sessionId, projectId);
     const body = resizeBodySchema.parse(request.body ?? {});
     return { session: resizeStudioPty(sessionId, user.id, body.cols, body.rows) };
   });
@@ -168,6 +207,7 @@ export async function registerStudioPtyRoutes(app: FastifyInstance): Promise<voi
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     if (isAgentPtyRequest(headerMap(request))) denyAgentPty();
     const user = await assertProjectWriteAccess(app, request, projectId);
+    assertSessionProject(sessionId, projectId);
     const session = closeStudioPty(sessionId, user.id);
     auditPty("studio.pty.closed", projectId, user.id, {
       sessionId,

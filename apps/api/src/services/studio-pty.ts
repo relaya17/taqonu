@@ -5,6 +5,15 @@
  * This module is never imported by ask-agent / CODE_ENGINEER / governed
  * commandId execution. Callers send no argv. The Agent cannot inherit a
  * session ticket. Transcripts are not persisted and are not sent to Atlas.
+ *
+ * Lifecycle (explicit, tested):
+ * - SSE/WS disconnect, component unmount, page reload → unsubscribe only.
+ *   The process stays running so a cookie-authenticated reconnect can attach
+ *   without spawning a duplicate shell.
+ * - Reconnect rotates the stream ticket. List never returns tickets.
+ *   Ownership is user + project. Foreign user / other project is denied.
+ * - Explicit Close, idle timeout, and lifetime timeout kill the process.
+ * - start-cwd is the linked workspaceRoot, not a filesystem jail.
  */
 import { spawn as nodePtySpawn, type IPty } from "node-pty";
 import { existsSync, realpathSync } from "node:fs";
@@ -25,6 +34,21 @@ const MAX_INPUT_BYTES = 32_768;
 const SCROLLBACK_BYTES = 64 * 1024;
 const IDLE_MS = 30 * 60 * 1000;
 const MAX_LIFETIME_MS = 4 * 60 * 60 * 1000;
+
+/** Keep-vs-kill policy. SSE/reload must not silently destroy a reconnectable session. */
+export const STUDIO_PTY_DISCONNECT_POLICY = {
+  browserDisconnect: "keep-process",
+  sseDisconnect: "unsubscribe-only",
+  componentUnmount: "unsubscribe-only",
+  pageReload: "keep-process",
+  explicitClose: "kill-process",
+  idleTimeout: "kill-process",
+  lifetimeTimeout: "kill-process",
+  persistTranscript: false,
+} as const;
+
+let idleMs = IDLE_MS;
+let lifetimeMs = MAX_LIFETIME_MS;
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 32;
 
@@ -111,7 +135,7 @@ interface InternalSession {
     createdAt: string;
     lastActivityAt: string;
   };
-  readonly ticket: string;
+  ticket: string;
   readonly proc: StudioPtyProcess;
   scrollback: string;
   idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -129,10 +153,20 @@ export function resetStudioPtyForTests(): void {
   }
   sessions.clear();
   spawner = spawnNodePty;
+  idleMs = IDLE_MS;
+  lifetimeMs = MAX_LIFETIME_MS;
 }
 
 export function setStudioPtySpawnerForTests(next: StudioPtySpawner | null): void {
   spawner = next ?? spawnNodePty;
+}
+
+export function setStudioPtyTimeoutsForTests(next: {
+  readonly idleMs?: number;
+  readonly lifetimeMs?: number;
+} | null): void {
+  idleMs = next?.idleMs ?? IDLE_MS;
+  lifetimeMs = next?.lifetimeMs ?? MAX_LIFETIME_MS;
 }
 
 export function isAgentPtyRequest(headers: Record<string, unknown>): boolean {
@@ -322,7 +356,7 @@ function touch(session: InternalSession): void {
   if (session.idleTimer) clearTimeout(session.idleTimer);
   session.idleTimer = setTimeout(() => {
     destroySession(session, "killed");
-  }, IDLE_MS);
+  }, idleMs);
 }
 
 function appendScrollback(session: InternalSession, chunk: string): void {
@@ -430,7 +464,7 @@ export function createStudioPtySession(input: CreateStudioPtyInput): {
   });
   session.lifetimeTimer = setTimeout(() => {
     destroySession(session, "killed");
-  }, MAX_LIFETIME_MS);
+  }, lifetimeMs);
   touch(session);
   sessions.set(sessionId, session);
   return { snapshot: { ...session.snapshot }, ticket };
@@ -450,6 +484,22 @@ export function assertPtyTicket(session: InternalSession, ticket: string): void 
   if (!ticket || ticket !== session.ticket) {
     throw new AtlasError("FORBIDDEN", "Invalid terminal stream ticket.", { statusCode: 403 });
   }
+}
+
+export function reconnectStudioPty(input: {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly projectId: string;
+}): { snapshot: StudioPtySnapshot; ticket: string } {
+  const session = requireOwnedRunning(input.sessionId, input.ownerId);
+  if (session.snapshot.projectId !== input.projectId) {
+    throw new AtlasError("FORBIDDEN", "Terminal session belongs to another project.", {
+      statusCode: 403,
+    });
+  }
+  session.ticket = randomBytes(24).toString("base64url");
+  touch(session);
+  return { snapshot: { ...session.snapshot }, ticket: session.ticket };
 }
 
 export function writeStudioPty(sessionId: string, ownerId: string, data: string): void {
@@ -566,14 +616,18 @@ export function studioPtyLimits(): {
   readonly maxSessionsGlobal: number;
   readonly idleMs: number;
   readonly maxLifetimeMs: number;
+  readonly maxInputBytes: number;
+  readonly maxScrollbackBytes: number;
   readonly persistTranscript: false;
   readonly agentAccess: false;
 } {
   return {
     maxSessionsPerProject: MAX_SESSIONS_PER_PROJECT,
     maxSessionsGlobal: MAX_SESSIONS_GLOBAL,
-    idleMs: IDLE_MS,
-    maxLifetimeMs: MAX_LIFETIME_MS,
+    idleMs: idleMs,
+    maxLifetimeMs: lifetimeMs,
+    maxInputBytes: MAX_INPUT_BYTES,
+    maxScrollbackBytes: SCROLLBACK_BYTES,
     persistTranscript: false,
     agentAccess: false,
   };

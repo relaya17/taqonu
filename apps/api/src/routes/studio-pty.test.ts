@@ -230,4 +230,58 @@ describe("Studio PTY routes", () => {
     });
     expect([403, 404]).toContain(stolen.statusCode);
   });
+
+  it("reconnects with a rotated ticket and rejects Agent / stranger reconnect", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "atlas-pty-re-"));
+    dirs.push(workspace);
+    writeFileSync(join(workspace, "README.md"), "# reconnect\n");
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspace);
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/pty/sessions`,
+      payload: {},
+    });
+    expect(created.statusCode).toBe(200);
+    const sessionId = created.json().session.sessionId as string;
+    const firstTicket = created.json().ticket as string;
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${projectId}/studio/pty`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().sessions[0].ticket).toBeUndefined();
+
+    const agent = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/pty/sessions/${sessionId}/reconnect`,
+      headers: { "x-atlas-actor-kind": "AGENT" },
+      payload: {},
+    });
+    expect(agent.statusCode).toBe(403);
+
+    const reconnected = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/pty/sessions/${sessionId}/reconnect`,
+      payload: {},
+    });
+    expect(reconnected.statusCode).toBe(200);
+    expect(reconnected.json().ticket).not.toBe(firstTicket);
+    expect(reconnected.json().session.pid).toBe(created.json().session.pid);
+
+    const staleTicket = await app.inject({
+      method: "GET",
+      url: `${created.json().eventsPath}?ticket=${firstTicket}`,
+    });
+    expect(staleTicket.statusCode).toBe(403);
+
+    getRequestUser.mockResolvedValue(stranger);
+    const stolen = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/pty/sessions/${sessionId}/reconnect`,
+      payload: {},
+    });
+    expect([403, 404]).toContain(stolen.statusCode);
+  });
 });

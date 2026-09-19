@@ -87,8 +87,9 @@ Human-only Studio PTY is separate from governed `commandId` execution.
 
 - Backend: `node-pty` ConPTY on Windows; Fastify WebSocket plus ticketed SSE (`/events`) for browsers that block cross-origin WS; session tickets; start-cwd = linked workspaceRoot (not a filesystem jail; a real shell can `cd` out).
 - Frontend: xterm.js (not a textarea). Each PTY session has its own Terminal instance, SSE stream, and scrollback. Output over SSE/fetch; input over REST. Agent cannot open/inherit a PTY (`x-atlas-actor-kind: AGENT` denied). Transcripts are not stored in Atlas.
-- Reconnect is **MISSING**: sessions are in-memory; the list API does not return tickets.
-- Governed Run tab is unchanged (RECORD.EXECUTE + SoD). LSP/debugger remain out of scope.
+- Reconnect: cookie-authenticated `POST .../sessions/:id/reconnect` rotates the stream ticket. List still omits tickets. SSE/reload/unmount unsubscribe only; Close/idle/lifetime kill the process. No raw transcript persistence.
+- Visible resize handle + FitAddon + backend PTY resize. Copy/Paste buttons for clipboard when the document is unfocused. EOF writes EOT (`0x04`); it does not Close the session.
+- Governed Run tab is unchanged (RECORD.EXECUTE + SoD). LSP/debugger remain out of scope until implemented as separate local capabilities.
 
 Still PARTIAL / NOT PROVEN: cloud dual-write for internal `addMemory`, full keyboard a11y, production VM/signing/DR.
 

@@ -163,6 +163,9 @@ describe("studio level-up i18n", () => {
       expect(locale.studio.searchTruncated.length).toBeGreaterThan(0);
       expect(locale.studio.run.stderr.length).toBeGreaterThan(0);
       expect(locale.studio.ptyTerminal.new.length).toBeGreaterThan(0);
+      expect(locale.studio.ptyTerminal.reconnect.length).toBeGreaterThan(0);
+      expect(locale.studio.ptyTerminal.resize.length).toBeGreaterThan(0);
+      expect(locale.studio.ptyTerminal.clipboardDenied.length).toBeGreaterThan(0);
       expect(locale.studio.tab.pty.length).toBeGreaterThan(0);
       expect(locale.studio.run.timedOut.length).toBeGreaterThan(0);
       expect(locale.studio.git.exitCode.length).toBeGreaterThan(0);
