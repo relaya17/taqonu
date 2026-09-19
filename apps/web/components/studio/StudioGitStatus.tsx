@@ -13,7 +13,15 @@ import {
   parseGitPorcelain,
 } from "@/lib/studio-git-status";
 
-type GitCommandId = "git.status" | "git.branch" | "git.diff";
+type GitCommandId =
+  | "git.status"
+  | "git.branch"
+  | "git.diff"
+  | "git.log"
+  | "git.blame"
+  | "git.add"
+  | "git.unstage"
+  | "git.restore";
 
 interface ExecutionResult {
   status: string;
@@ -165,6 +173,14 @@ export function StudioGitStatus({
           aria-label={t("requestDiff")}
         >
           {t("requestDiff")}
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!projectId || requestCommand.isPending}
+          onClick={() => requestCommand.mutate("git.log")}
+        >
+          git.log
         </Button>
       </Stack>
       <Typography variant="caption" sx={{ display: "block", mt: 0.5, color: "#8B9099" }}>

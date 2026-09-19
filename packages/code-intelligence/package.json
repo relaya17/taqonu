@@ -19,7 +19,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@atlas/shared": "workspace:*"
+    "@atlas/shared": "workspace:*",
+    "typescript": "^5.8.2"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

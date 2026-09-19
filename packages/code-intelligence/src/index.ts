@@ -12,3 +12,5 @@ export * from "./truth-remediation.js";
 export * from "./legal-media-review.js";
 export * from "./sarif-ingest.js";
 export * from "./workspace-browser.js";
+export * from "./typescript-service.js";
+export * from "./workspace-replace.js";

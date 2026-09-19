@@ -1,13 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { resolveUnderWorkspace } from "@atlas/code-intelligence";
 
 /**
  * Governed Studio command catalog. Callers send a commandId — never argv.
  * Spawn uses shell:false. Unknown ids and extra args are denied.
  */
-export type GovernedCommandKind = "terminal" | "test";
+export type GovernedCommandKind = "terminal" | "test" | "build";
 
 export interface GovernedCommandSpec {
   readonly id: string;
@@ -16,7 +17,8 @@ export interface GovernedCommandSpec {
   readonly args: readonly string[];
   readonly timeoutMs: number;
   readonly description: string;
-  readonly mutatesWorkspace: false;
+  readonly mutatesWorkspace: boolean;
+  readonly pathArg?: "required" | "optional";
 }
 
 export const GOVERNED_COMMANDS: readonly GovernedCommandSpec[] = [
@@ -57,14 +59,73 @@ export const GOVERNED_COMMANDS: readonly GovernedCommandSpec[] = [
     mutatesWorkspace: false,
   },
   {
+    id: "git.log",
+    kind: "terminal",
+    program: "git",
+    args: ["log", "-n", "30", "--oneline", "--decorate", "--no-color"],
+    timeoutMs: 15_000,
+    description: "Read-only recent history. Never checks out, commits, or pushes.",
+    mutatesWorkspace: false,
+  },
+  {
+    id: "git.blame",
+    kind: "terminal",
+    program: "git",
+    args: ["blame", "--line-porcelain", "--"],
+    timeoutMs: 20_000,
+    description: "Read-only blame for one workspace-relative file. Never mutates.",
+    mutatesWorkspace: false,
+    pathArg: "required",
+  },
+  {
+    id: "git.add",
+    kind: "terminal",
+    program: "git",
+    args: ["add", "--"],
+    timeoutMs: 15_000,
+    description: "Stage one workspace-relative file. RECORD.EXECUTE + SoD. Never commits.",
+    mutatesWorkspace: true,
+    pathArg: "required",
+  },
+  {
+    id: "git.unstage",
+    kind: "terminal",
+    program: "git",
+    args: ["restore", "--staged", "--"],
+    timeoutMs: 15_000,
+    description: "Unstage one workspace-relative file. RECORD.EXECUTE + SoD. Never commits.",
+    mutatesWorkspace: true,
+    pathArg: "required",
+  },
+  {
+    id: "git.restore",
+    kind: "terminal",
+    program: "git",
+    args: ["restore", "--"],
+    timeoutMs: 15_000,
+    description: "Restore one workspace-relative file from HEAD. RECORD.EXECUTE + SoD.",
+    mutatesWorkspace: true,
+    pathArg: "required",
+  },
+  {
+    id: "workspace.build",
+    kind: "build",
+    program: "node",
+    args: ["run", "build"],
+    timeoutMs: 120_000,
+    description: "Run the workspace package.json build script via npm/pnpm. No arbitrary shell.",
+    mutatesWorkspace: false,
+  },
+  {
     id: "vitest.run",
     kind: "test",
     program: "node",
     args: ["run"],
     timeoutMs: 120_000,
     description:
-      "Run the workspace-local Vitest binary if it exists under node_modules. UNAVAILABLE otherwise — never PASS.",
+      "Run the workspace-local Vitest binary if it exists under node_modules. UNAVAILABLE otherwise — never PASS. Optional relativePath runs one file.",
     mutatesWorkspace: false,
+    pathArg: "optional",
   },
 ] as const;
 
@@ -209,9 +270,51 @@ function assertInsideWorkspace(workspaceRoot: string, candidate: string): boolea
   return candidateReal === rootReal || candidateReal.startsWith(prefix);
 }
 
+function resolveNpmProgram(): string | null {
+  const pathEnv = process.env.PATH ?? "";
+  const names =
+    process.platform === "win32"
+      ? ["npm.cmd", "npm.exe", "pnpm.cmd", "pnpm.exe", "npm", "pnpm"]
+      : ["pnpm", "npm"];
+  for (const dir of pathEnv.split(delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+function resolvePathArg(
+  workspaceRoot: string,
+  relativePath: string | undefined,
+  spec: GovernedCommandSpec,
+): { path: string } | { denial: GovernedCommandDenial; reason: string } | { path: null } {
+  if (!spec.pathArg) return { path: null };
+  if (!relativePath?.trim()) {
+    if (spec.pathArg === "optional") return { path: null };
+    return { denial: "UNAVAILABLE", reason: "This command requires a workspace-relative path." };
+  }
+  const rel = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!rel || rel.includes("\0") || rel.split("/").includes("..")) {
+    return { denial: "WORKSPACE_ESCAPE", reason: "Path argument escaped the project workspace." };
+  }
+  try {
+    resolveUnderWorkspace(workspaceRoot, rel);
+  } catch {
+    return { denial: "WORKSPACE_ESCAPE", reason: "Path argument escaped the project workspace." };
+  }
+  if (UNSAFE_TOKEN.test(rel)) {
+    return { denial: "UNKNOWN_COMMAND", reason: "Path argument failed safety scan." };
+  }
+  return { path: rel };
+}
+
 function resolveGitArgv(
   spec: GovernedCommandSpec,
   workspaceRoot: string,
+  relativePath: string | null,
 ): { program: string; args: string[] } | { denial: GovernedCommandDenial; reason: string } {
   const gitDir = join(workspaceRoot, ".git");
   if (!existsSync(gitDir)) {
@@ -227,12 +330,50 @@ function resolveGitArgv(
       reason: "git is not available on the API host PATH.",
     };
   }
-  return { program: git, args: [...spec.args] };
+  const args = [...spec.args];
+  if (spec.pathArg) {
+    if (!relativePath) {
+      return { denial: "UNAVAILABLE", reason: "This git command requires a workspace-relative path." };
+    }
+    args.push(relativePath);
+  }
+  return { program: git, args };
+}
+
+function resolveBuildArgv(
+  workspaceRoot: string,
+): { program: string; args: string[] } | { denial: GovernedCommandDenial; reason: string } {
+  const pkgPath = join(workspaceRoot, "package.json");
+  if (!existsSync(pkgPath)) {
+    return { denial: "UNAVAILABLE", reason: "Linked workspace has no package.json." };
+  }
+  let scripts: { build?: unknown } = {};
+  try {
+    const parsed = JSON.parse(readFileSync(pkgPath, "utf8")) as { scripts?: { build?: unknown } };
+    scripts = parsed.scripts ?? {};
+  } catch {
+    return { denial: "UNAVAILABLE", reason: "package.json is not readable JSON." };
+  }
+  if (typeof scripts.build !== "string" || !scripts.build.trim()) {
+    return {
+      denial: "UNAVAILABLE",
+      reason: "package.json has no build script. Status is UNAVAILABLE, not PASS.",
+    };
+  }
+  const npm = resolveNpmProgram();
+  if (!npm) {
+    return {
+      denial: "PROGRAM_UNAVAILABLE",
+      reason: "npm/pnpm is not available on the API host PATH.",
+    };
+  }
+  return { program: npm, args: ["run", "build"] };
 }
 
 function buildArgv(
   spec: GovernedCommandSpec,
   workspaceRoot: string,
+  relativePath: string | null,
 ): { program: string; args: string[] } | { denial: GovernedCommandDenial; reason: string } {
   if (spec.args.some((a) => UNSAFE_TOKEN.test(a))) {
     return { denial: "UNKNOWN_COMMAND", reason: "Catalog args failed safety scan." };
@@ -241,7 +382,10 @@ function buildArgv(
     return { program: resolveNodeProgram(), args: ["--version"] };
   }
   if (spec.program === "git") {
-    return resolveGitArgv(spec, workspaceRoot);
+    return resolveGitArgv(spec, workspaceRoot, relativePath);
+  }
+  if (spec.id === "workspace.build") {
+    return resolveBuildArgv(workspaceRoot);
   }
   if (spec.id === "vitest.run") {
     const entry = resolveVitestEntry(workspaceRoot);
@@ -258,7 +402,9 @@ function buildArgv(
         reason: "Vitest binary escaped the project workspace.",
       };
     }
-    return { program: resolveNodeProgram(), args: [entry, "run"] };
+    const args = [entry, "run"];
+    if (relativePath) args.push(relativePath);
+    return { program: resolveNodeProgram(), args };
   }
   return { denial: "UNKNOWN_COMMAND", reason: `Command "${spec.id}" is not executable.` };
 }
@@ -291,6 +437,7 @@ export async function runGovernedCommand(input: {
   readonly workspaceRoot: string;
   readonly projectId: string;
   readonly executionId?: string;
+  readonly relativePath?: string;
 }): Promise<GovernedCommandResult> {
   const executionId = input.executionId ?? randomUUID();
   const spec = getGovernedCommand(input.commandId);
@@ -315,7 +462,18 @@ export async function runGovernedCommand(input: {
       reason: "Linked workspaceRoot was not found on the API host.",
     };
   }
-  const argv = buildArgv(spec, root);
+  const pathArg = resolvePathArg(root, input.relativePath, spec);
+  if ("denial" in pathArg) {
+    return {
+      ok: false,
+      executionId,
+      commandId: spec.id,
+      kind: spec.kind,
+      denial: pathArg.denial,
+      reason: pathArg.reason,
+    };
+  }
+  const argv = buildArgv(spec, root, pathArg.path);
   if ("denial" in argv) {
     return {
       ok: false,

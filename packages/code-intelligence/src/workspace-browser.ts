@@ -11,7 +11,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 /** Directories never shown in the read-only studio browser. */
-const SKIP_DIRS = new Set([
+export const WORKSPACE_SKIP_DIRS = new Set([
   "node_modules",
   ".git",
   ".next",
@@ -234,7 +234,7 @@ export function listWorkspaceTree(
         truncated = true;
         break;
       }
-      if (SKIP_DIRS.has(name)) continue;
+      if (WORKSPACE_SKIP_DIRS.has(name)) continue;
       if (name.startsWith(".") && name !== ".env.example") continue;
       const full = join(dir, name);
       let st;
@@ -289,6 +289,11 @@ function isEnvSecretFile(name: string): boolean {
   return name === ".env" || /^\.env\./.test(name);
 }
 
+export function isWorkspaceSecretFile(relativePath: string): boolean {
+  const name = relativePath.split(/[/\\]/).pop() ?? relativePath;
+  return isEnvSecretFile(name);
+}
+
 /**
  * Bounded workspace search for Studio. Path-contained, budgeted, no symlink
  * follow, no .env contents. Does not replace Sentinel.
@@ -335,7 +340,7 @@ export function searchWorkspaceFiles(
     }
     for (const name of names) {
       if (truncated) return;
-      if (SKIP_DIRS.has(name)) continue;
+      if (WORKSPACE_SKIP_DIRS.has(name)) continue;
       if (name.startsWith(".") && name !== ".env.example") continue;
       const full = join(dir, name);
       let st;

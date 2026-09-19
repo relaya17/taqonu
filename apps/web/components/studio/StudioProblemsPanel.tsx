@@ -3,10 +3,12 @@
 import { Alert, Box, Button, Chip, List, ListItem, ListItemButton, ListItemText, Stack, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import {
   mergeStudioProblems,
+  problemsFromBuildRun,
   problemsFromGateNodes,
+  problemsFromLanguageDiagnostics,
   problemsFromSentinelFindings,
   problemsFromTestRun,
   studioProblemCanOpenFile,
@@ -40,6 +42,17 @@ interface LastExecutionResponse {
   } | null;
 }
 
+interface LanguageResponse {
+  diagnostics?: Array<{
+    path: string;
+    line: number;
+    column: number;
+    severity: string;
+    code: number;
+    message: string;
+  }>;
+}
+
 interface GatesResponse {
   graph?: {
     nodes?: Array<{
@@ -54,11 +67,15 @@ interface GatesResponse {
 export function StudioProblemsPanel({
   projectId,
   enabled,
+  filePath,
+  fileContent,
   onOpenFile,
   onProposeFix,
 }: {
   projectId: string;
   enabled: boolean;
+  filePath?: string | null;
+  fileContent?: string | null;
   onOpenFile: (path: string, line: number | null, problem: StudioProblem) => void;
   onProposeFix?: (problem: StudioProblem) => void;
 }) {
@@ -97,6 +114,22 @@ export function StudioProblemsPanel({
       ),
   });
 
+  const language = useQuery({
+    queryKey: ["studio-problems-language", projectId, filePath, fileContent ?? ""],
+    enabled: enabled && Boolean(projectId) && Boolean(filePath),
+    staleTime: 5_000,
+    queryFn: () =>
+      apiPost<LanguageResponse>(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/studio/language/diagnostics`,
+        {
+          path: filePath,
+          ...(fileContent && filePath
+            ? { unsaved: { path: filePath, content: fileContent } }
+            : {}),
+        },
+      ),
+  });
+
   const problems: StudioProblem[] = mergeStudioProblems(
     problemsFromSentinelFindings(sentinel.data?.findings),
     problemsFromGateNodes(gates.data?.graph?.nodes),
@@ -106,6 +139,8 @@ export function StudioProblemsPanel({
         : null,
       projectId,
     ),
+    problemsFromBuildRun(tests.data?.result, projectId),
+    problemsFromLanguageDiagnostics(language.data?.diagnostics),
   );
 
   return (

@@ -41,6 +41,12 @@ const commandIdSchema = z.enum([
   "git.status",
   "git.branch",
   "git.diff",
+  "git.log",
+  "git.blame",
+  "git.add",
+  "git.unstage",
+  "git.restore",
+  "workspace.build",
   "vitest.run",
 ]);
 
@@ -222,7 +228,10 @@ export async function registerStudioExecutionRoutes(
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
     const user = await assertProjectWriteAccess(app, request, projectId);
     const body = z
-      .object({ commandId: commandIdSchema })
+      .object({
+        commandId: commandIdSchema,
+        relativePath: z.string().min(1).max(500).optional(),
+      })
       .strict()
       .parse(request.body ?? {});
     const spec = getGovernedCommand(body.commandId);
@@ -252,6 +261,7 @@ export async function registerStudioExecutionRoutes(
           workspaceRoot: linkedWorkspace(projectId),
           projectId,
           executionId,
+          ...(body.relativePath ? { relativePath: body.relativePath } : {}),
         });
         remember(projectId, kind, result);
         auditExecution(`studio.${kind}.executed`, projectId, user.id, {
@@ -302,6 +312,7 @@ export async function registerStudioExecutionRoutes(
         decisionReason: z.string().min(1).max(2000),
         commandId: commandIdSchema,
         executionId: z.string().uuid().optional(),
+        relativePath: z.string().min(1).max(500).optional(),
       })
       .strict()
       .parse(request.body ?? {});
@@ -332,6 +343,7 @@ export async function registerStudioExecutionRoutes(
           workspaceRoot: linkedWorkspace(projectId),
           projectId,
           executionId,
+          ...(body.relativePath ? { relativePath: body.relativePath } : {}),
         });
         remember(projectId, kind, result);
         auditExecution(`studio.${kind}.executed`, projectId, user.id, {
@@ -380,9 +392,15 @@ export async function registerStudioExecutionRoutes(
   app.post("/api/v1/projects/:id/studio/tests", async (request, reply) =>
     postRun("test", request, reply),
   );
+  app.post("/api/v1/projects/:id/studio/tests/decide-and-execute", async (request, reply) =>
+    decideAndExecute("test", request, reply),
+  );
+  app.post("/api/v1/projects/:id/studio/build", async (request, reply) =>
+    postRun("build", request, reply),
+  );
   app.post(
-    "/api/v1/projects/:id/studio/tests/decide-and-execute",
-    async (request, reply) => decideAndExecute("test", request, reply),
+    "/api/v1/projects/:id/studio/build/decide-and-execute",
+    async (request, reply) => decideAndExecute("build", request, reply),
   );
 
   app.get("/api/v1/projects/:id/studio/executions/last", async (request) => {

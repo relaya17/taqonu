@@ -17,9 +17,10 @@ import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
 
 interface CommandSpec {
   id: string;
-  kind: "terminal" | "test";
+  kind: "terminal" | "test" | "build";
   description: string;
   timeoutMs: number;
+  pathArg?: "required" | "optional";
 }
 
 interface CatalogResponse {
@@ -70,6 +71,7 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
   const t = useTranslations("studio.run");
   const queryClient = useQueryClient();
   const [commandId, setCommandId] = useState("node.version");
+  const [relativePath, setRelativePath] = useState("");
   const [approvalId, setApprovalId] = useState("");
   const [executionId, setExecutionId] = useState("");
   const [decisionReason, setDecisionReason] = useState("");
@@ -107,12 +109,17 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
   const path =
     selected?.kind === "test"
       ? `/api/v1/projects/${encodeURIComponent(projectId)}/studio/tests`
-      : `/api/v1/projects/${encodeURIComponent(projectId)}/studio/terminal`;
+      : selected?.kind === "build"
+        ? `/api/v1/projects/${encodeURIComponent(projectId)}/studio/build`
+        : `/api/v1/projects/${encodeURIComponent(projectId)}/studio/terminal`;
 
   const requestRun = useMutation({
     mutationFn: async () => {
       try {
-        return await apiPost<ExecutionResult>(path, { commandId });
+        return await apiPost<ExecutionResult>(path, {
+          commandId,
+          ...(relativePath.trim() ? { relativePath: relativePath.trim() } : {}),
+        });
       } catch (error) {
         if (isApprovalRequiredError(error)) {
           setApprovalId(error.approvalId);
@@ -135,6 +142,7 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
         decisionReason,
         commandId,
         ...(executionId ? { executionId } : {}),
+        ...(relativePath.trim() ? { relativePath: relativePath.trim() } : {}),
       }),
     onSuccess: (data) => {
       setLastResult(data);
@@ -182,6 +190,15 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
           </MenuItem>
         ))}
       </TextField>
+      {selected?.pathArg ? (
+        <TextField
+          size="small"
+          label="relativePath"
+          value={relativePath}
+          onChange={(event) => setRelativePath(event.target.value)}
+          sx={{ maxWidth: 360 }}
+        />
+      ) : null}
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <Button

@@ -160,3 +160,26 @@ describe("studioProblemRemediationId", () => {
     expect(studioProblemRemediationId(gate)).toBeNull();
   });
 });
+
+describe("problemsFromLanguageDiagnostics", () => {
+  it("maps TypeScript diagnostics with file and location", async () => {
+    const { problemsFromLanguageDiagnostics } = await import("./studio-problems");
+    const problems = problemsFromLanguageDiagnostics([
+      {
+        path: "src/math.ts",
+        line: 5,
+        column: 7,
+        severity: "error",
+        code: 2322,
+        message: "Type 'string' is not assignable to type 'number'.",
+      },
+    ]);
+    expect(problems[0]).toMatchObject({
+      source: "language",
+      file: "src/math.ts",
+      line: 5,
+      column: 7,
+      severity: "HIGH",
+    });
+  });
+});

@@ -233,15 +233,17 @@
     },
     "problems": {
       "title": "المشكلات",
-      "empty": "لا توجد نتائج Sentinel أو بوابات جودة أو اختبارات محكومة لهذا المشروع.",
-      "notCompiler": "نتائج Atlas فقط — ليست تشخيصات مُصرّف TypeScript.",
+      "empty": "لا توجد نتائج Sentinel أو بوابات جودة أو TypeScript أو بناء أو اختبارات محكومة لهذا المشروع.",
+      "notCompiler": "يشمل تشخيصات TypeScript للملف المفتوح، بالإضافة إلى Sentinel والبوابات والبناء والاختبارات.",
     "proposeFix": "اقترح إصلاحاً",
       "testUnavailable": "مشغّل الاختبارات UNAVAILABLE — هذا ليس PASS.",
       "testFailed": "فشلت الاختبارات المحكومة.",
       "source": {
         "sentinel": "Sentinel",
         "gate": "بوابة الجودة",
-        "test": "اختبارات محكومة"
+        "test": "اختبارات محكومة",
+        "language": "TypeScript",
+        "build": "بناء"
       }
     },
     "diff": {

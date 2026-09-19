@@ -1,4 +1,9 @@
-export type StudioProblemSource = "sentinel" | "gate" | "test";
+export type StudioProblemSource =
+  | "sentinel"
+  | "gate"
+  | "test"
+  | "language"
+  | "build";
 export type StudioProblemSeverity =
   | "CRITICAL"
   | "HIGH"
@@ -13,7 +18,7 @@ export interface StudioProblem {
   readonly message: string;
   readonly file: string | null;
   readonly line: number | null;
-  readonly column: null;
+  readonly column: number | null;
   readonly code: string | null;
 }
 
@@ -93,9 +98,11 @@ export function problemsFromGateNodes(
 export interface TestRunLike {
   readonly status?: string;
   readonly commandId?: string | null;
+  readonly kind?: string | null;
   readonly passed?: boolean | null;
   readonly denial?: string;
   readonly reason?: string;
+  readonly stderr?: string;
   readonly exitCode?: number | null;
 }
 
@@ -129,6 +136,67 @@ export function problemsFromTestRun(
         source: "test",
         severity: "HIGH",
         message: run.reason?.trim() ?? "",
+        file: null,
+        line: null,
+        column: null,
+        code: run.status ?? "FAILED",
+      },
+    ];
+  }
+  return [];
+}
+
+export interface LanguageDiagnosticLike {
+  readonly path: string;
+  readonly line: number;
+  readonly column: number;
+  readonly severity: string;
+  readonly code: number;
+  readonly message: string;
+}
+
+export function problemsFromLanguageDiagnostics(
+  diagnostics: readonly LanguageDiagnosticLike[] | undefined,
+): StudioProblem[] {
+  if (!diagnostics) return [];
+  return diagnostics.map((row, index) => ({
+    id: `language:${row.path}:${row.line}:${row.column}:${row.code}:${index}`,
+    source: "language" as const,
+    severity: row.severity === "error" ? "HIGH" : row.severity === "warning" ? "MEDIUM" : "INFO",
+    message: row.message,
+    file: row.path,
+    line: row.line,
+    column: row.column,
+    code: String(row.code),
+  }));
+}
+
+export function problemsFromBuildRun(
+  run: TestRunLike | null | undefined,
+  projectId: string,
+): StudioProblem[] {
+  if (run?.commandId !== "workspace.build") return [];
+  if (run.status === "UNAVAILABLE" || run.denial === "UNAVAILABLE") {
+    return [
+      {
+        id: `build:${projectId}:unavailable`,
+        source: "build",
+        severity: "INFO",
+        message: run.reason?.trim() ?? "",
+        file: null,
+        line: null,
+        column: null,
+        code: run.status ?? "UNAVAILABLE",
+      },
+    ];
+  }
+  if (typeof run.exitCode === "number" && run.exitCode !== 0) {
+    return [
+      {
+        id: `build:${projectId}:fail`,
+        source: "build",
+        severity: "HIGH",
+        message: run.reason?.trim() || run.stderr?.trim() || "",
         file: null,
         line: null,
         column: null,

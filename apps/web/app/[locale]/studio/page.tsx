@@ -39,6 +39,7 @@ import { TruthPanel } from "@/components/studio/TruthPanel";
 import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
 import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel";
 import { StudioCodeEditor } from "@/components/studio/StudioCodeEditor";
+import { StudioLanguageBar } from "@/components/studio/StudioLanguageBar";
 import { StudioProblemsPanel } from "@/components/studio/StudioProblemsPanel";
 import { StudioRunPanel } from "@/components/studio/StudioRunPanel";
 import { StudioPtyTerminal } from "@/components/studio/StudioPtyTerminal";
@@ -1171,6 +1172,14 @@ export default function StudioPage() {
                   {t("savedFile")}
                 </Alert>
               ) : null}
+              {selectedPath && fileQuery.data && /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/i.test(selectedPath) ? (
+                <StudioLanguageBar
+                  projectId={projectId}
+                  path={selectedPath}
+                  content={currentBuffer?.draft ?? fileQuery.data.content}
+                  onOpen={(path, line) => selectStudioFile(path, line)}
+                />
+              ) : null}
               {diskChangedPath && diskChangedPath === selectedPath ? (
                 <Alert severity="warning" sx={{ m: 1.5 }}>
                   {t("diskChanged")}
@@ -1212,6 +1221,8 @@ export default function StudioPage() {
             <StudioProblemsPanel
               projectId={projectId}
               enabled={Boolean(projectId)}
+              filePath={selectedPath}
+              fileContent={currentBuffer?.draft ?? fileQuery.data?.content ?? null}
               onOpenFile={(path, line) => {
                 selectStudioFile(path, line);
               }}

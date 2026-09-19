@@ -287,15 +287,17 @@
     },
     "problems": {
       "title": "בעיות",
-      "empty": "אין ממצאי Sentinel, שערי איכות או בדיקות ממשליות לפרויקט זה.",
-      "notCompiler": "ממצאי Atlas בלבד — לא אבחנות מהדר TypeScript.",
+      "empty": "אין ממצאי Sentinel, שערי איכות, TypeScript, בנייה או בדיקות ממשליות לפרויקט זה.",
+      "notCompiler": "כולל אבחנות TypeScript לקובץ הפתוח, וגם Sentinel, שערים, בנייה ובדיקות.",
     "proposeFix": "הצע תיקון",
       "testUnavailable": "מריץ הבדיקות אינו זמין (UNAVAILABLE) — זה אינו PASS.",
       "testFailed": "הבדיקות הממשליות נכשלו.",
       "source": {
         "sentinel": "Sentinel",
         "gate": "שער איכות",
-        "test": "בדיקות ממשליות"
+        "test": "בדיקות ממשליות",
+        "language": "TypeScript",
+        "build": "בנייה"
       }
     },
     "diff": {

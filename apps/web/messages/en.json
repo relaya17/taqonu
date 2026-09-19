@@ -233,15 +233,17 @@
     },
     "problems": {
       "title": "Problems",
-    "empty": "No Sentinel, Quality Gate, or governed test findings for this project.",
-    "notCompiler": "Atlas findings only — not TypeScript compiler diagnostics.",
+    "empty": "No Sentinel, Quality Gate, TypeScript, build, or governed test findings for this project.",
+    "notCompiler": "Includes TypeScript language-service diagnostics for the open file, plus Sentinel, gates, build, and tests.",
     "proposeFix": "Propose fix",
     "testUnavailable": "Test runner UNAVAILABLE — not PASS.",
     "testFailed": "Governed tests failed.",
     "source": {
       "sentinel": "Sentinel",
       "gate": "Quality gate",
-      "test": "Governed tests"
+      "test": "Governed tests",
+      "language": "TypeScript",
+      "build": "Build"
     }
     },
     "diff": {
