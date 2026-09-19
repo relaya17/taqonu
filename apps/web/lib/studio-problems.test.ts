@@ -5,6 +5,7 @@ import {
   problemsFromSentinelFindings,
   problemsFromTestRun,
   studioProblemCanOpenFile,
+  studioProblemMessageKey,
   studioProblemRemediationId,
 } from "./studio-problems";
 
@@ -123,6 +124,22 @@ describe("problemsFromTestRun", () => {
     expect(problems[0]?.source).toBe("test");
     expect(problems[0]?.severity).toBe("INFO");
     expect(problems[0]?.file).toBeNull();
+    expect(studioProblemMessageKey(problems[0]!)).toBe("message");
+  });
+
+  it("uses i18n keys when the test run has no reason", () => {
+    const unavailable = problemsFromTestRun(
+      { commandId: "vitest.run", status: "UNAVAILABLE", denial: "UNAVAILABLE" },
+      "p1",
+    )[0]!;
+    expect(unavailable.message).toBe("");
+    expect(studioProblemMessageKey(unavailable)).toBe("testUnavailable");
+    const failed = problemsFromTestRun(
+      { commandId: "vitest.run", status: "FAILED", passed: false, exitCode: 1 },
+      "p1",
+    )[0]!;
+    expect(failed.message).toBe("");
+    expect(studioProblemMessageKey(failed)).toBe("testFailed");
   });
 });
 

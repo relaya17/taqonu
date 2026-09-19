@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStudioSearch, isMarketingShellPath, isPublicShellPath, shouldShowStudioEmptyProjects } from "./studio-surfaces";
+import { buildStudioSearch, isMarketingShellPath, isPublicShellPath, shouldShowStudioEmptyProjects, shouldShowStudioNeedRoot } from "./studio-surfaces";
 
 describe("isPublicShellPath", () => {
   it("treats welcome and auth as doors, with or without locale prefix", () => {
@@ -108,6 +108,32 @@ describe("shouldShowStudioEmptyProjects", () => {
   });
 });
 
+describe("shouldShowStudioNeedRoot", () => {
+  it("does not show missing-workspace copy when the project list failed", () => {
+    expect(
+      shouldShowStudioNeedRoot({
+        isError: true,
+        projectId: "00000000-0000-4000-8000-def000000001",
+        hasWorkspaceRoot: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowStudioNeedRoot({
+        isError: false,
+        projectId: "00000000-0000-4000-8000-def000000001",
+        hasWorkspaceRoot: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowStudioNeedRoot({
+        isError: false,
+        projectId: "00000000-0000-4000-8000-def000000001",
+        hasWorkspaceRoot: true,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("studio level-up i18n", () => {
   it("ships unsaved, git, briefing, and rollback copy in EN, HE, and AR", async () => {
     const en = (await import("../messages/en.json")).default;
@@ -123,6 +149,14 @@ describe("studio level-up i18n", () => {
       expect(locale.studio.continuity.title.length).toBeGreaterThan(0);
       expect(locale.studio.briefing.citations.length).toBeGreaterThan(0);
       expect(locale.studio.problems.proposeFix.length).toBeGreaterThan(0);
+      expect(locale.studio.problems.testUnavailable.length).toBeGreaterThan(0);
+      expect(locale.studio.searchTruncated.length).toBeGreaterThan(0);
+      expect(locale.studio.run.stderr.length).toBeGreaterThan(0);
+      expect(locale.studio.run.timedOut.length).toBeGreaterThan(0);
+      expect(locale.studio.git.exitCode.length).toBeGreaterThan(0);
+      expect(locale.studio.briefing.remediationLine.length).toBeGreaterThan(0);
+      expect(locale.studio.workflow.verifyFailed.length).toBeGreaterThan(0);
+      expect(locale.workbench.focusFile.length).toBeGreaterThan(0);
       expect(locale.studio.boundFinding.length).toBeGreaterThan(0);
     }
   });

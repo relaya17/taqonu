@@ -81,6 +81,7 @@ import {
   applySecretRemediationToProposal,
   parsePatchRemediationTarget,
 } from "../services/patch-remediation-truth.js";
+import { evaluateStudioProposalGuardian } from "../services/studio-agent-guardian.js";
 
 async function assertPatchWrite(
   app: FastifyInstance,
@@ -743,10 +744,12 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     request?: FastifyRequest,
   ) {
     let memoryItems: MemoryContextItem[] = [];
+    let ownerId: string | null = null;
     if (request) {
       try {
         const user = await getRequestUser(app, request);
         if (user) {
+          ownerId = user.id;
           const ctx = await buildMemoryContext({
             projectId: body.projectId ?? null,
             query: body.userRequest,
@@ -761,6 +764,16 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         memoryItems = [];
       }
     }
+    const runGuardian = (files: readonly string[]) =>
+      evaluateStudioProposalGuardian({
+        projectId: body.projectId ?? null,
+        ownerId,
+        userRequest: body.userRequest,
+        workspaceRoot: body.workspaceRoot,
+        memories: memoryItems,
+        proposedFiles: files,
+        focusPath: body.focusPath ?? null,
+      });
     const proposal = proposePatch({
       workspaceRoot: body.workspaceRoot,
       mode: body.mode as EngineeringAgentMode,
@@ -782,6 +795,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       focusPath: body.focusPath ?? null,
     });
     if (secretRewrite.unsupported) {
+      const guardianEvaluation = runGuardian([]);
       return reply.status(200).send({
         patch: null,
         analysisGraph: proposal.analysisGraph,
@@ -790,9 +804,33 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         note: secretRewrite.unsupported.summary,
         memoryUsed: memoryItems.length,
         memoryCitations: toMemoryCitations(memoryItems),
+        intelligenceKind: "heuristic",
+        modelInvoked: false,
+        guardianEvaluation,
       });
     }
     const filesChanged = secretRewrite.filesChanged;
+    const guardianEvaluation = runGuardian(filesChanged.map((file) => file.path));
+    if (guardianEvaluation.action === "BLOCK") {
+      osStore.appendAudit({
+        type: "code.guardian.blocked",
+        projectId: body.projectId ?? null,
+        verdict: guardianEvaluation.verdict,
+        action: guardianEvaluation.action,
+        at: new Date().toISOString(),
+      });
+      return reply.status(200).send({
+        patch: null,
+        analysisGraph: proposal.analysisGraph,
+        evaluationSummary: guardianEvaluation.summary,
+        note: guardianEvaluation.summary,
+        memoryUsed: memoryItems.length,
+        memoryCitations: toMemoryCitations(memoryItems),
+        intelligenceKind: "heuristic",
+        modelInvoked: false,
+        guardianEvaluation,
+      });
+    }
     if (filesChanged.length === 0) {
       return reply.status(200).send({
         patch: null,
@@ -801,6 +839,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         note: "Analyze/plan — no Patch created. Switch mode to Generate/Fix/… for applyable changes.",
         memoryUsed: memoryItems.length,
         memoryCitations: toMemoryCitations(memoryItems),
+        intelligenceKind: "heuristic",
+        modelInvoked: false,
+        guardianEvaluation,
       });
     }
     const now = new Date().toISOString();
@@ -827,6 +868,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       tests: proposal.tests,
       evaluationSummary: [
         proposal.evaluationSummary,
+        `Guardian: ${guardianEvaluation.verdict} (${guardianEvaluation.action}).`,
         remediationTarget
           ? `Remediation target ${remediationTarget.findingId} (${remediationTarget.findingType}). PATCH_VERIFY ≠ finding remediation.`
           : null,
@@ -854,6 +896,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       mode: patch.mode,
       risk: patch.risk,
       findingId: patch.remediationTarget?.findingId ?? null,
+      guardianVerdict: guardianEvaluation.verdict,
       at: now,
     });
     return reply.status(201).send({
@@ -863,6 +906,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       memoryCitations: toMemoryCitations(memoryItems),
       intelligenceKind: "heuristic",
       modelInvoked: false,
+      guardianEvaluation,
       note: "Patch proposed by CODE_ENGINEER heuristic (not an LLM). Approve then Apply (ADR-015). Not applied yet. Not Truth.",
     });
   }

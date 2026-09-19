@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  isGitBranchResult,
+  isGitDiffResult,
   isGitStatusResult,
+  parseGitBranchName,
   parseGitPorcelain,
   porcelainKind,
 } from "./studio-git-status";
@@ -32,5 +35,12 @@ describe("parseGitPorcelain", () => {
     );
     expect(isGitStatusResult({ commandId: "git.status", stdout: "" })).toBe(true);
     expect(porcelainKind("??")).toBe("untracked");
+  });
+
+  it("distinguishes branch and diff command results", () => {
+    expect(isGitBranchResult({ commandId: "git.branch" })).toBe(true);
+    expect(isGitDiffResult({ commandId: "git.diff" })).toBe(true);
+    expect(isGitBranchResult({ commandId: "git.status" })).toBe(false);
+    expect(parseGitBranchName("main\n")).toBe("main");
   });
 });

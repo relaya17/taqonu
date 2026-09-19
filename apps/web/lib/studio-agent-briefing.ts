@@ -24,6 +24,28 @@ export interface StudioAgentBriefingPatch {
   readonly authorityHint?: string;
 }
 
+export interface StudioGuardianConflict {
+  readonly detectorId: string;
+  readonly proposedAction: string;
+  readonly detectedConflict: string;
+  readonly conflictingFact: string;
+  readonly source: string;
+  readonly path: string | null;
+  readonly epistemicState: string;
+  readonly affectedScope: string;
+  readonly verificationStatus: string;
+  readonly nextVerification: string;
+}
+
+export interface StudioGuardianEvaluation {
+  readonly verdict: "CONSISTENT" | "CONFLICT" | "UNKNOWN" | string;
+  readonly action: "ALLOW" | "WARN" | "BLOCK" | string;
+  readonly modelInvoked: boolean;
+  readonly knowledgeUsed: number;
+  readonly conflicts: readonly StudioGuardianConflict[];
+  readonly summary: string;
+}
+
 export interface StudioAgentBriefingInput {
   readonly patch: StudioAgentBriefingPatch | null;
   readonly note: string;
@@ -37,6 +59,7 @@ export interface StudioAgentBriefingInput {
     readonly findingPresence: string;
     readonly summary: string;
   } | null;
+  readonly guardianEvaluation?: StudioGuardianEvaluation | null;
 }
 
 export interface StudioAgentBriefingView {
@@ -51,6 +74,7 @@ export interface StudioAgentBriefingView {
   readonly authorityHint: string | null;
   readonly note: string;
   readonly findingRemediation: StudioAgentBriefingInput["findingRemediation"];
+  readonly guardianEvaluation: StudioGuardianEvaluation | null;
 }
 
 /** Surface what the agent proposed — not hidden chain-of-thought. */
@@ -70,5 +94,6 @@ export function studioAgentBriefing(
     authorityHint: input.patch?.authorityHint ?? null,
     note: input.note,
     findingRemediation: input.findingRemediation ?? null,
+    guardianEvaluation: input.guardianEvaluation ?? null,
   };
 }

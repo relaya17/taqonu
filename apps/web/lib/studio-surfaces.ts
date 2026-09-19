@@ -40,6 +40,18 @@ export function shouldShowStudioEmptyProjects(input: {
 }
 
 /**
+ * Missing-workspace copy must not appear when the project list itself failed.
+ * A 401/network error is not "link a folder."
+ */
+export function shouldShowStudioNeedRoot(input: {
+  readonly isError: boolean;
+  readonly projectId: string | null | undefined;
+  readonly hasWorkspaceRoot: boolean;
+}): boolean {
+  return Boolean(input.projectId) && !input.isError && !input.hasWorkspaceRoot;
+}
+
+/**
  * Studio query string. Files tab may carry `file`; other tabs drop it so a
  * Checks URL cannot strand an unreachable editor path.
  */

@@ -113,8 +113,72 @@ export function StudioAgentBriefing({
       ) : null}
       {view.findingRemediation ? (
         <Typography variant="caption" display="block" sx={{ mt: 1, color: "#8B9099" }}>
-          {`REMEDIATION: ${view.findingRemediation.result} · FINDING: ${view.findingRemediation.findingPresence}`}
+          {t("remediationLine", {
+            result: view.findingRemediation.result,
+            finding: view.findingRemediation.findingPresence,
+          })}
         </Typography>
+      ) : null}
+      {view.guardianEvaluation ? (
+        <Box sx={{ mt: 1.5 }} aria-label={t("guardian.title")}>
+          <Alert
+            severity={
+              view.guardianEvaluation.verdict === "CONFLICT"
+                ? "error"
+                : view.guardianEvaluation.verdict === "UNKNOWN"
+                  ? "warning"
+                  : "success"
+            }
+          >
+            {view.guardianEvaluation.verdict === "CONFLICT"
+              ? t("guardian.conflict")
+              : view.guardianEvaluation.verdict === "UNKNOWN"
+                ? t("guardian.unknown")
+                : t("guardian.consistent")}
+          </Alert>
+          <Typography variant="body2" sx={{ mt: 1, color: "#DCDDE1" }}>
+            {view.guardianEvaluation.summary}
+          </Typography>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
+            <Chip
+              size="small"
+              label={`${t("guardian.action")}: ${view.guardianEvaluation.action}`}
+            />
+            <Chip
+              size="small"
+              label={`${t("guardian.knowledge")}: ${view.guardianEvaluation.knowledgeUsed}`}
+            />
+          </Stack>
+          <Typography variant="caption" display="block" sx={{ mt: 0.75, color: "#8B9099" }}>
+            {t("guardian.notModel")}
+          </Typography>
+          {view.guardianEvaluation.conflicts.map((conflict) => (
+            <Box
+              key={conflict.detectorId}
+              sx={{ mt: 1, p: 1, borderRadius: 1, bgcolor: "rgba(0,0,0,0.25)" }}
+            >
+              <Typography variant="caption" display="block" sx={{ color: "#8B9099" }}>
+                {t("guardian.proposed")}
+              </Typography>
+              <Typography variant="body2" sx={{ color: "#DCDDE1" }}>
+                {conflict.proposedAction}
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ mt: 0.5, color: "#8B9099" }}>
+                {t("guardian.fact")}
+              </Typography>
+              <Typography variant="body2" sx={{ color: "#DCDDE1" }}>
+                {conflict.conflictingFact}
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ mt: 0.5, color: "#8B9099" }}>
+                {t("guardian.source")}: {conflict.source}
+                {conflict.path ? ` · ${conflict.path}` : ""} · {conflict.epistemicState}
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ color: "#8B9099" }}>
+                {t("guardian.next")}: {conflict.nextVerification}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
       ) : null}
     </Box>
   );

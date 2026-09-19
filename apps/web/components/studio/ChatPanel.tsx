@@ -76,7 +76,7 @@ export function ChatPanel({
 
   const chat = useMutation({
     mutationFn: async () => {
-      const focus = selectedPath ? `\n\n[Workbench focus file: ${selectedPath}]` : "";
+      const focus = selectedPath ? `\n\n${t("focusFile", { path: selectedPath })}` : "";
       return apiPost<{ answer: string; threadId: string }>("/api/v1/conversation/message", {
         message: `${message.trim()}${focus}`,
         projectId: projectId || null,

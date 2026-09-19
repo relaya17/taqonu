@@ -36,7 +36,13 @@ import {
 } from "../services/studio-extensions.js";
 import { osStore } from "../store/os-store.js";
 
-const commandIdSchema = z.enum(["node.version", "git.status", "vitest.run"]);
+const commandIdSchema = z.enum([
+  "node.version",
+  "git.status",
+  "git.branch",
+  "git.diff",
+  "vitest.run",
+]);
 
 type LastExecution = {
   readonly projectId: string;

@@ -40,6 +40,8 @@ interface ExecutionResult {
   stderr?: string;
   exitCode?: number;
   durationMs?: number;
+  timedOut?: boolean;
+  killed?: boolean;
   passed?: boolean | null;
   denial?: string;
   reason?: string;
@@ -246,10 +248,19 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
 
       {shown ? (
         <Box sx={{ border: "1px solid rgba(232,234,238,0.12)", borderRadius: 2, p: 2 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip size="small" label={shown.status} />
+            {shown.status === "TIMED_OUT" || shown.timedOut ? (
+              <Chip size="small" color="warning" label={t("timedOut")} />
+            ) : null}
             {shown.passed === true ? <Chip size="small" label={t("passed")} /> : null}
             {shown.passed === false ? <Chip size="small" label={t("failed")} /> : null}
+            {typeof shown.exitCode === "number" ? (
+              <Chip size="small" label={t("exitCode", { code: shown.exitCode })} />
+            ) : null}
+            {typeof shown.durationMs === "number" ? (
+              <Chip size="small" variant="outlined" label={t("durationMs", { ms: shown.durationMs })} />
+            ) : null}
           </Stack>
           {shown.note ? (
             <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#8B9099" }}>
@@ -267,6 +278,19 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
               sx={{ mt: 1, fontSize: 12, overflow: "auto", maxHeight: 240 }}
             >
               {shown.stdout}
+            </Box>
+          ) : null}
+          {shown.stderr ? (
+            <Box>
+              <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#8B9099" }}>
+                {t("stderr")}
+              </Typography>
+              <Box
+                component="pre"
+                sx={{ mt: 0.5, fontSize: 12, overflow: "auto", maxHeight: 160, color: "#F78C6C" }}
+              >
+                {shown.stderr}
+              </Box>
             </Box>
           ) : null}
         </Box>

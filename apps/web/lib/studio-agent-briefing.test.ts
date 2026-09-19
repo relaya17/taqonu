@@ -39,6 +39,40 @@ describe("studioAgentBriefing", () => {
     expect(view.authorityHint).toBe("LLM_INFERENCE");
   });
 
+  it("surfaces a Guardian CONFLICT without claiming a model decided it", () => {
+    const view = studioAgentBriefing({
+      patch: null,
+      note: "blocked",
+      intelligenceKind: "heuristic",
+      modelInvoked: false,
+      guardianEvaluation: {
+        verdict: "CONFLICT",
+        action: "BLOCK",
+        modelInvoked: false,
+        knowledgeUsed: 4,
+        summary: "CONFLICT — I found a policy conflict.",
+        conflicts: [
+          {
+            detectorId: "policy.approval-required",
+            proposedAction: "auto-apply",
+            detectedConflict: "skip approval",
+            conflictingFact: "Approve then Apply is required.",
+            source: "guardian-policy",
+            path: null,
+            epistemicState: "FACT",
+            affectedScope: "policy",
+            verificationStatus: "VERIFIED",
+            nextVerification: "Keep Approve then Apply.",
+          },
+        ],
+      },
+    });
+    expect(view.guardianEvaluation?.verdict).toBe("CONFLICT");
+    expect(view.guardianEvaluation?.action).toBe("BLOCK");
+    expect(view.guardianEvaluation?.modelInvoked).toBe(false);
+    expect(view.hasPatch).toBe(false);
+  });
+
   it("does not invent a patch when ask-agent returned none", () => {
     const view = studioAgentBriefing({
       patch: null,

@@ -10,6 +10,7 @@ import {
   problemsFromSentinelFindings,
   problemsFromTestRun,
   studioProblemCanOpenFile,
+  studioProblemMessageKey,
   studioProblemRemediationId,
   type StudioProblem,
 } from "@/lib/studio-problems";
@@ -149,6 +150,13 @@ export function StudioProblemsPanel({
           {problems.map((problem) => {
           const canOpen = studioProblemCanOpenFile(problem);
           const remediationId = studioProblemRemediationId(problem);
+          const messageKey = studioProblemMessageKey(problem);
+          const primary =
+            messageKey === "message"
+              ? problem.message
+              : messageKey === "testUnavailable"
+                ? t("testUnavailable")
+                : t("testFailed");
             return (
               <ListItem
                 key={problem.id}
@@ -172,12 +180,12 @@ export function StudioProblemsPanel({
                 }}
                 aria-label={
                   canOpen
-                    ? `${problem.message} ${problem.file ?? ""}`
-                    : problem.message
+                    ? `${primary} ${problem.file ?? ""}`
+                    : primary
                 }
               >
                 <ListItemText
-                  primary={problem.message}
+                  primary={primary}
                   secondary={`${t(`source.${problem.source}`)} · ${problem.severity}${
                     problem.file
                       ? ` · ${problem.file}${problem.line ? `:${problem.line}` : ""}`

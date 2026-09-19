@@ -114,7 +114,7 @@ export function problemsFromTestRun(
         id: `test:${projectId}:${run.commandId}:unavailable`,
         source: "test",
         severity: "INFO",
-        message: run.reason?.trim() || "Test runner UNAVAILABLE — not PASS.",
+        message: run.reason?.trim() ?? "",
         file: null,
         line: null,
         column: null,
@@ -128,9 +128,7 @@ export function problemsFromTestRun(
         id: `test:${projectId}:${run.commandId}:fail`,
         source: "test",
         severity: "HIGH",
-        message:
-          run.reason?.trim() ||
-          `Governed tests failed (exit ${run.exitCode ?? "?"}).`,
+        message: run.reason?.trim() ?? "",
         file: null,
         line: null,
         column: null,
@@ -174,4 +172,18 @@ export function mergeStudioProblems(
     }
   }
   return merged;
+}
+
+/**
+ * API/reason text wins. Missing reason uses i18n keys — never English-only fallbacks.
+ */
+export function studioProblemMessageKey(
+  problem: StudioProblem,
+): "message" | "testUnavailable" | "testFailed" {
+  if (problem.message.trim()) return "message";
+  if (problem.source === "test" && problem.code === "UNAVAILABLE") {
+    return "testUnavailable";
+  }
+  if (problem.source === "test") return "testFailed";
+  return "message";
 }

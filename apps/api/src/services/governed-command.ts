@@ -39,6 +39,24 @@ export const GOVERNED_COMMANDS: readonly GovernedCommandSpec[] = [
     mutatesWorkspace: false,
   },
   {
+    id: "git.branch",
+    kind: "terminal",
+    program: "git",
+    args: ["rev-parse", "--abbrev-ref", "HEAD"],
+    timeoutMs: 8_000,
+    description: "Read-only current branch name. Never checks out or commits.",
+    mutatesWorkspace: false,
+  },
+  {
+    id: "git.diff",
+    kind: "terminal",
+    program: "git",
+    args: ["diff", "HEAD", "--no-color", "--no-ext-diff", "--find-renames"],
+    timeoutMs: 20_000,
+    description: "Read-only diff vs HEAD (staged and unstaged). Never mutates.",
+    mutatesWorkspace: false,
+  },
+  {
     id: "vitest.run",
     kind: "test",
     program: "node",
@@ -191,6 +209,27 @@ function assertInsideWorkspace(workspaceRoot: string, candidate: string): boolea
   return candidateReal === rootReal || candidateReal.startsWith(prefix);
 }
 
+function resolveGitArgv(
+  spec: GovernedCommandSpec,
+  workspaceRoot: string,
+): { program: string; args: string[] } | { denial: GovernedCommandDenial; reason: string } {
+  const gitDir = join(workspaceRoot, ".git");
+  if (!existsSync(gitDir)) {
+    return {
+      denial: "UNAVAILABLE",
+      reason: "Linked workspace is not a git repository (.git missing).",
+    };
+  }
+  const git = resolveGitProgram();
+  if (!git) {
+    return {
+      denial: "PROGRAM_UNAVAILABLE",
+      reason: "git is not available on the API host PATH.",
+    };
+  }
+  return { program: git, args: [...spec.args] };
+}
+
 function buildArgv(
   spec: GovernedCommandSpec,
   workspaceRoot: string,
@@ -201,22 +240,8 @@ function buildArgv(
   if (spec.program === "node" && spec.id === "node.version") {
     return { program: resolveNodeProgram(), args: ["--version"] };
   }
-  if (spec.program === "git" && spec.id === "git.status") {
-    const gitDir = join(workspaceRoot, ".git");
-    if (!existsSync(gitDir)) {
-      return {
-        denial: "UNAVAILABLE",
-        reason: "Linked workspace is not a git repository (.git missing).",
-      };
-    }
-    const git = resolveGitProgram();
-    if (!git) {
-      return {
-        denial: "PROGRAM_UNAVAILABLE",
-        reason: "git is not available on the API host PATH.",
-      };
-    }
-    return { program: git, args: ["status", "--porcelain=v1"] };
+  if (spec.program === "git") {
+    return resolveGitArgv(spec, workspaceRoot);
   }
   if (spec.id === "vitest.run") {
     const entry = resolveVitestEntry(workspaceRoot);

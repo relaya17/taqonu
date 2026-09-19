@@ -19,6 +19,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
@@ -52,6 +53,7 @@ import {
   isStudioCheckId,
   isStudioTab,
   shouldShowStudioEmptyProjects,
+  shouldShowStudioNeedRoot,
   type StudioCheckId,
   type StudioTab,
 } from "@/lib/studio-surfaces";
@@ -65,6 +67,8 @@ import {
   studioFileBaseName,
   type StudioFileBuffer,
 } from "@/lib/studio-workspace";
+import { replaceInStudioBuffer } from "@/lib/studio-buffer-replace";
+import { extractStudioOutline, studioFileBreadcrumbs } from "@/lib/studio-outline";
 
 interface Project {
   id: string;
@@ -129,6 +133,25 @@ interface AskResult {
     verifyStatus: string;
     findingPresence: string;
     summary: string;
+  } | null;
+  guardianEvaluation?: {
+    verdict: string;
+    action: string;
+    modelInvoked: boolean;
+    knowledgeUsed: number;
+    summary: string;
+    conflicts: Array<{
+      detectorId: string;
+      proposedAction: string;
+      detectedConflict: string;
+      conflictingFact: string;
+      source: string;
+      path: string | null;
+      epistemicState: string;
+      affectedScope: string;
+      verificationStatus: string;
+      nextVerification: string;
+    }>;
   } | null;
 }
 
@@ -284,6 +307,9 @@ export default function StudioPage() {
   const [revealLine, setRevealLine] = useState<number | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [fileSearch, setFileSearch] = useState("");
+  const [findText, setFindText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [replaceNote, setReplaceNote] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
   const [intent, setIntent] = useState<StudioIntent>("propose");
   const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
@@ -433,6 +459,37 @@ export default function StudioPage() {
 
   const currentBuffer = selectedPath ? buffers[selectedPath] : undefined;
   const isDirty = studioBufferIsDirty(currentBuffer);
+  const editorContent = currentBuffer?.draft ?? fileQuery.data?.content ?? "";
+  const outline = useMemo(
+    () => extractStudioOutline(editorContent),
+    [editorContent],
+  );
+  const crumbs = selectedPath ? studioFileBreadcrumbs(selectedPath) : [];
+
+  const applyBufferReplace = (mode: "one" | "all") => {
+    if (!selectedPath) return;
+    const result = replaceInStudioBuffer(
+      editorContent,
+      findText,
+      replaceText,
+      mode,
+    );
+    if (result.count === 0) {
+      setReplaceNote(t("replaceNone"));
+      return;
+    }
+    setBuffers((prev) => {
+      const existing = prev[selectedPath] ?? {
+        draft: editorContent,
+        saved: fileQuery.data?.content ?? editorContent,
+      };
+      return {
+        ...prev,
+        [selectedPath]: { ...existing, draft: result.next },
+      };
+    });
+    setReplaceNote(t("replaceCount", { count: result.count }));
+  };
 
   const exemplarsQuery = useQuery({
     queryKey: ["exemplars"],
@@ -672,7 +729,11 @@ export default function StudioPage() {
         />
       ) : null}
 
-      {projectId && !hasRoot ? (
+      {shouldShowStudioNeedRoot({
+        isError: projectsQuery.isError,
+        projectId,
+        hasWorkspaceRoot: hasRoot,
+      }) ? (
         <Alert severity="warning">
           {t("needRoot")}{" "}
           <Link href="/projects">{t("goProjects")}</Link>
@@ -816,6 +877,14 @@ export default function StudioPage() {
             />
             {trimmedSearch.length >= 2 ? (
               <List dense disablePadding sx={{ px: 0.5, pb: 1 }}>
+                {searchQuery.isError ? (
+                  <Alert severity="error" sx={{ mx: 1, mb: 1 }}>
+                    {(searchQuery.error as Error).message}
+                  </Alert>
+                ) : null}
+                {searchQuery.data?.truncated ? (
+                  <Chip size="small" label={t("searchTruncated")} sx={{ mx: 1.5, mb: 0.5 }} />
+                ) : null}
                 {(searchQuery.data?.items ?? []).map((hit) => (
                   <ListItemButton
                     key={`${hit.path}:${hit.line}:${hit.preview}`}
@@ -830,6 +899,11 @@ export default function StudioPage() {
                     />
                   </ListItemButton>
                 ))}
+                {searchQuery.isLoading ? (
+                  <Typography variant="caption" sx={{ px: 1.5, color: "#8B9099" }}>
+                    {t("searchLoading")}
+                  </Typography>
+                ) : null}
                 {searchQuery.isSuccess && (searchQuery.data?.items.length ?? 0) === 0 ? (
                   <Typography variant="caption" sx={{ px: 1.5, color: "#8B9099" }}>
                     {t("searchEmpty")}
@@ -896,6 +970,9 @@ export default function StudioPage() {
                       onClick={() => selectStudioFile(path)}
                       onDelete={() => closeStudioFile(path)}
                       aria-label={path}
+                      deleteIcon={
+                        <CloseIcon fontSize="small" aria-label={t("closeFile")} />
+                      }
                       sx={{
                         maxWidth: 220,
                         color: "#DCDDE1",
@@ -978,6 +1055,106 @@ export default function StudioPage() {
                   {saveFile.isPending ? t("asking") : t("saveFile")}
                 </Button>
               </Stack>
+              {selectedPath && fileQuery.data && !fileQuery.data.readOnly ? (
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  sx={{ px: 1.5, py: 1, borderBottom: panelBorder }}
+                >
+                  <TextField
+                    size="small"
+                    label={t("findInFile")}
+                    value={findText}
+                    onChange={(event) => {
+                      setFindText(event.target.value);
+                      setReplaceNote(null);
+                    }}
+                    sx={{ minWidth: 140, flex: 1 }}
+                  />
+                  <TextField
+                    size="small"
+                    label={t("replaceInFile")}
+                    value={replaceText}
+                    onChange={(event) => {
+                      setReplaceText(event.target.value);
+                      setReplaceNote(null);
+                    }}
+                    sx={{ minWidth: 140, flex: 1 }}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={!findText || Boolean(fileQuery.data.truncated)}
+                    onClick={() => applyBufferReplace("one")}
+                    aria-label={t("replaceOne")}
+                  >
+                    {t("replaceOne")}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={!findText || Boolean(fileQuery.data.truncated)}
+                    onClick={() => applyBufferReplace("all")}
+                    aria-label={t("replaceAll")}
+                  >
+                    {t("replaceAll")}
+                  </Button>
+                </Stack>
+              ) : null}
+              {replaceNote ? (
+                <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
+                  {replaceNote}
+                </Typography>
+              ) : null}
+              {crumbs.length > 0 ? (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  aria-label={t("breadcrumbs")}
+                  sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
+                >
+                  {crumbs.map((crumb, index) => (
+                    <Chip
+                      key={`${crumb}-${index}`}
+                      size="small"
+                      variant="outlined"
+                      label={crumb}
+                      sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.2)" }}
+                    />
+                  ))}
+                </Stack>
+              ) : null}
+              {outline.length > 0 ? (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  flexWrap="wrap"
+                  useFlexGap
+                  aria-label={t("outline")}
+                  sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
+                >
+                  {outline.slice(0, 16).map((symbol) => (
+                    <Chip
+                      key={`${symbol.kind}:${symbol.name}:${symbol.line}`}
+                      size="small"
+                      label={`${symbol.name}:${symbol.line}`}
+                      onClick={() => setRevealLine(symbol.line)}
+                      aria-label={`${symbol.kind} ${symbol.name}`}
+                      sx={{ color: "#DCDDE1", borderColor: "rgba(232,234,238,0.25)" }}
+                    />
+                  ))}
+                </Stack>
+              ) : selectedPath && fileQuery.data ? (
+                <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
+                  {t("outlineEmpty")}
+                </Typography>
+              ) : null}
               {fileQuery.isError ? (
                 <Alert severity="warning" sx={{ m: 1.5 }}>
                   {(fileQuery.error as Error).message}

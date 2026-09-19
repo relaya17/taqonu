@@ -71,6 +71,16 @@ Phase 1 contracts are locked in code:
 
 GAP-043 (full IDE terminal/LSP/debugger) remains a non-goal. This pass implemented a governed subset only.
 
+### Personal Agent Guardian (local, 2026-09-19)
+
+New local layer after the closed Studio baseline. Does **not** reopen P0 or GAP-043.
+
+- Deterministic Guardian in `@atlas/shared` returns CONSISTENT / CONFLICT / UNKNOWN without an LLM. Policy violations BLOCK `ask-agent` (no Patch upsert).
+- Project knowledge is structured (structure, language/framework, symbols, memories) and scoped to owner+project. Failed fixes stay failed.
+- Studio briefing surfaces the evaluation (EN/HE/AR). In-buffer find/replace does not write disk until Save.
+- Governed Git catalog adds read-only `git.branch` and `git.diff` (still RECORD.EXECUTE + SoD). Not a PTY. Not unrestricted Agent execution.
+- LSP/debugger remain architectural gaps — not faked.
+
 Still PARTIAL / NOT PROVEN: cloud dual-write for internal `addMemory`, full keyboard a11y, production VM/signing/DR.
 
 ### Gap closure execution (2026-09-18, current :4000 / :3000)

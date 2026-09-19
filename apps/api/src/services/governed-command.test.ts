@@ -98,6 +98,20 @@ describe("runGovernedCommand", () => {
     }
   });
 
+  it("marks git.diff UNAVAILABLE when .git is missing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-gov-diff-"));
+    dirs.push(root);
+    const result = await runGovernedCommand({
+      commandId: "git.diff",
+      workspaceRoot: root,
+      projectId: "00000000-0000-4000-8000-000000000001",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.denial).toBe("UNAVAILABLE");
+    }
+  });
+
   it("kill of an unknown execution id is fail-closed not_running", () => {
     expect(killGovernedExecution("00000000-0000-4000-8000-000000000099")).toBe(
       "not_running",

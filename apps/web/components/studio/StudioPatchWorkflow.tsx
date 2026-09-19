@@ -181,7 +181,7 @@ export function StudioPatchWorkflow({
         ...(root ? { workspaceRoot: root } : {}),
       });
       if (result?.verify && result.verify.ok === false) {
-        throw new Error(result.verify.summary || "Verification failed");
+        throw new Error(result.verify.summary || t("workflow.verifyFailed"));
       }
       return result;
     },
@@ -248,12 +248,17 @@ export function StudioPatchWorkflow({
           )}
           sx={{ mt: 1.5 }}
         >
-          {`PATCH_VERIFY: ${formatPatchVerifyLabel(
-            verify.data?.patchVerifyStatus,
-            verify.data?.verify?.ok,
-          )}`}
+          {tPatches("verifyStatus", {
+            status: formatPatchVerifyLabel(
+              verify.data?.patchVerifyStatus,
+              verify.data?.verify?.ok,
+            ),
+          })}
           {verify.data?.findingRemediation
-            ? ` · REMEDIATION: ${verify.data.findingRemediation.result} · FINDING: ${verify.data.findingRemediation.findingPresence}`
+            ? ` · ${tPatches("remediationLine", {
+                result: verify.data.findingRemediation.result,
+                finding: verify.data.findingRemediation.findingPresence,
+              })}`
             : ""}
           {studioRemediationIsGreen(
             verify.data?.verify?.ok !== false,

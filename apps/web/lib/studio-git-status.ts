@@ -43,3 +43,19 @@ export function isGitStatusResult(result: {
 } | null): boolean {
   return Boolean(result && result.commandId === "git.status");
 }
+
+export function isGitBranchResult(result: {
+  commandId?: string | null;
+} | null): boolean {
+  return Boolean(result && result.commandId === "git.branch");
+}
+
+export function isGitDiffResult(result: {
+  commandId?: string | null;
+} | null): boolean {
+  return Boolean(result && result.commandId === "git.diff");
+}
+
+export function parseGitBranchName(stdout: string): string {
+  return stdout.trim().split(/\r?\n/)[0] ?? "";
+}

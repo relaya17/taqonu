@@ -15,6 +15,8 @@ export * from "./platform/supply-chain.js";
 export * from "./platform/demo-login.js";
 export * from "./platform/vercel-trust-plane-contract.js";
 export * from "./platform/production-publish-guard.js";
+export * from "./platform/agent-project-knowledge.js";
+export * from "./platform/agent-guardian.js";
 export * from "./approval/canonicalization.js";
 
 export type AgentReputationSummary = { score: number; details?: string; };
