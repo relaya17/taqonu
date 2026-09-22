@@ -19,6 +19,8 @@ coverage
 !.env.example
 .vercel
 .supabase
+supabase/.branches/
+supabase/.temp/
 playwright-report
 test-results
 atlas-evals/results
