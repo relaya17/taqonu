@@ -21,11 +21,17 @@ test.describe("New product surfaces (EN)", () => {
 
   test("workbench page loads", async ({ page, request }) => {
     await page.goto("/en/workbench");
+    // /en/workbench redirects to /en/studio?tab=chat. Wait for redirect.
+    await expect(page).toHaveURL(/\/en\/studio\?.*tab=chat/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+      timeout: 10_000,
+    });
     if (await apiHealthy(request)) {
       await expect(
-        page.getByText(/workbench|project|files|local path|folder/i).first(),
+        page.getByText(/studio|project|files|local path|folder/i).first(),
       ).toBeVisible({ timeout: 20_000 });
     }
   });
@@ -83,13 +89,25 @@ test.describe("Counsel + security surfaces (EN)", () => {
 
   test("sentinel security check loads", async ({ page }) => {
     await page.goto("/en/sentinel");
+    // /en/sentinel redirects to /en/studio?tab=checks&check=sentinel. Wait for redirect.
+    await expect(page).toHaveURL(/\/en\/studio\?.*check=sentinel/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("observer loads", async ({ page }) => {
     await page.goto("/en/observer");
+    // /en/observer redirects to /en/studio?tab=checks&check=observer. Wait for redirect.
+    await expect(page).toHaveURL(/\/en\/studio\?.*check=observer/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });

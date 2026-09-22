@@ -30,6 +30,18 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["@mui/material", "@mui/icons-material"],
   },
+  /**
+   * Legacy orphan aliases → canonical product surfaces.
+   * Server-side 307 so the redirect happens before rendering (avoids prerender 200).
+   */
+  async redirects() {
+    return [
+      { source: "/:locale(he|en|ar)/state", destination: "/:locale/projects", permanent: false },
+      { source: "/:locale(he|en|ar)/chat", destination: "/:locale/workbench", permanent: false },
+      { source: "/:locale(he|en|ar)/agent", destination: "/:locale/agents", permanent: false },
+      { source: "/:locale(he|en|ar)/proof", destination: "/:locale/readiness", permanent: false },
+    ];
+  },
 };
 
 export default withNextIntl(nextConfig);

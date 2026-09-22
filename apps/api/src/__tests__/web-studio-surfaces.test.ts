@@ -231,3 +231,38 @@ describe("locale layout hydration contract", () => {
     expect(request).toContain('timeZone: "UTC"');
   });
 });
+
+describe("Studio Cloud & Tools panel", () => {
+  it("launches external cloud consoles through safe target/rel and the already-tested provider-adapters contract, never embedding or navigating the app itself", () => {
+    const panel = readWeb("components/studio/CloudToolsPanel.tsx");
+    // Ties this panel to the server contract that provider-adapters.test.ts
+    // already covers -- not re-testing the route, just proving this is the
+    // client that consumes it.
+    expect(panel).toContain('"/api/v1/providers/adapters"');
+    expect(panel).toContain('queryKey: ["provider-adapters"]');
+    // Security property: every external console link opens in a new tab
+    // with noopener/noreferrer, so a malicious or compromised third-party
+    // console page can never reach back into this window (reverse
+    // tabnabbing) and Cloud & Tools never navigates Atlas itself away.
+    expect(panel).toContain('target="_blank"');
+    expect(panel).toContain('rel="noopener noreferrer"');
+    // The free-text URL field is only ever used as a client-side `href` --
+    // it must never be sent to Atlas's own API (that would be an
+    // SSRF-shaped surface), and the panel must not render arbitrary
+    // attacker-controlled markup.
+    expect(panel).not.toMatch(/apiPost|apiPut|apiDelete/);
+    expect(panel).not.toContain("dangerouslySetInnerHTML");
+    expect(panel).not.toContain("<iframe");
+    // Actually composed inside Studio itself (not merely mentioned in a
+    // comment). /workbench is a redirect-only route into Studio's chat tab
+    // (already covered by the "redirect into Studio Checks" case above) --
+    // it does not render its own separate CloudToolsPanel instance, so this
+    // asserts the real render tree rather than a string that could survive
+    // in a stale comment after the component was removed.
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    const workbench = readWeb("app/[locale]/workbench/page.tsx");
+    expect(studio).toContain("<CloudToolsPanel");
+    expect(workbench).toContain("router.replace");
+    expect(workbench).toMatch(/\/studio\?tab=chat/);
+  });
+});

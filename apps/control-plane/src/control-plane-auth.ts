@@ -165,7 +165,10 @@ export function isSensitiveControlMutation(pathname: string, method: string): bo
   if (method !== "POST") return false;
   return (
     pathname === "/api/v1/gateway/ops" ||
-    (pathname.startsWith("/api/v1/agents/") && pathname.endsWith("/control"))
+    (pathname.startsWith("/api/v1/agents/") && pathname.endsWith("/control")) ||
+    pathname.startsWith("/api/v1/kill-switches/") ||
+    (pathname.startsWith("/api/v1/approvals/") && pathname.endsWith("/decide")) ||
+    (pathname.startsWith("/api/v1/applications/") && pathname.endsWith("/decide"))
   );
 }
 

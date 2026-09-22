@@ -299,4 +299,64 @@ describe("Control Plane auth (ADR-021)", () => {
     } as IncomingMessage;
     expect(authorizeControlPlaneRequest(req, fakeRes(), "/api/v1/gateway/ops")).toBe(true);
   });
+
+  // Pass 4 fix: kill-switches/:category, approvals/:id/decide, and
+  // applications/:id/decide were governance mutations missing from the
+  // MFA-sensitive allowlist even though gateway/ops and agents/:id/control
+  // were already covered. Same three-shape coverage as those routes above:
+  // refuse without MFA, allow with MFA, bearer tokens unaffected.
+  const NEWLY_COVERED_ROUTES: readonly string[] = [
+    "/api/v1/kill-switches/agent-lifecycle",
+    "/api/v1/approvals/11111111-1111-4111-8111-111111111111/decide",
+    "/api/v1/applications/22222222-2222-4222-8222-222222222222/decide",
+  ];
+
+  for (const pathname of NEWLY_COVERED_ROUTES) {
+    it(`refuses privileged browser mutations without MFA when required (${pathname})`, () => {
+      process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+      process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA = "1";
+      const cookie = issueControlBrowserSession("OWNER", "owner-1", { mfaSatisfied: false })
+        .split(";")[0]!;
+      const req = {
+        method: "POST",
+        headers: {
+          cookie: cookie,
+          origin: "http://127.0.0.1:3100",
+          host: "127.0.0.1:3100",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      } as IncomingMessage;
+      const res = fakeRes();
+      expect(authorizeControlPlaneRequest(req, res, pathname)).toBe(false);
+      expect(res.status).toBe(403);
+      expect(res.body).toMatch(/MFA-satisfied/);
+    });
+
+    it(`allows privileged browser mutations after MFA-satisfied session (${pathname})`, () => {
+      process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+      process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA = "1";
+      const cookie = issueControlBrowserSession("OWNER", "owner-1", { mfaSatisfied: true })
+        .split(";")[0]!;
+      const req = {
+        method: "POST",
+        headers: {
+          cookie: cookie,
+          origin: "http://127.0.0.1:3100",
+          host: "127.0.0.1:3100",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      } as IncomingMessage;
+      expect(authorizeControlPlaneRequest(req, fakeRes(), pathname)).toBe(true);
+    });
+
+    it(`does not bind MFA to machine bearer tokens (${pathname})`, () => {
+      process.env.ATLAS_CONTROL_PLANE_TOKEN = "unit-test-token-value";
+      process.env.ATLAS_CONTROL_PLANE_REQUIRE_BROWSER_MFA = "1";
+      const req = {
+        ...fakeReq("Bearer unit-test-token-value"),
+        method: "POST",
+      } as IncomingMessage;
+      expect(authorizeControlPlaneRequest(req, fakeRes(), pathname)).toBe(true);
+    });
+  }
 });

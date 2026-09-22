@@ -22,26 +22,34 @@ test.describe("Product surfaces (EN)", () => {
 
   test("readiness page shows title", async ({ page }) => {
     await page.goto("/en/readiness");
+    // /en/readiness redirects into the Studio shell (StudioSurfaceRedirect).
+    // Wait for the client-side redirect to complete before checking content.
+    await expect(page).toHaveURL(/\/en\/studio\?.*check=readiness/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    // /en/readiness redirects into the Studio shell (StudioSurfaceRedirect),
-    // which carries its own persistent "Project Studio" <h1> alongside this
+    // Studio carries its own persistent "Project Studio" <h1> alongside this
     // panel's own heading — two legitimate h1s on one page. Target the
     // panel's own heading by name instead of assuming a single global h1.
     await expect(
       page.getByRole("heading", { level: 1, name: "Production Readiness" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test("health / system scorecard reachable", async ({ page }) => {
     await page.goto("/en/health");
+    // /en/health redirects into the Studio shell (StudioSurfaceRedirect).
+    // Wait for the client-side redirect to complete before checking content.
+    await expect(page).toHaveURL(/\/en\/studio\?.*check=health/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    // /en/health redirects into the Studio shell (StudioSurfaceRedirect),
-    // which carries its own persistent "Project Studio" <h1> alongside this
+    // Studio carries its own persistent "Project Studio" <h1> alongside this
     // panel's own heading — two legitimate h1s on one page. Target the
     // panel's own heading by name instead of assuming a single global h1.
     await expect(
       page.getByRole("heading", { level: 1, name: "System Health" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test("partners / import surface reachable", async ({ page, request }) => {
@@ -135,12 +143,18 @@ test.describe("Product surfaces (EN)", () => {
     request,
   }) => {
     await page.goto("/en/workbench");
+    // /en/workbench redirects to /en/studio?tab=chat. Wait for redirect.
+    await expect(page).toHaveURL(/\/en\/studio\?.*tab=chat/, {
+      timeout: 30_000,
+    });
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+      timeout: 10_000,
+    });
 
     if (await apiHealthy(request)) {
       await expect(
-        page.getByText(/workbench|agent|chat|files|project/i).first(),
+        page.getByText(/studio|agent|chat|files|project/i).first(),
       ).toBeVisible({ timeout: 20_000 });
     }
   });

@@ -115,7 +115,6 @@ const form = page.locator("form");
 await expect(form).toBeVisible();
 await expect(form.getByLabel(/email/i)).toBeVisible();
 await expect(form.getByLabel(/password/i)).toBeVisible();
-// @ts-ignore
 await expect(
 form.getByRole("button", { name: /sign in/i }),
 ).toBeVisible();
@@ -125,8 +124,15 @@ test("memory page exposes main landmark and heading", async ({
 page,
 }, testInfo) => {
 await page.goto("/en/memory");
+// /en/memory redirects to /en?desk=memory (dashboard with memory desk).
+// Wait for the client-side redirect to complete.
+await expect(page).toHaveURL(/\/en\?.*desk=memory/, {
+  timeout: 30_000,
+});
 await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({
+  timeout: 10_000,
+});
 await expectNoA11yViolations(page, testInfo);
 });
 test("investors landing has brand hero and evidence graph visual", async ({

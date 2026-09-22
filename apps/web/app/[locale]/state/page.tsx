@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 
 /** Legacy orphan surface → Projects (per-project state lives under /projects/:id/state). */
