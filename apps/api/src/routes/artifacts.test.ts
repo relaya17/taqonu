@@ -150,6 +150,33 @@ describe("GET /api/v1/artifacts", () => {
     const ids = res.json().items.map((a: { id: string }) => a.id);
     expect(ids).toContain(mine.id);
   });
+
+  it("scopes to ?projectId and 403s a project the caller cannot read", async () => {
+    const owner = signedInUser();
+    const projectA = makeProject(owner);
+    const projectB = makeProject(owner);
+    const foreign = makeProject(otherUser);
+    const a = makeArtifact(projectA);
+    const b = makeArtifact(projectB);
+    const global = makeArtifact(null);
+
+    getRequestUser.mockReturnValue(owner);
+    const scoped = await app.inject({
+      method: "GET",
+      url: `/api/v1/artifacts?projectId=${projectA}`,
+    });
+    expect(scoped.statusCode).toBe(200);
+    const scopedIds = scoped.json().items.map((item: { id: string }) => item.id);
+    expect(scopedIds).toContain(a.id);
+    expect(scopedIds).not.toContain(b.id);
+    expect(scopedIds).not.toContain(global.id);
+
+    const denied = await app.inject({
+      method: "GET",
+      url: `/api/v1/artifacts?projectId=${foreign}`,
+    });
+    expect(denied.statusCode).toBe(403);
+  });
 });
 
 describe("POST /api/v1/artifacts auth", () => {

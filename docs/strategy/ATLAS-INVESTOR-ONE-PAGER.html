@@ -8,7 +8,7 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body {
-      font: 10.4pt/1.42 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font: 10pt/1.38 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       color: #111;
       max-width: 190mm;
       margin: 0 auto;
@@ -79,15 +79,16 @@
         <tr><td>Evidence, scoped memory, authority, verify</td><td>A better Cursor / AI IDE</td></tr>
         <tr><td>Agent ≠ Model. Guardian is deterministic</td><td>An autonomous engineer (Devin, Factory)</td></tr>
         <tr><td>Human remains SoD authority</td><td>A vector-database “memory” product</td></tr>
-        <tr><td>Studio = first proof; Control = later org plane</td><td>A feature list of ten products</td></tr>
+        <tr><td>Studio = human proof; Control = separate operator plane (implemented)</td><td>A feature list of ten products</td></tr>
       </tbody>
     </table>
-    <p>Proposal → Guardian (CONSISTENT / CONFLICT / UNKNOWN) → human approval → Apply → Verify → scoped memory. The system can say CONFLICT or UNKNOWN without believing the model.</p>
+    <p>Request → Policy → Risk → Guardian (CONSISTENT / CONFLICT / UNKNOWN) → dual-control approval → Apply → Verify → audit → evidence → scoped memory. CONFLICT and UNKNOWN are allowed without believing the model.</p>
+    <p>Atlas Core · Web · Studio · Control · Admin. Agents under catalog and policy. Connected apps stay themselves.</p>
 
     <h2>Honest status</h2>
-    <p><strong>Local, not production:</strong> conflict detection, unknown-as-unknown, policy block, human SoD, apply-then-verify, project isolation, audit log.</p>
-    <p><strong>Not yet:</strong> production proof, paying customers, measured Proof-of-Value, cloud memory sync.</p>
-    <p>Connected apps (CaseFlow, Vantera, LexStudy, …) are real-world oversight testbeds — not a product zoo. Atlas governs; it does not replace those applications.</p>
+    <p><strong>Implemented and locally verified:</strong> Guardian, dual-control SoD, apply-then-verify on disk, project isolation, append-only audit. Studio is the working home. Control and Admin are separate planes.</p>
+    <p><strong>Not claimed:</strong> production proof, paying customers, measured Proof-of-Value, cloud memory sync, Atlas executing connected applications.</p>
+    <p>Connected apps are oversight testbeds. Atlas governs; it does not replace them. Runtimes not on this workstation are not claimed as live products.</p>
 
     <h2>First conversation</h2>
     <p>Not a priced round. Not a valuation. We want overlap with funds that already believe agents need infrastructure <em>under</em> the agent.</p>
@@ -118,15 +119,16 @@
         <tr><td>ראיות, זיכרון עם אחריות, סמכות, אימות</td><td>Cursor טוב יותר</td></tr>
         <tr><td>Agent ≠ מודל. Guardian דטרמיניסטי</td><td>מהנדס אוטונומי</td></tr>
         <tr><td>האדם נשאר הסמכות (SoD)</td><td>עוד RAG / vector DB</td></tr>
-        <tr><td>Studio כמוכחה ראשונה; Control לארגון אחר כך</td><td>עשרה מוצרים ברשימת פיצ’רים</td></tr>
+        <tr><td>Studio כמוכחה אנושית; Control כמישור מפעיל נפרד (קיים)</td><td>עשרה מוצרים ברשימת פיצ’רים</td></tr>
       </tbody>
     </table>
-    <p>הצעה → Guardian (CONSISTENT / CONFLICT / UNKNOWN) → אישור אדם → Apply → Verify → זיכרון לפי פרויקט.</p>
+    <p>בקשה → מדיניות → סיכון → Guardian → אישור כפול → Apply → Verify → audit → ראיות → זיכרון לפי בעלים ופרויקט.</p>
+    <p>Atlas Core · Web · Studio · Control · Admin. Agents תחת קטלוג ומדיניות. האפליקציות המחוברות נשארות עצמן.</p>
 
     <h2>מצב כנה</h2>
-    <p><strong>מקומית, לא ייצור:</strong> זיהוי סתירה, UNKNOWN בלי ביטחון מזויף, חסימת סמכות, SoD, Apply ואז Verify, בידוד פרויקטים, audit.</p>
-    <p><strong>עדיין לא:</strong> הוכחת ייצור, לקוחות משלמים, מדד ערך, סנכרון זיכרון בענן.</p>
-    <p>האפליקציות המחוברות הן סביבות פיקוח אמיתיות — לא פורטפוליו מוצרים. Atlas מפקח; הוא לא מחליף אותן.</p>
+    <p><strong>ממומש ומאומת מקומית:</strong> Guardian, SoD כפול, Apply ואז Verify על דיסק, בידוד, audit. Studio הוא בית העבודה. Control ו-Admin מישורים נפרדים.</p>
+    <p><strong>לא נטען:</strong> ייצור מוכח, לקוחות משלמים, מדד ערך, סנכרון ענן, Atlas שמריץ את האפליקציות המחוברות.</p>
+    <p>האפליקציות המחוברות הן סביבות פיקוח. Atlas מפקח; הוא לא מחליף אותן.</p>
 
     <h2>שיחה ראשונה</h2>
     <p>לא סבב מתומחר ולא שווי. בדיקת חפיפת thesis מול קרן שכבר מאמינה ש-Agents צריכים תשתית מתחת ל-Agent.</p>

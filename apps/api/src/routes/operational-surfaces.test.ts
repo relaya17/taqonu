@@ -182,4 +182,68 @@ describe("readiness certificates are project-scoped", () => {
     });
     expect(listedA.json().items).toHaveLength(1);
   });
+
+  it("honors ?projectId and does not return other readable certificates", async () => {
+    const now = new Date().toISOString();
+    const projectA = crypto.randomUUID();
+    const projectB = crypto.randomUUID();
+    for (const [id, slug] of [
+      [projectA, "proj-a"],
+      [projectB, "proj-b"],
+    ] as const) {
+      osStore.upsertProject({
+        id,
+        slug,
+        name: slug,
+        description: null,
+        status: "ACTIVE",
+        techStack: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      bindProjectOwner(id, ownerA.id, "bound_on_create");
+      osStore.addReadinessCertificate({
+        id: crypto.randomUUID(),
+        projectId: id,
+        projectName: slug,
+        overallScore: 80,
+        dimensions: [
+          {
+            key: "security",
+            score: 80,
+            epistemicState: "OBSERVED",
+            evidenceRefs: [],
+            notes: "ok",
+          },
+        ],
+        blockers: 0,
+        highRisks: 0,
+        unknownClaims: 0,
+        blockerSummaries: [],
+        highRiskSummaries: [],
+        unknownSummaries: [],
+        lastVerifiedAt: now,
+        plainLanguageSummary: "ok",
+        gateGraphId: null,
+        createdAt: now,
+      });
+    }
+
+    getRequestUser.mockReturnValue(ownerA);
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/readiness/certificates?projectId=${projectA}`,
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().items as Array<{ projectId: string }>;
+    expect(items).toHaveLength(1);
+    expect(items[0]?.projectId).toBe(projectA);
+
+    getRequestUser.mockReturnValue(ownerB);
+    const denied = await app.inject({
+      method: "GET",
+      url: `/api/v1/readiness/certificates?projectId=${projectA}`,
+    });
+    expect(denied.statusCode).toBe(403);
+  });
 });

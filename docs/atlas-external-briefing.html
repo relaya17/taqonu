@@ -66,7 +66,7 @@
       display: block;
       height: 100%;
       background: var(--gold);
-      width: 8.33%;
+      width: 7.14%;
       transition: width 280ms ease;
     }
 
@@ -157,6 +157,11 @@
       border-radius: 6px;
       padding: 20px 22px 22px;
       min-height: 132px;
+    }
+
+    .card.compact {
+      min-height: 0;
+      padding: 14px 16px 16px;
     }
 
     .card h4 {
@@ -377,12 +382,12 @@
   <div class="deck">
     <header class="chrome">
       <div><strong>Atlas</strong> · Technology briefing</div>
-      <div id="counter">01 / 12</div>
+      <div id="counter">01 / 14</div>
     </header>
     <div class="progress"><span id="bar"></span></div>
     <main id="main"></main>
     <footer class="chrome">
-      <div>Not a completeness claim. Product in active development.</div>
+      <div>Local path verified. Production is not proven. Not a valuation.</div>
       <nav>
         <button id="prev" type="button">Previous</button>
         <div class="dots" id="dots"></div>
@@ -446,7 +451,7 @@
           </ul>
         </article>
       </div>
-      <p class="note">Coding tools remain workers. Atlas remains truth, quality, governance, and control.</p>
+      <p class="note">Not an IDE, chatbot, coding assistant, generic agent framework, or memory database. Coding tools remain workers. Atlas remains truth, quality, governance, and control.</p>
     </section>
 
     <section class="slide" data-title="Why it exists">
@@ -499,26 +504,62 @@
 
     <section class="slide" data-title="The ecosystem">
       <h2>How the parts relate</h2>
-      <p class="body">Atlas is designed as a control layer over systems that already exist. Connected applications remain themselves. Atlas observes, binds evidence, and governs action.</p>
-      <article class="card" style="min-height:0; margin-bottom:14px">
-        <h4>Ecosystem, at briefing level</h4>
-        <div class="stack" style="margin-top:8px">
-          <p>People and coding agents work in the customer workspace.</p>
-          <p>Connectors observe repositories, delivery, and operational signals from the outside.</p>
-          <p>Atlas maintains a managed-system view: contract, evidence, memory, and verdict.</p>
-          <p>Governance decides whether a proposed action is allowed, denied, or requires a human.</p>
-        </div>
-      </article>
-      <div class="grid g2">
-        <article class="card">
-          <h4>The product people use</h4>
-          <p>Systems, truth, health, readiness, studio, and audit surfaces — so an operator can see posture and evidence without becoming the integration layer.</p>
+      <p class="body">Atlas is a control layer over systems that already exist. Connected applications remain themselves. Atlas observes, binds evidence, and governs action. The surfaces below are implemented as separate trust planes — they are not one website on one port.</p>
+      <div class="grid g3" style="margin-bottom:10px">
+        <article class="card compact">
+          <h4>Atlas Core</h4>
+          <p>Shared API, schemas, policy, risk, memory, evidence, audit, and connectors. Infrastructure — not a chat product.</p>
         </article>
-        <article class="card">
-          <h4>The control layer</h4>
-          <p>A separate governance plane for oversight of agents, applications, approvals, and automation. Observation and authority stay distinct from the applications being governed.</p>
+        <article class="card compact">
+          <h4>Web</h4>
+          <p>The personal user plane: projects, systems, truth, health, readiness, memory, decisions, and Studio.</p>
+        </article>
+        <article class="card compact">
+          <h4>Studio</h4>
+          <p>The supervised workspace inside Web. Propose, review, approve, apply, verify — on a project the user owns.</p>
         </article>
       </div>
+      <div class="grid g3">
+        <article class="card compact">
+          <h4>Control</h4>
+          <p>Operator supervision of agents, connected applications, approvals, and automation. Separate from the user product.</p>
+        </article>
+        <article class="card compact">
+          <h4>Admin</h4>
+          <p>Platform supervisor over Control and Studio. Not a second customer dashboard, and not tenant “admin.”</p>
+        </article>
+        <article class="card compact">
+          <h4>Agents &amp; applications</h4>
+          <p>Specialists and a personal supervising agent work under catalog and policy. Connected apps stay themselves; Atlas does not become them.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Governed execution">
+      <h2>Governed execution</h2>
+      <p class="body">A successful model reply is not a successful change. The local path that has been demonstrated is a loop — not a chatbot with a save button.</p>
+      <div class="pills">
+        <span class="pill">Request</span>
+        <span class="pill">Policy</span>
+        <span class="pill">Risk</span>
+        <span class="pill">Approval</span>
+        <span class="pill">Execution</span>
+        <span class="pill">Result</span>
+        <span class="pill">Audit</span>
+        <span class="pill">Evidence</span>
+        <span class="pill warn">Verification</span>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
+        <article class="card">
+          <h4>What is locally demonstrated</h4>
+          <p>Deterministic Guardian (CONSISTENT / CONFLICT / UNKNOWN). Dual-control approval — the requester cannot self-approve. Apply writes only after claim. Disk verify. Append-only audit. Owner- and project-scoped memory.</p>
+        </article>
+        <article class="card">
+          <h4>What this is not</h4>
+          <p>Not production proof. Not unsupervised apply. Not Atlas executing a customer’s CaseFlow, HotelOS, or other application. Connectors observe and evaluate; they do not replace those products.</p>
+        </article>
+      </div>
+      <p class="note">Guardian can return CONFLICT or UNKNOWN without believing the model. Verification is a separate step from execution.</p>
     </section>
 
     <section class="slide" data-title="Memory and evidence">
@@ -531,7 +572,7 @@
         </article>
         <article class="card">
           <h4>Memory</h4>
-          <p>Engineering memory is scoped to the owner of the work. Atlas is not designed to train across tenants. Customer source remains in the customer’s workspace or git host.</p>
+          <p>User → personal / specialist agent → user-owned memory, scoped to owner and project, with provenance. Atlas is not designed to train across tenants. Customer source remains in the customer’s workspace or git host.</p>
         </article>
         <article class="card">
           <h4>Knowledge</h4>
@@ -554,7 +595,7 @@
         </article>
         <article class="card">
           <h4>Humans</h4>
-          <p>Approvals, emergency stop of agent work, and ownership-gated apply paths keep irreversible work from being implicit. Studio is designed as a human view of proposed change: propose, review, approve, then apply.</p>
+          <p>Approvals, kill switches, and ownership-gated apply paths keep irreversible work from being implicit. Studio is the human view of proposed change: propose, Guardian, dual-control approve, apply, then verify on disk.</p>
         </article>
       </div>
       <p class="note">High-severity and production-facing change is intended to remain human-gated. Low-risk automation is not an excuse to skip verification.</p>
@@ -570,7 +611,7 @@
             <li>Managed systems, with blocking issues shown first</li>
             <li>Release verdict with evidence</li>
             <li>Truth, health, and readiness drill-down</li>
-            <li>Studio for governed change</li>
+            <li>Studio as the signed-in working home for governed change</li>
             <li>Process and quality audits on connected work</li>
           </ul>
         </article>
@@ -584,7 +625,7 @@
 
     <section class="slide" data-title="Architecture">
       <h2>Architecture, at briefing level</h2>
-      <p class="body">Atlas observes connected systems. It does not merge into them, and it does not collapse user work, tenant services, and control into a single public surface.</p>
+      <p class="body">Atlas observes connected systems. It does not merge into them. Public, user (Web + Studio), Control, and Admin stay separate planes. They are not one public app.</p>
       <div class="grid g3">
         <article class="card">
           <h4>Observe</h4>
@@ -623,7 +664,7 @@
         </article>
         <article class="card">
           <h4>Honesty of status</h4>
-          <p>Atlas is under active construction. Surfaces exist; completeness varies. This briefing does not treat a roadmap as a shipped guarantee.</p>
+          <p>The local governed path is implemented and verified. Production deployment, paying customers, and a measured proof-of-value are not claimed. A roadmap is not a shipped guarantee.</p>
         </article>
       </div>
     </section>

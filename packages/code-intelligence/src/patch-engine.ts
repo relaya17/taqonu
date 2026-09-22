@@ -296,6 +296,19 @@ export function applyPatchFiles(
   return { applied, skipped, rollbackSnapshot };
 }
 
+/**
+ * Restore only the patched paths in `snapshot` to their pre-apply state.
+ *
+ * Contract:
+ * - `previousContent` string → rewrite that file to the captured content
+ *   (modify, or a delete that is being undone).
+ * - `previousContent` null → the path did not exist before apply; delete it.
+ * - Unrelated files in the workspace are not touched.
+ * - This is not a full-tree restore.
+ *
+ * `ROLLED_BACK` therefore means "patched paths match the pre-apply snapshot",
+ * not "the entire filesystem equals some prior tree".
+ */
 export function rollbackPatchFiles(
   workspaceRoot: string,
   snapshot: readonly { path: string; previousContent: string | null }[],
@@ -308,7 +321,10 @@ export function rollbackPatchFiles(
     const full = join(root, rel);
     if (!full.startsWith(root)) continue;
     if (item.previousContent === null) {
-      // leave new files; deletion of new files can be added later
+      if (existsSync(full)) {
+        unlinkSync(full);
+        restored.push(rel);
+      }
       continue;
     }
     mkdirSync(dirname(full), { recursive: true });

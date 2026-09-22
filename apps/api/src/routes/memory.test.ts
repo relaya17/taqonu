@@ -147,6 +147,8 @@ describe("GET /api/v1/memory", () => {
     const statements = body.items.map((m: { statement: string }) => m.statement);
     expect(statements).toContain("owner A private note");
     expect(statements).not.toContain("owner B private note");
+    expect(body.pageSize).toBe(body.items.length);
+    expect(body.total).toBe(body.items.length);
   });
 
   it("retrieve mode also scopes by ownerId", async () => {
@@ -170,6 +172,33 @@ describe("GET /api/v1/memory", () => {
     const statements = body.items.map((m: { statement: string }) => m.statement);
     expect(statements).toContain("owner A private note");
     expect(statements).toContain("owner B private note");
+  });
+});
+
+describe("GET /api/v1/memory/export", () => {
+  it("401s when not signed in", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({ method: "GET", url: "/api/v1/memory/export" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns only the caller's memories and does not delete them", async () => {
+    seedMemory(ownerA.id, "owner A export row");
+    seedMemory(ownerB.id, "owner B export secret");
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({ method: "GET", url: "/api/v1/memory/export" });
+    expect(res.statusCode).toBe(200);
+    const statements = (res.json().items as Array<{ statement: string }>).map(
+      (row) => row.statement,
+    );
+    expect(statements).toContain("owner A export row");
+    expect(statements).not.toContain("owner B export secret");
+    expect(res.json().ownerId).toBe(ownerA.id);
+    getRequestUser.mockReturnValue(ownerA);
+    const still = await app.inject({ method: "GET", url: "/api/v1/memory" });
+    expect(
+      (still.json().items as Array<{ statement: string }>).map((row) => row.statement),
+    ).toContain("owner A export row");
   });
 });
 
@@ -628,5 +657,100 @@ describe("POST /api/v1/memory", () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/memory" });
     const statements = res.json().items.map((m: { statement: string }) => m.statement);
     expect(statements).not.toContain("owner B's freshly created secret note");
+  });
+});
+
+describe("POST /api/v1/memory/:id/correct", () => {
+  it("401s when not signed in", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${crypto.randomUUID()}/correct`,
+      payload: { statement: "corrected statement" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("creates a superseding memory and leaves the original row SUPERSEDED", async () => {
+    const originalId = crypto.randomUUID();
+    seedMemory(ownerA.id, "old preference about dark theme");
+    const seeded = [...osStore.memories.values()]
+      .flat()
+      .find((row) => row.statement === "old preference about dark theme");
+    expect(seeded).toBeDefined();
+    const id = seeded?.id ?? originalId;
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${id}/correct`,
+      payload: { statement: "prefer light theme in Studio" },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.statement).toBe("prefer light theme in Studio");
+    expect(body.epistemicState).toBe("PROPOSED");
+    expect(body.previousMemoryId).toBe(id);
+    expect(body.superseded).toBe(true);
+
+    getRequestUser.mockReturnValue(ownerA);
+    const list = await app.inject({ method: "GET", url: "/api/v1/memory" });
+    const items = list.json().items as Array<{
+      id: string;
+      statement: string;
+      status: string;
+      supersededBy: string | null;
+    }>;
+    const previous = items.find((row) => row.id === id);
+    const next = items.find((row) => row.id === body.id);
+    expect(previous?.status).toBe("SUPERSEDED");
+    expect(previous?.statement).toBe("old preference about dark theme");
+    expect(previous?.supersededBy).toBe(body.id);
+    expect(next?.status).toBe("ACTIVE");
+  });
+
+  it("cannot correct another tenant's memory (404) and does not delete it", async () => {
+    seedMemory(ownerB.id, "owner B private correction target");
+    const foreign = [...osStore.memories.values()]
+      .flat()
+      .find((row) => row.statement === "owner B private correction target");
+    expect(foreign).toBeDefined();
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${foreign!.id}/correct`,
+      payload: { statement: "stolen correction" },
+    });
+    expect(res.statusCode).toBe(404);
+    getRequestUser.mockReturnValue(ownerB);
+    const check = await app.inject({ method: "GET", url: "/api/v1/memory" });
+    const mine = check
+      .json()
+      .items.find((row: { id: string }) => row.id === foreign!.id);
+    expect(mine.status).toBe("ACTIVE");
+    expect(mine.statement).toBe("owner B private correction target");
+  });
+
+  it("409s when the named memory is already superseded", async () => {
+    seedMemory(ownerA.id, "first correction source");
+    const original = [...osStore.memories.values()]
+      .flat()
+      .find((row) => row.statement === "first correction source");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${original!.id}/correct`,
+      payload: { statement: "second statement after correct" },
+    });
+    expect(first.statusCode).toBe(201);
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${original!.id}/correct`,
+      payload: { statement: "third attempt on same id" },
+    });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe("ALREADY_SUPERSEDED");
   });
 });

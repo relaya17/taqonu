@@ -446,7 +446,7 @@
     "workflow": {
       "title": "הצעה → סקירה → אישור → החלה → אימות",
       "help": "הסוכן מציע Patch. סוקרים ומאשרים כאן. Apply יוצר אישור כתיבה חי שזהות אחרת חייבת להחליט עליו לפני כתיבה לדיסק.",
-      "rollbackHelp": "שחזור משתמש באותו מסלול SoD כמו Apply. רק APPLIED או VERIFIED. שחזור דיסק אינו פסק Truth.",
+      "rollbackHelp": "שחזור משתמש באותו מסלול SoD כמו Apply. רק APPLIED או VERIFIED. משחזר רק את נתיבי ה-Patch למצב שלפני Apply: קבצים שנוספו נמחקים, קבצים ששונו נכתבים מחדש, קבצים שנמחקו משוחזרים. שאר הקבצים לא משתנים. זה אינו שחזור עץ מלא ואינו פסק Truth.",
       "verifyFailed": "האימות נכשל",
       "empty": "בדקו קובץ ואז הציעו שינוי. Patches קיימים לפרויקט יופיעו כאן.",
       "reviewFiles": "קבצים ב-Patch",
@@ -549,6 +549,7 @@
     "title": "הגדרות",
     "subtitle": "חשבון מלא: פרופיל, סיסמה, סשנים, מחיקה, ואדמין.",
     "signedOut": "לא מחוברים.",
+    "loading": "טוען חשבון…",
     "goLogin": "התחברות",
     "goRegister": "הרשמה",
     "signedInAs": "מחוברים כ",
@@ -616,8 +617,9 @@
     "opsProcessAudit": "E2E תהליכים",
     "opsCounsel": "תדרוך לעו״ד",
     "personalTitle": "האזור האישי",
-    "personalHelp": "זיכרון, החלטות ותיקוני קוד — במקום אחד בלוח הבקרה, בלי לפזר בניווט.",
+    "personalHelp": "תיבה, זיכרון, החלטות ותיקוני קוד — במקום אחד בלוח הבקרה, בלי לפזר בניווט.",
     "personalTab": {
+      "inbox": "תיבה",
       "memory": "זיכרון",
       "decisions": "החלטות",
       "patches": "תיקוני קוד"
@@ -1442,7 +1444,27 @@
     "pendingEmpty": "אין כרגע פריטים הממתינים לאישור.",
     "confirmedTitle": "מאושרים",
     "approve": "אשר",
-    "cloudSynced": "מסונכרן לענן"
+    "correct": "תקן",
+    "saveCorrection": "שמור תיקון",
+    "cancelCorrect": "בטל",
+    "correctHelp": "תיקון כותב זיכרון חדש ומסמן את הישן כ־superseded. השורה לא נמחקת.",
+    "export": "ייצא את הזיכרונות שלי",
+    "cloudSynced": "מסונכרן לענן",
+    "provenance": "{sourceType} · {source} · ראיות {evidence} · ביטחון {confidence}",
+    "verified": "מאומת"
+  },
+  "notifications": {
+    "title": "תיבה",
+    "help": "בתוך האפליקציה בלבד. זיכרונות ממתינים, אישורים שביקשת, ותיקונים מוכנים להחלה. Atlas לא שולח דוא״ל או SMS.",
+    "empty": "אין פריטים ממתינים.",
+    "unread": "{count} לא נקראו",
+    "open": "פתח",
+    "dismiss": "סגור",
+    "kind": {
+      "memoryPending": "זיכרון",
+      "approvalWaiting": "אישור",
+      "patchReady": "תיקון"
+    }
   },
   "section": {
     "comingSoon": "מסך זה בדרך — השתמשו בינתיים בפרויקטים, סוכן, בקרת איכות, זיכרון, החלטות ואינטגרציות.",

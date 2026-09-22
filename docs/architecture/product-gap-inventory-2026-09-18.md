@@ -193,12 +193,12 @@ Atlas does not execute sibling tools. Sibling HITL remains in the sibling.
 | G-P1-01 | CaseFlow | Full HTTP tenant E2E | BLOCKED_EXTERNAL | Health 503 missing env | No | CaseFlow env | P1 | CaseFlow keys |
 | G-P1-02 | BrokerOS | Full app E2E | BLOCKED_EXTERNAL | No `.env.local` | No | BrokerOS env | P1 | BrokerOS keys |
 | G-P1-03 | Civio | Complete AI response | BLOCKED_EXTERNAL | Prior Gemini 502 | No | Provider | P1 | Real key or accept observe-only |
-| G-P1-04 | Product | Memory delete/correct/export UX | PARTIAL/MISSING | Create/list/retrieve only | Yes after product rules | Retention decision | P1 | Founder: TTL/delete rules |
-| G-P1-05 | Product | Notifications | MISSING | Explicit none | Yes after channel decision | Email/SMS vendor optional | P1 | Decide channels |
-| G-P1-06 | Commercial | Live Stripe | BLOCKED_EXTERNAL | Stub without secrets | After keys, verify webhook | Stripe | P1 | Configure Stripe |
-| G-P1-07 | Commercial | Design-partner live proof | PRODUCT_DECISION_REQUIRED | Playbook only | Support the run | Partner | P1 | Run one partner audit |
-| G-P1-08 | Control | Canonical API hop | IMPLEMENTED | Fail-closed without token | Yes configure both processes | Token pairing | P1 | Set matching CP token |
-| G-P1-09 | Data | Live embeddings | BLOCKED_EXTERNAL | Lexical-hash fallback | After provider | Embedding API | P1 | Configure provider |
+| G-P1-04 | Product | Memory correct/export UX | CLOSED locally (DELETE/TTL remains a product decision) | Correct + owner-scoped export verified | No | Retention decision for DELETE only | P1 | See remaining-external-dependencies.md |
+| G-P1-05 | Product | Notifications | CLOSED locally (in-app only) | Inbox GET/dismiss verified; email/SMS out of scope | No | Email/SMS vendor only if later added | P1 | See remaining-external-dependencies.md |
+| G-P1-06 | Commercial | Live Stripe | BLOCKED | Stub without secrets | After keys, verify webhook | `STRIPE_SECRET_KEY` + webhook signing secret | P1 | User supplies Stripe secrets |
+| G-P1-07 | Commercial | Design-partner live proof | BLOCKED | Playbook only | Support the run | Real human partner session | P1 | User runs one partner audit |
+| G-P1-08 | Control | Canonical API hop | BLOCKED | Fail-closed without matching token | After pairing, live hop | Same `ATLAS_CONTROL_PLANE_TOKEN` on API + Control | P1 | User/deploy sets matching token |
+| G-P1-09 | Data | Live embeddings | BLOCKED | Lexical-hash fallback | After provider | Embedding HTTP provider + credentials | P1 | User configures provider |
 | G-P2-01 | Product | Org/team RBAC | PRODUCT_DECISION_REQUIRED | Draft SQL | After ADR | none | P2 | Keep ownerId or amend |
 | G-P2-02 | Product | SSO/SAML/SCIM | PRODUCT_DECISION_REQUIRED | OAuth only | After decision | IdP | P2 | Decide enterprise identity |
 | G-P2-03 | Architecture | Sibling execute | PRODUCT_DECISION_REQUIRED | ADR-022 | After written amendment | none | P2 | Keep observe-only or amend |

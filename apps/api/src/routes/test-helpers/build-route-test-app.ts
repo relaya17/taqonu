@@ -9,6 +9,14 @@ import { errorHandler } from "../../middleware/error-handler.js";
  * registers. Deliberately skips buildApp()'s cloud-hydrate / dev-local
  * bootstrap / knowledge-refresh-interval side effects so tests stay fast,
  * offline, and isolated.
+ *
+ * AUTH GAP: this helper does NOT register `atlas-session-gate`. Production
+ * `buildApp()` does. Route tests that only mock `getRequestUser` can therefore
+ * look authenticated while skipping the onRequest cookie/bearer gate. Handlers
+ * under test MUST call `requireUser` / `requireSignedInForWrite` themselves.
+ * Gate coverage lives in `atlas-session-gate.test.ts` and
+ * `public-routes.test.ts` — do not treat a 200 from this helper as proof that
+ * an unauthenticated browser can reach the route.
  */
 export function buildTestEnv(overrides: Partial<ServerEnv> = {}): ServerEnv {
   return loadServerEnv(

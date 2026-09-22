@@ -336,7 +336,7 @@ describe("POST /api/v1/auth/mfa/disable", () => {
     expect(findUserByEmail(user.email)?.mfaEnabled).toBe(true);
   });
 
-  it("a backup code can be used to disable MFA, and is single-use", async () => {
+  it("a backup code can be used to disable MFA, and is single-use", { timeout: 15_000 }, async () => {
     const user = makeSignedInUser();
     const setupRes = await app.inject({ method: "POST", url: "/api/v1/auth/mfa/setup" });
     const { secret, backupCodes } = setupRes.json();

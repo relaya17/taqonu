@@ -5,6 +5,7 @@ Architecture sources by role (there is no single canonical architecture file):
 - [`v1.0.md`](./v1.0.md) — dated normative MVP contract (2026-08-11)
 - [`docs/adr/`](../adr/) — canonical architectural decisions (ADR-001–ADR-023)
 - [`remaining-work.md`](./remaining-work.md) — current implementation/remainder truth
+- [`remaining-external-dependencies.md`](./remaining-external-dependencies.md) — remaining credentials, infrastructure, partners, and product decisions that local implementation cannot close
 - [`gap-matrix.md`](./gap-matrix.md) — current G1–G7 gap classification
 
 ArletOS is an **Engineering Intelligence OS**, not an AI agent product and not an IDE.  

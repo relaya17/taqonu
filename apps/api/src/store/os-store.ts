@@ -847,6 +847,15 @@ class OsStore {
     );
   }
 
+  findEvidenceById(id: string): EvidenceRecord | null {
+    this.ensureLoaded();
+    for (const list of this.evidence.values()) {
+      const found = list.find((item) => item.id === id);
+      if (found) return parseEvidenceRecord(found);
+    }
+    return null;
+  }
+
   addEvidence(projectId: string, records: readonly EvidenceRecord[]): void {
     this.ensureLoaded();
     const existing = this.getEvidence(projectId);
@@ -1492,6 +1501,17 @@ class OsStore {
     this.ensureLoaded();
     this.meta[key] = value;
     this.persist();
+  }
+
+  listInboxDismissed(ownerId: string): string[] {
+    const raw = this.getMeta(`inbox.dismissed.${ownerId}`) ?? "";
+    return raw.split(",").filter((id) => id.length > 0);
+  }
+
+  dismissInboxItem(ownerId: string, id: string): void {
+    const next = new Set(this.listInboxDismissed(ownerId));
+    next.add(id);
+    this.setMeta(`inbox.dismissed.${ownerId}`, [...next].slice(-200).join(","));
   }
 
   getConversationThread(threadId: string): readonly ConversationThreadTurn[] {

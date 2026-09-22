@@ -17,8 +17,10 @@ import {
   approveMemory,
   classifyMemoryType,
   commitMemory,
+  findOwnedMemory,
   retrieveMemories,
   supersedeMatchingMemories,
+  supersedeMemoryById,
 } from "../services/memory-pipeline.js";
 import { atlasMetrics } from "./metrics.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
@@ -95,7 +97,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     return {
       items,
       page: 1,
-      pageSize: 20,
+      pageSize: items.length,
       total: items.length,
       pipeline: "list",
     };
@@ -284,6 +286,124 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     return { ...updated, cloudSynced };
   });
 
+  /**
+   * Human correction: write a new ACTIVE memory and supersede the named
+   * row. Does not delete. USER source stays capped at PROPOSED (same create
+   * ceiling). Foreign ids 404. Already-superseded rows 409.
+   */
+  app.post("/api/v1/memory/:id/correct", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
+    const entityDecision = authorizeEntityAction("RECORD", "CREATE", {
+      mode: "WRITE",
+      writeGateOpen: true,
+      approved: true,
+    });
+    if (entityDecision.decision !== "ALLOWED") {
+      const reason =
+        entityDecision.decision === "DENIED"
+          ? entityDecision.reason
+          : "RECORD.CREATE requires explicit approval";
+      throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
+    }
+
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z
+      .object({ statement: z.string().trim().min(3).max(4000) })
+      .parse(request.body ?? {});
+
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+
+    const located = findOwnedMemory({
+      memoryId: params.id,
+      ownerId: identity.ownerId,
+    });
+    if (!located) {
+      return reply.status(404).send({ error: { message: "Memory not found" } });
+    }
+    if (located.memory.status !== "ACTIVE") {
+      return reply.status(409).send({
+        error: {
+          message: "Memory has already been superseded",
+          code: "ALREADY_SUPERSEDED",
+        },
+      });
+    }
+
+    const original = located.memory;
+    if (original.projectId) {
+      await assertProjectWriteAccess(app, request, original.projectId);
+    }
+
+    const now = new Date().toISOString();
+    const classified = classifyMemoryType(body.statement);
+    const safeStatement = redactSecrets(body.statement);
+    const memory = memorySchema.parse({
+      id: crypto.randomUUID(),
+      ownerId: identity.ownerId,
+      type: original.type || classified.type,
+      projectId: original.projectId,
+      statement: safeStatement,
+      reason: [
+        ...original.reason,
+        `corrected:${original.id}`,
+        `classified:${classified.type}:${classified.reason}`,
+      ].slice(-12),
+      status: "ACTIVE",
+      confidence: original.confidence,
+      category: original.category,
+      epistemicState: "PROPOSED",
+      observationMode: "INFERRED",
+      source: "ui-correct",
+      sourceType: "USER",
+      sourceId: original.id,
+      evidence: [],
+      supersededBy: null,
+      validFrom: now,
+      validUntil: null,
+      observedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "user",
+      scope: original.scope,
+      priority: original.priority,
+      agentId: null,
+      allowedAgents: original.allowedAgents ?? null,
+    });
+    const { cloudSynced } = await commitMemory({
+      memory,
+      env: app.atlasEnv,
+      userAccessToken: identity.userAccessToken,
+    });
+    const superseded = supersedeMemoryById({
+      memoryId: original.id,
+      newerMemoryId: memory.id,
+      ownerId: identity.ownerId,
+    });
+    atlasMetrics.record("memory_write_rate", 1, { kind: "correct" });
+    appendDomainEvent({
+      type: "memory.created",
+      projectId: memory.projectId,
+      ownerId: identity.ownerId,
+      epistemicState: memory.epistemicState,
+      payload: {
+        memoryId: memory.id,
+        statement: memory.statement,
+        type: memory.type,
+        classifiedType: classified.type,
+        corrects: original.id,
+      },
+    });
+
+    return reply.status(201).send({
+      ...memory,
+      superseded,
+      previousMemoryId: original.id,
+      classification: classified,
+      cloudSynced,
+    });
+  });
+
   /** Pending review queue — items an approver still needs to act on. */
   app.get("/api/v1/memory/pending", async (request) => {
     const user = await requireUser(app, request);
@@ -300,6 +420,25 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
           m.epistemicState === "ASSUMED"),
     );
     return { items, total: items.length };
+  });
+
+  /**
+   * Owner-scoped memory dump. Not delete. Not a project context-export.
+   * Regular callers receive only their rows; admins receive the same
+   * owner-scoped dump of *their* rows unless they are listing as admin.
+   */
+  app.get("/api/v1/memory/export", async (request) => {
+    const user = await requireUser(app, request);
+    const items = scopeMemoriesToCaller(
+      [...osStore.memories.values()].flat(),
+      user,
+    );
+    return {
+      exportedAt: new Date().toISOString(),
+      ownerId: user.id,
+      count: items.length,
+      items,
+    };
   });
 
   /**

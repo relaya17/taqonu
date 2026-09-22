@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -211,6 +211,101 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
     expect(entry?.payload.risk).toBe("LOW");
     expect(entry?.payload.approval).toBe("APPROVED");
     expect(String(entry?.payload.reason)).toMatch(/score=/);
+  });
+
+  it("rejects apply after the project workspace root changes", async () => {
+    const owner = testUser();
+    const now = new Date().toISOString();
+    const projectId = crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectId,
+      slug: `rebind-${projectId.slice(0, 8)}`,
+      name: "Rebind",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(projectId, owner.id, "bound_on_create");
+    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const patch = makePatch({
+      projectId,
+      risk: "LOW",
+      confidence: 1,
+      evidenceIds: [someUuid(41), someUuid(42), someUuid(43)],
+    });
+    osStore.upsertPatch(patch);
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(first.statusCode).toBe(202);
+    await decideApprovalRequest(first.json().approvalId, {
+      decidedBy: "88888888-8888-4888-8888-888888888888",
+      approve: true,
+      decisionReason: "approved before rebind",
+    });
+    const decoy = mkdtempSync(join(tmpdir(), "atlas-rebind-"));
+    writeFileSync(join(decoy, "test.txt"), "original content", "utf8");
+    osStore.setWorkspaceRoot(projectId, decoy);
+    try {
+      const second = await app.inject({
+        method: "POST",
+        url: `/api/v1/code/patches/${patch.id}/apply?approvalId=${first.json().approvalId}`,
+        payload: { workspaceRoot: decoy },
+      });
+      expect(second.statusCode).toBe(403);
+      expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe(
+        "original content",
+      );
+      expect(readFileSync(join(decoy, "test.txt"), "utf8")).toBe("original content");
+    } finally {
+      rmSync(decoy, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects using one patch's apply approval against a different patch", async () => {
+    const first = makePatch({
+      risk: "LOW",
+      confidence: 1,
+      evidenceIds: [someUuid(51), someUuid(52), someUuid(53)],
+    });
+    const second = makePatch({
+      risk: "LOW",
+      confidence: 1,
+      evidenceIds: [someUuid(54), someUuid(55), someUuid(56)],
+      filesChanged: [
+        {
+          path: "other.txt",
+          action: "add",
+          summary: "other",
+          afterContent: "other",
+        },
+      ],
+    });
+    osStore.upsertPatch(first);
+    osStore.upsertPatch(second);
+    const requested = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${first.id}/apply`,
+      payload: { workspaceRoot },
+    });
+    expect(requested.statusCode).toBe(202);
+    await decideApprovalRequest(requested.json().approvalId, {
+      decidedBy: "88888888-8888-4888-8888-888888888888",
+      approve: true,
+      decisionReason: "approved for first patch only",
+    });
+    const stolen = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${second.id}/apply?approvalId=${requested.json().approvalId}`,
+      payload: { workspaceRoot },
+    });
+    expect(stolen.statusCode).toBe(403);
+    expect(osStore.getPatch(second.id)?.status).not.toBe("APPLIED");
+    expect(existsSync(join(workspaceRoot, "other.txt"))).toBe(false);
   });
 
   it("applies a well-evidenced HIGH-risk patch once a genuine, independent decision is claimed -- dispatch's own recheck lands in APPROVAL, not HUMAN_ONLY", async () => {
@@ -595,6 +690,66 @@ describe("POST /api/v1/code/patches/:id/rollback", async () => {
     });
     expect(stillPending.statusCode).toBe(403);
   });
+
+  it("rejects a foreign workspaceRoot on a project-bound patch and does not mark ROLLED_BACK", async () => {
+    writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
+    const owner = testUser();
+    const now = new Date().toISOString();
+    const projectId = crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectId,
+      slug: `rb-${projectId.slice(0, 8)}`,
+      name: "Rollback bind",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(projectId, owner.id, "bound_on_create");
+    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const patch = makePatch({
+      projectId,
+      risk: "LOW",
+      status: "APPLIED",
+      appliedAt: now,
+      confidence: 1,
+      evidenceIds: [someUuid(31), someUuid(32), someUuid(33)],
+    });
+    osStore.upsertPatch(patch);
+
+    const requested = await app.inject({
+      method: "POST",
+      url: `/api/v1/code/patches/${patch.id}/rollback`,
+      payload: { workspaceRoot },
+    });
+    expect(requested.statusCode).toBe(202);
+    const approvalId = requested.json().approvalId as string;
+    await decideApprovalRequest(approvalId, {
+      decidedBy: "99999999-9999-4999-8999-999999999999",
+      approve: true,
+      decisionReason: "approved rollback bind test",
+    });
+
+    const decoy = mkdtempSync(join(tmpdir(), "atlas-rb-decoy-"));
+    mkdirSync(decoy, { recursive: true });
+    writeFileSync(join(decoy, "test.txt"), "DECOY", "utf8");
+    try {
+      const foreign = await app.inject({
+        method: "POST",
+        url: `/api/v1/code/patches/${patch.id}/rollback?approvalId=${approvalId}`,
+        payload: { workspaceRoot: decoy },
+      });
+      expect(foreign.statusCode).toBe(403);
+      expect(osStore.getPatch(patch.id)?.status).toBe("APPLIED");
+      expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("modified content");
+      expect(readFileSync(join(decoy, "test.txt"), "utf8")).toBe("DECOY");
+      const stored = await getApprovalRequest(approvalId);
+      expect(stored?.status).toBe("APPROVED");
+    } finally {
+      rmSync(decoy, { recursive: true, force: true });
+    }
+  });
 });
 
 
@@ -944,5 +1099,248 @@ describe("POST /api/v1/code/patches/:id/verify and Apply memory write-back", () 
     expect(Array.isArray(citations)).toBe(true);
     expect(citations.some((item) => item.id === created[0]?.id)).toBe(true);
     expect(citations[0]).not.toHaveProperty("evidence");
+  });
+});
+
+describe("POST /api/v1/code/patches create is authorized and project-scoped", () => {
+  function makeOwnedProject(owner = testUser()) {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    osStore.upsertProject({
+      id,
+      slug: `proj-${id.slice(0, 8)}`,
+      name: "Create patch project",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(id, owner.id, "bound_on_create");
+    return id;
+  }
+
+  function createPayload(projectId: string, evidenceIds: string[] = []) {
+    return {
+      projectId,
+      title: "Hardening create",
+      reason: "regression",
+      mode: "fix",
+      filesChanged: [
+        {
+          path: "created.txt",
+          action: "add",
+          summary: "add file",
+          afterContent: "created",
+        },
+      ],
+      evidenceIds,
+    };
+  }
+
+  it("401s when unauthenticated", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      payload: createPayload(crypto.randomUUID()),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("403s when the caller cannot write the target project", async () => {
+    const foreignOwner = testUser({
+      id: "44444444-4444-4444-8444-444444444444",
+      email: "other-owner@example.com",
+    });
+    const projectId = makeOwnedProject(foreignOwner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      payload: createPayload(projectId),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("rejects evidence that belongs to another project", async () => {
+    const owner = testUser();
+    const projectA = makeOwnedProject(owner);
+    const projectB = makeOwnedProject(owner);
+    const now = new Date().toISOString();
+    const foreignEvidenceId = crypto.randomUUID();
+    osStore.addEvidence(projectB, [
+      {
+        id: foreignEvidenceId,
+        ownerId: owner.id,
+        projectId: projectB,
+        source: "hardening-test",
+        sourceType: "REPOSITORY_FILE",
+        sourceId: null,
+        uri: null,
+        excerpt: "foreign",
+        version: null,
+        observedAt: now,
+        createdAt: now,
+        confidence: 1,
+        epistemicState: "OBSERVED",
+        category: "CODE",
+        classification: "INTERNAL",
+        authorityRank: "REPOSITORY_CODE",
+        metadata: {},
+      },
+    ]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      payload: createPayload(projectA, [foreignEvidenceId]),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(osStore.listPatches(projectA)).toHaveLength(0);
+  });
+
+  it("creates a patch when evidence belongs to the same project", async () => {
+    const owner = testUser();
+    const projectId = makeOwnedProject(owner);
+    const now = new Date().toISOString();
+    const evidenceId = crypto.randomUUID();
+    osStore.addEvidence(projectId, [
+      {
+        id: evidenceId,
+        ownerId: owner.id,
+        projectId,
+        source: "hardening-test",
+        sourceType: "REPOSITORY_FILE",
+        sourceId: null,
+        uri: null,
+        excerpt: "same project",
+        version: null,
+        observedAt: now,
+        createdAt: now,
+        confidence: 1,
+        epistemicState: "OBSERVED",
+        category: "CODE",
+        classification: "INTERNAL",
+        authorityRank: "REPOSITORY_CODE",
+        metadata: {},
+      },
+    ]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      payload: createPayload(projectId, [evidenceId]),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().patch.projectId).toBe(projectId);
+    expect(res.json().patch.evidenceIds).toEqual([evidenceId]);
+    expect(res.json().patch.createdBy).toBe(owner.id);
+  });
+
+  it("rejects a traversal path at create", async () => {
+    const owner = testUser();
+    const projectId = makeOwnedProject(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      payload: {
+        ...createPayload(projectId),
+        filesChanged: [
+          {
+            path: "../escape.txt",
+            action: "add",
+            summary: "escape",
+            afterContent: "nope",
+          },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(osStore.listPatches(projectId)).toHaveLength(0);
+  });
+});
+
+describe("POST /api/v1/code/patch proposal binds workspace and requires identity", () => {
+  function makeOwnedProject(owner = testUser()) {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    osStore.upsertProject({
+      id,
+      slug: `proj-${id.slice(0, 8)}`,
+      name: "Propose patch project",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(id, owner.id, "bound_on_create");
+    osStore.setWorkspaceRoot(id, workspaceRoot);
+    return id;
+  }
+
+  it("401s unauthenticated propose against a raw workspaceRoot", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patch",
+      payload: {
+        workspaceRoot,
+        userRequest: "add a comment to test.txt",
+        mode: "fix",
+      },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("403s a tenant propose that supplies only a raw workspaceRoot", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patch",
+      payload: {
+        workspaceRoot,
+        userRequest: "add a comment to test.txt",
+        mode: "fix",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("ignores a caller workspaceRoot that is not the stored project root", async () => {
+    const projectId = makeOwnedProject();
+    const foreign = mkdtempSync(join(tmpdir(), "atlas-foreign-ws-"));
+    writeFileSync(join(foreign, "secret.txt"), "should not be read", "utf8");
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patch",
+      payload: {
+        projectId,
+        workspaceRoot: foreign,
+        userRequest: "update test.txt with a safe comment",
+        mode: "fix",
+        focusPath: "test.txt",
+      },
+    });
+    expect([200, 201]).toContain(res.statusCode);
+    const body = res.json() as { patch?: { filesChanged?: Array<{ path: string }> } };
+    if (body.patch?.filesChanged) {
+      expect(body.patch.filesChanged.every((file) => file.path !== "secret.txt")).toBe(
+        true,
+      );
+    }
+    rmSync(foreign, { recursive: true, force: true });
+  });
+
+  it("401s unauthenticated /code/review of a raw workspaceRoot", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/review",
+      payload: {
+        workspaceRoot,
+        userRequest: "review test.txt",
+      },
+    });
+    expect(res.statusCode).toBe(401);
   });
 });

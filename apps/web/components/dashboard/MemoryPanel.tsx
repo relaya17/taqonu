@@ -15,6 +15,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { apiGet, apiPost } from "@/lib/api";
+import { isActiveMemory } from "@/lib/memory-active";
+import { memoryProvenanceLine } from "@/lib/memory-provenance";
 
 type EpistemicState =
   | "FACT"
@@ -36,7 +38,13 @@ interface Memory {
   createdAt: string;
   priority: string;
   projectId: string | null;
+  supersededBy?: string | null;
   cloudSynced?: boolean;
+  source?: string | null;
+  sourceType?: string | null;
+  confidence?: number | null;
+  evidence?: readonly unknown[] | null;
+  verifiedBy?: string | null;
 }
 
 interface Project {
@@ -54,11 +62,25 @@ const PENDING_STATES = new Set<EpistemicState>([
 function MemoryRow({
   item,
   onApprove,
+  onCorrect,
   approving,
+  correcting,
+  draft,
+  onDraftChange,
+  onSaveCorrection,
+  onCancelCorrect,
+  savingCorrection,
 }: {
   item: Memory;
   onApprove?: (item: Memory) => void;
+  onCorrect?: (item: Memory) => void;
   approving: boolean;
+  correcting: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSaveCorrection: () => void;
+  onCancelCorrect: () => void;
+  savingCorrection: boolean;
 }) {
   const t = useTranslations("memory");
   return (
@@ -81,6 +103,23 @@ function MemoryRow({
           <Typography variant="body2" color="text.secondary">
             {item.type} · {item.priority}
           </Typography>
+          {(() => {
+            const provenance = memoryProvenanceLine(item);
+            return (
+              <Typography variant="caption" color="text.secondary">
+                {t("provenance", {
+                  sourceType: provenance.sourceType,
+                  source: provenance.source,
+                  evidence: provenance.evidenceCount,
+                  confidence:
+                    provenance.confidence === null
+                      ? "—"
+                      : String(provenance.confidence),
+                })}
+                {provenance.verified ? ` · ${t("verified")}` : ""}
+              </Typography>
+            );
+          })()}
           {item.cloudSynced ? (
             <Chip size="small" variant="outlined" label={t("cloudSynced")} />
           ) : null}
@@ -95,8 +134,44 @@ function MemoryRow({
             {t("approve")}
           </Button>
         ) : null}
+        {onCorrect && !correcting ? (
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={savingCorrection}
+            onClick={() => onCorrect(item)}
+          >
+            {t("correct")}
+          </Button>
+        ) : null}
       </Stack>
-      <Typography fontWeight={650}>{item.statement}</Typography>
+      {correcting ? (
+        <Stack spacing={1} sx={{ mt: 1 }}>
+          <TextField
+            label={t("statement")}
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            multiline
+            minRows={2}
+            fullWidth
+          />
+          <Stack direction="row" spacing={1} justifyContent="center">
+            <Button
+              size="small"
+              variant="contained"
+              disabled={savingCorrection || draft.trim().length < 3}
+              onClick={onSaveCorrection}
+            >
+              {t("saveCorrection")}
+            </Button>
+            <Button size="small" disabled={savingCorrection} onClick={onCancelCorrect}>
+              {t("cancelCorrect")}
+            </Button>
+          </Stack>
+        </Stack>
+      ) : (
+        <Typography fontWeight={650}>{item.statement}</Typography>
+      )}
     </Box>
   );
 }
@@ -107,6 +182,9 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [statement, setStatement] = useState("");
   const [type, setType] = useState("PREFERENCE");
   const [projectId, setProjectId] = useState("");
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
+  const [correctionDraft, setCorrectionDraft] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -155,8 +233,21 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
     },
   });
 
-  const items = memoryQuery.data?.items ?? [];
-  const pendingItems = pendingQuery.data?.items ?? [];
+  const correct = useMutation({
+    mutationFn: (item: Memory) =>
+      apiPost<Memory>(`/api/v1/memory/${item.id}/correct`, {
+        statement: correctionDraft.trim(),
+      }),
+    onSuccess: async () => {
+      setCorrectingId(null);
+      setCorrectionDraft("");
+      await queryClient.invalidateQueries({ queryKey: ["memory"] });
+      await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
+    },
+  });
+
+  const items = (memoryQuery.data?.items ?? []).filter(isActiveMemory);
+  const pendingItems = (pendingQuery.data?.items ?? []).filter(isActiveMemory);
   const pendingIds = new Set(pendingItems.map((p) => p.id));
   const confirmedItems = items.filter(
     (item) => !pendingIds.has(item.id) && !PENDING_STATES.has(item.epistemicState),
@@ -237,6 +328,32 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
         >
           {t("save")}
         </Button>
+        <Button
+          variant="outlined"
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            try {
+              const dump = await apiGet<{ items: Memory[]; exportedAt: string }>(
+                "/api/v1/memory/export",
+              );
+              const blob = new Blob([JSON.stringify(dump, null, 2)], {
+                type: "application/json",
+              });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `atlas-memory-${dump.exportedAt.slice(0, 10)}.json`;
+              link.click();
+              URL.revokeObjectURL(url);
+            } finally {
+              setExporting(false);
+            }
+          }}
+          sx={{ alignSelf: "center", minWidth: 180 }}
+        >
+          {t("export")}
+        </Button>
         {create.isError ? (
           <Alert severity="error">{(create.error as Error).message}</Alert>
         ) : null}
@@ -260,6 +377,14 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
             {(approve.error as Error).message}
           </Alert>
         ) : null}
+        {correct.isError ? (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {(correct.error as Error).message}
+          </Alert>
+        ) : null}
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          {t("correctHelp")}
+        </Typography>
         <Stack spacing={0}>
           {pendingItems.length === 0 ? (
             <Typography color="text.secondary">{t("pendingEmpty")}</Typography>
@@ -270,6 +395,19 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
                 item={item}
                 approving={approve.isPending}
                 onApprove={(m) => approve.mutate(m)}
+                onCorrect={(m) => {
+                  setCorrectingId(m.id);
+                  setCorrectionDraft(m.statement);
+                }}
+                correcting={correctingId === item.id}
+                draft={correctionDraft}
+                onDraftChange={setCorrectionDraft}
+                onSaveCorrection={() => correct.mutate(item)}
+                onCancelCorrect={() => {
+                  setCorrectingId(null);
+                  setCorrectionDraft("");
+                }}
+                savingCorrection={correct.isPending}
               />
             ))
           )}
@@ -285,7 +423,24 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
             <Typography color="text.secondary">{t("empty")}</Typography>
           ) : (
             confirmedItems.map((item) => (
-              <MemoryRow key={item.id} item={item} approving={false} />
+              <MemoryRow
+                key={item.id}
+                item={item}
+                approving={false}
+                onCorrect={(m) => {
+                  setCorrectingId(m.id);
+                  setCorrectionDraft(m.statement);
+                }}
+                correcting={correctingId === item.id}
+                draft={correctionDraft}
+                onDraftChange={setCorrectionDraft}
+                onSaveCorrection={() => correct.mutate(item)}
+                onCancelCorrect={() => {
+                  setCorrectingId(null);
+                  setCorrectionDraft("");
+                }}
+                savingCorrection={correct.isPending}
+              />
             ))
           )}
         </Stack>

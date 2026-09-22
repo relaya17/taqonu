@@ -8,13 +8,19 @@ import { useSearchParams } from "next/navigation";
 import { MemoryPanel } from "@/components/dashboard/MemoryPanel";
 import { DecisionsPanel } from "@/components/dashboard/DecisionsPanel";
 import { PatchesPanel } from "@/components/dashboard/PatchesPanel";
+import { NotificationsPanel } from "@/components/dashboard/NotificationsPanel";
 
-export type DeskTab = "memory" | "decisions" | "patches";
+export type DeskTab = "inbox" | "memory" | "decisions" | "patches";
 
-const TABS: DeskTab[] = ["memory", "decisions", "patches"];
+const TABS: DeskTab[] = ["inbox", "memory", "decisions", "patches"];
 
 function isDeskTab(value: string | null): value is DeskTab {
-  return value === "memory" || value === "decisions" || value === "patches";
+  return (
+    value === "inbox" ||
+    value === "memory" ||
+    value === "decisions" ||
+    value === "patches"
+  );
 }
 
 /** Personal area on the user dashboard: memory · decisions · patches. */
@@ -82,6 +88,7 @@ export function PersonalDesk({
         ))}
       </Tabs>
       <Box sx={{ width: "100%" }}>
+        {tab === "inbox" ? <NotificationsPanel embedded /> : null}
         {tab === "memory" ? <MemoryPanel embedded /> : null}
         {tab === "decisions" ? <DecisionsPanel embedded /> : null}
         {tab === "patches" ? <PatchesPanel embedded /> : null}

@@ -1600,25 +1600,25 @@ export default function StudioPage() {
                 />
               ))}
             </Tabs>
-            {checksTab === "observer" && projectId ? (
+            {checksTab === "observer" ? (
               <ObserverPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "sentinel" && projectId ? (
+            {checksTab === "sentinel" ? (
               <SentinelPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "qa" && projectId ? (
+            {checksTab === "qa" ? (
               <QaPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "processAudit" && projectId ? (
+            {checksTab === "processAudit" ? (
               <ProcessAuditPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "health" && projectId ? (
+            {checksTab === "health" ? (
               <HealthPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "readiness" && projectId ? (
+            {checksTab === "readiness" ? (
               <ReadinessPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "truth" && projectId ? (
+            {checksTab === "truth" ? (
               <TruthPanel projectId={projectId} embedded />
             ) : null}
           </Stack>

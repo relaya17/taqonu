@@ -391,7 +391,7 @@
     "workflow": {
       "title": "Propose → review → approve → apply → verify",
       "help": "The agent proposes a Patch. You review and Approve it here. Apply then mints a live write approval that a different identity must decide before the disk write can retry.",
-      "rollbackHelp": "Rollback uses the same live SoD path as Apply. Only APPLIED or VERIFIED patches can restore disk. Restoring files is not a Truth verdict.",
+      "rollbackHelp": "Rollback uses the same live SoD path as Apply. Only APPLIED or VERIFIED patches can restore patched paths to their pre-apply snapshot: added files are removed, modified files are rewritten, deleted files are restored. Other files are left unchanged. This is not a full-tree restore and not a Truth verdict.",
       "verifyFailed": "Verification failed",
       "empty": "Inspect a file, then Propose a change. Existing Patches for this project appear here.",
       "reviewFiles": "Files in this Patch",
@@ -505,6 +505,7 @@
     "title": "Settings",
     "subtitle": "Full account: profile, password, sessions, delete, and admin.",
     "signedOut": "You are signed out.",
+    "loading": "Loading account…",
     "goLogin": "Sign in",
     "goRegister": "Register",
     "signedInAs": "Signed in as",
@@ -572,8 +573,9 @@
     "opsProcessAudit": "E2E process",
     "opsCounsel": "Counsel brief",
     "personalTitle": "Personal area",
-    "personalHelp": "Memory, decisions, and code patches — one place on your dashboard, not scattered in the nav.",
+    "personalHelp": "Inbox, memory, decisions, and code patches — one place on your dashboard, not scattered in the nav.",
     "personalTab": {
+      "inbox": "Inbox",
       "memory": "Memory",
       "decisions": "Decisions",
       "patches": "Patches"
@@ -1442,7 +1444,27 @@
     "pendingEmpty": "Nothing waiting on approval.",
     "confirmedTitle": "Confirmed",
     "approve": "Approve",
-    "cloudSynced": "Cloud synced"
+    "correct": "Correct",
+    "saveCorrection": "Save correction",
+    "cancelCorrect": "Cancel",
+    "correctHelp": "Correction writes a new memory and marks the old one superseded. It does not delete the row.",
+    "export": "Export my memories",
+    "cloudSynced": "Cloud synced",
+    "provenance": "{sourceType} · {source} · evidence {evidence} · confidence {confidence}",
+    "verified": "Verified"
+  },
+  "notifications": {
+    "title": "Inbox",
+    "help": "In-app only. Pending memories, approvals you requested, and patches ready to apply. Atlas does not send email or SMS.",
+    "empty": "Nothing waiting.",
+    "unread": "{count} unread",
+    "open": "Open",
+    "dismiss": "Dismiss",
+    "kind": {
+      "memoryPending": "Memory",
+      "approvalWaiting": "Approval",
+      "patchReady": "Patch"
+    }
   },
   "section": {
     "comingSoon": "This screen ships later — use Projects, Agent, QA, Memory, Decisions, and Integrations for now.",

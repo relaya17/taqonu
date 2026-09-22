@@ -81,6 +81,18 @@ describe("patchFileChangeSchema", () => {
     ).toThrow();
   });
 
+  it("rejects path traversal and absolute paths", () => {
+    expect(() =>
+      patchFileChangeSchema.parse({ ...baseFileChange, path: "../escape.txt" }),
+    ).toThrow();
+    expect(() =>
+      patchFileChangeSchema.parse({ ...baseFileChange, path: "C:\\\\abs.txt" }),
+    ).toThrow();
+    expect(() =>
+      patchFileChangeSchema.parse({ ...baseFileChange, path: "/etc/passwd" }),
+    ).toThrow();
+  });
+
   it("caps unifiedDiff at 200,000 chars and afterContent at 500,000 chars", () => {
     expect(() =>
       patchFileChangeSchema.parse({

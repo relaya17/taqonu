@@ -28,6 +28,8 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
   it("denies tenant and studio reads", () => {
     expect(isPublicAtlasRoute("GET", "/api/v1/studio/tree")).toBe(false);
     expect(isPublicAtlasRoute("GET", "/api/v1/memory")).toBe(false);
+    expect(isPublicAtlasRoute("GET", "/api/v1/notifications")).toBe(false);
+    expect(isPublicAtlasRoute("GET", "/api/v1/memory/export")).toBe(false);
     expect(isPublicAtlasRoute("POST", "/api/v1/code/analyze")).toBe(false);
     expect(isPublicAtlasRoute("GET", "/api/v1/admin/command-center")).toBe(false);
     expect(isPublicAtlasRoute("GET", "/api/v1/platform/studio-supervision")).toBe(
@@ -49,6 +51,23 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
       false,
     );
     expect(isPublicAtlasRoute("GET", "/api/v1/internal/approvals")).toBe(false);
+  });
+
+  it("does not treat code propose/review/create writes as public", () => {
+    for (const path of [
+      "/api/v1/code/patches",
+      "/api/v1/code/patch",
+      "/api/v1/code/review",
+      "/api/v1/code/refactor",
+      "/api/v1/code/fix",
+      "/api/v1/code/tests",
+    ]) {
+      expect(isPublicAtlasRoute("POST", path)).toBe(false);
+    }
+    expect(isPublicAtlasRoute("GET", "/api/v1/artifacts")).toBe(false);
+    expect(isPublicAtlasRoute("GET", "/api/v1/readiness/certificates")).toBe(
+      false,
+    );
   });
 
   it("treats HEAD as the matching GET allow-list, not as universally public", () => {

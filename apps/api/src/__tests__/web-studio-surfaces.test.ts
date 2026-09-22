@@ -140,9 +140,11 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(readiness).not.toMatch(/list\.data\?\.items\?\.\[0\]/);
     expect(health).toContain("item.projectId === projectId");
     expect(readiness).toContain("c.projectId === projectId");
-    expect(studio).toContain('checksTab === "qa" && projectId');
-    expect(studio).toContain('checksTab === "health" && projectId');
-    expect(studio).toContain('checksTab === "truth" && projectId');
+    expect(studio).toContain('checksTab === "qa"');
+    expect(studio).toContain('checksTab === "health"');
+    expect(studio).toContain('checksTab === "truth"');
+    expect(studio).not.toContain('checksTab === "health" && projectId');
+    expect(studio).not.toContain('checksTab === "readiness" && projectId');
     expect(health).not.toContain('slug === "brokeros"');
     expect(readiness).not.toContain('slug === "brokeros"');
     expect(truth).not.toContain("items[0]");
@@ -159,7 +161,22 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(evalPage).toContain("item.suiteId === suiteId");
     expect(evalPage).not.toContain("items?.[0]");
     const patches = readWeb("components/dashboard/PatchesPanel.tsx");
+    const dashboardPage = readWeb("app/[locale]/page.tsx");
     expect(patches).toContain("useProjectQueryParam");
+    expect(patches).toContain("patches?projectId=");
+    expect(patches).toContain('queryKey: ["patches", projectId]');
+    expect(patches).toContain("enabled: Boolean(projectId)");
+    expect(patches).not.toMatch(/items\[0\]/);
+    expect(dashboardPage).not.toContain("items[0]");
+    expect(dashboardPage).not.toContain('p.slug === "brokeros"');
+    expect(dashboardPage).toContain("const projectId = selectedId");
+    expect(dashboardPage).toContain(
+      "(projects.data?.items?.length ?? 0) === 0",
+    );
+    const artifacts = readWeb("app/[locale]/artifacts/page.tsx");
+    expect(artifacts).toContain("item.projectId === projectId");
+    expect(artifacts).toContain("artifacts?projectId=");
+    expect(artifacts).toContain('queryKey: ["artifacts", projectId]');
   });
 });
 

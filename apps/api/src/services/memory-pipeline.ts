@@ -420,6 +420,71 @@ export function supersedeMatchingMemories(input: {
 }
 
 /**
+ * Locate a memory by id across project/global buckets.
+ * When `ownerId` is set, another tenant's row is indistinguishable from
+ * missing — no cross-tenant enumeration.
+ */
+export function findOwnedMemory(input: {
+  memoryId: string;
+  ownerId?: string;
+}): { memory: Memory; key: string } | null {
+  osStore.ensureLoaded();
+  for (const [key, list] of osStore.memories) {
+    const found = list.find((row) => row.id === input.memoryId);
+    if (!found) continue;
+    if (input.ownerId !== undefined && found.ownerId !== input.ownerId) {
+      return null;
+    }
+    return { memory: found, key };
+  }
+  return null;
+}
+
+/**
+ * Supersede exactly one owned ACTIVE memory. Does not delete the row.
+ * Statement-matching is intentionally not used — a human correction targets
+ * a specific id (G-P1-04). GAP-034 delete/TTL is not implemented here.
+ */
+export function supersedeMemoryById(input: {
+  memoryId: string;
+  newerMemoryId: string;
+  ownerId: string;
+}): boolean {
+  const located = findOwnedMemory({
+    memoryId: input.memoryId,
+    ownerId: input.ownerId,
+  });
+  if (!located || located.memory.status !== "ACTIVE") return false;
+  const list = [...osStore.getMemories(located.key)];
+  const idx = list.findIndex((row) => row.id === input.memoryId);
+  if (idx < 0) return false;
+  const current = list[idx]!;
+  list[idx] = {
+    ...current,
+    status: "SUPERSEDED",
+    supersededBy: input.newerMemoryId,
+    epistemicState:
+      current.epistemicState === "FACT" || current.epistemicState === "VERIFIED"
+        ? ("STALE" as const)
+        : current.epistemicState,
+    updatedAt: new Date().toISOString(),
+  };
+  osStore.replaceMemories(located.key, list);
+  appendDomainEvent({
+    type: "memory.superseded",
+    projectId: current.projectId,
+    ownerId: input.ownerId,
+    epistemicState: "STALE",
+    payload: {
+      newerMemoryId: input.newerMemoryId,
+      supersededCount: 1,
+      memoryId: input.memoryId,
+    },
+  });
+  return true;
+}
+
+/**
  * Why `approveMemory()` can fail — lets the route explain the *reason*
  * instead of collapsing every rejection into an ambiguous 404:
  *  - "not_found": the memory doesn't exist, or exists under a different

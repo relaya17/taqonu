@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyPatchFiles, proposePatch } from "./patch-engine.js";
+import { applyPatchFiles, proposePatch, rollbackPatchFiles } from "./patch-engine.js";
 
 describe("proposePatch / applyPatchFiles", () => {
   it("proposes a modify when an existing matching file is named", () => {
@@ -83,5 +83,49 @@ describe("proposePatch / applyPatchFiles", () => {
       userRequest: "Remove the hard-coded AWS access key assignment.",
     });
     expect(proposal.filesChanged).toEqual([]);
+  });
+});
+
+describe("rollbackPatchFiles contract", () => {
+  it("removes files that did not exist before apply (previousContent null)", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-rb-add-"));
+    writeFileSync(join(root, "keep.txt"), "untouched\n", "utf8");
+    const applied = applyPatchFiles(root, [
+      { path: "added.txt", action: "add", summary: "add", afterContent: "new\n" },
+    ]);
+    expect(existsSync(join(root, "added.txt"))).toBe(true);
+    expect(applied.rollbackSnapshot).toEqual([{ path: "added.txt", previousContent: null }]);
+    const restored = rollbackPatchFiles(root, applied.rollbackSnapshot);
+    expect(restored).toEqual(["added.txt"]);
+    expect(existsSync(join(root, "added.txt"))).toBe(false);
+    expect(readFileSync(join(root, "keep.txt"), "utf8")).toBe("untouched\n");
+  });
+
+  it("rewrites modified files and restores deleted files; leaves unrelated files", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-rb-mix-"));
+    writeFileSync(join(root, "edit.txt"), "before\n", "utf8");
+    writeFileSync(join(root, "gone.txt"), "was-here\n", "utf8");
+    writeFileSync(join(root, "keep.txt"), "untouched\n", "utf8");
+    const applied = applyPatchFiles(root, [
+      { path: "edit.txt", action: "modify", summary: "edit", afterContent: "after\n" },
+      { path: "gone.txt", action: "delete", summary: "delete" },
+    ]);
+    expect(readFileSync(join(root, "edit.txt"), "utf8")).toBe("after\n");
+    expect(existsSync(join(root, "gone.txt"))).toBe(false);
+    const restored = rollbackPatchFiles(root, applied.rollbackSnapshot);
+    expect(restored.sort()).toEqual(["edit.txt", "gone.txt"]);
+    expect(readFileSync(join(root, "edit.txt"), "utf8")).toBe("before\n");
+    expect(readFileSync(join(root, "gone.txt"), "utf8")).toBe("was-here\n");
+    expect(readFileSync(join(root, "keep.txt"), "utf8")).toBe("untouched\n");
+  });
+
+  it("skips path traversal entries", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-rb-trav-"));
+    writeFileSync(join(root, "ok.txt"), "ok\n", "utf8");
+    const restored = rollbackPatchFiles(root, [
+      { path: "../escape.txt", previousContent: "nope\n" },
+    ]);
+    expect(restored).toEqual([]);
+    expect(readFileSync(join(root, "ok.txt"), "utf8")).toBe("ok\n");
   });
 });

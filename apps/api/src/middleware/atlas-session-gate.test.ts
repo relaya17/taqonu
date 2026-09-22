@@ -85,3 +85,124 @@ describe("Control internal hops under the real session gate", () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe("Session gate covers tenant code writes even when handlers are dummy 200s", () => {
+  let gated: FastifyInstance;
+
+  beforeAll(async () => {
+    gated = Fastify({
+      logger: false,
+      requestIdHeader: "x-request-id",
+      genReqId: () => randomUUID(),
+    });
+    gated.setErrorHandler(errorHandler);
+    gated.decorate("atlasEnv", buildTestEnv());
+    registerAtlasSessionGate(gated);
+    gated.post("/api/v1/code/patches", async () => ({ ok: true }));
+    gated.post("/api/v1/code/patch", async () => ({ ok: true }));
+    gated.post("/api/v1/code/review", async () => ({ ok: true }));
+    await gated.ready();
+  });
+
+  afterAll(async () => {
+    await gated.close();
+  });
+
+  it("401s anonymous POST /code/patches|/patch|/review at the gate", async () => {
+    for (const url of [
+      "/api/v1/code/patches",
+      "/api/v1/code/patch",
+      "/api/v1/code/review",
+    ]) {
+      const res = await gated.inject({
+        method: "POST",
+        url,
+        payload: { title: "should-not-reach-handler" },
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).not.toMatchObject({ ok: true });
+    }
+  });
+
+  it("refuses cookie writes from a foreign Origin before the handler", async () => {
+    const res = await gated.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      headers: {
+        cookie: "atlas_session=not-verified-here",
+        origin: "http://evil.example",
+      },
+      payload: { title: "csrf" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/refused from this origin/i);
+    expect(res.json()).not.toMatchObject({ ok: true });
+  });
+
+  it("lets a Studio Origin reach requireUser (401, not CSRF)", async () => {
+    const res = await gated.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      headers: {
+        cookie: "atlas_session=not-verified-here",
+        origin: "http://localhost:3000",
+      },
+      payload: { title: "studio" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error.message).not.toMatch(/origin/i);
+  });
+
+  it("does not CSRF-check Bearer writes even with a foreign Origin", async () => {
+    const res = await gated.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      headers: {
+        authorization: "Bearer not-a-user",
+        origin: "http://evil.example",
+      },
+      payload: { title: "bearer" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error.message).not.toMatch(/origin/i);
+  });
+});
+
+describe("Cookie CSRF fail-closed when ATLAS_REQUIRE_COOKIE_CSRF=1", () => {
+  let gated: FastifyInstance;
+  const previous = process.env.ATLAS_REQUIRE_COOKIE_CSRF;
+
+  beforeAll(async () => {
+    process.env.ATLAS_REQUIRE_COOKIE_CSRF = "1";
+    gated = Fastify({
+      logger: false,
+      requestIdHeader: "x-request-id",
+      genReqId: () => randomUUID(),
+    });
+    gated.setErrorHandler(errorHandler);
+    gated.decorate("atlasEnv", buildTestEnv());
+    registerAtlasSessionGate(gated);
+    gated.post("/api/v1/code/patches", async () => ({ ok: true }));
+    await gated.ready();
+  });
+
+  afterAll(async () => {
+    await gated.close();
+    if (previous === undefined) {
+      delete process.env.ATLAS_REQUIRE_COOKIE_CSRF;
+    } else {
+      process.env.ATLAS_REQUIRE_COOKIE_CSRF = previous;
+    }
+  });
+
+  it("refuses a cookie write with no Origin or Referer", async () => {
+    const res = await gated.inject({
+      method: "POST",
+      url: "/api/v1/code/patches",
+      headers: { cookie: "atlas_session=not-verified-here" },
+      payload: { title: "missing-origin" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/requires an allowed Origin/i);
+  });
+});

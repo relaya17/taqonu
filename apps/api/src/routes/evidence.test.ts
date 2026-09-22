@@ -379,6 +379,39 @@ describe("evidence tenant isolation", () => {
     expect(adminRes.body).toContain("LEGACY-STUB-OWNED-EXCERPT");
   });
 
+  it("GET is owner-scoped across the caller's projects, not a single projectId filter", async () => {
+    const now = new Date().toISOString();
+    const projectB = crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectB,
+      slug: `evidence-iso-b-${projectB.slice(0, 8)}`,
+      name: "Evidence Iso B",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    bindProjectOwner(projectB, ownerA.id, "bound_on_create");
+    const second = await postAs(ownerA, {
+      ...validPayload,
+      projectId: projectB,
+      excerpt: "OWNER-A-SECOND-PROJECT",
+    });
+    expect(second.statusCode).toBe(201);
+
+    const res = await getAs(ownerA);
+    expect(res.statusCode).toBe(200);
+    const excerpts = res
+      .json()
+      .items.map((item: { excerpt: string | null }) => item.excerpt);
+    expect(excerpts).toContain(secretExcerpt);
+    expect(excerpts).toContain("OWNER-A-SECOND-PROJECT");
+    expect(
+      res.json().items.every((item: { ownerId: string }) => item.ownerId === ownerA.id),
+    ).toBe(true);
+  });
+
   it("there is no by-id read surface: a foreign record's id 404s exactly like an unknown one", async () => {
     // The list is the only read path in this file, so a caller cannot fall
     // back to fetching a known-foreign id directly to confirm it exists.

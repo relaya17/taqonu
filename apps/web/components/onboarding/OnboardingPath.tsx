@@ -4,6 +4,7 @@ import { Alert, Box, Button, Typography } from "@mui/material";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { ResponsiveActions } from "@/components/layout/ResponsiveActions";
+import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 
 function StepLabel({ n, label }: { n: number; label: string }) {
   return (
@@ -46,7 +47,7 @@ export function OnboardingPath({
         <Button component={Link} href="/projects" size="small" variant="contained">
           <StepLabel n={1} label={t("stepProjects")} />
         </Button>
-        <Button component={Link} href="/workbench" size="small" variant="outlined">
+        <Button component={Link} href={WEB_POST_AUTH_PATH} size="small" variant="outlined">
           <StepLabel n={2} label={t("stepWorkbench")} />
         </Button>
         <Button

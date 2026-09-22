@@ -153,6 +153,8 @@ Supabase/env). Atlas does not execute sibling tools (ADR-022).
 
 **Product/readiness inventory (2026-09-18):** [`docs/architecture/product-gap-inventory-2026-09-18.md`](product-gap-inventory-2026-09-18.md). Technical closure ≠ product completion ≠ production proof ≠ commercial validation.
 
+**Remaining external / user dependencies (2026-09-22):** [`docs/architecture/remaining-external-dependencies.md`](remaining-external-dependencies.md). `BLOCKED` there is missing credentials/infrastructure/partners — not a local code defect. G-P1-04/05 and listed local closures stay closed. Do not fake Stripe, embeddings, Control token pairing, or a design-partner run.
+
 **CODE-COMPLETABLE remaining security/isolation defects: NONE after the
 2026-09-18 landscape pass** (N1/N2 in git `212c077`; S1–S5 plus owner-scoped
 daily meters, eval-run listing, architecture-contract IDOR, audit/constitution

@@ -11,6 +11,8 @@ import {
   retrieveMemories,
   seedPortfolioPatternMemories,
   commitMemory,
+  findOwnedMemory,
+  supersedeMemoryById,
   toMemoryCitations,
   MEMORY_AGENT_VISIBILITY_CONTRACT,
   MEMORY_DURABILITY_CONTRACT,
@@ -565,6 +567,57 @@ describe("seedPortfolioPatternMemories redacts secrets (Gap 3)", () => {
       .getMemories("global")
       .find((m) => m.id === memory.id);
     expect(stored?.statement).not.toContain(fakeSecret);
+  });
+});
+
+describe("supersedeMemoryById", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
+  it("marks only the owned row SUPERSEDED and leaves the statement on disk", () => {
+    const original = memory(null, "old preference", OWNER_A);
+    osStore.addMemory(original);
+    osStore.addMemory(memory(null, "unrelated", OWNER_A));
+    const newerId = crypto.randomUUID();
+    expect(
+      supersedeMemoryById({
+        memoryId: original.id,
+        newerMemoryId: newerId,
+        ownerId: OWNER_A,
+      }),
+    ).toBe(true);
+    const stored = osStore.getMemories("global").find((row) => row.id === original.id);
+    expect(stored?.status).toBe("SUPERSEDED");
+    expect(stored?.supersededBy).toBe(newerId);
+    expect(stored?.statement).toBe("old preference");
+    expect(
+      osStore.getMemories("global").find((row) => row.statement === "unrelated")?.status,
+    ).toBe("ACTIVE");
+  });
+
+  it("does not supersede another tenant's memory", () => {
+    const foreign = memory(null, "foreign note", OWNER_B);
+    osStore.addMemory(foreign);
+    expect(
+      supersedeMemoryById({
+        memoryId: foreign.id,
+        newerMemoryId: crypto.randomUUID(),
+        ownerId: OWNER_A,
+      }),
+    ).toBe(false);
+    expect(findOwnedMemory({ memoryId: foreign.id, ownerId: OWNER_A })).toBeNull();
+    expect(osStore.getMemories("global").find((row) => row.id === foreign.id)?.status).toBe(
+      "ACTIVE",
+    );
   });
 });
 

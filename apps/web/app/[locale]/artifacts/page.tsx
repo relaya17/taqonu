@@ -27,6 +27,7 @@ interface Artifact {
   mimeType: string;
   byteSize: number;
   evidenceId: string;
+  projectId: string | null;
 }
 
 interface Credits {
@@ -72,8 +73,13 @@ export default function ArtifactsPage() {
     queryFn: () => apiGet<{ items: Project[] }>("/api/v1/projects"),
   });
   const artifacts = useQuery({
-    queryKey: ["artifacts"],
-    queryFn: () => apiGet<{ items: Artifact[] }>("/api/v1/artifacts"),
+    queryKey: ["artifacts", projectId],
+    queryFn: () =>
+      apiGet<{ items: Artifact[] }>(
+        projectId
+          ? `/api/v1/artifacts?projectId=${encodeURIComponent(projectId)}`
+          : "/api/v1/artifacts",
+      ),
   });
   const credits = useQuery({
     queryKey: ["credits"],
@@ -126,7 +132,11 @@ export default function ArtifactsPage() {
     },
   });
 
-  const items = useMemo(() => artifacts.data?.items ?? [], [artifacts.data]);
+  const items = useMemo(() => {
+    const all = artifacts.data?.items ?? [];
+    if (!projectId) return all;
+    return all.filter((item) => item.projectId === projectId);
+  }, [artifacts.data, projectId]);
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 920 }}>

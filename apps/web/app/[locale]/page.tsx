@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useProjectQueryParam } from "@/lib/use-project-query";
 import {
   Alert,
@@ -108,13 +108,7 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
 
-  const projectId = useMemo(() => {
-    if (selectedId) return selectedId;
-    const items = projects.data?.items ?? [];
-    const broker = items.find((p) => p.slug === "brokeros");
-    const byGolden = items.find((p) => p.slug === golden.data?.slug);
-    return broker?.id ?? byGolden?.id ?? items[0]?.id ?? "";
-  }, [selectedId, projects.data, golden.data?.slug]);
+  const projectId = selectedId;
 
   const verdict = useQuery({
     queryKey: ["verdict", projectId, golden.data?.workspaceRoot, locale],
@@ -362,6 +356,7 @@ export default function DashboardPage() {
           }}
           helperText={t("dashboard.projectSelectHelp")}
         >
+          <MenuItem value="">—</MenuItem>
           {(projects.data?.items ?? []).map((p) => (
             <MenuItem key={p.id} value={p.id}>
               {p.name} ({p.slug})
@@ -374,7 +369,9 @@ export default function DashboardPage() {
         <Alert severity="warning">{t("dashboard.verdictUnavailable")}</Alert>
       ) : null}
 
-      {!projectId && !projects.isLoading ? (
+      {!projectId &&
+      !projects.isLoading &&
+      (projects.data?.items?.length ?? 0) === 0 ? (
         <Alert severity="info">
           {t("dashboard.noProjects")}{" "}
           <Button component={Link} href="/experts" size="small">

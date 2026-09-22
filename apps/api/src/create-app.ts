@@ -9,6 +9,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerStateRoutes } from "./routes/state.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerDecisionRoutes } from "./routes/decisions.js";
 import { registerEvidenceRoutes } from "./routes/evidence.js";
 import { registerGraphRoutes } from "./routes/graph.js";
@@ -175,6 +176,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerProjectRoutes(app);
   await registerStateRoutes(app);
   await registerMemoryRoutes(app);
+  await registerNotificationRoutes(app);
   await registerDecisionRoutes(app);
   await registerEvidenceRoutes(app);
   await registerGraphRoutes(app);

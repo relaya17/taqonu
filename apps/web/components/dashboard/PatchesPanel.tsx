@@ -64,22 +64,18 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
     projects.data?.items.find((p) => p.id === projectId) ?? null;
 
   useEffect(() => {
-    if (!projectId && (projects.data?.items?.length ?? 0) > 0) {
-      const first =
-        projects.data!.items.find((p) => p.workspaceRoot) ??
-        projects.data!.items[0]!;
-      setProjectId(first.id);
-      setRoot(first.workspaceRoot ?? "");
-      return;
-    }
     if (selected) {
       setRoot(selected.workspaceRoot ?? "");
     }
-  }, [projectId, projects.data, selected]);
+  }, [selected]);
 
   const patches = useQuery({
-    queryKey: ["patches"],
-    queryFn: () => apiGet<{ items: PatchItem[] }>("/api/v1/code/patches"),
+    queryKey: ["patches", projectId],
+    enabled: Boolean(projectId),
+    queryFn: () =>
+      apiGet<{ items: PatchItem[] }>(
+        `/api/v1/code/patches?projectId=${encodeURIComponent(projectId)}`,
+      ),
   });
 
   const approve = useMutation({
@@ -193,6 +189,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
         onChange={(e) => setProjectId(e.target.value)}
         fullWidth
       >
+        <MenuItem value="">—</MenuItem>
         {(projects.data?.items ?? []).map((p) => (
           <MenuItem key={p.id} value={p.id}>
             {p.name}

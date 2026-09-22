@@ -50,7 +50,6 @@ import {
   mintAtlasSelfApproval,
   respondAtlasSelfHelper,
 } from "../services/atlas-self-governance.js";
-import { getRequestUser } from "../services/resolve-identity.js";
 import {
   buildMemoryContext,
   commitMemory,
@@ -68,9 +67,10 @@ import {
   applyApprovedPatch,
   assertPatchApprovedForApply,
   patchArtifactHash,
+  resolveApplyWorkspaceRoot,
   verifyGovernedCodePatch,
 } from "../services/patch-write.js";
-import { createApprovalRequest } from "../services/approvals.js";
+import { createApprovalRequest, getApprovalRequest } from "../services/approvals.js";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
 import {
   runGovernedClaimedExecution,
@@ -157,6 +157,56 @@ function evaluatePatchActionRisk(input: {
   const explanation = explainRiskScore(riskInput);
 
   return { entityAuthz, score, bucket, explanation };
+}
+
+async function assertApprovalMatchesPatch(
+  approvalId: string,
+  patchId: string,
+  route: string,
+): Promise<void> {
+  const approval = await getApprovalRequest(approvalId);
+  const mintedPatch = approval?.context?.patchId;
+  if (typeof mintedPatch === "string" && mintedPatch !== patchId) {
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Approval does not belong to this patch",
+      { statusCode: 403 },
+    );
+  }
+  const mintedRoute = approval?.context?.route;
+  if (typeof mintedRoute === "string" && mintedRoute !== route) {
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Approval does not belong to this action",
+      { statusCode: 403 },
+    );
+  }
+}
+
+async function assertApprovalWorkspaceUnchanged(
+  approvalId: string,
+  projectId: string | null,
+): Promise<void> {
+  if (!projectId) return;
+  const approval = await getApprovalRequest(approvalId);
+  const minted =
+    approval && typeof approval.context?.workspaceRoot === "string"
+      ? resolve(approval.context.workspaceRoot)
+      : null;
+  if (!minted) return;
+  const current = osStore.getWorkspaceRoot(projectId);
+  if (!current || resolve(current) !== minted) {
+    throw new AtlasError(
+      "FORBIDDEN",
+      "Workspace root changed since this approval was minted",
+      { statusCode: 403 },
+    );
+  }
+}
+
+function approvalWorkspaceContext(projectId: string | null): string | null {
+  if (!projectId) return null;
+  return osStore.getWorkspaceRoot(projectId) ?? null;
 }
 
 function approvalRequiredBody(
@@ -741,41 +791,52 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   async function createProposal(
     body: z.infer<typeof proposeBody>,
     reply: { status: (c: number) => { send: (b: unknown) => unknown } },
-    request?: FastifyRequest,
+    request: FastifyRequest,
   ) {
-    let memoryItems: MemoryContextItem[] = [];
-    let ownerId: string | null = null;
-    if (request) {
-      try {
-        const user = await getRequestUser(app, request);
-        if (user) {
-          ownerId = user.id;
-          const ctx = await buildMemoryContext({
-            projectId: body.projectId ?? null,
-            query: body.userRequest,
-            budget: 12,
-            ownerId: user.id,
-            requestingAgentId: "CODE_ENGINEER",
-            embeddingEnv: app.atlasEnv,
-          });
-          memoryItems = ctx.items;
-        }
-      } catch {
-        memoryItems = [];
+    const user = await requireSignedInForWrite(app, request);
+    let workspaceRoot = resolve(body.workspaceRoot);
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+      const stored = osStore.getWorkspaceRoot(body.projectId);
+      if (stored) {
+        workspaceRoot = resolve(stored);
+      } else if (!isControlPlaneRole(user.role)) {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "Link a local workspaceRoot on the project before proposing a patch.",
+        );
       }
+    } else {
+      await requireControlPlaneWorkspace(request);
+    }
+
+    let memoryItems: MemoryContextItem[] = [];
+    const ownerId = user.id;
+    try {
+      const ctx = await buildMemoryContext({
+        projectId: body.projectId ?? null,
+        query: body.userRequest,
+        budget: 12,
+        ownerId: user.id,
+        requestingAgentId: "CODE_ENGINEER",
+        embeddingEnv: app.atlasEnv,
+      });
+      memoryItems = ctx.items;
+    } catch {
+      memoryItems = [];
     }
     const runGuardian = (files: readonly string[]) =>
       evaluateStudioProposalGuardian({
         projectId: body.projectId ?? null,
         ownerId,
         userRequest: body.userRequest,
-        workspaceRoot: body.workspaceRoot,
+        workspaceRoot,
         memories: memoryItems,
         proposedFiles: files,
         focusPath: body.focusPath ?? null,
       });
     const proposal = proposePatch({
-      workspaceRoot: body.workspaceRoot,
+      workspaceRoot,
       mode: body.mode as EngineeringAgentMode,
       userRequest: body.userRequest,
       ...(body.title ? { title: body.title } : {}),
@@ -788,7 +849,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       focusPath: body.focusPath ?? null,
     });
     const secretRewrite = applySecretRemediationToProposal({
-      workspaceRoot: body.workspaceRoot,
+      workspaceRoot,
       filesChanged: proposal.filesChanged,
       target: remediationTarget,
       mode: body.mode,
@@ -1031,10 +1092,12 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         action: "EXECUTE",
         requestedBy: user.id,
         reason: `apply patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
+        artifactHash: patchArtifactHash(existing),
         context: {
           route: "code.patch.apply",
           patchId: existing.id,
           risk: existing.risk,
+          workspaceRoot: approvalWorkspaceContext(existing.projectId),
         },
       });
       return reply.status(202).send(approvalRequiredBody(approval.id, {
@@ -1042,6 +1105,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         riskBucket: bucket,
       }));
     }
+
+    await assertApprovalMatchesPatch(query.approvalId, existing.id, "code.patch.apply");
+    await assertApprovalWorkspaceUnchanged(query.approvalId, existing.projectId);
 
     const helper = await runPatchClaimedExecution({
       user,
@@ -1176,6 +1242,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      await assertApprovalMatchesPatch(body.approvalId, existing.id, "code.patch.apply");
+      await assertApprovalWorkspaceUnchanged(body.approvalId, existing.projectId);
+
       const helper = await runPatchLiveHumanClaimedExecution({
         patch: existing,
         deciderId: user.id,
@@ -1259,16 +1328,28 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         action: "EXECUTE",
         requestedBy: user.id,
         reason: `rollback patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
+        artifactHash: patchArtifactHash(existing),
         context: {
           route: "code.patch.rollback",
           patchId: existing.id,
           risk: existing.risk,
+          workspaceRoot: approvalWorkspaceContext(existing.projectId),
         },
       });
       return reply.status(202).send(approvalRequiredBody(approval.id, {
         riskScore: score,
         riskBucket: bucket,
       }));
+    }
+
+    const workspaceRoot = resolveApplyWorkspaceRoot({
+      projectId: existing.projectId,
+      bodyWorkspaceRoot: body.workspaceRoot,
+      requireProjectRoot: Boolean(existing.projectId),
+    });
+    if (query.approvalId) {
+      await assertApprovalMatchesPatch(query.approvalId, existing.id, "code.patch.rollback");
+      await assertApprovalWorkspaceUnchanged(query.approvalId, existing.projectId);
     }
 
     const helper = await runPatchClaimedExecution({
@@ -1279,13 +1360,14 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       action: "EXECUTE",
       ...(query.approvalId !== undefined ? { approvalRequestId: query.approvalId } : {}),
       execute: () => {
-        const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);
+        // Patched-path restore only — see rollbackPatchFiles contract.
+        const restored = rollbackPatchFiles(workspaceRoot, existing.rollbackSnapshot);
         const now = new Date().toISOString();
         const patch = patchArtifactSchema.parse({
           ...existing,
           status: "ROLLED_BACK",
           updatedAt: now,
-          evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} file(s).`,
+          evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} patched path(s) to the pre-apply snapshot.`,
         });
         osStore.upsertPatch(patch);
         osStore.appendAudit({
@@ -1313,7 +1395,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       input: {
         patchId: existing.id,
         patchRisk: existing.risk,
-        rollbackWorkspaceRoot: body.workspaceRoot,
+        rollbackWorkspaceRoot: workspaceRoot,
       },
       output: { status: patch.status, restored },
       policy: "DOCUMENT.EXECUTE",
@@ -1353,6 +1435,14 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      const workspaceRoot = resolveApplyWorkspaceRoot({
+        projectId: existing.projectId,
+        bodyWorkspaceRoot: body.workspaceRoot,
+        requireProjectRoot: Boolean(existing.projectId),
+      });
+      await assertApprovalMatchesPatch(body.approvalId, existing.id, "code.patch.rollback");
+      await assertApprovalWorkspaceUnchanged(body.approvalId, existing.projectId);
+
       const helper = await runPatchLiveHumanClaimedExecution({
         patch: existing,
         deciderId: user.id,
@@ -1362,13 +1452,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         routeLabel: "code.patch.rollback.live-human",
         action: "EXECUTE",
         execute: () => {
-          const restored = rollbackPatchFiles(body.workspaceRoot, existing.rollbackSnapshot);
+          const restored = rollbackPatchFiles(workspaceRoot, existing.rollbackSnapshot);
           const now = new Date().toISOString();
           const patch = patchArtifactSchema.parse({
             ...existing,
             status: "ROLLED_BACK",
             updatedAt: now,
-            evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} file(s).`,
+            evaluationSummary: `${existing.evaluationSummary ?? ""}\nRolled back ${restored.length} patched path(s) to the pre-apply snapshot.`,
           });
           osStore.upsertPatch(patch);
           osStore.appendAudit({
@@ -1396,7 +1486,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         input: {
           patchId: existing.id,
           patchRisk: existing.risk,
-          rollbackWorkspaceRoot: body.workspaceRoot,
+          rollbackWorkspaceRoot: workspaceRoot,
         },
         output: { status: patch.status, restored },
         policy: "DOCUMENT.EXECUTE",
@@ -1435,6 +1525,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/code/review", async (request) => {
+    await requireControlPlaneWorkspace(request);
     const body = proposeBody.parse(request.body);
     const analysis = analyzeRepository(resolve(body.workspaceRoot));
     const impact = analyzeImpact(resolve(body.workspaceRoot), body.userRequest);
@@ -1455,11 +1546,47 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
 
   // createPatchSchema available for direct validated creates
   app.post("/api/v1/code/patches", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
     const body = createPatchSchema.parse(request.body);
+    for (const file of body.filesChanged) {
+      const rel = file.path.replace(/\\/g, "/");
+      if (rel.includes("..") || rel.startsWith("/") || /^[A-Za-z]:/.test(rel)) {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "path must be a relative workspace path without traversal",
+          { statusCode: 400, details: { path: file.path } },
+        );
+      }
+    }
+    if (!body.projectId) {
+      throw new AtlasError("VALIDATION_ERROR", "projectId is required to create a patch", {
+        statusCode: 400,
+      });
+    }
+    await assertProjectWriteAccess(app, request, body.projectId);
+
+    const evidenceIds = body.evidenceIds ?? [];
+    for (const evidenceId of evidenceIds) {
+      const record = osStore.findEvidenceById(evidenceId);
+      if (!record) {
+        throw new AtlasError("VALIDATION_ERROR", "Evidence not found", {
+          statusCode: 400,
+          details: { evidenceId },
+        });
+      }
+      if (record.projectId !== body.projectId) {
+        throw new AtlasError(
+          "FORBIDDEN",
+          "Evidence does not belong to this project",
+          { statusCode: 403, details: { evidenceId } },
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     const patch = patchArtifactSchema.parse({
       id: crypto.randomUUID(),
-      projectId: body.projectId ?? null,
+      projectId: body.projectId,
       title: body.title,
       reason: body.reason,
       mode: body.mode,
@@ -1468,7 +1595,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       baseCommit: body.baseCommit ?? null,
       targetBranch: body.targetBranch ?? null,
       filesChanged: body.filesChanged,
-      evidenceIds: body.evidenceIds ?? [],
+      evidenceIds,
       claimIds: [],
       expectedImpact: body.expectedImpact ?? "",
       tests: body.tests ?? [],
@@ -1480,7 +1607,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       rollbackSnapshot: [],
       createdAt: now,
       updatedAt: now,
-      createdBy: "api",
+      createdBy: user.id,
       epistemicState: "PROPOSED",
       confidence: 0.5,
       authorityHint: "DEVELOPER_STATEMENT",

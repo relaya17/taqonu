@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { requireControlPlaneService } from "../services/governed-lifecycle-handoff.js";
+import {
+  assertCookieMutationOrigin,
+  cookieCsrfRequiresOrigin,
+} from "../lib/cookie-csrf.js";
 import { requireUser } from "./auth-guards.js";
 import { isPublicAtlasRoute, normalizeRequestPath } from "./public-routes.js";
 
@@ -22,6 +26,23 @@ export function registerAtlasSessionGate(app: FastifyInstance): void {
       requireControlPlaneService(request.headers.authorization);
       return;
     }
+    assertCookieMutationOrigin({
+      method: request.method,
+      origin: typeof request.headers.origin === "string" ? request.headers.origin : undefined,
+      referer:
+        typeof request.headers.referer === "string"
+          ? request.headers.referer
+          : typeof request.headers.referrer === "string"
+            ? request.headers.referrer
+            : undefined,
+      cookie: typeof request.headers.cookie === "string" ? request.headers.cookie : undefined,
+      authorization:
+        typeof request.headers.authorization === "string"
+          ? request.headers.authorization
+          : undefined,
+      webOrigin: app.atlasEnv.WEB_ORIGIN,
+      requireOrigin: cookieCsrfRequiresOrigin(),
+    });
     await requireUser(app, request);
   });
 }

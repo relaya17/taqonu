@@ -3,7 +3,9 @@ import {
   AtlasError,
   createArtifactSchema,
   createAssistRunSchema,
+  uuidSchema,
 } from "@atlas/shared";
+import { z } from "zod";
 import {
   createArtifactFromUpload,
   ensureCreditsInitialized,
@@ -19,9 +21,16 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
 
   app.get("/api/v1/artifacts", async (request) => {
     const user = await requireUser(app, request);
+    const q = z
+      .object({ projectId: uuidSchema.optional() })
+      .parse(request.query ?? {});
+    if (q.projectId && !canReadProjectScoped(user, q.projectId)) {
+      throw new AtlasError("FORBIDDEN", "Forbidden", { statusCode: 403 });
+    }
     const items = osStore
       .listArtifacts()
-      .filter((item) => canReadProjectScoped(user, item.projectId));
+      .filter((item) => canReadProjectScoped(user, item.projectId))
+      .filter((item) => (q.projectId ? item.projectId === q.projectId : true));
     return { items, total: items.length };
   });
 

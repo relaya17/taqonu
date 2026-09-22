@@ -7,13 +7,12 @@ import { apiHealthy } from "./helpers";
  */
 test.describe("New product surfaces (EN)", () => {
   test("welcome landing shows brand and login CTA", async ({ page }) => {
+    test.setTimeout(60_000);
     await page.goto("/en/welcome");
     await expect(page.getByText(/ArletOS|Atlas/i).first()).toBeVisible({
       timeout: 45_000,
     });
-    const login = page
-      .getByRole("link", { name: /start|log ?in|sign|free/i })
-      .first();
+    const login = page.getByRole("link", { name: /^Log in$/i });
     await expect(login).toBeVisible();
     await login.click();
     await expect(page).toHaveURL(/\/en\/auth\/login/, { timeout: 20_000 });

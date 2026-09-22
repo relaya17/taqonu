@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { AtlasError, issueCertificateSchema } from "@atlas/shared";
+import { AtlasError, issueCertificateSchema, uuidSchema } from "@atlas/shared";
 import { authorizeEntityAction } from "@atlas/agent-core";
+import { z } from "zod";
 import { issueProductionReadinessCertificate } from "../services/readiness-certificate.js";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
@@ -93,9 +94,16 @@ export async function registerReadinessRoutes(
 
   app.get("/api/v1/readiness/certificates", async (request) => {
     const user = await requireUser(app, request);
+    const q = z
+      .object({ projectId: uuidSchema.optional() })
+      .parse(request.query ?? {});
+    if (q.projectId && !canReadProjectScoped(user, q.projectId)) {
+      throw new AtlasError("FORBIDDEN", "Forbidden", { statusCode: 403 });
+    }
     const items = osStore
       .listReadinessCertificates()
-      .filter((cert) => canReadProjectScoped(user, cert.projectId));
+      .filter((cert) => canReadProjectScoped(user, cert.projectId))
+      .filter((cert) => (q.projectId ? cert.projectId === q.projectId : true));
     return { items, total: items.length };
   });
 

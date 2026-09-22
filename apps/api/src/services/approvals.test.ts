@@ -98,6 +98,38 @@ describe("approvals service", () => {
     ).rejects.toThrow(/not found/i);
   });
 
+  it("concurrent decide attempts produce exactly one terminal decision", async () => {
+    const request = await createApprovalRequest({
+      entityType: "CONFIGURATION",
+      action: "EXECUTE",
+      requestedBy: "user-1",
+      reason: "race decide",
+    });
+    const results = await Promise.allSettled([
+      decideApprovalRequest(request.id, {
+        decidedBy: "admin-1",
+        approve: true,
+        decisionReason: "first",
+      }),
+      decideApprovalRequest(request.id, {
+        decidedBy: "admin-2",
+        approve: false,
+        decisionReason: "second",
+      }),
+    ]);
+    const fulfilled = results.filter((row) => row.status === "fulfilled");
+    const rejected = results.filter((row) => row.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    const winner = (fulfilled[0] as PromiseFulfilledResult<{ status: string }>).value;
+    expect(["APPROVED", "REJECTED"]).toContain(winner.status);
+    const stored = await getApprovalRequest(request.id);
+    expect(stored?.status).toBe(winner.status);
+    expect(stored?.decidedBy === "admin-1" || stored?.decidedBy === "admin-2").toBe(
+      true,
+    );
+  });
+
   it("decideApprovalRequest throws when the request has already been decided", async () => {
     const request = await createApprovalRequest({
       entityType: "CONFIGURATION",

@@ -161,7 +161,9 @@ export default function SettingsPage() {
         </Alert>
       ) : null}
 
-      {me.isError || !me.data ? (
+      {me.isLoading ? (
+        <Typography color="text.secondary">{t("loading")}</Typography>
+      ) : me.isError || !me.data ? (
         <Alert severity="info">
           {t("signedOut")}{" "}
           <Link href="/auth/login">{t("goLogin")}</Link>

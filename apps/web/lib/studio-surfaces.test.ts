@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildStudioSearch, isMarketingShellPath, isPublicShellPath, shouldShowStudioEmptyProjects, shouldShowStudioNeedRoot } from "./studio-surfaces";
+import {
+  WEB_POST_AUTH_PATH,
+  buildStudioSearch,
+  isMarketingShellPath,
+  isPublicShellPath,
+  shouldShowStudioEmptyProjects,
+  shouldShowStudioNeedRoot,
+} from "./studio-surfaces";
 
 describe("isPublicShellPath", () => {
   it("treats welcome and auth as doors, with or without locale prefix", () => {
@@ -155,6 +162,22 @@ describe("studio level-up i18n", () => {
       expect(locale.studio.git.notTruth).not.toMatch(/Truth verdict is git/i);
       expect(locale.studio.briefing.notChainOfThought.length).toBeGreaterThan(0);
       expect(locale.studio.workflow.rollbackHelp.length).toBeGreaterThan(0);
+      expect(locale.studio.workflow.rollbackHelp).toMatch(/pre-apply|לפני Apply|ما قبل Apply/);
+      expect(locale.memory.correct.length).toBeGreaterThan(0);
+      expect(locale.memory.correctHelp).toMatch(/not delete|לא נמחקת|لا يُحذف/);
+      expect(locale.memory.export.length).toBeGreaterThan(0);
+      expect(locale.memory.provenance).toMatch(/sourceType|source/);
+      expect(locale.memory.verified.length).toBeGreaterThan(0);
+      expect(locale.settings.loading.length).toBeGreaterThan(0);
+      expect(locale.dashboard.personalTab.inbox.length).toBeGreaterThan(0);
+      expect(locale.notifications.help).toMatch(/email|דוא|بريد/);
+      expect(locale.notifications.kind.memoryPending.length).toBeGreaterThan(0);
+      expect(locale.notifications.kind.approvalWaiting.length).toBeGreaterThan(0);
+      expect(locale.notifications.kind.patchReady.length).toBeGreaterThan(0);
+      expect(JSON.stringify(locale.notifications.kind)).not.toMatch(
+        /memory\.pending|approval\.waiting|patch\.ready/,
+      );
+      expect(locale.onboarding.stepWorkbench.length).toBeGreaterThan(0);
       expect(locale.studio.reloadFile.length).toBeGreaterThan(0);
       expect(locale.studio.continuity.title.length).toBeGreaterThan(0);
       expect(locale.studio.briefing.citations.length).toBeGreaterThan(0);
@@ -174,6 +197,11 @@ describe("studio level-up i18n", () => {
       expect(locale.workbench.focusFile.length).toBeGreaterThan(0);
       expect(locale.studio.boundFinding.length).toBeGreaterThan(0);
     }
+  });
+
+  it("keeps signed-in onboarding entry on Studio, not /workbench", () => {
+    expect(WEB_POST_AUTH_PATH).toBe("/studio");
+    expect(WEB_POST_AUTH_PATH).not.toBe("/workbench");
   });
 });
 

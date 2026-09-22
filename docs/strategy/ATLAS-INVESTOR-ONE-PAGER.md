@@ -28,19 +28,22 @@ Generation is already priced. Cognition (Devin) raised $2B at $48B in September 
 | Evidence + memory + authority + verify | A better Cursor |
 | Agent ≠ Model. Guardian is deterministic | An autonomous engineer (Devin / Factory) |
 | Human remains SoD authority | A vector-DB “memory” product |
-| Studio = first proof. Control = later org plane | Ten products (IDE + apps + …) |
+| Studio = human proof. Control = separate operator plane (implemented) | Ten products (IDE + apps + …) |
 
 **How it decides.**  
-Proposal → Guardian (`CONSISTENT` / `CONFLICT` / `UNKNOWN`) → human approval → Apply → Verify → scoped memory. The system can say CONFLICT or UNKNOWN without believing the model.
+Request → Policy → Risk → Guardian (`CONSISTENT` / `CONFLICT` / `UNKNOWN`) → dual-control approval → Apply → Verify → audit → evidence → scoped memory. The system can say CONFLICT or UNKNOWN without believing the model.
+
+**Surfaces.**  
+Atlas Core (shared infrastructure) · Web (user plane) · Studio (supervised workspace) · Control (operator supervision) · Admin (platform supervisor). Agents work under catalog and policy. Connected applications stay themselves.
 
 **Honest status (September 2026).**  
-Local path exists: conflict detection, unknown-as-unknown, policy block, human SoD, apply-then-verify, project isolation, audit log.  
-Not yet: production proof, paying customers, measured Proof-of-Value, cloud memory sync.
+Implemented and locally verified: conflict detection, unknown-as-unknown, policy block, dual-control SoD, apply-then-verify on disk, project isolation, append-only audit. Studio is the working home. Control and Admin exist as separate planes.  
+Not claimed: production proof, paying customers, measured Proof-of-Value, cloud memory sync, Atlas executing connected applications.
 
 **What we are not asking in a first conversation.**  
 Not a priced round. Not a valuation. We want thesis overlap: funds that already believe agents need infrastructure *under* the agent, not another coding workspace.
 
-**Connected applications** (CaseFlow, Vantera, LexStudy, …) are real-world environments where Atlas can show oversight across different agents and policies. They are proof points, not a product zoo. Atlas governs; it does not replace those apps.
+**Connected applications** are oversight testbeds (connectors / evaluate), not a product zoo. Atlas governs; it does not replace CaseFlow, HotelOS, or others. Application runtimes that are not present on this workstation are not claimed as live Atlas products.
 
 ---
 
@@ -62,8 +65,8 @@ AI מייצר תוכנה מהר יותר ממה שבני אדם יודעים ל�
 לא “Cursor טוב יותר”. לא מהנדס אוטונומי. לא עוד RAG. לא רשימת פיצ’רים.
 
 **מה קיים / מה לא.**  
-קיים מקומית: Guardian דטרמיניסטי, UNKNOWN שלא הופך לביטחון, חסימת סמכות, SoD אנושי, Apply ואז Verify, בידוד פרויקטים, audit.  
-לא קיים עדיין: ייצור מוכח, לקוחות משלמים, מדד ערך, סנכרון זיכרון בענן.
+ממומש ומאומת מקומית: Guardian דטרמיניסטי, UNKNOWN שלא הופך לביטחון, חסימת סמכות, SoD כפול, Apply ואז Verify על דיסק, בידוד פרויקטים, audit. Studio הוא בית העבודה. Control ו-Admin קיימים כמישורים נפרדים.  
+לא נטען: ייצור מוכח, לקוחות משלמים, מדד ערך, סנכרון זיכרון בענן, Atlas שמריץ את האפליקציות המחוברות.
 
 **הבקשה בשיחה ראשונה.**  
 לא סבב מתומחר. בדיקת חפיפת thesis, ואם יש התאמה — הדגמה של נתיב ההוכחה, לא מצגת פיצ’רים.

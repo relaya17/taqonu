@@ -25,8 +25,19 @@ export const patchStatusSchema = z.enum([
 
 export const patchRiskSchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
+function isWorkspaceRelativePath(path: string): boolean {
+  const rel = path.replace(/\\/g, "/");
+  return !rel.includes("..") && !rel.startsWith("/") && !/^[A-Za-z]:/.test(rel);
+}
+
 export const patchFileChangeSchema = z.object({
-  path: z.string().min(1).max(500),
+  path: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine(isWorkspaceRelativePath, {
+      message: "path must be a relative workspace path without traversal",
+    }),
   action: z.enum(["add", "modify", "delete"]),
   summary: z.string().max(500),
   unifiedDiff: z.string().max(200_000).optional(),
@@ -65,6 +76,11 @@ export const patchArtifactSchema = z.object({
   appliedAt: isoDateTimeSchema.nullable(),
   verifiedAt: isoDateTimeSchema.nullable(),
   rollbackRef: z.string().max(500).nullable(),
+  /**
+   * Pre-apply snapshot of patched paths only.
+   * `previousContent: null` means the path was created by Apply and must be
+   * deleted on Rollback. Unrelated workspace files are out of scope.
+   */
   rollbackSnapshot: z
     .array(
       z.object({
