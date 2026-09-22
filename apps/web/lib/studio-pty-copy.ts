@@ -81,7 +81,10 @@ export const PTY_COPY = {
 
 export type PtyCopyKey = keyof (typeof PTY_COPY)["en"];
 
-export function ptyCopyFor(locale: string): (typeof PTY_COPY)["en"] {
+// Each locale object has the same keys but its own literal string values,
+// so the real return type is the union of all three -- not just `en`'s
+// exact literal shape -- while every value stays assignable to `string`.
+export function ptyCopyFor(locale: string): (typeof PTY_COPY)[keyof typeof PTY_COPY] {
   if (locale === "he") return PTY_COPY.he;
   if (locale === "ar") return PTY_COPY.ar;
   return PTY_COPY.en;

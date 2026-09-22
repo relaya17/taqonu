@@ -164,7 +164,9 @@ export async function registerStudioLanguageRoutes(app: FastifyInstance): Promis
     if (!body.apply) {
       return { edits, applied: false as const };
     }
-    const byPath = new Map<string, typeof edits>();
+    // `edits` is `readonly StudioLsEdit[]`; use a mutable per-file accumulator
+    // so `.push` type-checks without weakening the shared readonly return type.
+    const byPath = new Map<string, Array<(typeof edits)[number]>>();
     for (const edit of edits) {
       const list = byPath.get(edit.path) ?? [];
       list.push(edit);

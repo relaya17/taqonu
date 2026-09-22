@@ -26,7 +26,6 @@ class MemoryTerm implements PtyTerminalSurface {
   }
   dispose(): void {
     this.disposed = true;
-    this.bufferText = this.bufferText;
   }
   open(): void {
     this.opened = true;

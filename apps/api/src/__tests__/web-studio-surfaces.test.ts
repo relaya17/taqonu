@@ -202,7 +202,11 @@ describe("Studio level-up workspace safety and agent briefing", () => {
     expect(studio).toContain("studioProblemRemediationId");
     expect(studio).not.toContain("selectStudioFile(path, line, problem.id)");
     const git = readWeb("components/studio/StudioGitStatus.tsx");
-    expect(git).toContain('commandId: "git.status"');
+    // Git status is requested through the same governed terminal execution
+    // path as Run (studio/terminal), not a separate/ungoverned git-specific
+    // route -- that shared path is what keeps it SoD-gated end to end.
+    expect(git).toContain('requestCommand.mutate("git.status")');
+    expect(git).toContain("studio/terminal");
     expect(git).toContain("decide-and-execute");
     expect(git).not.toContain("git commit");
     const workflow = readWeb("components/studio/StudioPatchWorkflow.tsx");

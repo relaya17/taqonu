@@ -8,7 +8,13 @@ import { apiHealthy } from "./helpers";
 test.describe("Product surfaces (EN)", () => {
   test("home / verdict area loads brand", async ({ page }) => {
     await page.goto("/en");
-    await expect(page.getByText(/ArletOS|Atlas/i).first()).toBeVisible({
+    // AppShell always renders a mobile-only brand link ahead of page
+    // content in the DOM (hidden at desktop widths via CSS); a free-text
+    // search picks that one up before the real, visible <h1>. Target the
+    // actual brand heading instead.
+    await expect(
+      page.getByRole("heading", { level: 1, name: /ArletOS|Atlas/i }),
+    ).toBeVisible({
       timeout: 45_000,
     });
     await expect(page.locator("main")).toBeVisible();
@@ -17,13 +23,25 @@ test.describe("Product surfaces (EN)", () => {
   test("readiness page shows title", async ({ page }) => {
     await page.goto("/en/readiness");
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    // /en/readiness redirects into the Studio shell (StudioSurfaceRedirect),
+    // which carries its own persistent "Project Studio" <h1> alongside this
+    // panel's own heading — two legitimate h1s on one page. Target the
+    // panel's own heading by name instead of assuming a single global h1.
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Production Readiness" }),
+    ).toBeVisible();
   });
 
   test("health / system scorecard reachable", async ({ page }) => {
     await page.goto("/en/health");
     await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    // /en/health redirects into the Studio shell (StudioSurfaceRedirect),
+    // which carries its own persistent "Project Studio" <h1> alongside this
+    // panel's own heading — two legitimate h1s on one page. Target the
+    // panel's own heading by name instead of assuming a single global h1.
+    await expect(
+      page.getByRole("heading", { level: 1, name: "System Health" }),
+    ).toBeVisible();
   });
 
   test("partners / import surface reachable", async ({ page, request }) => {
@@ -100,8 +118,14 @@ test.describe("Product surfaces (EN)", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
     if (await apiHealthy(request)) {
+      // "arletos" is dropped from this pattern: AppShell's always-present
+      // mobile-only brand link ("ArletOS") sits ahead of this page's real
+      // content in the DOM and is hidden at desktop widths, so a free-text
+      // match including that token grabs the hidden link instead of the
+      // page's own visible marketplace copy. The remaining terms are unique
+      // to this page's actual content.
       await expect(
-        page.getByText(/marketplace|strength|weakness|credit|arletos/i).first(),
+        page.getByText(/marketplace|strength|weakness|credit/i).first(),
       ).toBeVisible({ timeout: 20_000 });
     }
   });

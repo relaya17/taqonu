@@ -335,10 +335,10 @@ importers:
       '@atlas/shared':
         specifier: workspace:*
         version: link:../shared
-    devDependencies:
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
+    devDependencies:
       vitest:
         specifier: ^3.0.8
         version: 3.2.7(@types/node@26.2.0)(tsx@4.23.12)
