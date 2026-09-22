@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Atlas — Investor one-pager</title>
+  <style>
+    @page { size: A4; margin: 12mm 14mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: 10.4pt/1.42 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: #111;
+      max-width: 190mm;
+      margin: 0 auto;
+      padding: 8mm 4mm;
+    }
+    h1 { font-size: 18pt; letter-spacing: -0.02em; margin: 0 0 2pt; }
+    .tag { color: #444; font-size: 10pt; margin: 0 0 10pt; }
+    h2 {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 11pt 0 4pt;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 2pt;
+    }
+    p { margin: 0 0 6pt; }
+    .lead { font-size: 11.2pt; line-height: 1.35; }
+    ul { margin: 0 0 6pt; padding-left: 16pt; }
+    li { margin: 0 0 3pt; }
+    table { width: 100%; border-collapse: collapse; margin: 0 0 6pt; font-size: 10pt; }
+    th, td { text-align: left; vertical-align: top; padding: 4pt 6pt 4pt 0; border-bottom: 1px solid #ddd; }
+    th { font-weight: 600; color: #333; }
+    .fine { font-size: 8.5pt; color: #555; margin-top: 10pt; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    [dir="rtl"] { font-size: 10.6pt; }
+    [dir="rtl"] h1 { font-size: 17pt; }
+    @media print {
+      body { padding: 0; }
+      .noprint { display: none; }
+    }
+    .noprint {
+      background: #f4f4f4;
+      padding: 8pt 10pt;
+      margin-bottom: 12pt;
+      font-size: 9.5pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="noprint">
+    Chrome / Edge: Ctrl+P → Destination: Save as PDF → Paper: A4 → Margins: Default.
+    Print pages 1 only for English; pages 1–2 for bilingual. Then paste
+    <code>ATLAS-INVESTOR-ONE-PAGER.md</code> into Google Docs if you need a shared link.
+  </div>
+
+  <section class="page">
+    <h1>Atlas</h1>
+    <p class="tag">Trust · memory · evidence · control for AI-native software · September 2026</p>
+    <p class="lead"><strong>Atlas is the trust, memory, evidence and control layer for AI-native software systems. Arlet Studio is the first environment where that infrastructure is tangible to a developer.</strong></p>
+
+    <h2>The problem</h2>
+    <p>AI made writing software cheap. It did not make trusting software cheap. Agents can now propose real work. Organizations still lack a system for what the agent knows, whether it may act, and whether the result is actually true.</p>
+
+    <h2>Why this is a market</h2>
+    <p>Generation is already priced. The open question is which layer becomes necessary once agents work inside real systems.</p>
+    <ul>
+      <li>Cognition (Devin): $2B at $48B, Sep 2026 (Reuters); ~$900M run-rate.</li>
+      <li>Factory: $200M at $5B, 15 Sep 2026 (Reuters).</li>
+      <li>CodeRabbit: $143M at $1.5B — agentic change management (“code is abundant, judgment is scarce”).</li>
+      <li>LangChain: $125M at $1.25B — infrastructure to <em>build</em> agents, not an IDE.</li>
+    </ul>
+
+    <h2>What Atlas is / is not</h2>
+    <table>
+      <thead><tr><th>Atlas is</th><th>Atlas is not</th></tr></thead>
+      <tbody>
+        <tr><td>Evidence, scoped memory, authority, verify</td><td>A better Cursor / AI IDE</td></tr>
+        <tr><td>Agent ≠ Model. Guardian is deterministic</td><td>An autonomous engineer (Devin, Factory)</td></tr>
+        <tr><td>Human remains SoD authority</td><td>A vector-database “memory” product</td></tr>
+        <tr><td>Studio = first proof; Control = later org plane</td><td>A feature list of ten products</td></tr>
+      </tbody>
+    </table>
+    <p>Proposal → Guardian (CONSISTENT / CONFLICT / UNKNOWN) → human approval → Apply → Verify → scoped memory. The system can say CONFLICT or UNKNOWN without believing the model.</p>
+
+    <h2>Honest status</h2>
+    <p><strong>Local, not production:</strong> conflict detection, unknown-as-unknown, policy block, human SoD, apply-then-verify, project isolation, audit log.</p>
+    <p><strong>Not yet:</strong> production proof, paying customers, measured Proof-of-Value, cloud memory sync.</p>
+    <p>Connected apps (CaseFlow, Vantera, LexStudy, …) are real-world oversight testbeds — not a product zoo. Atlas governs; it does not replace those applications.</p>
+
+    <h2>First conversation</h2>
+    <p>Not a priced round. Not a valuation. We want overlap with funds that already believe agents need infrastructure <em>under</em> the agent.</p>
+    <p class="fine">Sources: Reuters (Cognition 8 Sep 2026; Factory 15 Sep 2026; CodeRabbit 12 Aug 2026); LangChain Series B Oct 2025. Atlas product claims are local only. Production is not proven. This page asserts no Atlas valuation.</p>
+  </section>
+
+  <section class="page" dir="rtl" lang="he">
+    <h1>Atlas</h1>
+    <p class="tag">אמת · זיכרון · ראיות · שליטה לתוכנה AI-native · ספטמבר 2026</p>
+    <p class="lead"><strong>Atlas הוא שכבת האמון, הזיכרון, הראיות והשליטה למערכות תוכנה AI-native. Arlet Studio הוא היישום הראשון שבו התשתית הזו מוחשית למפתח.</strong></p>
+
+    <h2>הבעיה</h2>
+    <p>AI יודע לייצר תוכנה מהר יותר ממה שבני אדם יודעים לאמת אותה. השוק כבר לא מחפש עוד כלי כתיבה. הוא מחפש איך לדעת מתי ה-Agent צודק, מתי הוא טועה, מה מותר לו, ומה באמת קרה.</p>
+
+    <h2>למה זה שוק</h2>
+    <ul>
+      <li>Cognition (Devin): גיוס $2B לפי $48B, ספטמבר 2026; run-rate כ-$900M.</li>
+      <li>Factory: $200M לפי $5B, 15 בספטמבר 2026.</li>
+      <li>CodeRabbit: $143M לפי $1.5B — שיפוט על שינוי שנוצר בידי AI.</li>
+      <li>LangChain: $125M לפי $1.25B — תשתית לבניית Agents, לא IDE.</li>
+    </ul>
+    <p>שכבת הייצור כבר מתומחרת. השאלה היא איזו שכבה הופכת לתשתית חובה אחרי שה-Agent נכנס למערכת אמיתית.</p>
+
+    <h2>מה זה / מה זה לא</h2>
+    <table>
+      <thead><tr><th>Atlas כן</th><th>Atlas לא</th></tr></thead>
+      <tbody>
+        <tr><td>ראיות, זיכרון עם אחריות, סמכות, אימות</td><td>Cursor טוב יותר</td></tr>
+        <tr><td>Agent ≠ מודל. Guardian דטרמיניסטי</td><td>מהנדס אוטונומי</td></tr>
+        <tr><td>האדם נשאר הסמכות (SoD)</td><td>עוד RAG / vector DB</td></tr>
+        <tr><td>Studio כמוכחה ראשונה; Control לארגון אחר כך</td><td>עשרה מוצרים ברשימת פיצ’רים</td></tr>
+      </tbody>
+    </table>
+    <p>הצעה → Guardian (CONSISTENT / CONFLICT / UNKNOWN) → אישור אדם → Apply → Verify → זיכרון לפי פרויקט.</p>
+
+    <h2>מצב כנה</h2>
+    <p><strong>מקומית, לא ייצור:</strong> זיהוי סתירה, UNKNOWN בלי ביטחון מזויף, חסימת סמכות, SoD, Apply ואז Verify, בידוד פרויקטים, audit.</p>
+    <p><strong>עדיין לא:</strong> הוכחת ייצור, לקוחות משלמים, מדד ערך, סנכרון זיכרון בענן.</p>
+    <p>האפליקציות המחוברות הן סביבות פיקוח אמיתיות — לא פורטפוליו מוצרים. Atlas מפקח; הוא לא מחליף אותן.</p>
+
+    <h2>שיחה ראשונה</h2>
+    <p>לא סבב מתומחר ולא שווי. בדיקת חפיפת thesis מול קרן שכבר מאמינה ש-Agents צריכים תשתית מתחת ל-Agent.</p>
+    <p class="fine">מקורות שוק: Reuters / הודעות החברות. טענות המוצר של Atlas הן מקומיות בלבד. אין כאן שווי ל-Atlas.</p>
+  </section>
+</body>
+</html>
