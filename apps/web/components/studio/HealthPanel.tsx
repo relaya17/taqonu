@@ -52,6 +52,7 @@ interface Issue {
 
 interface HealthReport {
   id: string;
+  projectId: string | null;
   projectName: string;
   overallScore: number;
   dimensions: Dimension[];
@@ -108,10 +109,8 @@ export function HealthPanel({
 
   const projectId = useMemo(() => {
     if (boundProjectId) return boundProjectId;
-    if (selectedId) return selectedId;
-    const items = projects.data?.items ?? [];
-    return items.find((p) => p.slug === "brokeros")?.id ?? items[0]?.id ?? "";
-  }, [boundProjectId, selectedId, projects.data]);
+    return selectedId;
+  }, [boundProjectId, selectedId]);
 
   const selected = projects.data?.items.find((p) => p.id === projectId);
 
@@ -143,7 +142,11 @@ export function HealthPanel({
     },
   });
 
-  const report = run.data ?? list.data?.items?.[0];
+  const fresh = run.data;
+  const report =
+    projectId && fresh?.projectId === projectId
+      ? fresh
+      : list.data?.items?.find((item) => item.projectId === projectId);
 
   const sevLabel = (s: string) => {
     try {

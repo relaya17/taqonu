@@ -76,6 +76,9 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     const dashboard = readWeb("app/[locale]/page.tsx");
     expect(dashboard).toContain('href="/studio"');
     expect(dashboard).toContain("dashboard.workingHome");
+    const section = readWeb("app/[locale]/[section]/page.tsx");
+    expect(section).toContain('security: "/sentinel"');
+    expect(section).not.toContain('security: "/health"');
   });
 
   it("surfaces PSA memory in Studio without merging CODE_ENGINEER ask-agent", () => {
@@ -133,6 +136,28 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(health).toContain("!boundProjectId");
     expect(truth).toContain("!boundProjectId");
     expect(readiness).toContain("!boundProjectId");
+    expect(health).not.toMatch(/list\.data\?\.items\?\.\[0\]/);
+    expect(readiness).not.toMatch(/list\.data\?\.items\?\.\[0\]/);
+    expect(health).toContain("item.projectId === projectId");
+    expect(readiness).toContain("c.projectId === projectId");
+    expect(studio).toContain('checksTab === "qa" && projectId');
+    expect(studio).toContain('checksTab === "health" && projectId');
+    expect(studio).toContain('checksTab === "truth" && projectId');
+    expect(health).not.toContain('slug === "brokeros"');
+    expect(readiness).not.toContain('slug === "brokeros"');
+    expect(truth).not.toContain("items[0]");
+    const contract = readWeb("app/[locale]/contract/page.tsx");
+    expect(contract).not.toContain("items[0]");
+    expect(contract).toContain("contract.invalidEdge");
+    const billing = readWeb("app/[locale]/settings/billing/page.tsx");
+    expect(billing).not.toContain('apiPost("/api/v1/billing/plan"');
+    const planPage = readWeb("app/[locale]/plan/page.tsx");
+    expect(planPage).not.toContain('setPlan.mutateAsync("pro")');
+    const models = readWeb("app/[locale]/models/page.tsx");
+    expect(models).toContain("disabled={!provider.available}");
+    const evalPage = readWeb("app/[locale]/eval/page.tsx");
+    expect(evalPage).toContain("item.suiteId === suiteId");
+    expect(evalPage).not.toContain("items?.[0]");
     const patches = readWeb("components/dashboard/PatchesPanel.tsx");
     expect(patches).toContain("useProjectQueryParam");
   });

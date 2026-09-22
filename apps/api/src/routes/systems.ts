@@ -5,6 +5,7 @@ import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.
 import {
   assertProjectReadAccess,
   assertProjectWriteAccess,
+  canReadProjectScoped,
 } from "../services/project-access.js";
 import { osStore } from "../store/os-store.js";
 import { appendDomainEvent } from "../services/memory-pipeline.js";
@@ -56,8 +57,14 @@ export async function registerSystemRoutes(app: FastifyInstance): Promise<void> 
    * Without this, any anonymous user could list all managed systems.
    */
   app.get("/api/v1/systems", async (request) => {
-    await requireUser(app, request);
-    return listManagedSystems();
+    const user = await requireUser(app, request);
+    const list = listManagedSystems();
+    return {
+      ...list,
+      items: list.items.filter((item) =>
+        canReadProjectScoped(user, item.projectId),
+      ),
+    };
   });
 
   app.get("/api/v1/systems/:id", async (request) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -42,10 +42,7 @@ export default function ArchitectureContractPage() {
     staleTime: 60_000,
   });
 
-  const projectId = useMemo(() => {
-    if (selectedId) return selectedId;
-    return projects.data?.items[0]?.id ?? "";
-  }, [selectedId, projects.data]);
+  const projectId = selectedId;
 
   const contract = useQuery({
     queryKey: ["arch-contract", projectId],
@@ -76,8 +73,13 @@ export default function ArchitectureContractPage() {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => {
-          const [from, to] = line.split("->").map((s) => s.trim());
-          return { from: from || "FRONTEND", to: to || "DATABASE" };
+          const parts = line.split("->").map((s) => s.trim());
+          const from = parts[0];
+          const to = parts[1];
+          if (!from || !to || parts.length !== 2) {
+            throw new Error(t("contract.invalidEdge"));
+          }
+          return { from, to };
         });
       return apiPut<ArchitectureContract>("/api/v1/audit-engine/contract", {
         ...base,
@@ -111,6 +113,7 @@ export default function ArchitectureContractPage() {
         onChange={(e) => setSelectedId(e.target.value)}
         sx={{ maxWidth: 420 }}
       >
+        <MenuItem value="">{t("dashboard.projectSelect")}</MenuItem>
         {(projects.data?.items ?? []).map((p) => (
           <MenuItem key={p.id} value={p.id}>
             {p.name}
@@ -145,8 +148,16 @@ export default function ArchitectureContractPage() {
       {save.isSuccess ? (
         <Alert severity="success">{t("contract.saved")}</Alert>
       ) : null}
+      {projects.isError ? (
+        <Alert severity="error">{(projects.error as Error).message}</Alert>
+      ) : null}
+      {contract.isError ? (
+        <Alert severity="error">{(contract.error as Error).message}</Alert>
+      ) : null}
       {save.isError ? (
-        <Alert severity="error">{t("contract.saveFailed")}</Alert>
+        <Alert severity="error">
+          {(save.error as Error).message || t("contract.saveFailed")}
+        </Alert>
       ) : null}
     </Stack>
   );

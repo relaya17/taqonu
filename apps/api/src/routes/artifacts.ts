@@ -54,8 +54,22 @@ export async function registerArtifactRoutes(app: FastifyInstance): Promise<void
   });
 
   app.post("/api/v1/assists/runs", async (request, reply) => {
-    await requireSignedInForWrite(app, request);
+    const user = await requireSignedInForWrite(app, request);
     const body = createAssistRunSchema.parse(request.body);
+    for (const artifactId of body.artifactIds) {
+      const artifact = osStore.getArtifact(artifactId);
+      if (!artifact) {
+        throw new AtlasError("NOT_FOUND", `ARTIFACT_MISSING:${artifactId}`);
+      }
+      if (!canReadProjectScoped(user, artifact.projectId)) {
+        throw new AtlasError("FORBIDDEN", "Artifact is outside your project scope", {
+          statusCode: 403,
+        });
+      }
+      if (artifact.projectId) {
+        await assertProjectWriteAccess(app, request, artifact.projectId);
+      }
+    }
     const { tier } = resolveTier(app.atlasEnv);
     ensureCreditsInitialized(tier);
     try {

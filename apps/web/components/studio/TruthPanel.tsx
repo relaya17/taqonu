@@ -144,8 +144,7 @@ export function TruthPanel({
     staleTime: 60_000,
   });
 
-  const firstId = projects.data?.items[0]?.id ?? "";
-  const activeId = boundProjectId || selectedId || firstId;
+  const activeId = boundProjectId || selectedId || "";
 
   const state = useQuery({
     queryKey: ["observer-state", activeId],
@@ -423,6 +422,11 @@ export function TruthPanel({
           />
         ) : null}
 
+        {state.isError ? (
+          <Alert severity="error">
+            {state.error instanceof Error ? state.error.message : t("error")}
+          </Alert>
+        ) : null}
         {cycle.isError ? (
           <Alert severity="error">
             {cycle.error instanceof Error ? cycle.error.message : t("error")}

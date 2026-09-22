@@ -169,6 +169,23 @@ describe("POST /api/v1/artifacts auth", () => {
 });
 
 describe("POST /api/v1/assists/runs auth", () => {
+  it("403s when the artifact belongs to another user's project", async () => {
+    const owner = signedInUser();
+    const foreignProject = makeProject(otherUser);
+    const artifact = makeArtifact(foreignProject);
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/assists/runs",
+      payload: {
+        artifactIds: [artifact.id],
+        expertId: "ENGINEERING",
+        userRequest: "please check this",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
   it("401s when not signed in (security fix — this route previously had ZERO auth, allowing anonymous AI-credit consumption)", async () => {
     getRequestUser.mockReturnValue(null);
     const res = await app.inject({

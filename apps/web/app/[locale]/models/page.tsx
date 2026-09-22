@@ -138,6 +138,9 @@ export default function ModelsPage() {
         <Typography color="text.secondary" sx={{ mt: 1 }}>
           {t("subtitle")}
         </Typography>
+        {providers.isError ? (
+          <Alert severity="error">{(providers.error as Error).message}</Alert>
+        ) : null}
         <Alert severity="info" sx={{ mt: 2 }}>
           {t("includedNote")}
         </Alert>
@@ -244,7 +247,11 @@ export default function ModelsPage() {
                     size="small"
                     variant={providerId === provider.id ? "contained" : "outlined"}
                     sx={{ mt: 1 }}
-                    onClick={() => setProviderId(provider.id)}
+                    disabled={!provider.available}
+                    onClick={() => {
+                      if (!provider.available) return;
+                      setProviderId(provider.id);
+                    }}
                   >
                     {providerId === provider.id
                       ? t("companionSelected")

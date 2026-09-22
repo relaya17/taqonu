@@ -77,7 +77,7 @@ export default function SystemsPage() {
       </Box>
 
       {query.isError ? (
-        <Alert severity="info">{(query.error as Error).message}</Alert>
+        <Alert severity="error">{(query.error as Error).message}</Alert>
       ) : null}
 
       {query.data?.note ? (

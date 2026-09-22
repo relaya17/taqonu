@@ -106,6 +106,7 @@
     "name": "שם החוזה",
     "forbidden": "קצוות אסורים (שורה לכל: FRONTEND -> DATABASE)",
     "forbiddenHelp": "לדוגמה: FRONTEND -> DATABASE",
+    "invalidEdge": "כל קצה אסור חייב להיות שכבה -> שכבה (שני הצדדים חובה).",
     "save": "שמור חוזה",
     "saved": "החוזה נשמר — הריצו ביקורת בריאות מערכת מחדש.",
     "saveFailed": "שמירת החוזה נכשלה."
@@ -964,7 +965,7 @@
     "downgradeFree": "חזור לחינם",
     "source": "מקור: {source}",
     "subscriptionStatus": "מנוי: {status}",
-    "stripeHint": "כש־STRIPE_SECRET_KEY מוגדר, השדרוג פותח Checkout חי; אחרת משתמשים בהחלפת תוכנית staging.",
+    "stripeHint": "כש־STRIPE_SECRET_KEY מוגדר, השדרוג פותח Checkout חי. בלי Stripe התוכנית לא משודרגת.",
     "checkoutSuccess": "התשלום הושלם — התוכנית מתעדכנת כשמגיע ה־webhook של Stripe.",
     "checkoutCanceled": "התשלום בוטל — התוכנית לא השתנתה.",
     "openBilling": "הגדרות חיוב",

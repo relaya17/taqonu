@@ -7,7 +7,7 @@ const SECTION_REDIRECTS: Record<string, string> = {
   research: "/legal-media",
   knowledge: "/memory",
   activity: "/ops/metrics",
-  security: "/health",
+  security: "/sentinel",
 };
 
 export default async function SectionRedirectPage({

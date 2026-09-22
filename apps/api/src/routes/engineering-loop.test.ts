@@ -289,6 +289,22 @@ describe("POST /api/v1/engineering/loop", () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it("400s when projectId is given but the project has no linked workspaceRoot", async () => {
+    const owner = signedInUser();
+    const projectId = makeProject(owner);
+    getRequestUser.mockReturnValue(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/engineering/loop",
+      payload: {
+        userRequest: "add a login button",
+        projectId,
+        workspaceRoot: "/tmp/attacker-path",
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("403s when the Policy Engine denies RECORD.EXECUTE (entity-policy gate wiring)", async () => {
     getRequestUser.mockReturnValue(signedInUser());
     authorizeEntityActionMock.mockReturnValue({

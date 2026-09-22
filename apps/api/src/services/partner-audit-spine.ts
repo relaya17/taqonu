@@ -12,7 +12,6 @@ import { buildAtlasVerdict } from "./atlas-verdict.js";
 import { issueProductionReadinessCertificate } from "./readiness-certificate.js";
 import { loadArchitectureContract } from "./architecture-contract-store.js";
 import { appendDomainEvent } from "./memory-pipeline.js";
-import { defaultGoldenRoot } from "./golden-root.js";
 
 export const partnerAuditSpineRequestSchema = z.object({
   projectId: uuidSchema,
@@ -71,7 +70,7 @@ export type RecordHealthReportFn = (report: SystemHealthReport) => void;
 
 function resolveProjectWorkspace(
   projectId: string,
-  envGoldenRoot: string | undefined,
+  _envGoldenRoot: string | undefined,
 ): { root: string | null; reason: string | null } {
   const stored = osStore.getWorkspaceRoot(projectId);
   if (stored) {
@@ -81,10 +80,6 @@ function resolveProjectWorkspace(
       root: null,
       reason: `Stored workspaceRoot not found on disk: ${root}`,
     };
-  }
-  const golden = envGoldenRoot || defaultGoldenRoot();
-  if (golden && existsSync(resolve(golden))) {
-    return { root: resolve(golden), reason: null };
   }
   return {
     root: null,

@@ -454,6 +454,7 @@
     "name": "Contract name",
     "forbidden": "Forbidden edges (one per line: FRONTEND -> DATABASE)",
     "forbiddenHelp": "Example: FRONTEND -> DATABASE",
+    "invalidEdge": "Each forbidden edge must be LAYER -> LAYER (both sides required).",
     "save": "Save contract",
     "saved": "Contract saved — re-run System Health audit.",
     "saveFailed": "Failed to save contract."
@@ -920,7 +921,7 @@
     "downgradeFree": "Switch to Free",
     "source": "Source: {source}",
     "subscriptionStatus": "Subscription: {status}",
-    "stripeHint": "When STRIPE_SECRET_KEY is set, Upgrade opens live Checkout; otherwise staging plan switch is used.",
+    "stripeHint": "When STRIPE_SECRET_KEY is set, Upgrade opens live Checkout. Without Stripe, the plan is not upgraded.",
     "checkoutSuccess": "Checkout completed — plan updates when the Stripe webhook arrives.",
     "checkoutCanceled": "Checkout canceled — your plan was not changed.",
     "openBilling": "Billing settings",

@@ -211,6 +211,12 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
         </Button>
       </Stack>
 
+      {catalog.isError ? (
+        <Alert severity="error">
+          {catalog.error instanceof Error ? catalog.error.message : t("error")}
+        </Alert>
+      ) : null}
+
       {requestRun.isError ? (
         <Alert severity="warning">
           {requestRun.error instanceof Error ? requestRun.error.message : t("error")}

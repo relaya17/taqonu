@@ -240,6 +240,12 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
         {create.isError ? (
           <Alert severity="error">{(create.error as Error).message}</Alert>
         ) : null}
+        {memoryQuery.isError ? (
+          <Alert severity="error">{(memoryQuery.error as Error).message}</Alert>
+        ) : null}
+        {pendingQuery.isError ? (
+          <Alert severity="error">{(pendingQuery.error as Error).message}</Alert>
+        ) : null}
       </Stack>
 
       <Box>

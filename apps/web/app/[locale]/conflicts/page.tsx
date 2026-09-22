@@ -57,7 +57,9 @@ export default function ConflictsPage() {
         </Typography>
       </Box>
 
-      {items.length === 0 ? (
+      {query.isError ? (
+        <Alert severity="error">{(query.error as Error).message}</Alert>
+      ) : items.length === 0 ? (
         <Alert severity="info">{t("empty")}</Alert>
       ) : (
         items.map((item) => (

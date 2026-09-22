@@ -454,6 +454,7 @@
     "name": "اسم العقد",
     "forbidden": "حواف محظورة (سطر لكل: FRONTEND -> DATABASE)",
     "forbiddenHelp": "مثال: FRONTEND -> DATABASE",
+    "invalidEdge": "كل حد محظور يجب أن يكون طبقة -> طبقة (كلا الطرفين مطلوبان).",
     "save": "حفظ العقد",
     "saved": "تم الحفظ — أعد تشغيل تدقيق صحة النظام.",
     "saveFailed": "فشل حفظ العقد."
@@ -920,7 +921,7 @@
     "downgradeFree": "العودة للمجاني",
     "source": "المصدر: {source}",
     "subscriptionStatus": "الاشتراك: {status}",
-    "stripeHint": "عند ضبط STRIPE_SECRET_KEY تفتح الترقية Checkout حياً؛ وإلا يُستخدم تبديل الخطة التجريبي.",
+    "stripeHint": "عند ضبط STRIPE_SECRET_KEY تفتح الترقية Checkout حياً. بدون Stripe لا تتم ترقية الخطة.",
     "checkoutSuccess": "اكتمل الدفع — تُحدَّث الخطة عند وصول webhook من Stripe.",
     "checkoutCanceled": "أُلغي الدفع — لم تتغير خطتك.",
     "openBilling": "إعدادات الفوترة",

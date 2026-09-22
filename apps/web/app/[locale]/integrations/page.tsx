@@ -313,6 +313,9 @@ export default function IntegrationsPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {t("githubHelp")}
         </Typography>
+        {connections.isError ? (
+          <Alert severity="error">{(connections.error as Error).message}</Alert>
+        ) : null}
         {githubConnected ? (
           <Stack spacing={1.5}>
             <Alert severity="success">

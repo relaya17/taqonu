@@ -97,6 +97,10 @@ export default function GatesPage() {
             ))}
           </Stack>
         </>
+      ) : gates.isError ? (
+        <Alert severity="error">{(gates.error as Error).message}</Alert>
+      ) : evaluate.isError ? (
+        <Alert severity="error">{(evaluate.error as Error).message}</Alert>
       ) : (
         <Typography color="text.secondary">{t("empty")}</Typography>
       )}

@@ -65,7 +65,10 @@ export default function EvalPage() {
     },
   });
 
-  const latest = run.data ?? runs.data?.items?.[0];
+  const latest =
+    run.data?.suiteId === suiteId
+      ? run.data
+      : runs.data?.items?.find((item) => item.suiteId === suiteId);
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 920 }}>
@@ -100,6 +103,12 @@ export default function EvalPage() {
 
       {run.isError ? (
         <Alert severity="error">{(run.error as Error).message}</Alert>
+      ) : null}
+      {runs.isError ? (
+        <Alert severity="error">{(runs.error as Error).message}</Alert>
+      ) : null}
+      {suites.isError ? (
+        <Alert severity="error">{(suites.error as Error).message}</Alert>
       ) : null}
 
       {latest ? (

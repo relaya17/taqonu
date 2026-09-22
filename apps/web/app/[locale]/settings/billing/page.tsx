@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert, Box, Button, Stack, Typography } from "@mui/material";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
@@ -28,7 +28,6 @@ interface CheckoutResponse {
 export default function BillingSettingsPage() {
   const t = useTranslations("plan");
   const tSettings = useTranslations("settings");
-  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const checkoutStatus = searchParams.get("checkout");
 
@@ -58,9 +57,6 @@ export default function BillingSettingsPage() {
         window.location.href = data.checkoutUrl;
         return;
       }
-      await apiPost("/api/v1/billing/plan", { tier: "pro" });
-      await queryClient.invalidateQueries({ queryKey: ["billing-plan"] });
-      await queryClient.invalidateQueries({ queryKey: ["billing-usage"] });
     },
   });
 
@@ -83,6 +79,12 @@ export default function BillingSettingsPage() {
       ) : null}
       {checkoutStatus === "canceled" ? (
         <Alert severity="info">{t("checkoutCanceled")}</Alert>
+      ) : null}
+      {planQuery.isError ? (
+        <Alert severity="error">{(planQuery.error as Error).message}</Alert>
+      ) : null}
+      {stripeCheckout.isSuccess && stripeCheckout.data?.mode === "stub" ? (
+        <Alert severity="info">{t("stripeHint")}</Alert>
       ) : null}
 
       {plan ? (

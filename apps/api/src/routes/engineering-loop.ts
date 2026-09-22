@@ -100,8 +100,18 @@ export async function registerEngineeringLoopRoutes(
       throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
     }
 
+    const storedRoot = body.projectId
+      ? osStore.getWorkspaceRoot(body.projectId)
+      : null;
+    if (body.projectId && !storedRoot) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot on the project before running the engineering loop.",
+      );
+    }
     const loop = runEngineeringLoop({
       workspaceRoot:
+        storedRoot ||
         body.workspaceRoot ||
         app.atlasEnv.ATLAS_GOLDEN_PROJECT_ROOT ||
         defaultGoldenRoot(),

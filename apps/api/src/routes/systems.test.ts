@@ -91,13 +91,14 @@ describe("GET /api/v1/systems", () => {
   it("filters out systems belonging to a project owned by someone else", async () => {
     const owner = signedInUser();
     const mineProject = makeProject(owner);
-    makeProject(otherUser);
+    const foreign = makeProject(otherUser);
 
     getRequestUser.mockReturnValue(owner);
     const res = await app.inject({ method: "GET", url: "/api/v1/systems" });
     expect(res.statusCode).toBe(200);
     const ids = res.json().items.map((i: { projectId: string | null }) => i.projectId);
     expect(ids).toContain(mineProject);
+    expect(ids).not.toContain(foreign);
   });
 });
 

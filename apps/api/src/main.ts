@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { AtlasError } from "@atlas/shared";
 import { loadServerEnv } from "@atlas/config";
 import { isAllowedWebOrigin } from "./lib/web-origin.js";
-import { apiListenOptions } from "./lib/listen-options.js";
+import { apiListenOptions, resolveApiListenPort } from "./lib/listen-options.js";
 import { buildApp } from "./create-app.js";
 
 export type NodeHttpHandler = (
@@ -12,14 +12,7 @@ export type NodeHttpHandler = (
 ) => void;
 
 function listenPort(fallback: number): number {
-  // Prefer API_PORT locally so a generic PORT (Vercel / parent shell) cannot
-  // steal 3100/3200 from the Control Plane and Owner Admin surfaces.
-  const fromEnv = process.env.API_PORT?.trim() || process.env.PORT?.trim();
-  if (fromEnv) {
-    const n = Number(fromEnv);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return fallback;
+  return resolveApiListenPort(fallback);
 }
 
 function configErrorMessage(error: unknown): string {

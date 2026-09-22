@@ -1606,20 +1606,20 @@ export default function StudioPage() {
             {checksTab === "sentinel" && projectId ? (
               <SentinelPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "qa" ? (
-              <QaPanel projectId={projectId || undefined} embedded />
+            {checksTab === "qa" && projectId ? (
+              <QaPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "processAudit" ? (
-              <ProcessAuditPanel projectId={projectId || undefined} embedded />
+            {checksTab === "processAudit" && projectId ? (
+              <ProcessAuditPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "health" ? (
-              <HealthPanel projectId={projectId || undefined} embedded />
+            {checksTab === "health" && projectId ? (
+              <HealthPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "readiness" ? (
-              <ReadinessPanel projectId={projectId || undefined} embedded />
+            {checksTab === "readiness" && projectId ? (
+              <ReadinessPanel projectId={projectId} embedded />
             ) : null}
-            {checksTab === "truth" ? (
-              <TruthPanel projectId={projectId || undefined} embedded />
+            {checksTab === "truth" && projectId ? (
+              <TruthPanel projectId={projectId} embedded />
             ) : null}
           </Stack>
       ) : null}

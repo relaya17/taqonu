@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildPartnerChecklist } from "./partner-audit-spine.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 describe("buildPartnerChecklist", () => {
   it("emits markdown + json with deep links and success checks", () => {
@@ -67,5 +72,11 @@ describe("buildPartnerChecklist", () => {
       skipped: true,
       skipReason: "No workspaceRoot linked",
     });
+  });
+
+  it("does not fall back to the golden repo when a project has no workspaceRoot", () => {
+    const src = readFileSync(join(here, "partner-audit-spine.ts"), "utf8");
+    expect(src).toContain("No workspaceRoot linked for this project");
+    expect(src).not.toMatch(/defaultGoldenRoot\(\)/);
   });
 });

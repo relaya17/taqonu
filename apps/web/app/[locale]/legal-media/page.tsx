@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -102,6 +102,10 @@ export default function LegalMediaPage() {
       }),
   });
 
+  useEffect(() => {
+    review.reset();
+  }, [projectId, review.reset]);
+
   const data = review.data;
   const disclaimer =
     locale === "he"
@@ -158,6 +162,12 @@ export default function LegalMediaPage() {
 
       <Alert severity="warning">{t("disclaimer")}</Alert>
       <Alert severity="info">{t("audience")}</Alert>
+      {projects.isError ? (
+        <Alert severity="error">{(projects.error as Error).message}</Alert>
+      ) : null}
+      {sources.isError ? (
+        <Alert severity="error">{(sources.error as Error).message}</Alert>
+      ) : null}
 
       <Stack
         direction={{ xs: "column", sm: "row" }}

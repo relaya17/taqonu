@@ -96,7 +96,6 @@ export default function PlanPage() {
         window.location.href = data.checkoutUrl;
         return;
       }
-      void setPlan.mutateAsync("pro");
     },
   });
 
@@ -251,6 +250,11 @@ export default function PlanPage() {
             >
               {t("upgradeStripe")}
             </Button>
+          ) : null}
+          {stripeCheckout.isSuccess && stripeCheckout.data?.mode === "stub" ? (
+            <Alert severity="info" sx={{ mt: 1.5 }}>
+              {t("stripeHint")}
+            </Alert>
           ) : null}
         </Box>
       </Stack>

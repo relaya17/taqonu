@@ -96,9 +96,13 @@ interface AuditSpineResult {
 export function PartnerAuditIntake({
   embedded = false,
   onProjectReady,
+  projectId: controlledProjectId,
+  onProjectIdChange,
 }: {
   embedded?: boolean;
   onProjectReady?: (projectId: string) => void;
+  projectId?: string;
+  onProjectIdChange?: (projectId: string) => void;
 }) {
   const t = useTranslations("partners");
   const [tab, setTab] = useState<SourceTab>("github");
@@ -109,7 +113,12 @@ export function PartnerAuditIntake({
   const [githubToken, setGithubToken] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
   const [syncCloud, setSyncCloud] = useState(false);
-  const [spineProjectId, setSpineProjectId] = useState("");
+  const [internalSpineId, setInternalSpineId] = useState("");
+  const spineProjectId = controlledProjectId ?? internalSpineId;
+  const setSpineProjectId = (id: string) => {
+    onProjectIdChange?.(id);
+    if (controlledProjectId === undefined) setInternalSpineId(id);
+  };
   const [copyState, setCopyState] = useState<"idle" | "md" | "json">("idle");
 
   const policy = useQuery({
@@ -157,13 +166,6 @@ export function PartnerAuditIntake({
       }>("/api/v1/case-studies/brokeros-001"),
     enabled: !embedded,
   });
-
-  useEffect(() => {
-    if (spineProjectId) return;
-    const items = projects.data?.items ?? [];
-    if (items.length === 0) return;
-    setSpineProjectId(items[0]?.id ?? "");
-  }, [projects.data, spineProjectId]);
 
   const connect = useMutation({
     mutationFn: () => {
@@ -213,6 +215,10 @@ export function PartnerAuditIntake({
       onProjectReady?.(data.projectId);
     },
   });
+
+  useEffect(() => {
+    spine.reset();
+  }, [spineProjectId, spine.reset]);
 
   const canSubmit =
     tab === "local"
@@ -299,6 +305,7 @@ export function PartnerAuditIntake({
           sx={{ mt: 1.5, minWidth: 280 }}
           disabled={!projects.data?.items.length}
         >
+          <MenuItem value="">{t("spineProject")}</MenuItem>
           {(projects.data?.items ?? []).map((p) => (
             <MenuItem key={p.id} value={p.id}>
               {p.name}
@@ -331,7 +338,7 @@ export function PartnerAuditIntake({
           {t("modeDocsHint")}
         </Typography>
 
-        {spine.data ? (
+        {spine.data && spine.data.projectId === spineProjectId ? (
           <Alert severity={spine.data.auditSkipped ? "warning" : "success"} sx={{ mt: 2 }}>
             {spine.data.auditSkipped ? (
               <Typography fontWeight={700} sx={{ mb: 0.75 }}>

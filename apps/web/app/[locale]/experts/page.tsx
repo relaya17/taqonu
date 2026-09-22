@@ -176,6 +176,13 @@ export default function ExpertsPage() {
     },
   });
 
+  useEffect(() => {
+    setReview(null);
+    setBrief(null);
+    reviewMutation.reset();
+    briefMutation.reset();
+  }, [projectId, reviewMutation.reset, briefMutation.reset]);
+
   const copyBrief = async () => {
     if (!brief) return;
     await navigator.clipboard.writeText(brief.markdown);
@@ -202,8 +209,17 @@ export default function ExpertsPage() {
         </Alert>
       </Box>
 
+      {expertsQuery.isError ? (
+        <Alert severity="error">{(expertsQuery.error as Error).message}</Alert>
+      ) : null}
+      {projectsQuery.isError ? (
+        <Alert severity="error">{(projectsQuery.error as Error).message}</Alert>
+      ) : null}
+
       <PartnerAuditIntake
         embedded
+        projectId={projectId}
+        onProjectIdChange={setProjectId}
         onProjectReady={(id) => {
           setProjectId(id);
           void projectsQuery.refetch();
@@ -401,6 +417,9 @@ export default function ExpertsPage() {
 
       {reviewMutation.isError ? (
         <Alert severity="error">{(reviewMutation.error as Error).message}</Alert>
+      ) : null}
+      {briefMutation.isError ? (
+        <Alert severity="error">{(briefMutation.error as Error).message}</Alert>
       ) : null}
 
       {review ? (

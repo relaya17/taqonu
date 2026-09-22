@@ -79,11 +79,8 @@ export function ReadinessPanel({
 
   const projectId = useMemo(() => {
     if (boundProjectId) return boundProjectId;
-    if (selectedId) return selectedId;
-    const items = projects.data?.items ?? [];
-    const broker = items.find((p) => p.slug === "brokeros");
-    return broker?.id ?? items[0]?.id ?? "";
-  }, [boundProjectId, selectedId, projects.data]);
+    return selectedId;
+  }, [boundProjectId, selectedId]);
 
   const selected = projects.data?.items.find((p) => p.id === projectId);
 
@@ -110,10 +107,11 @@ export function ReadinessPanel({
     },
   });
 
+  const issued = issue.data?.certificate;
   const cert =
-    issue.data?.certificate ??
-    list.data?.items?.find((c) => c.projectId === projectId) ??
-    list.data?.items?.[0];
+    projectId && issued?.projectId === projectId
+      ? issued
+      : list.data?.items?.find((c) => c.projectId === projectId);
 
   const epistemicLabel = (state: string) => {
     try {
