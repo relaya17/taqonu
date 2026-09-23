@@ -2,10 +2,12 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (CTRL-014 audit: existing denyImpersonation/binding lock; VERIFIED; not committed)
-**Git HEAD:** `78f6a664c5365d61dc193db056696b8cbd366ed1` (`main`, ahead of `origin/main` by 2)
+**Last updated:** 2026-09-23 (current-state references reconciled to local HEAD `28ef9f2`; not pushed)
+**Git HEAD:** `28ef9f20177dcdfa62719073182bc32104ecc7b2` (`main`, ahead of `origin/main` by 4; working tree clean)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
+**CTRL-013 commit:** `455b205b07dd507ddeb0407da9abaac5e8b17232`
+**CTRL-014 commit:** `28ef9f20177dcdfa62719073182bc32104ecc7b2`
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
 **Classification rule:** INTENT ≠ IMPLEMENTATION ≠ REACHABILITY ≠ ENFORCEMENT ≠ TEST COVERAGE ≠ PRODUCTION PROOF
 
@@ -424,8 +426,8 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | CTRL-000 | 0 | Repository reconciliation + this Master Plan | VERIFIED | 2026-09-23 | 2026-09-23 | — | Document exists; 24 sections; matrix from source; A–N report recorded | Commit `400759a` includes this file | Evidence recorded; later HEAD is `a363b57` |
 | CTRL-001 | 1 | Commit identity + HotelOS telemetry (Atlas-only) | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000; operator authorization | Implementation verified; tests verified (shared 17 / API 18 / CP 74); HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED; Atlas-only 14-file commit made; siblings excluded; no UNNECESSARY fields | `git show --name-only 400759a` = 14 paths | Pushed to `origin/main` with `a363b57`. CORE still 0 |
 | CTRL-012 | 3 | Prove kill/quarantine vs sibling live-stop | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-001 | G12-A–D tests PASS; G12-E documented NOT A DEFECT; G12-F excluded; no abort API; no Fabric promotion; no runtime capability | `git show --name-only a363b57` = 3 paths; shared 8 / API 20 / CP 14 | Committed `a363b57`, pushed. G12 remains PARTIAL. CORE still 0 |
-| CTRL-013 | 8 | Document and test fail-open / fail-closed by operation class | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Matrix in §15 matches `evaluateAuthorized`; tests for unset secret | shared `CTRL-013: unavailablePolicyForClass covers only the four existing operation classes`; API `CTRL-013: unset connector secret returns 401 INVALID…`; shared 9/9; API preflight+identity 27/27 | Not pushed. G24 remains PARTIAL. CTRL-014 not started |
-| CTRL-014 | 1 | Lock impersonation / application-binding regressions | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Existing denyImpersonation tests remain green; no new bypass route | `denies PSA impersonation`; `denies Fabric impersonation`; `rejects a caller-supplied tenant that does not match the binding`; `rejects a spoofed applicationId that does not match the HMAC secret`; `allows a valid HMAC-bound informational/governed request`; `only Atlas-self has a gateway fulfill execute contract`; API preflight+identity 27/27; shared preflight+connected 13/13 | No production change. Not committed. No new bypass route found |
+| CTRL-013 | 8 | Document and test fail-open / fail-closed by operation class | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Matrix in §15 matches `evaluateAuthorized`; tests for unset secret | shared `CTRL-013: unavailablePolicyForClass covers only the four existing operation classes`; API `CTRL-013: unset connector secret returns 401 INVALID…`; shared 9/9; API preflight+identity 27/27 | Committed `455b205`. Not pushed. G24 remains PARTIAL |
+| CTRL-014 | 1 | Lock impersonation / application-binding regressions | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Existing denyImpersonation tests remain green; no new bypass route | `denies PSA impersonation`; `denies Fabric impersonation`; `rejects a caller-supplied tenant that does not match the binding`; `rejects a spoofed applicationId that does not match the HMAC secret`; `allows a valid HMAC-bound informational/governed request`; `only Atlas-self has a gateway fulfill execute contract`; API preflight+identity 27/27; shared preflight+connected 13/13; commit `28ef9f2` | Committed `28ef9f2`. Not pushed. No production change. G24 remains PARTIAL |
 | CTRL-015 | 0 | Keep remaining-work 01–19 historical; pointer only | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000 | Pointer exists; 01–19 not rewritten | In `400759a` as `docs/architecture/remaining-work.md` | None |
 | CTRL-016 | 2 | Architecture review: Model C path authorization | DEFERRED | — | 2026-10-21 | Proven cheap **completion** in an app | Written review: cheap path exists, app can attest, Control authorizes path not sufficiency | HotelOS pack is **not** a completion — current evidence says DEFER | No truthful sufficiency signal |
 | CTRL-017 | 4 | Outcome / execution correlation contract | DEFERRED | — | 2026-12-09 | CTRL-001; app report-back design | Schema + one sibling hop proving executionId↔preflight | None yet | No sibling report-back |
@@ -566,7 +568,7 @@ OPTIONAL / DEFERRED:          CTRL-016–CTRL-022
 Environment blockers:         6 rows in §16
 ```
 
-Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). G12 remains PARTIAL. Counts unchanged. CORE closed remains 0.
+Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). G12 remains PARTIAL. G24 remains PARTIAL. Counts unchanged. CORE closed remains 0. Local `main` is ahead of `origin/main` by 4.
 
 ---
 
@@ -582,7 +584,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CTRL-015 VERIFIED | 2026-09-23 | `400759a` | `docs/architecture/remaining-work.md` | n/a (docs) | n/a | 01–19 unchanged |
 | CTRL-012 VERIFIED | 2026-09-23 | `a363b5764f19612616d923a4baf214126303996a` | `application-preflight.test.ts`; `atlas-self-agent-control.test.ts`; this file | shared 8 / API 20 / CP 14 | n/a — no new runtime | G12 PARTIAL. G12-E not a defect. G12-F out of scope. Pushed. |
 | CTRL-013 VERIFIED | 2026-09-23 | `455b205b07dd507ddeb0407da9abaac5e8b17232` | `application-preflight.ts` comments; shared + API tests; this §15 | shared 9/9; API preflight+identity 27/27 | n/a — no new runtime | G24 remains PARTIAL. No invented production evidence. Not pushed. |
-| CTRL-014 VERIFIED | 2026-09-23 | — (not committed) | this file only (audit lock; no production edit) | API preflight+identity 27/27; shared preflight+connected 13/13; public-routes 4/4 | n/a — no new runtime | Existing tests remain the lock. No new bypass route. G24 remains PARTIAL. |
+| CTRL-014 VERIFIED | 2026-09-23 | `28ef9f20177dcdfa62719073182bc32104ecc7b2` | this file only (audit lock; no production edit) | API preflight+identity 27/27; shared preflight+connected 13/13; public-routes 4/4 | n/a — no new runtime | Existing tests remain the lock. No new bypass route. G24 remains PARTIAL. Not pushed. |
 
 **Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 15 / 10 / 1 / CORE 0.
 
@@ -590,8 +592,8 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 
 ## 19. Remaining Work
 
-1. CTRL-013 is VERIFIED (`455b205`; local, not pushed). G24 remains PARTIAL.
-2. CTRL-014 is VERIFIED (audit lock; no production change; not committed). Do not start CTRL-015 work.
+1. CTRL-013 is VERIFIED and committed (`455b205`; local, not pushed). G24 remains PARTIAL.
+2. CTRL-014 is VERIFIED and committed (`28ef9f2`; local, not pushed). Do not start CTRL-015 work.
 3. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, outcome schema, or learning loop until this plan reopens those IDs.
 4. Keep G-P1-06–09 blocked.
 5. LexStudy / Vantera remain NOT ACCESSIBLE.
@@ -612,7 +614,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (audit lock; not committed) | Active |
+| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). Local HEAD `28ef9f2`; `main` ahead of `origin/main` by 4 | Active |
 | CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
 
 If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replacement, update this graph, keep history in §23.
@@ -663,6 +665,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | 2026-09-23 | CTRL-013 lock: §15 aligned to `evaluateAuthorized`; unset-secret tests for the four existing classes; authorized/impersonation paths preserved. G24 stays PARTIAL. Counts unchanged. CORE closed 0. Status READY FOR VERIFY — not committed. CTRL-014 not started. | shared 9/9; API preflight+identity 27/27 |
 | 2026-09-23 | CTRL-013 operator verification accepted. Status VERIFIED. G24 remains PARTIAL. CTRL-014 not started. Not pushed. | shared 9/9; API preflight+identity 27/27; this commit |
 | 2026-09-23 | CTRL-014 audit: existing denyImpersonation + binding tests already satisfy DoD. No production change. No new bypass route (`evaluateAuthorized` unexported; single POST preflight; `applicationMayExecuteViaGateway` is `def-000` only). G24 remains PARTIAL. Status VERIFIED — not committed. | API 27/27; shared 13/13; public-routes 4/4 |
+| 2026-09-23 | Current-state docs reconciliation after local commits `455b205` and `28ef9f2`. Header/§10 blockers/§17/§18/§19/CAD-011 no longer say HEAD `78f6a66` or CTRL-014 uncommitted. Historical Change Log rows unchanged. G24 PARTIAL. Counts unchanged. CORE closed 0. | local HEAD `28ef9f2`; `main` ahead of `origin/main` by 4 |
 
 ---
 
