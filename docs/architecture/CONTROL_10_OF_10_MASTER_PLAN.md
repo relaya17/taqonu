@@ -2,8 +2,8 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (CTRL-001 and CTRL-012 VERIFIED and pushed; docs reconciliation pending commit)
-**Git HEAD:** `a363b5764f19612616d923a4baf214126303996a` (`main`, in sync with `origin/main`)
+**Last updated:** 2026-09-23 (current-state references reconciled to local HEAD `75ec586`; not pushed)
+**Git HEAD:** `75ec58675db95941155e2cd0e9f52edfad0fc0a9` (`main`, ahead of `origin/main` by 1)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
@@ -349,7 +349,7 @@ Actual code dependencies (not the 28-gate wishlist order):
 ```text
 WAVE 0  Master Plan + baseline evidence
    ↓
-WAVE 1  CTRL-001 commit identity/telemetry (already coded)
+WAVE 1  CTRL-001 identity/telemetry VERIFIED (`400759a`)
    ↓
         G1 identity ──┬── G22 telemetry taxonomy (closed for known rejects)
                       ├── G3 authorization (already PROVEN; do not redesign)
@@ -383,8 +383,8 @@ ENVIRONMENT
 
 | Wave | Name | Verdict from source |
 | ---- | ---- | ------------------- |
-| 0 | Baseline and Evidence | **IN PROGRESS** — this document |
-| 1 | Identity and Contract Closure | Code exists, **not committed**, not CLOSED |
+| 0 | Baseline and Evidence | **VERIFIED** as living baseline (CTRL-000 / CTRL-015). This document remains the source of truth. Not CLOSED. |
+| 1 | Identity and Contract Closure | CTRL-001 **VERIFIED** and committed (`400759a`). Not CLOSED (CORE still 0). |
 | 2 | Decision Engine (necessity / path) | **DEFERRED** until a cheap completion is proven and attested |
 | 3 | Runtime Governance | Fabric already pause/quarantine; sibling live-stop **not** claimed |
 | 4 | Evidence and Verification | Atlas-self only; sibling outcome **MISSING** |
@@ -570,7 +570,8 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 
 | Item | Date | Commit | Files | Tests | Runtime | Remaining limitation |
 | ---- | ---- | ------ | ----- | ----- | ------- | -------------------- |
-| CTRL-000 VERIFIED | 2026-09-23 | `400759a` | this file (as committed) | n/a (docs) | n/a | Superseded HEAD `a363b57` |
+| CTRL-000 VERIFIED | 2026-09-23 | `400759a` | this file (as committed) | n/a (docs) | n/a | Later HEAD `75ec586` |
+| Docs reconciliation | 2026-09-23 | `75ec58675db95941155e2cd0e9f52edfad0fc0a9` | this file | n/a (docs) | n/a | Status/evidence only. Not pushed. CTRL-013 remains NOT STARTED. |
 | CTRL-001 VERIFIED | 2026-09-23 | `400759ac3b0ce1c4a32c8f46c13fda18ad228572` | 14 paths from `git show --name-only --format="" 400759a` | shared 17 / API 18 / CP 74 (prior pass) | HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED | Pushed. Not CORE-closed. Sibling trees not committed. |
 | CTRL-015 VERIFIED | 2026-09-23 | `400759a` | `docs/architecture/remaining-work.md` | n/a (docs) | n/a | 01–19 unchanged |
 | CTRL-012 VERIFIED | 2026-09-23 | `a363b5764f19612616d923a4baf214126303996a` | `application-preflight.test.ts`; `atlas-self-agent-control.test.ts`; this file | shared 8 / API 20 / CP 14 | n/a — no new runtime | G12 PARTIAL. G12-E not a defect. G12-F out of scope. Pushed. |
@@ -649,6 +650,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | 2026-09-23 | CTRL-001 Atlas-only commit `400759ac3b0ce1c4a32c8f46c13fda18ad228572` — 14 files, message `control: close agent identity and hotelos telemetry boundary`. Not pushed. Trailing whitespace stripped from this file so `git diff --cached --check` could PASS; no second commit of this evidence update. Counts unchanged. CORE closed 0. | `git show --name-only --format="" 400759a` |
 | 2026-09-23 | CTRL-012 Atlas-only tests for G12-A–D. No runtime capability, no abort API, no Fabric promotion, no sibling edits. G12-E NOT A DEFECT. G12-F excluded. G12 stays PARTIAL. Counts unchanged. CORE closed 0. Status READY FOR VERIFY — not committed. | API 20/20; CP 14/14 |
 | 2026-09-23 | Docs-only reconciliation: CTRL-001/CTRL-012 marked VERIFIED and pushed (`400759a`, `a363b57`). G12 stays PARTIAL. Counts unchanged. CORE closed 0. CTRL-013 remains NOT STARTED. | `origin/main` at `a363b57` |
+| 2026-09-23 | Current-state docs reconciliation after local commit `75ec586`. Header/§8/§18 no longer say Wave 0 IN PROGRESS, Wave 1 uncommitted, or origin in sync. Historical Change Log rows unchanged. G12 PARTIAL. Counts unchanged. CORE closed 0. CTRL-013 NOT STARTED. | local HEAD `75ec586`; `main` ahead of `origin/main` by 1 |
 
 ---
 
