@@ -9,6 +9,7 @@ export * from "./platform/civio-connector.js";
 export * from "./platform/application-preflight.js";
 export * from "./platform/application-agent-observation.js";
 export * from "./platform/application-execution-report.js";
+export * from "./platform/application-learning-proposal.js";
 export * from "./platform/supervised-process.js";
 export * from "./platform/governed-lifecycle-handoff.js";
 export * from "./platform/personal-supervising-agent.js";
