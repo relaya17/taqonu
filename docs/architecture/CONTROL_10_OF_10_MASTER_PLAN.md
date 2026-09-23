@@ -2,8 +2,8 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (current-state references reconciled to local HEAD `75ec586`; not pushed)
-**Git HEAD:** `75ec58675db95941155e2cd0e9f52edfad0fc0a9` (`main`, ahead of `origin/main` by 1)
+**Last updated:** 2026-09-23 (CTRL-013 VERIFIED; not pushed)
+**Git HEAD:** `78f6a664c5365d61dc193db056696b8cbd366ed1` (`main`, ahead of `origin/main` by 2)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
@@ -206,17 +206,18 @@ APPLICATION → AGENT → PROCESS → EVENT → POLICY → RISK → APPROVAL
 
 ### 4.3 Decision engine (only one that can stop siblings)
 
-`evaluateAuthorized()` in `apps/api/src/services/application-preflight.ts`:
+`evaluateAuthorized()` in `apps/api/src/services/application-preflight.ts` (HMAC + binding already succeeded):
 
-- HMAC + timestamp + nonce
 - `denyImpersonation`
 - kill categories
 - `delete` / `destroy` / `drop` → DENY
-- HIGH / TOOL → REQUIRE_APPROVAL
-- GOVERNED_DECISION / INFORMATIONAL fail-open when secret unset
-- HIGH_RISK / TOOL_ACTION fail-closed when secret unset
+- HIGH / TOOL → REQUIRE_APPROVAL (approval-store failure → DENY + HTTP 503)
+- GOVERNED_DECISION / INFORMATIONAL without HIGH/CRITICAL risk → ALLOW
 - `executed: false` always
+- `unavailablePolicy` always from `unavailablePolicyForClass` (four classes only)
 - Client gate: `applicationPreflightAllowsExecution` is ALLOW-only
+
+Secret unset never enters `evaluateAuthorized`. `loadApplicationConnectorBinding` returns HTTP 401 + `INVALID`. Clients interpret `FAIL_OPEN` (GOVERNED/INFORMATIONAL) as skip and `FAIL_CLOSED` (HIGH/TOOL) as block.
 
 ### 4.4 Test baseline (this identity/telemetry pass; not a production proof)
 
@@ -322,7 +323,7 @@ Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `N
 | G21 | Feedback / learning | No observe→policy-proposal loop. Human governance required. | — | MISSING | Repeat failures | G16 | Wave 7 proposals only, autoApply false |
 | G22 | Telemetry contract | Aliases: `ai.gateway.invoke`→`agent.completed`, `autonomy.act`→`tool.executed`. Reject: `ai.approval.approved`, `payment.intent.created`, `hr.document.*`. HotelOS live emit uses X-Atlas-Reason + top-level agentId (uncommitted sibling). `ai.gateway.invoke` is HotelOS local onAudit only — **not** on live emit. | atlas-gateway.ts; HotelOS alert-on-sensitive-audit.ts SENSITIVE_ACTIONS | PARTIAL | Rejected legitimate / wrong channel | G1 | Taxonomy closed for known types; do not invent invoke emit |
 | G23 | Security / isolation | HMAC, tenant/project, denyImpersonation, owner memory. Fail-open GOVERNED/INFORMATIONAL. | evaluateAuthorized | PARTIAL | Cross-app authority if binding skipped | G3 | Security review on each CORE close |
-| G24 | Failure / recovery | Fail-open vs fail-closed by operation class. Duplicate/retry via nonce/idempotency. Control-down: app skip if secret unset. | evaluateAuthorized comments + tests | PARTIAL | Silent skip of governed hops | Document per class | Do not globally fail-closed |
+| G24 | Failure / recovery | Fail-open vs fail-closed by the four existing operation classes. Duplicate/retry via nonce/idempotency. Atlas secret unset: API 401 INVALID; client skip only if FAIL_OPEN. | evaluateAuthorized comments; `unavailablePolicyForClass`; CTRL-013 tests | PARTIAL | Silent skip of governed hops remains a client FAIL_OPEN path | CTRL-013 docs + tests | Do not globally fail-closed |
 | G25 | Performance | No measured preflight/audit/telemetry budgets in this reconciliation. | — | MISSING | Control becomes the expensive path | Measure first | Wave 8 measure, do not optimize blindly |
 | G26 | Operator experience | Admin :3200 + Control :3100 surfaces exist. Every widget must bind real data. Portfolio is not a live connector. | apps/admin; apps/control-plane | PARTIAL | Decorative dashboards | Real fields only | No decorative work in this program |
 | G27 | Incident / investigation | Reconstructable when audit has applicationId+agentId+actorId+operation+decision. Missing execution/outcome. | audit input | PARTIAL | Incomplete incident story | G13, G16 | Wave 4+6 |
@@ -423,7 +424,7 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | CTRL-000 | 0 | Repository reconciliation + this Master Plan | VERIFIED | 2026-09-23 | 2026-09-23 | — | Document exists; 24 sections; matrix from source; A–N report recorded | Commit `400759a` includes this file | Evidence recorded; later HEAD is `a363b57` |
 | CTRL-001 | 1 | Commit identity + HotelOS telemetry (Atlas-only) | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000; operator authorization | Implementation verified; tests verified (shared 17 / API 18 / CP 74); HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED; Atlas-only 14-file commit made; siblings excluded; no UNNECESSARY fields | `git show --name-only 400759a` = 14 paths | Pushed to `origin/main` with `a363b57`. CORE still 0 |
 | CTRL-012 | 3 | Prove kill/quarantine vs sibling live-stop | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-001 | G12-A–D tests PASS; G12-E documented NOT A DEFECT; G12-F excluded; no abort API; no Fabric promotion; no runtime capability | `git show --name-only a363b57` = 3 paths; shared 8 / API 20 / CP 14 | Committed `a363b57`, pushed. G12 remains PARTIAL. CORE still 0 |
-| CTRL-013 | 8 | Document and test fail-open / fail-closed by operation class | NOT STARTED | 2026-09-25 | 2026-09-30 | CTRL-001 | Matrix in §15 matches `evaluateAuthorized`; tests for unset secret | Test names + this §15 | Do not start without explicit operator authorization |
+| CTRL-013 | 8 | Document and test fail-open / fail-closed by operation class | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Matrix in §15 matches `evaluateAuthorized`; tests for unset secret | shared `CTRL-013: unavailablePolicyForClass covers only the four existing operation classes`; API `CTRL-013: unset connector secret returns 401 INVALID…`; shared 9/9; API preflight+identity 27/27 | Not pushed. G24 remains PARTIAL. CTRL-014 not started |
 | CTRL-014 | 1 | Lock impersonation / application-binding regressions | NOT STARTED | 2026-09-25 | 2026-09-30 | CTRL-001 | Existing denyImpersonation tests remain green; no new bypass route | application-preflight tests | None |
 | CTRL-015 | 0 | Keep remaining-work 01–19 historical; pointer only | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000 | Pointer exists; 01–19 not rewritten | In `400759a` as `docs/architecture/remaining-work.md` | None |
 | CTRL-016 | 2 | Architecture review: Model C path authorization | DEFERRED | — | 2026-10-21 | Proven cheap **completion** in an app | Written review: cheap path exists, app can attest, Control authorizes path not sufficiency | HotelOS pack is **not** a completion — current evidence says DEFER | No truthful sufficiency signal |
@@ -504,13 +505,18 @@ Do not add tests that invent Agent IDs or UNNECESSARY decisions.
 
 ## 15. Failure / Recovery Requirements
 
+This matrix matches `evaluateAuthorized` / `evaluateApplicationPreflight` / `unavailablePolicyForClass`. No additional policy classes.
+
 | Condition | Behavior | Reason |
 | --------- | -------- | ------ |
-| Atlas API secret unset, GOVERNED_DECISION / INFORMATIONAL | FAIL OPEN (skip preflight client-side) | Local/dev siblings must not hard-stop |
-| Secret unset, HIGH_RISK / TOOL_ACTION | FAIL CLOSED | Destructive / tool hops must not run ungoverned |
+| Atlas API connector secret unset (any of the four classes) | Binding fails **before** `evaluateAuthorized`. HTTP 401 + `INVALID` + `executed: false`. Response still stamps `unavailablePolicyForClass`. | HMAC cannot authenticate. `evaluateAuthorized` is not entered. |
+| Client secret unset / Atlas unreachable, GOVERNED_DECISION / INFORMATIONAL | Client may skip (`FAIL_OPEN`). This is **not** an Atlas ALLOW. | Local/dev siblings must not hard-stop. Matches `unavailablePolicyForClass`. |
+| Client secret unset / Atlas unreachable, HIGH_RISK / TOOL_ACTION | Client must block (`FAIL_CLOSED`). | Destructive / tool hops must not run ungoverned. |
 | Control Plane :3100 down | Sibling execution **continues** if preflight already ALLOW or skipped | CP is observational for siblings |
-| Atlas API down | Client skip only if fail-open class; else block | Matches evaluateAuthorized |
-| Approval unavailable, HIGH/TOOL | REQUIRE_APPROVAL / no ALLOW | Fail closed for those classes |
+| Atlas API down | Client skip only if FAIL_OPEN class; else block | Client interprets `unavailablePolicyForClass`. `evaluateAuthorized` is unreachable. |
+| Approval store unavailable, HIGH_RISK / TOOL_ACTION | `evaluateAuthorized` DENY + HTTP 503 + reason `Fail closed: …`. No ALLOW. | Fail closed for those classes. Not REQUIRE_APPROVAL. |
+| Approval store unavailable, GOVERNED_DECISION / INFORMATIONAL (no HIGH/CRITICAL risk) | Not reached — those classes ALLOW without creating an approval | `evaluateAuthorized` does not consult the approval store |
+| HIGH/TOOL authorized, approval store available, no approvalId | REQUIRE_APPROVAL (HTTP 202) + `FAIL_CLOSED` stamp | Human gate |
 | Telemetry unavailable | Execution may proceed | Telemetry is not a gate |
 | Audit unavailable | Treat as reliability incident; do not silently drop CORE proof | Canonical audit is the record |
 | Duplicate / retry | Nonce + idempotency | Replay resistance |
@@ -575,6 +581,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CTRL-001 VERIFIED | 2026-09-23 | `400759ac3b0ce1c4a32c8f46c13fda18ad228572` | 14 paths from `git show --name-only --format="" 400759a` | shared 17 / API 18 / CP 74 (prior pass) | HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED | Pushed. Not CORE-closed. Sibling trees not committed. |
 | CTRL-015 VERIFIED | 2026-09-23 | `400759a` | `docs/architecture/remaining-work.md` | n/a (docs) | n/a | 01–19 unchanged |
 | CTRL-012 VERIFIED | 2026-09-23 | `a363b5764f19612616d923a4baf214126303996a` | `application-preflight.test.ts`; `atlas-self-agent-control.test.ts`; this file | shared 8 / API 20 / CP 14 | n/a — no new runtime | G12 PARTIAL. G12-E not a defect. G12-F out of scope. Pushed. |
+| CTRL-013 VERIFIED | 2026-09-23 | this commit (local) | `application-preflight.ts` comments; shared + API tests; this §15 | shared 9/9; API preflight+identity 27/27 | n/a — no new runtime | G24 remains PARTIAL. No invented production evidence. CTRL-014 not started. Not pushed. |
 
 **Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 15 / 10 / 1 / CORE 0.
 
@@ -582,8 +589,8 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 
 ## 19. Remaining Work
 
-1. CTRL-013 remains NOT STARTED. Do not start without explicit operator authorization.
-2. CTRL-013 / CTRL-014 after CTRL-012 is verified. CTRL-012 is now VERIFIED; start still requires explicit authorization.
+1. CTRL-013 is VERIFIED (local, not pushed). G24 remains PARTIAL.
+2. CTRL-014 remains NOT STARTED. Do not start automatically after CTRL-013.
 3. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, outcome schema, or learning loop until this plan reopens those IDs.
 4. Keep G-P1-06–09 blocked.
 5. LexStudy / Vantera remain NOT ACCESSIBLE.
@@ -604,7 +611,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 remains NOT STARTED until explicit authorization | Active |
+| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (local, not pushed). CTRL-014 remains NOT STARTED | Active |
 | CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
 
 If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replacement, update this graph, keep history in §23.
@@ -651,6 +658,9 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | 2026-09-23 | CTRL-012 Atlas-only tests for G12-A–D. No runtime capability, no abort API, no Fabric promotion, no sibling edits. G12-E NOT A DEFECT. G12-F excluded. G12 stays PARTIAL. Counts unchanged. CORE closed 0. Status READY FOR VERIFY — not committed. | API 20/20; CP 14/14 |
 | 2026-09-23 | Docs-only reconciliation: CTRL-001/CTRL-012 marked VERIFIED and pushed (`400759a`, `a363b57`). G12 stays PARTIAL. Counts unchanged. CORE closed 0. CTRL-013 remains NOT STARTED. | `origin/main` at `a363b57` |
 | 2026-09-23 | Current-state docs reconciliation after local commit `75ec586`. Header/§8/§18 no longer say Wave 0 IN PROGRESS, Wave 1 uncommitted, or origin in sync. Historical Change Log rows unchanged. G12 PARTIAL. Counts unchanged. CORE closed 0. CTRL-013 NOT STARTED. | local HEAD `75ec586`; `main` ahead of `origin/main` by 1 |
+| 2026-09-23 | Docs-only current-state references after `75ec586` committed as `78f6a66`. CTRL-013/CTRL-014 status unchanged in that commit. | `78f6a664c5365d61dc193db056696b8cbd366ed1` |
+| 2026-09-23 | CTRL-013 lock: §15 aligned to `evaluateAuthorized`; unset-secret tests for the four existing classes; authorized/impersonation paths preserved. G24 stays PARTIAL. Counts unchanged. CORE closed 0. Status READY FOR VERIFY — not committed. CTRL-014 not started. | shared 9/9; API preflight+identity 27/27 |
+| 2026-09-23 | CTRL-013 operator verification accepted. Status VERIFIED. G24 remains PARTIAL. CTRL-014 not started. Not pushed. | shared 9/9; API preflight+identity 27/27; this commit |
 
 ---
 

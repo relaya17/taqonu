@@ -223,6 +223,15 @@ function finish(input: {
   return response;
 }
 
+/**
+ * Runs only after HMAC + tenant/project binding succeed.
+ * Unset connector secret never reaches this function: evaluateApplicationPreflight
+ * returns 401 INVALID from loadApplicationConnectorBinding first.
+ * finish() always stamps unavailablePolicyForClass — the four existing classes only:
+ *   GOVERNED_DECISION / INFORMATIONAL → FAIL_OPEN (client may skip if Atlas is down)
+ *   HIGH_RISK / TOOL_ACTION → FAIL_CLOSED (client must not execute if Atlas is down)
+ * Approval-store failure on HIGH/TOOL is DENY + HTTP 503 ("Fail closed:"), not ALLOW.
+ */
 async function evaluateAuthorized(
   request: ApplicationPreflightRequest,
 ): Promise<ApplicationPreflightResponse> {

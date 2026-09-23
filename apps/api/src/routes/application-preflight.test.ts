@@ -108,6 +108,7 @@ describe("POST /api/v1/governance/application-preflight", () => {
       applicationId: "civio",
       agentId: null,
       tenantId: TENANT,
+      unavailablePolicy: "FAIL_OPEN",
     });
   });
 
@@ -382,6 +383,7 @@ describe("POST /api/v1/governance/application-preflight", () => {
     expect(res.json()).toMatchObject({
       decision: "REQUIRE_APPROVAL",
       executed: false,
+      unavailablePolicy: "FAIL_CLOSED",
     });
     expect(res.json().approvalRequestId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -495,4 +497,47 @@ describe("POST /api/v1/governance/application-preflight", () => {
     });
     resetApprovalsForTests();
   });
+
+  it.each([
+    {
+      operationClass: "GOVERNED_DECISION" as const,
+      operation: "civio.legal.query",
+      unavailablePolicy: "FAIL_OPEN" as const,
+    },
+    {
+      operationClass: "INFORMATIONAL" as const,
+      operation: "civio.legal.lookup",
+      unavailablePolicy: "FAIL_OPEN" as const,
+    },
+    {
+      operationClass: "HIGH_RISK" as const,
+      operation: "civio.legal.scan-contract",
+      unavailablePolicy: "FAIL_CLOSED" as const,
+    },
+    {
+      operationClass: "TOOL_ACTION" as const,
+      operation: "civio.legal.tool",
+      unavailablePolicy: "FAIL_CLOSED" as const,
+    },
+  ])(
+    "CTRL-013: unset connector secret returns 401 INVALID with $unavailablePolicy for $operationClass",
+    async ({ operationClass, operation, unavailablePolicy }) => {
+      delete process.env.ATLAS_CIVIO_CONNECTOR_SECRET;
+      const rawBody = body({ operation, operationClass });
+      const res = await app.inject({
+        method: "POST",
+        url: APPLICATION_PREFLIGHT_PATH,
+        headers: sign(rawBody),
+        payload: rawBody,
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toMatchObject({
+        decision: "INVALID",
+        executed: false,
+        operationClass,
+        unavailablePolicy,
+      });
+      expect(String(res.json().reason)).toMatch(/CONNECTOR_SECRET must be set/i);
+    },
+  );
 });

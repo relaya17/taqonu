@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  APPLICATION_PREFLIGHT_OPERATION_CLASSES,
   APPLICATION_PREFLIGHT_SCHEMA,
   applicationOwnedAgentId,
   applicationPreflightAllowsExecution,
@@ -24,6 +25,21 @@ describe("application preflight contract", () => {
     expect(unavailablePolicyForClass("TOOL_ACTION")).toBe("FAIL_CLOSED");
     expect(unavailablePolicyForClass("INFORMATIONAL")).toBe("FAIL_OPEN");
     expect(unavailablePolicyForClass("GOVERNED_DECISION")).toBe("FAIL_OPEN");
+  });
+
+  it("CTRL-013: unavailablePolicyForClass covers only the four existing operation classes", () => {
+    const failClosed = new Set(["HIGH_RISK", "TOOL_ACTION"]);
+    expect(APPLICATION_PREFLIGHT_OPERATION_CLASSES).toEqual([
+      "INFORMATIONAL",
+      "GOVERNED_DECISION",
+      "TOOL_ACTION",
+      "HIGH_RISK",
+    ]);
+    for (const operationClass of APPLICATION_PREFLIGHT_OPERATION_CLASSES) {
+      expect(unavailablePolicyForClass(operationClass)).toBe(
+        failClosed.has(operationClass) ? "FAIL_CLOSED" : "FAIL_OPEN",
+      );
+    }
   });
 
   it("maps REQUIRE_APPROVAL to HTTP 202 pending", () => {

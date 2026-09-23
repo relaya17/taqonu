@@ -127,6 +127,7 @@ export function applicationPreflightAllowsExecution(
   return decision === "ALLOW";
 }
 
+/** Client/unavailable policy for the four existing operation classes only. */
 export function unavailablePolicyForClass(
   operationClass: ApplicationPreflightOperationClass,
 ): "FAIL_CLOSED" | "FAIL_OPEN" {
