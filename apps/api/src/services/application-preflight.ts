@@ -14,7 +14,9 @@ import {
   applicationDeclaredCompletionPath,
   applicationOwnedAgentId,
   applicationPreflightRequestSchema,
+  classifyApplicationAgentObservation,
   httpStatusForPreflightDecision,
+  parseApplicationExpectedAgentIds,
   unavailablePolicyForClass,
   type ApplicationPreflightDecision,
   type ApplicationPreflightOperationClass,
@@ -134,6 +136,21 @@ export function loadApplicationConnectorBinding(
   };
 }
 
+/**
+ * Application-owned Expected Agent set.
+ * Operator acting for the application sets
+ * `ATLAS_{APP}_EXPECTED_AGENT_IDS` (comma-separated).
+ * Unset = no declaration. Empty value = explicit empty set.
+ * Not Fabric, not CP `RegisteredApplication.agentIds`, not first-seen.
+ */
+export function loadApplicationExpectedAgentIds(
+  applicationId: string,
+): readonly string[] | null {
+  const prefix = envPrefix(applicationId);
+  return parseApplicationExpectedAgentIds(
+    process.env[`ATLAS_${prefix}_EXPECTED_AGENT_IDS`],
+  );
+}
 
 function pruneNonces(now: number): void {
   for (const [nonce, expires] of usedNonces) {
@@ -213,6 +230,13 @@ function finish(input: {
   const declaredCompletionPath = applicationDeclaredCompletionPath(
     input.request.declaredCompletionPath,
   );
+  const expectedAgentIds = loadApplicationExpectedAgentIds(
+    input.request.applicationId,
+  );
+  const agentObservation = classifyApplicationAgentObservation({
+    observedAgentId: agentId,
+    expectedAgentIds,
+  });
   const response: ApplicationPreflightResponse = {
     schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
     decision: input.decision,
@@ -258,6 +282,8 @@ function finish(input: {
       operationClass: input.request.operationClass,
       idempotencyKey: input.request.idempotencyKey,
       declaredCompletionPath,
+      expectedAgentIds,
+      agentObservation: agentObservation.observation,
     },
     output: {
       decision: input.decision,
@@ -265,6 +291,7 @@ function finish(input: {
       decisionId: response.decisionId,
       killSwitchCategory: input.killSwitchCategory ?? null,
       declaredCompletionPath,
+      agentObservation: agentObservation.observation,
     },
     result: "SUCCESS",
     verificationVerdict: "NOT_APPLICABLE",

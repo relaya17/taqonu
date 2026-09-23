@@ -13,6 +13,7 @@ import {
   applicationExecutionReportRequestSchema,
   applicationOwnedAgentId,
   applicationPreflightAllowsExecution,
+  classifyApplicationAgentObservation,
   type ApplicationExecutionReportResponse,
   type ApplicationExecutionStatus,
 } from "@atlas/shared";
@@ -20,6 +21,7 @@ import { appendUnifiedAuditEntry } from "./audit-log.js";
 import {
   consumeApplicationConnectorNonce,
   loadApplicationConnectorBinding,
+  loadApplicationExpectedAgentIds,
   lookupRememberedPreflightDecision,
 } from "./application-preflight.js";
 import {
@@ -340,6 +342,11 @@ export async function evaluateApplicationExecutionReport(input: {
   };
   acceptedReports.set(key, recorded);
 
+  const expectedAgentIds = loadApplicationExpectedAgentIds(request.applicationId);
+  const agentObservation = classifyApplicationAgentObservation({
+    observedAgentId: recordedAgentId,
+    expectedAgentIds,
+  });
 
   appendUnifiedAuditEntry({
     type: "application.execution.reported",
@@ -363,6 +370,8 @@ export async function evaluateApplicationExecutionReport(input: {
       projectId: request.projectId,
       operation: request.operation,
       agentId: recordedAgentId,
+      expectedAgentIds,
+      agentObservation: agentObservation.observation,
     },
     output: {
       accepted: true,
@@ -370,6 +379,7 @@ export async function evaluateApplicationExecutionReport(input: {
       requestId: request.requestId,
       executionId: request.executionId,
       executionStatus: request.executionStatus,
+      agentObservation: agentObservation.observation,
     },
     result: "SUCCESS",
     verificationVerdict: "NOT_APPLICABLE",
