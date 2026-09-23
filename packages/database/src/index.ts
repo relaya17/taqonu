@@ -6,6 +6,7 @@ export * from "./repositories/decisions.js";
 export * from "./repositories/account-plans.js";
 export * from "./repositories/approval-execution.js";
 export * from "./repositories/live-approval-requests.js";
+export * from "./repositories/application-governance.js";
 export * from "./repositories/personal-supervising-agents.js";
 export * from "./repositories/audit-log.js";
 export * from "./repositories/governed-execution-receipt.js";

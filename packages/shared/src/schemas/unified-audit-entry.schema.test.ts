@@ -43,6 +43,16 @@ describe("unifiedAuditEntrySchema", () => {
     ).toThrow();
   });
 
+  it("accepts application tenantId and project slug at the top level", () => {
+    const parsed = unifiedAuditEntrySchema.parse({
+      ...base,
+      tenantId: "tenant-a",
+      projectId: "project-a",
+    });
+    expect(parsed.tenantId).toBe("tenant-a");
+    expect(parsed.projectId).toBe("project-a");
+  });
+
   it("carries structured input/output payloads through untouched", () => {
     const parsed = unifiedAuditEntrySchema.parse({
       ...base,

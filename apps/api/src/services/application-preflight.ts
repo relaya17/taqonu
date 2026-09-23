@@ -22,21 +22,35 @@ import {
   type ApplicationPreflightOperationClass,
   type ApplicationPreflightRequest,
   type ApplicationPreflightResponse,
+  type UnifiedAuditEntryInput,
 } from "@atlas/shared";
+import {
+  ApplicationGovernancePersistenceError,
+  type PersistedPreflightDecision,
+} from "@atlas/database";
 import {
   createApprovalRequest,
   getApprovalRequest,
 } from "./approvals.js";
-import { appendUnifiedAuditEntry } from "./audit-log.js";
+import { appendAuditLogLine, appendUnifiedAuditEntry } from "./audit-log.js";
 import { firstActiveEffectiveKillSwitch } from "./kill-switch-runtime.js";
 import {
   readApplicationConnectorHmacHeaders,
   verifyApplicationConnectorSignature,
 } from "./application-connector-hmac.js";
+import {
+  APPLICATION_CONNECTOR_NONCE_TTL_MS,
+  applicationGovernanceMode,
+  clearApplicationGovernanceStoreForTests,
+  decisionExpiresAtIso,
+  governanceUnavailableResponse,
+  nonceExpiresAtIso,
+  requireApplicationGovernanceStore,
+} from "./application-governance-store.js";
 
 const KNOWN = new Set<string>(APPLICATION_PREFLIGHT_KNOWN_APPLICATIONS);
 const FABRIC = new Set<string>(FABRIC_AGENT_IDS);
-const NONCE_TTL_MS = 10 * 60 * 1000;
+const NONCE_TTL_MS = APPLICATION_CONNECTOR_NONCE_TTL_MS;
 
 const usedNonces = new Map<string, number>();
 const idempotencyCache = new Map<
@@ -62,6 +76,7 @@ export function resetApplicationPreflightForTests(): void {
   usedNonces.clear();
   idempotencyCache.clear();
   decisionsById.clear();
+  clearApplicationGovernanceStoreForTests();
 }
 
 /** Process-local ALLOW/DENY lookup for execution report-back. Not durable. */
@@ -83,6 +98,54 @@ export function consumeApplicationConnectorNonce(
   }
   usedNonces.set(nonceKey, now + NONCE_TTL_MS);
   return { ok: true };
+}
+
+export async function consumeApplicationConnectorNonceAuthoritative(
+  applicationId: string,
+  nonce: string,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
+  const mode = applicationGovernanceMode();
+  if (mode === "unavailable") {
+    throw new ApplicationGovernancePersistenceError(
+      "UNAVAILABLE",
+      "Application governance store is unavailable",
+    );
+  }
+  if (mode === "durable") {
+    return requireApplicationGovernanceStore().consumeNonce({
+      applicationId,
+      nonce,
+      expiresAt: nonceExpiresAtIso(),
+    });
+  }
+  return consumeApplicationConnectorNonce(applicationId, nonce);
+}
+
+function rememberedFromPersisted(
+  row: PersistedPreflightDecision,
+): RememberedPreflightDecision {
+  return {
+    decision: row.decision as RememberedPreflightDecision["decision"],
+    decisionId: row.decisionId,
+    requestId: row.requestId,
+    operation: row.operation,
+    applicationId: row.applicationId,
+    tenantId: row.tenantId,
+    projectId: row.projectId,
+    agentId: row.agentId,
+  };
+}
+
+export async function resolveRememberedPreflightDecision(
+  decisionId: string,
+): Promise<RememberedPreflightDecision | null> {
+  const mode = applicationGovernanceMode();
+  if (mode === "durable") {
+    const row = await requireApplicationGovernanceStore().lookupDecision(decisionId);
+    if (!row || row.expired) return null;
+    return rememberedFromPersisted(row);
+  }
+  return lookupRememberedPreflightDecision(decisionId);
 }
 
 export interface ApplicationConnectorBinding {
@@ -219,13 +282,19 @@ function auditDecisionFor(
   return "DENY";
 }
 
-function finish(input: {
+function buildPreflightResponse(input: {
   readonly request: ApplicationPreflightRequest;
   readonly decision: ApplicationPreflightDecision;
   readonly reason: string;
   readonly approvalRequestId?: string | null;
   readonly killSwitchCategory?: string | null;
-}): ApplicationPreflightResponse {
+}): {
+  readonly response: ApplicationPreflightResponse;
+  readonly agentId: string | null;
+  readonly declaredCompletionPath: ApplicationPreflightResponse["declaredCompletionPath"];
+  readonly expectedAgentIds: readonly string[] | null;
+  readonly agentObservation: ReturnType<typeof classifyApplicationAgentObservation>;
+} {
   const agentId = applicationOwnedAgentId(input.request.agentId);
   const declaredCompletionPath = applicationDeclaredCompletionPath(
     input.request.declaredCompletionPath,
@@ -255,14 +324,27 @@ function finish(input: {
     decisionId: randomUUID(),
     declaredCompletionPath,
   };
-  appendUnifiedAuditEntry({
+  return { response, agentId, declaredCompletionPath, expectedAgentIds, agentObservation };
+}
+
+function preflightAuditPayload(input: {
+  readonly request: ApplicationPreflightRequest;
+  readonly response: ApplicationPreflightResponse;
+  readonly agentId: string | null;
+  readonly declaredCompletionPath: ApplicationPreflightResponse["declaredCompletionPath"];
+  readonly expectedAgentIds: readonly string[] | null;
+  readonly agentObservation: ReturnType<typeof classifyApplicationAgentObservation>;
+}): Record<string, unknown> {
+  return {
     type: "application.preflight.evaluated",
     entityType: "application_preflight",
     action: input.request.operation,
     actorId: `${input.request.applicationId}:${input.request.actorId}`,
     actorKind: input.request.actorKind,
-    agentId,
-    reason: input.reason,
+    agentId: input.agentId,
+    tenantId: input.request.tenantId,
+    projectId: input.request.projectId,
+    reason: input.response.reason,
     policy: "atlas.application-preflight.v1",
     risk:
       input.request.risk ??
@@ -270,43 +352,128 @@ function finish(input: {
       input.request.operationClass === "TOOL_ACTION"
         ? "HIGH"
         : "LOW"),
-    approval: approvalStatusFor(input.decision),
-    approvalId: input.approvalRequestId ?? null,
-    decision: auditDecisionFor(input.decision),
+    approval: approvalStatusFor(input.response.decision),
+    approvalId: input.response.approvalRequestId ?? null,
+    decision: auditDecisionFor(input.response.decision),
     input: {
       requestId: input.request.requestId,
       applicationId: input.request.applicationId,
-      agentId,
+      tenantId: input.request.tenantId,
+      projectId: input.request.projectId,
+      agentId: input.agentId,
       actorId: input.request.actorId,
       operation: input.request.operation,
       operationClass: input.request.operationClass,
       idempotencyKey: input.request.idempotencyKey,
-      declaredCompletionPath,
-      expectedAgentIds,
-      agentObservation: agentObservation.observation,
+      declaredCompletionPath: input.declaredCompletionPath,
+      expectedAgentIds: input.expectedAgentIds,
+      agentObservation: input.agentObservation.observation,
     },
     output: {
-      decision: input.decision,
+      decision: input.response.decision,
       executed: false,
-      decisionId: response.decisionId,
-      killSwitchCategory: input.killSwitchCategory ?? null,
-      declaredCompletionPath,
-      agentObservation: agentObservation.observation,
+      decisionId: input.response.decisionId,
+      killSwitchCategory: input.response.killSwitchCategory ?? null,
+      declaredCompletionPath: input.declaredCompletionPath,
+      agentObservation: input.agentObservation.observation,
     },
     result: "SUCCESS",
     verificationVerdict: "NOT_APPLICABLE",
+  };
+}
+
+function persistLocalPreflight(
+  request: ApplicationPreflightRequest,
+  built: ReturnType<typeof buildPreflightResponse>,
+): void {
+  appendUnifiedAuditEntry(
+    preflightAuditPayload({ request, ...built }) as UnifiedAuditEntryInput,
+  );
+  decisionsById.set(built.response.decisionId, {
+    decision: built.response.decision,
+    decisionId: built.response.decisionId,
+    requestId: request.requestId,
+    operation: request.operation,
+    applicationId: request.applicationId,
+    tenantId: request.tenantId,
+    projectId: request.projectId,
+    agentId: built.agentId,
   });
-  decisionsById.set(response.decisionId, {
-    decision: response.decision,
-    decisionId: response.decisionId,
+}
+
+async function persistDurablePreflight(input: {
+  readonly request: ApplicationPreflightRequest;
+  readonly built: ReturnType<typeof buildPreflightResponse>;
+  readonly fingerprint: string;
+}): Promise<ApplicationPreflightResponse> {
+  const recorded = await requireApplicationGovernanceStore().recordOutcome({
+    decisionId: input.built.response.decisionId,
     requestId: input.request.requestId,
-    operation: input.request.operation,
     applicationId: input.request.applicationId,
     tenantId: input.request.tenantId,
     projectId: input.request.projectId,
-    agentId,
+    operation: input.request.operation,
+    operationClass: input.request.operationClass,
+    decision: input.built.response.decision,
+    agentId: input.built.agentId,
+    approvalId: input.built.response.approvalRequestId,
+    httpStatus: httpStatusForPreflightDecision(input.built.response.decision),
+    response: { ...input.built.response },
+    expiresAt: decisionExpiresAtIso(),
+    idempotencyKey: input.request.idempotencyKey,
+    fingerprint: input.fingerprint,
+    auditId: randomUUID(),
+    auditPayload: preflightAuditPayload({
+      request: input.request,
+      ...input.built,
+    }),
   });
-  return response;
+  if (recorded.kind === "IDEMPOTENT_HIT") {
+    return recorded.response as unknown as ApplicationPreflightResponse;
+  }
+  if (recorded.kind === "IDEMPOTENT_CONFLICT") {
+    return {
+      ...input.built.response,
+      decision: "DENY",
+      reason: "Idempotency key was reused with a different preflight payload",
+    };
+  }
+  appendAuditLogLine(
+    preflightAuditPayload({ request: input.request, ...input.built }),
+  );
+  return input.built.response;
+}
+
+async function finish(input: {
+  readonly request: ApplicationPreflightRequest;
+  readonly decision: ApplicationPreflightDecision;
+  readonly reason: string;
+  readonly approvalRequestId?: string | null;
+  readonly killSwitchCategory?: string | null;
+  readonly persist?: "authority" | "evidence";
+  readonly fingerprint?: string;
+}): Promise<ApplicationPreflightResponse> {
+  const built = buildPreflightResponse(input);
+  const mode = applicationGovernanceMode();
+  if (mode === "durable" && input.persist === "authority") {
+    if (!input.fingerprint) {
+      throw new ApplicationGovernancePersistenceError(
+        "UNAVAILABLE",
+        "Preflight T1 requires a fingerprint",
+      );
+    }
+    return persistDurablePreflight({
+      request: input.request,
+      built,
+      fingerprint: input.fingerprint,
+    });
+  }
+  if (mode === "durable") {
+    appendAuditLogLine(preflightAuditPayload({ request: input.request, ...built }));
+    return built.response;
+  }
+  persistLocalPreflight(input.request, built);
+  return built.response;
 }
 
 /**
@@ -320,10 +487,14 @@ function finish(input: {
  */
 async function evaluateAuthorized(
   request: ApplicationPreflightRequest,
+  fingerprint: string,
 ): Promise<ApplicationPreflightResponse> {
+  const persistAuthority = (
+    input: Omit<Parameters<typeof finish>[0], "persist" | "fingerprint">,
+  ) => finish({ ...input, persist: "authority", fingerprint });
   const impersonation = denyImpersonation(request);
   if (impersonation) {
-    return finish({
+    return persistAuthority({
       request,
       decision: impersonation,
       reason: "Application may not impersonate Atlas, PSA, Fabric, or Control",
@@ -334,7 +505,7 @@ async function evaluateAuthorized(
     killCategoriesFor(request.operationClass),
   );
   if (kill) {
-    return finish({
+    return persistAuthority({
       request,
       decision: "KILLED",
       reason: `Kill switch ${kill.category} is active`,
@@ -343,7 +514,7 @@ async function evaluateAuthorized(
   }
 
   if (/\.(delete|destroy|drop)$/i.test(request.operation)) {
-    return finish({
+    return persistAuthority({
       request,
       decision: "DENY",
       reason: "Destructive application operations are denied by Atlas preflight policy",
@@ -360,14 +531,14 @@ async function evaluateAuthorized(
     if (request.approvalId) {
       const existing = await getApprovalRequest(request.approvalId);
       if (!existing) {
-        return finish({
+        return persistAuthority({
           request,
           decision: "DENY",
           reason: "Approval request was not found",
         });
       }
       if (existing.status !== "APPROVED") {
-        return finish({
+        return persistAuthority({
           request,
           decision: existing.status === "PENDING" ? "REQUIRE_APPROVAL" : "DENY",
           reason: `Approval is ${existing.status}`,
@@ -375,7 +546,7 @@ async function evaluateAuthorized(
         });
       }
       if (existing.expiresAt && Date.parse(existing.expiresAt) <= Date.now()) {
-        return finish({
+        return persistAuthority({
           request,
           decision: "DENY",
           reason: "Approval has expired",
@@ -388,14 +559,14 @@ async function evaluateAuthorized(
         context["tenantId"] !== request.tenantId ||
         context["operation"] !== request.operation
       ) {
-        return finish({
+        return persistAuthority({
           request,
           decision: "DENY",
           reason: "Approval context does not match this preflight request",
           approvalRequestId: existing.id,
         });
       }
-      return finish({
+      return persistAuthority({
         request,
         decision: "ALLOW",
         reason: "Approved application operation may execute",
@@ -422,7 +593,7 @@ async function evaluateAuthorized(
             : {}),
         },
       });
-      return finish({
+      return persistAuthority({
         request,
         decision: "REQUIRE_APPROVAL",
         reason: "Human approval is required before the application may execute",
@@ -430,7 +601,7 @@ async function evaluateAuthorized(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "approval store unavailable";
-      return finish({
+      return persistAuthority({
         request,
         decision: "DENY",
         reason: `Fail closed: ${message}`,
@@ -438,7 +609,7 @@ async function evaluateAuthorized(
     }
   }
 
-  return finish({
+  return persistAuthority({
     request,
     decision: "ALLOW",
     reason: "Atlas preflight allowed the application operation",
@@ -470,10 +641,11 @@ export async function evaluateApplicationPreflight(input: {
     const outOfScope = binding.reason.includes("out of preflight scope");
     return {
       status: outOfScope ? 403 : 401,
-      body: finish({
+      body: await finish({
         request,
         decision: outOfScope ? "OUT_OF_SCOPE" : "INVALID",
         reason: binding.reason,
+        persist: "evidence",
       }),
     };
   }
@@ -489,28 +661,57 @@ export async function evaluateApplicationPreflight(input: {
   if (!verified.ok) {
     return {
       status: 401,
-      body: finish({
+      body: await finish({
         request,
         decision: "INVALID",
         reason: verified.reason,
+        persist: "evidence",
       }),
     };
   }
 
-  const now = Date.now();
-  pruneNonces(now);
-  const nonceKey = `${request.applicationId}:${hmacHeaders.nonce}`;
-  if (usedNonces.has(nonceKey)) {
+  if (applicationGovernanceMode() === "unavailable") {
+    return governanceUnavailableResponse();
+  }
+
+  if (!hmacHeaders.nonce) {
     return {
       status: 401,
-      body: finish({
+      body: await finish({
         request,
         decision: "INVALID",
-        reason: "Application connector nonce has already been used",
+        reason: "Application connector HMAC headers are required",
+        persist: "evidence",
       }),
     };
   }
-  usedNonces.set(nonceKey, now + NONCE_TTL_MS);
+
+  let nonce;
+  try {
+    nonce = await consumeApplicationConnectorNonceAuthoritative(
+      request.applicationId,
+      hmacHeaders.nonce,
+    );
+  } catch (error) {
+    if (
+      error instanceof ApplicationGovernancePersistenceError &&
+      error.kind === "UNAVAILABLE"
+    ) {
+      return governanceUnavailableResponse();
+    }
+    throw error;
+  }
+  if (!nonce.ok) {
+    return {
+      status: 401,
+      body: await finish({
+        request,
+        decision: "INVALID",
+        reason: nonce.reason,
+        persist: "evidence",
+      }),
+    };
+  }
 
   if (
     request.tenantId !== binding.binding.tenantId ||
@@ -518,25 +719,81 @@ export async function evaluateApplicationPreflight(input: {
   ) {
     return {
       status: 403,
-      body: finish({
+      body: await finish({
         request,
         decision: "OUT_OF_SCOPE",
         reason: "Tenant or project does not match the authenticated application binding",
+        persist: "evidence",
       }),
     };
   }
 
+  const fingerprint = fingerprintOf(request);
+  const mode = applicationGovernanceMode();
+  if (mode === "durable") {
+    let prior;
+    try {
+      prior = await requireApplicationGovernanceStore().lookupIdempotency({
+        applicationId: request.applicationId,
+        idempotencyKey: request.idempotencyKey,
+      });
+    } catch (error) {
+      if (
+        error instanceof ApplicationGovernancePersistenceError &&
+        error.kind === "UNAVAILABLE"
+      ) {
+        return governanceUnavailableResponse();
+      }
+      throw error;
+    }
+    if (prior) {
+      if (prior.fingerprint !== fingerprint) {
+        return {
+          status: 409,
+          body: await finish({
+            request,
+            decision: "DENY",
+            reason: "Idempotency key was reused with a different preflight payload",
+            persist: "evidence",
+          }),
+        };
+      }
+      const stored = prior.response as unknown as ApplicationPreflightResponse;
+      return {
+        status: prior.httpStatus || httpStatusForPreflightDecision(stored.decision),
+        body: stored,
+      };
+    }
+    try {
+      const evaluated = await evaluateAuthorized(request, fingerprint);
+      return {
+        status: evaluated.reason.startsWith("Fail closed:")
+          ? 503
+          : httpStatusForPreflightDecision(evaluated.decision),
+        body: evaluated,
+      };
+    } catch (error) {
+      if (
+        error instanceof ApplicationGovernancePersistenceError &&
+        error.kind === "UNAVAILABLE"
+      ) {
+        return governanceUnavailableResponse();
+      }
+      throw error;
+    }
+  }
+
   const idemKey = `${request.applicationId}:${request.idempotencyKey}`;
   const prior = idempotencyCache.get(idemKey);
-  const fingerprint = fingerprintOf(request);
   if (prior) {
     if (prior.fingerprint !== fingerprint) {
       return {
         status: 409,
-        body: finish({
+        body: await finish({
           request,
           decision: "DENY",
           reason: "Idempotency key was reused with a different preflight payload",
+          persist: "evidence",
         }),
       };
     }
@@ -546,7 +803,7 @@ export async function evaluateApplicationPreflight(input: {
     };
   }
 
-  const evaluated = await evaluateAuthorized(request);
+  const evaluated = await evaluateAuthorized(request, fingerprint);
   idempotencyCache.set(idemKey, { fingerprint, response: evaluated });
   return {
     status: evaluated.reason.startsWith("Fail closed:")

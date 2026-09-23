@@ -76,8 +76,17 @@ export const unifiedAuditEntrySchema = z.object({
   agentId: z.string().max(200).nullable().default(null),
   /** Owner of the session/project. */
   ownerId: uuidSchema.nullable().optional(),
-  /** Project context. */
-  projectId: uuidSchema.nullable().optional(),
+  /**
+   * Tenant scope. Optional on the schema so only selected writers
+   * (`application.preflight.evaluated`, `application.execution.reported`)
+   * populate it — not a broader audit-field migration.
+   */
+  tenantId: z.string().max(200).nullable().optional(),
+  /**
+   * Project context. Application governance uses connector project slugs
+   * (not necessarily UUIDs). Existing UUID values remain valid.
+   */
+  projectId: z.string().max(200).nullable().optional(),
 
   /* ─────────────────────────────────────────────────────────────────────────
      WHY the action happened

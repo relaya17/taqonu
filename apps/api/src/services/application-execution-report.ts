@@ -14,16 +14,26 @@ import {
   applicationOwnedAgentId,
   applicationPreflightAllowsExecution,
   classifyApplicationAgentObservation,
+  type ApplicationExecutionReportRequest,
   type ApplicationExecutionReportResponse,
   type ApplicationExecutionStatus,
 } from "@atlas/shared";
-import { appendUnifiedAuditEntry } from "./audit-log.js";
+import { randomUUID } from "node:crypto";
 import {
-  consumeApplicationConnectorNonce,
+  ApplicationGovernancePersistenceError,
+} from "@atlas/database";
+import { appendAuditLogLine, appendUnifiedAuditEntry } from "./audit-log.js";
+import {
+  consumeApplicationConnectorNonceAuthoritative,
   loadApplicationConnectorBinding,
   loadApplicationExpectedAgentIds,
   lookupRememberedPreflightDecision,
 } from "./application-preflight.js";
+import {
+  applicationGovernanceMode,
+  governanceUnavailableResponse,
+  requireApplicationGovernanceStore,
+} from "./application-governance-store.js";
 import {
   readApplicationConnectorHmacHeaders,
   verifyApplicationConnectorSignature,
@@ -83,6 +93,123 @@ function respond(input: {
       agentId: input.agentId,
     },
   };
+}
+
+function executionReportAuditPayload(input: {
+  readonly request: ApplicationExecutionReportRequest;
+  readonly recordedAgentId: string | null;
+}): Record<string, unknown> {
+  const expectedAgentIds = loadApplicationExpectedAgentIds(input.request.applicationId);
+  const agentObservation = classifyApplicationAgentObservation({
+    observedAgentId: input.recordedAgentId,
+    expectedAgentIds,
+  });
+  return {
+    type: "application.execution.reported",
+    entityType: "application_execution_report",
+    action: input.request.operation,
+    actorId: `${input.request.applicationId}:connector`,
+    actorKind: "SYSTEM",
+    agentId: input.recordedAgentId,
+    tenantId: input.request.tenantId,
+    projectId: input.request.projectId,
+    reason: "Application reported an execution correlated to a preceding ALLOW",
+    policy: APPLICATION_EXECUTION_REPORT_SCHEMA,
+    risk: "LOW",
+    approval: "NOT_REQUIRED",
+    decision: "ALLOW",
+    input: {
+      decisionId: input.request.decisionId,
+      requestId: input.request.requestId,
+      executionId: input.request.executionId,
+      executionStatus: input.request.executionStatus,
+      applicationId: input.request.applicationId,
+      tenantId: input.request.tenantId,
+      projectId: input.request.projectId,
+      operation: input.request.operation,
+      agentId: input.recordedAgentId,
+      expectedAgentIds,
+      agentObservation: agentObservation.observation,
+    },
+    output: {
+      accepted: true,
+      decisionId: input.request.decisionId,
+      requestId: input.request.requestId,
+      executionId: input.request.executionId,
+      executionStatus: input.request.executionStatus,
+      agentObservation: agentObservation.observation,
+    },
+    result: "SUCCESS",
+    verificationVerdict: "NOT_APPLICABLE",
+  };
+}
+
+async function recordDurableExecutionReport(input: {
+  readonly request: ApplicationExecutionReportRequest;
+  readonly agentId: string | null;
+}): Promise<{
+  readonly status: number;
+  readonly body: ApplicationExecutionReportResponse | { readonly error: string };
+}> {
+  const { request, agentId } = input;
+  try {
+    const recorded = await requireApplicationGovernanceStore().recordReport({
+      decisionId: request.decisionId,
+      executionId: request.executionId,
+      applicationId: request.applicationId,
+      tenantId: request.tenantId,
+      projectId: request.projectId,
+      requestId: request.requestId,
+      operation: request.operation,
+      executionStatus: request.executionStatus,
+      agentId,
+      auditId: randomUUID(),
+      auditPayload: executionReportAuditPayload({
+        request,
+        recordedAgentId: agentId,
+      }),
+    });
+    if (recorded.kind === "REJECTED" || recorded.kind === "CONFLICT") {
+      return respond({
+        status: 409,
+        accepted: false,
+        reason: recorded.reason,
+        decisionId: request.decisionId,
+        requestId: request.requestId,
+        executionId: request.executionId,
+        executionStatus: null,
+        applicationId: request.applicationId,
+        agentId,
+      });
+    }
+    if (recorded.kind === "RECORDED") {
+      appendAuditLogLine(
+        executionReportAuditPayload({
+          request,
+          recordedAgentId: recorded.report.agentId,
+        }),
+      );
+    }
+    return respond({
+      status: 200,
+      accepted: true,
+      reason: recorded.reason,
+      decisionId: recorded.report.decisionId,
+      requestId: recorded.report.requestId,
+      executionId: recorded.report.executionId,
+      executionStatus: recorded.report.executionStatus,
+      applicationId: recorded.report.applicationId,
+      agentId: recorded.report.agentId,
+    });
+  } catch (error) {
+    if (
+      error instanceof ApplicationGovernancePersistenceError &&
+      error.kind === "UNAVAILABLE"
+    ) {
+      return governanceUnavailableResponse();
+    }
+    throw error;
+  }
 }
 
 export async function evaluateApplicationExecutionReport(input: {
@@ -157,10 +284,25 @@ export async function evaluateApplicationExecutionReport(input: {
     });
   }
 
-  const nonce = consumeApplicationConnectorNonce(
-    binding.binding.applicationId,
-    hmacHeaders.nonce,
-  );
+  if (applicationGovernanceMode() === "unavailable") {
+    return governanceUnavailableResponse();
+  }
+
+  let nonce;
+  try {
+    nonce = await consumeApplicationConnectorNonceAuthoritative(
+      binding.binding.applicationId,
+      hmacHeaders.nonce,
+    );
+  } catch (error) {
+    if (
+      error instanceof ApplicationGovernancePersistenceError &&
+      error.kind === "UNAVAILABLE"
+    ) {
+      return governanceUnavailableResponse();
+    }
+    throw error;
+  }
   if (!nonce.ok) {
     return respond({
       status: 401,
@@ -189,6 +331,13 @@ export async function evaluateApplicationExecutionReport(input: {
       executionId: request.executionId,
       executionStatus: null,
       applicationId: binding.binding.applicationId,
+      agentId,
+    });
+  }
+
+  if (applicationGovernanceMode() === "durable") {
+    return recordDurableExecutionReport({
+      request,
       agentId,
     });
   }
@@ -355,6 +504,8 @@ export async function evaluateApplicationExecutionReport(input: {
     actorId: `${request.applicationId}:connector`,
     actorKind: "SYSTEM",
     agentId: recordedAgentId,
+    tenantId: request.tenantId,
+    projectId: request.projectId,
     reason: "Application reported an execution correlated to a preceding ALLOW",
     policy: APPLICATION_EXECUTION_REPORT_SCHEMA,
     risk: "LOW",
