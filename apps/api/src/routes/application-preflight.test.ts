@@ -106,8 +106,59 @@ describe("POST /api/v1/governance/application-preflight", () => {
       decision: "ALLOW",
       executed: false,
       applicationId: "civio",
+      agentId: null,
       tenantId: TENANT,
     });
+  });
+
+  it("preserves HotelOS agent.cio explicitly and does not invent one when omitted", async () => {
+    process.env.ATLAS_HOTELOS_CONNECTOR_SECRET = SECRET;
+    process.env.ATLAS_HOTELOS_CONNECTOR_TENANT_ID = TENANT;
+    process.env.ATLAS_HOTELOS_CONNECTOR_PROJECT_ID = PROJECT;
+    const withAgent = body({
+      applicationId: "hotelos",
+      actorKind: "USER",
+      agentId: "agent.cio",
+      operation: "hotelos.gateway.agent.cio",
+    });
+    const allowed = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(withAgent),
+      payload: withAgent,
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      decision: "ALLOW",
+      executed: false,
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+      operation: "hotelos.gateway.agent.cio",
+    });
+
+    const embed = body({
+      applicationId: "hotelos",
+      agentId: null,
+      operation: "hotelos.gateway.embed",
+      operationClass: "INFORMATIONAL",
+    });
+    const embedRes = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(embed),
+      payload: embed,
+    });
+    expect(embedRes.statusCode).toBe(200);
+    expect(embedRes.json()).toMatchObject({
+      decision: "ALLOW",
+      executed: false,
+      applicationId: "hotelos",
+      agentId: null,
+      operation: "hotelos.gateway.embed",
+    });
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_SECRET;
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_TENANT_ID;
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_PROJECT_ID;
   });
 
   it("rejects a missing HMAC as INVALID", async () => {

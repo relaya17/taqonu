@@ -7,7 +7,10 @@
  * Atlas never auto-executes forbidden self-mutations.
  */
 
-import { ATLAS_SELF_APPLICATION_ID } from "@atlas/shared";
+import {
+  ATLAS_SELF_APPLICATION_ID,
+  resolveApplicationEventType,
+} from "@atlas/shared";
 import {
   appendAuditEntry,
   type AuditEntry,
@@ -95,23 +98,10 @@ export interface GatewayEventInput {
   readonly type: string;
   readonly applicationId: string;
   readonly agentId?: string;
+  readonly occurredAt?: string;
+  readonly riskLevel?: string;
   readonly payload?: Record<string, unknown>;
 }
-
-const APPLICATION_EVENT_TYPES = new Set([
-  "application.registered",
-  "application.health",
-  "agent.started",
-  "agent.completed",
-  "agent.failed",
-  "tool.executed",
-  "finding.created",
-  "security.alert",
-  "test.failed",
-  "deployment.changed",
-  "proposal.created",
-  "verification.completed",
-]);
 
 function isGatewayOperation(value: string): value is GatewayOperation {
   return (GATEWAY_OPERATIONS as readonly string[]).includes(value);
@@ -611,15 +601,52 @@ export async function dispatchGatewayOperation(input: GatewayRequest): Promise<G
   return evaluation;
 }
 
+function observationalAgentId(event: GatewayEventInput): string | undefined {
+  if (typeof event.agentId === "string" && event.agentId.trim()) {
+    return event.agentId.trim();
+  }
+  const fromPayload = event.payload?.["agentId"];
+  if (typeof fromPayload === "string" && fromPayload.trim()) {
+    return fromPayload.trim();
+  }
+  return undefined;
+}
+
+function observationalOccurredAt(event: GatewayEventInput): string | undefined {
+  if (typeof event.occurredAt === "string" && event.occurredAt.trim()) {
+    return event.occurredAt.trim();
+  }
+  const fromPayload = event.payload?.["occurredAt"];
+  if (typeof fromPayload === "string" && fromPayload.trim()) {
+    return fromPayload.trim();
+  }
+  return undefined;
+}
+
+function observationalRiskLevel(event: GatewayEventInput): string | undefined {
+  if (typeof event.riskLevel === "string" && event.riskLevel.trim()) {
+    return event.riskLevel.trim();
+  }
+  const fromPayload = event.payload?.["riskLevel"];
+  if (typeof fromPayload === "string" && fromPayload.trim()) {
+    return fromPayload.trim();
+  }
+  return undefined;
+}
+
 export function ingestGatewayEvent(event: GatewayEventInput): {
   readonly accepted: boolean;
   readonly reason: string;
 } {
-  if (!APPLICATION_EVENT_TYPES.has(event.type)) {
+  const resolvedType = resolveApplicationEventType(event.type);
+  if (!resolvedType) {
     return { accepted: false, reason: `Unknown application event: ${event.type}` };
   }
+  const agentId = observationalAgentId(event);
+  const occurredAt = observationalOccurredAt(event);
+  const riskLevel = observationalRiskLevel(event);
 
-  if (event.type === "application.registered") {
+  if (resolvedType === "application.registered") {
     const name =
       typeof event.payload?.["name"] === "string"
         ? event.payload["name"]
@@ -640,42 +667,48 @@ export function ingestGatewayEvent(event: GatewayEventInput): {
   }
 
   const health =
-    event.type === "agent.failed" ||
-    event.type === "security.alert" ||
-    event.type === "test.failed" ||
-    event.type === "finding.created"
+    resolvedType === "agent.failed" ||
+    resolvedType === "security.alert" ||
+    resolvedType === "test.failed" ||
+    resolvedType === "finding.created"
       ? "degraded"
-      : event.type === "application.health"
+      : resolvedType === "application.health"
         ? "healthy"
         : undefined;
 
   const findingDelta =
-    event.type === "finding.created" || event.type === "security.alert" ? 1 : 0;
+    resolvedType === "finding.created" || resolvedType === "security.alert" ? 1 : 0;
 
-  const updated = recordApplicationEvent(event.applicationId, event.type, {
+  const updated = recordApplicationEvent(event.applicationId, resolvedType, {
     findingDelta,
     ...(health ? { health } : {}),
   });
 
-  if (!updated && event.type !== "application.registered") {
+  if (!updated && resolvedType !== "application.registered") {
     upsertRegisteredApplication({
       applicationId: event.applicationId,
       name: event.applicationId,
     });
-    recordApplicationEvent(event.applicationId, event.type, {
+    recordApplicationEvent(event.applicationId, resolvedType, {
       findingDelta,
       ...(health ? { health } : {}),
     });
   }
 
   nextAudit({
-    timestamp: new Date().toISOString(),
-    type: event.type,
-    actorId: event.agentId ?? event.applicationId,
-    actorKind: event.agentId ? "AGENT" : "SYSTEM",
-    reason: "application event via Atlas Gateway",
+    timestamp: occurredAt ?? new Date().toISOString(),
+    type: resolvedType,
+    actorId: agentId ?? event.applicationId,
+    actorKind: agentId ? "AGENT" : "SYSTEM",
+    reason:
+      resolvedType !== event.type
+        ? `application event via Atlas Gateway; applicationId=${event.applicationId}; agentId=${agentId ?? "null"}; applicationEvent=${event.type}`
+        : `application event via Atlas Gateway; applicationId=${event.applicationId}; agentId=${agentId ?? "null"}`,
     policy: "gateway.ingest",
-    risk: event.type === "security.alert" ? "HIGH" : "LOW",
+    risk:
+      resolvedType === "security.alert" || riskLevel === "urgent" || riskLevel === "high"
+        ? "HIGH"
+        : "LOW",
     approval: "NOT_REQUIRED",
     result: "SUCCESS",
     ownerId: event.applicationId,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mapGatewayHandoff } from "./atlas-gateway.js";
+import {
+  isApplicationEventType,
+  mapGatewayHandoff,
+  resolveApplicationEventType,
+} from "./atlas-gateway.js";
 
 describe("mapGatewayHandoff", () => {
   it("maps CODE_ENGINEER agent runs to a fabric catalog tool, not fs.read_file", () => {
@@ -63,5 +67,29 @@ describe("mapGatewayHandoff", () => {
   it("returns null for unknown fabric agents and read-only gateway ops", () => {
     expect(mapGatewayHandoff("request_agent_run", "QA_ENGINEER")).toBeNull();
     expect(mapGatewayHandoff("inspect", "CODE_ENGINEER")).toBeNull();
+  });
+});
+
+describe("application event taxonomy", () => {
+  it("keeps the canonical set closed", () => {
+    expect(isApplicationEventType("agent.completed")).toBe(true);
+    expect(isApplicationEventType("ai.gateway.invoke")).toBe(false);
+    expect(isApplicationEventType("autonomy.act")).toBe(false);
+    expect(isApplicationEventType("not.a.real.event")).toBe(false);
+  });
+
+  it("maps proven HotelOS observational aliases onto the existing taxonomy", () => {
+    expect(resolveApplicationEventType("ai.gateway.invoke")).toBe("agent.completed");
+    expect(resolveApplicationEventType("autonomy.act")).toBe("tool.executed");
+    expect(resolveApplicationEventType("ai.gateway.fail_closed")).toBe("agent.failed");
+    expect(resolveApplicationEventType("agent.started")).toBe("agent.started");
+    expect(resolveApplicationEventType("not.a.real.event")).toBeNull();
+  });
+
+  it("leaves HotelOS HITL and domain-audit actions outside the gateway taxonomy", () => {
+    expect(resolveApplicationEventType("ai.approval.approved")).toBeNull();
+    expect(resolveApplicationEventType("payment.intent.created")).toBeNull();
+    expect(resolveApplicationEventType("hr.document.approved")).toBeNull();
+    expect(resolveApplicationEventType("hr.document.rejected")).toBeNull();
   });
 });

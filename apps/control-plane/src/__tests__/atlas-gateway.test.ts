@@ -133,6 +133,70 @@ describe("Atlas Gateway", () => {
     ).toBe(false);
   });
 
+  it("accepts mapped HotelOS observational events and preserves Agent identity", () => {
+    const accepted = ingestGatewayEvent({
+      type: "autonomy.act",
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+      occurredAt: "2026-09-23T00:00:00.000Z",
+      riskLevel: "urgent",
+      payload: { agentId: "agent.cio", riskLevel: "urgent", occurredAt: "2026-09-23T00:00:00.000Z" },
+    });
+    expect(accepted.accepted).toBe(true);
+    expect(accepted.reason).toBe("recorded");
+    const app = getRegisteredApplication("hotelos");
+    expect(app?.lastEventType).toBe("tool.executed");
+
+    const invoke = ingestGatewayEvent({
+      type: "ai.gateway.invoke",
+      applicationId: "hotelos",
+      payload: {
+        agentId: "agent.cio",
+        occurredAt: "2026-09-23T00:01:00.000Z",
+        riskLevel: "high",
+      },
+    });
+    expect(invoke.accepted).toBe(true);
+    expect(getRegisteredApplication("hotelos")?.lastEventType).toBe("agent.completed");
+  });
+
+  it("rejects HotelOS HITL/domain audit actions rather than inventing Control approval state", () => {
+    expect(
+      ingestGatewayEvent({
+        type: "ai.approval.approved",
+        applicationId: "hotelos",
+        agentId: "agent.cio",
+      }).accepted,
+    ).toBe(false);
+    expect(
+      ingestGatewayEvent({
+        type: "payment.intent.created",
+        applicationId: "hotelos",
+      }).accepted,
+    ).toBe(false);
+    expect(
+      ingestGatewayEvent({
+        type: "hr.document.approved",
+        applicationId: "hotelos",
+      }).accepted,
+    ).toBe(false);
+  });
+
+  it("does not treat telemetry ingest as an execution gate", () => {
+    const accepted = ingestGatewayEvent({
+      type: "agent.started",
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+    });
+    expect(accepted.accepted).toBe(true);
+    const denied = ingestGatewayEvent({
+      type: "prompt.leaked",
+      applicationId: "hotelos",
+      payload: { prompt: "should not be stored" },
+    });
+    expect(denied.accepted).toBe(false);
+  });
+
   it("refuses a quarantined agent at evaluation time", () => {
     setAgentRuntimeStatus("CODE_ENGINEER", "QUARANTINED");
     const result = evaluateGatewayRequest({

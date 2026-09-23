@@ -492,13 +492,29 @@ export function createApiRouter(): Router {
       json(res, { error: "type and applicationId are required" }, 400);
       return;
     }
+    const payload =
+      record["payload"] && typeof record["payload"] === "object"
+        ? (record["payload"] as Record<string, unknown>)
+        : undefined;
     const result = ingestGatewayEvent({
       type,
       applicationId,
-      ...(typeof record["agentId"] === "string" ? { agentId: record["agentId"] } : {}),
-      ...(record["payload"] && typeof record["payload"] === "object"
-        ? { payload: record["payload"] as Record<string, unknown> }
-        : {}),
+      ...(typeof record["agentId"] === "string"
+        ? { agentId: record["agentId"] }
+        : typeof payload?.["agentId"] === "string"
+          ? { agentId: payload["agentId"] }
+          : {}),
+      ...(typeof record["occurredAt"] === "string"
+        ? { occurredAt: record["occurredAt"] }
+        : typeof payload?.["occurredAt"] === "string"
+          ? { occurredAt: payload["occurredAt"] }
+          : {}),
+      ...(typeof record["riskLevel"] === "string"
+        ? { riskLevel: record["riskLevel"] }
+        : typeof payload?.["riskLevel"] === "string"
+          ? { riskLevel: payload["riskLevel"] }
+          : {}),
+      ...(payload ? { payload } : {}),
     });
     json(res, { ...result, reasonHeader: reason }, result.accepted ? 202 : 400);
   });

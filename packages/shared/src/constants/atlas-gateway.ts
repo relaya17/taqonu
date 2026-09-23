@@ -26,6 +26,26 @@ export const APPLICATION_EVENT_TYPES = [
 
 export type ApplicationEventType = (typeof APPLICATION_EVENT_TYPES)[number];
 
+/**
+ * Application-native observational types already emitted by siblings.
+ * Mapped onto the existing taxonomy — not a second telemetry system,
+ * and not an open string set.
+ *
+ * Intentionally NOT mapped (HotelOS local audit / HITL, not Control gateway
+ * lifecycle): `ai.approval.approved`, `payment.intent.created`,
+ * `hr.document.approved`, `hr.document.rejected`. Those stay on the
+ * application audit ledger. Mapping them to `proposal.created` would invent
+ * Atlas approval/proposal state.
+ */
+export const APPLICATION_EVENT_TYPE_ALIASES = {
+  "ai.gateway.invoke": "agent.completed",
+  "ai.gateway.fail_closed": "agent.failed",
+  "autonomy.act": "tool.executed",
+} as const satisfies Record<string, ApplicationEventType>;
+
+export type ApplicationEventTypeAlias =
+  keyof typeof APPLICATION_EVENT_TYPE_ALIASES;
+
 export const GATEWAY_OPERATIONS = [
   "inspect",
   "diagnose",
@@ -54,6 +74,18 @@ export function isApplicationEventType(
   value: string,
 ): value is ApplicationEventType {
   return (APPLICATION_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/** Canonical type, or a mapped HotelOS observational alias. Otherwise null. */
+export function resolveApplicationEventType(
+  value: string,
+): ApplicationEventType | null {
+  if (isApplicationEventType(value)) return value;
+  const aliased =
+    APPLICATION_EVENT_TYPE_ALIASES[
+      value as keyof typeof APPLICATION_EVENT_TYPE_ALIASES
+    ];
+  return aliased ?? null;
 }
 
 export function isGatewayOperation(value: string): value is GatewayOperation {

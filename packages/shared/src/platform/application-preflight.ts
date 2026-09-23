@@ -69,6 +69,12 @@ export const applicationPreflightRequestSchema = z.object({
   projectId: z.string().trim().min(1).max(128),
   actorId: z.string().trim().min(1).max(200),
   actorKind: z.enum(["USER", "AGENT", "SYSTEM"]),
+  /**
+   * Application-owned runtime Agent ID when the caller actually has one
+   * (e.g. HotelOS `agent.cio`). Optional because some hops only have an
+   * operation label. Omit or send `null` — never derive from actorId,
+   * operation, or a Fabric ID.
+   */
   agentId: z.string().trim().min(1).max(200).nullable().optional(),
   operation: z.string().trim().min(1).max(200),
   operationClass: z.enum(APPLICATION_PREFLIGHT_OPERATION_CLASSES),
@@ -89,6 +95,7 @@ export const applicationPreflightResponseSchema = z.object({
   reason: z.string().min(1).max(2000),
   requestId: z.string().min(1).max(128),
   applicationId: z.string().min(1).max(64),
+  agentId: z.string().min(1).max(200).nullable(),
   tenantId: z.string().min(1).max(128),
   projectId: z.string().min(1).max(128),
   operation: z.string().min(1).max(200),
@@ -101,6 +108,17 @@ export const applicationPreflightResponseSchema = z.object({
 export type ApplicationPreflightResponse = z.infer<
   typeof applicationPreflightResponseSchema
 >;
+
+/**
+ * Normalize a caller-supplied application Agent ID.
+ * Empty / omitted → `null`. Does not invent identity from actor or operation.
+ */
+export function applicationOwnedAgentId(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 /** Only ALLOW may proceed to the application model/tool. */
 export function applicationPreflightAllowsExecution(

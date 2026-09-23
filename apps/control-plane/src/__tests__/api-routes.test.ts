@@ -543,6 +543,54 @@ describe("Control Plane — API Routes", () => {
     });
   });
 
+  describe("POST /api/v1/gateway/events", () => {
+    it("requires X-Atlas-Reason and does not execute", async () => {
+      const missing = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/events", {
+          body: { type: "autonomy.act", applicationId: "hotelos" },
+        }),
+        missing,
+      );
+      expect(missing._mock.statusCode).toBe(400);
+
+      const accepted = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/events", {
+          body: {
+            type: "autonomy.act",
+            applicationId: "hotelos",
+            agentId: "agent.cio",
+            payload: {
+              agentId: "agent.cio",
+              riskLevel: "urgent",
+              occurredAt: "2026-09-23T00:00:00.000Z",
+            },
+          },
+          headers: { "x-atlas-reason": "HotelOS observational governance event" },
+        }),
+        accepted,
+      );
+      expect(accepted._mock.statusCode).toBe(202);
+      const body = JSON.parse(accepted._mock.body) as {
+        accepted: boolean;
+        executed?: boolean;
+      };
+      expect(body.accepted).toBe(true);
+      expect(body.executed).toBeUndefined();
+
+      const rejected = createMockRes();
+      await router.handle(
+        createMockReq("POST", "/api/v1/gateway/events", {
+          body: { type: "not.a.real.event", applicationId: "hotelos" },
+          headers: { "x-atlas-reason": "HotelOS observational governance event" },
+        }),
+        rejected,
+      );
+      expect(rejected._mock.statusCode).toBe(400);
+    });
+  });
+
   describe("POST /api/v1/gateway/ops", () => {
     it("requires X-Atlas-Reason", async () => {
       const res = createMockRes();

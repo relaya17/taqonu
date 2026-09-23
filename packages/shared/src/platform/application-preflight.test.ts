@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   APPLICATION_PREFLIGHT_SCHEMA,
+  applicationOwnedAgentId,
   applicationPreflightAllowsExecution,
   applicationPreflightRequestSchema,
+  applicationPreflightResponseSchema,
   httpStatusForPreflightDecision,
   unavailablePolicyForClass,
 } from "./application-preflight.js";
@@ -59,5 +61,79 @@ describe("application preflight contract", () => {
       idempotencyKey: "idem-1",
     });
     expect(parsed.applicationId).toBe("civio");
+    expect(parsed.agentId).toBeUndefined();
+  });
+
+  it("accepts an explicit application-owned agentId and records omitted as absent", () => {
+    const withAgent = applicationPreflightRequestSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "hotelos",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "user-1",
+      actorKind: "USER",
+      agentId: "agent.cio",
+      operation: "hotelos.gateway.agent.cio",
+      operationClass: "GOVERNED_DECISION",
+      requestId: "req-cio",
+      idempotencyKey: "idem-cio",
+    });
+    expect(withAgent.agentId).toBe("agent.cio");
+    expect(applicationOwnedAgentId(withAgent.agentId)).toBe("agent.cio");
+
+    const legacy = applicationPreflightRequestSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "caseflow-runtime",
+      actorKind: "USER",
+      agentId: null,
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      requestId: "req-cf",
+      idempotencyKey: "idem-cf",
+    });
+    expect(legacy.agentId).toBeNull();
+    expect(applicationOwnedAgentId(legacy.agentId)).toBeNull();
+    expect(applicationOwnedAgentId(undefined)).toBeNull();
+  });
+
+  it("rejects an empty agentId string rather than treating it as a real identity", () => {
+    const parsed = applicationPreflightRequestSchema.safeParse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "hotelos",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "user-1",
+      actorKind: "USER",
+      agentId: "",
+      operation: "hotelos.gateway.agent.cio",
+      operationClass: "GOVERNED_DECISION",
+      requestId: "req-empty",
+      idempotencyKey: "idem-empty",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("requires agentId on the response so absence is explicit null", () => {
+    const parsed = applicationPreflightResponseSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      decision: "ALLOW",
+      executed: false,
+      reason: "allowed",
+      requestId: "req-1",
+      applicationId: "hotelos",
+      agentId: null,
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      operation: "hotelos.gateway.embed",
+      operationClass: "INFORMATIONAL",
+      unavailablePolicy: "FAIL_OPEN",
+      approvalRequestId: null,
+      killSwitchCategory: null,
+      decisionId: "decision-1",
+    });
+    expect(parsed.agentId).toBeNull();
   });
 });

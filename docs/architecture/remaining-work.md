@@ -13,6 +13,27 @@ open engineering backlog.
 **Production gate: NOT PRODUCTION READY.**
 **PRODUCTION: NOT PROVEN** (AWS production suspended; R0 EC2 identity remains **BLOCKED — EXTERNAL DEPENDENCY**).
 
+### CONTROL 10/10 PROGRAM (2026-09-23)
+
+Authoritative Control supervision roadmap:
+`docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md`.
+Do not treat remaining-work 01–19 or gap-analysis as that source of truth.
+
+### CONTROL AUTHORIZATION / AGENT IDENTITY (2026-09-23)
+
+Application-owned `agentId` is now an explicit optional field on
+`atlas.application-preflight.v1` and is preserved on the response and
+canonical audit (`null` when the hop has no runtime Agent). HotelOS
+`agent.cio` is sent on invoke; embed / CaseFlow wraps / BrokerOS Gemini
+remain `agentId = null` (not invented). HotelOS observational events
+`ai.gateway.invoke` / `autonomy.act` map onto the existing Control
+taxonomy (`agent.completed` / `tool.executed`) and require `X-Atlas-Reason`.
+HotelOS `ai.approval.approved` / `payment.intent.created` / `hr.document.*`
+remain **rejected** by the closed gateway taxonomy: they are HotelOS local
+audit/HITL, not Atlas approval or Control lifecycle events. Do not map them
+to `proposal.created`. This is **not** necessity inference, `UNNECESSARY`,
+cost avoidance, or Fabric promotion.
+
 ### CONSOLIDATED PRODUCTION READINESS (2026-09-19) — ACCEPTED
 
 Repository remediation for currently identified closable gaps is closed and locally verified.

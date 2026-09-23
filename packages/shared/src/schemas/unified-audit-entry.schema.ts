@@ -69,8 +69,11 @@ export const unifiedAuditEntrySchema = z.object({
   /** Primary actor — null when genuinely unresolvable. */
   actorId: z.string().min(1).max(200).nullable(),
   actorKind: auditActorKindSchema,
-  /** Fabric agent ID (when actorKind is AGENT). */
-  agentId: z.string().max(100).nullable().default(null),
+  /**
+   * Agent identity when one exists: application-owned (e.g. `agent.cio`)
+   * or Fabric. `null` when the hop had no runtime Agent ID. Never invent.
+   */
+  agentId: z.string().max(200).nullable().default(null),
   /** Owner of the session/project. */
   ownerId: uuidSchema.nullable().optional(),
   /** Project context. */

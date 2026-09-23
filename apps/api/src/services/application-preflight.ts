@@ -11,6 +11,7 @@ import {
   APPLICATION_PREFLIGHT_SCHEMA,
   APPLICATION_PREFLIGHT_SECRET_MIN_LENGTH,
   FABRIC_AGENT_IDS,
+  applicationOwnedAgentId,
   applicationPreflightRequestSchema,
   httpStatusForPreflightDecision,
   unavailablePolicyForClass,
@@ -108,6 +109,7 @@ function fingerprintOf(request: ApplicationPreflightRequest): string {
     request.tenantId,
     request.projectId,
     request.actorId,
+    applicationOwnedAgentId(request.agentId) ?? "",
     request.operation,
     request.operationClass,
     request.requestId,
@@ -119,7 +121,7 @@ function fingerprintOf(request: ApplicationPreflightRequest): string {
 function denyImpersonation(
   request: ApplicationPreflightRequest,
 ): ApplicationPreflightDecision | null {
-  const agentId = request.agentId?.trim() ?? "";
+  const agentId = applicationOwnedAgentId(request.agentId) ?? "";
   if (request.applicationId === "def-000") return "OUT_OF_SCOPE";
   if (request.actorId.startsWith("psa:") || agentId.startsWith("psa:")) {
     return "OUT_OF_SCOPE";
@@ -164,6 +166,7 @@ function finish(input: {
   readonly approvalRequestId?: string | null;
   readonly killSwitchCategory?: string | null;
 }): ApplicationPreflightResponse {
+  const agentId = applicationOwnedAgentId(input.request.agentId);
   const response: ApplicationPreflightResponse = {
     schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
     decision: input.decision,
@@ -171,6 +174,7 @@ function finish(input: {
     reason: input.reason,
     requestId: input.request.requestId,
     applicationId: input.request.applicationId,
+    agentId,
     tenantId: input.request.tenantId,
     projectId: input.request.projectId,
     operation: input.request.operation,
@@ -186,7 +190,7 @@ function finish(input: {
     action: input.request.operation,
     actorId: `${input.request.applicationId}:${input.request.actorId}`,
     actorKind: input.request.actorKind,
-    agentId: input.request.agentId ?? null,
+    agentId,
     reason: input.reason,
     policy: "atlas.application-preflight.v1",
     risk:
@@ -201,8 +205,8 @@ function finish(input: {
     input: {
       requestId: input.request.requestId,
       applicationId: input.request.applicationId,
-      tenantId: input.request.tenantId,
-      projectId: input.request.projectId,
+      agentId,
+      actorId: input.request.actorId,
       operation: input.request.operation,
       operationClass: input.request.operationClass,
       idempotencyKey: input.request.idempotencyKey,
@@ -318,6 +322,9 @@ async function evaluateAuthorized(
           operationClass: request.operationClass,
           requestId: request.requestId,
           idempotencyKey: request.idempotencyKey,
+          ...(applicationOwnedAgentId(request.agentId)
+            ? { agentId: applicationOwnedAgentId(request.agentId) }
+            : {}),
         },
       });
       return finish({
