@@ -26,7 +26,9 @@ const querySchema = z.object({
   cursor: z.string().min(1).max(200).optional(),
 });
 
-function sortUnifiedNewestFirst<T extends { at?: string }>(entries: T[]): T[] {
+function sortUnifiedNewestFirst<T extends { at?: string | undefined }>(
+  entries: T[],
+): T[] {
   return [...entries].sort(
     (a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime(),
   );

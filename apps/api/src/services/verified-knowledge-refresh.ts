@@ -20,8 +20,21 @@ const CONCURRENCY = 3;
 
 export type KnowledgeFetchFn = (
   url: string,
-  init: RequestInit,
+  init?: RequestInit,
 ) => Promise<Response>;
+
+function defaultKnowledgeFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  return safeOutboundFetch(url, {
+    ...(typeof init.method === "string" ? { method: init.method } : {}),
+    ...(init.headers != null ? { headers: init.headers } : {}),
+    ...(init.body !== undefined ? { body: init.body } : {}),
+    ...(init.signal ? { signal: init.signal } : {}),
+    ...(init.redirect != null ? { redirect: init.redirect } : {}),
+  });
+}
 
 export interface KnowledgeRefreshItem {
   id: string;
@@ -209,7 +222,7 @@ export async function refreshVerifiedKnowledge(input: {
   const startedAt = new Date().toISOString();
   hydrateKnowledgeCorpus({ enablePersist: input.persist !== false });
   const targets = input.targets ?? listOfficialRefreshTargets();
-  const fetchFn = input.fetchFn ?? safeOutboundFetch;
+  const fetchFn = input.fetchFn ?? defaultKnowledgeFetch;
   let pgvectorWrites = 0;
 
   const items = await mapPool(targets, CONCURRENCY, async (target) => {

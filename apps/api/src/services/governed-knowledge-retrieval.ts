@@ -155,6 +155,7 @@ export async function retrieveGovernedKnowledge(input: {
   readonly pin?: KnowledgePin;
 }): Promise<GovernedKnowledgeRetrieval> {
   registerKnowledgeSearchTool(input.env);
+  const scopedTenantId = input.scope.tenantId;
   const scopedProjectId = input.scope.projectId;
   const scopedAgentId = input.scope.requestingAgentId;
   if (!isCompleteKnowledgeScope(input.scope)) {
@@ -165,7 +166,7 @@ export async function retrieveGovernedKnowledge(input: {
     });
     auditRetrieval({
       ownerId: input.sessionOwnerId,
-      tenantId: input.scope.tenantId,
+      tenantId: scopedTenantId,
       projectId: scopedProjectId,
       agentId: scopedAgentId,
       query: input.query,
