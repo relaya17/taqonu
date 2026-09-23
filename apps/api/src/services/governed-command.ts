@@ -198,7 +198,37 @@ type RunningExecution = {
 
 const running = new Map<string, RunningExecution>();
 
+/** Test-only lifecycle notes. Unset in production paths; never changes kill or map behavior. */
+export type GovernedCommandTestEvent =
+  | { readonly kind: "registered"; readonly executionId: string; readonly commandId: string }
+  | { readonly kind: "error"; readonly executionId: string; readonly message: string }
+  | {
+      readonly kind: "close";
+      readonly executionId: string;
+      readonly code: number | null;
+      readonly signal: NodeJS.Signals | null;
+      readonly killRequested: boolean;
+    }
+  | { readonly kind: "deleted"; readonly executionId: string }
+  | { readonly kind: "reset"; readonly executionIds: readonly string[] };
+
+let testLifecycleObserver: ((event: GovernedCommandTestEvent) => void) | null = null;
+
+export function setGovernedCommandTestLifecycleObserver(
+  observer: ((event: GovernedCommandTestEvent) => void) | null,
+): void {
+  testLifecycleObserver = observer;
+}
+
+function emitGovernedCommandTestEvent(event: GovernedCommandTestEvent): void {
+  testLifecycleObserver?.(event);
+}
+
 export function resetGovernedCommandRuntimeForTests(): void {
+  emitGovernedCommandTestEvent({
+    kind: "reset",
+    executionIds: [...running.keys()],
+  });
   for (const entry of running.values()) {
     try {
       entry.child.kill("SIGKILL");
@@ -500,6 +530,7 @@ export async function runGovernedCommand(input: {
       if (settled) return;
       settled = true;
       running.delete(executionId);
+      emitGovernedCommandTestEvent({ kind: "deleted", executionId });
       if (timer) clearTimeout(timer);
       if (escalate) clearTimeout(escalate);
       resolvePromise(result);
@@ -517,6 +548,11 @@ export async function runGovernedCommand(input: {
       commandId: spec.id,
       child,
       killRequested: false,
+    });
+    emitGovernedCommandTestEvent({
+      kind: "registered",
+      executionId,
+      commandId: spec.id,
     });
 
     timer = setTimeout(() => {
@@ -549,17 +585,26 @@ export async function runGovernedCommand(input: {
       stderr = take(chunk, stderr);
     });
     child.on("error", (error) => {
+      const message = error instanceof Error ? error.message : "Failed to spawn command";
+      emitGovernedCommandTestEvent({ kind: "error", executionId, message });
       finish({
         ok: false,
         executionId,
         commandId: spec.id,
         kind: spec.kind,
         denial: "PROGRAM_UNAVAILABLE",
-        reason: error instanceof Error ? error.message : "Failed to spawn command",
+        reason: message,
       });
     });
     child.on("close", (code, signal) => {
       const entry = running.get(executionId);
+      emitGovernedCommandTestEvent({
+        kind: "close",
+        executionId,
+        code,
+        signal,
+        killRequested: entry?.killRequested === true,
+      });
       if (
         entry?.killRequested ||
         signal === "SIGTERM" ||
