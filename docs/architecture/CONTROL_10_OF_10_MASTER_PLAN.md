@@ -2,12 +2,13 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (current-state references reconciled to local HEAD `28ef9f2`; not pushed)
-**Git HEAD:** `28ef9f20177dcdfa62719073182bc32104ecc7b2` (`main`, ahead of `origin/main` by 4; working tree clean)
+**Last updated:** 2026-09-23 (CTRL-016 documentation reconciliation; implementation `c0ca916`; not pushed)
+**Git HEAD:** `c0ca916ed28f4147587675aa8fa0a3070fd211ac` (`main`, ahead of `origin/main` by 6; this documentation recon is uncommitted)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
 **CTRL-013 commit:** `455b205b07dd507ddeb0407da9abaac5e8b17232`
 **CTRL-014 commit:** `28ef9f20177dcdfa62719073182bc32104ecc7b2`
+**CTRL-016 commit:** `c0ca916ed28f4147587675aa8fa0a3070fd211ac` (parent `e53681c7f0225b3b62ae3c1de9c110f4a87209f2`)
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
 **Classification rule:** INTENT ≠ IMPLEMENTATION ≠ REACHABILITY ≠ ENFORCEMENT ≠ TEST COVERAGE ≠ PRODUCTION PROOF
 
@@ -258,7 +259,8 @@ OBSERVATIONAL
   Telemetry, portfolio, incident reconstruction (when correlation IDs exist)
 
 LATER / ONLY WITH TRUTHFUL ATTESTATION
-  Path authorization (Model C), resource attribution, learning proposals
+  Path **declaration** (Model C / CTRL-016) is VERIFIED as `declaredCompletionPath` — not sufficiency, not execution
+  Resource attribution, learning proposals (CTRL-017+)
 
 EXTERNAL
   FinOps, OTel backends, DR offsite, production secrets
@@ -305,7 +307,7 @@ Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `N
 | G1 | Identity | `applicationId` required; `agentId` optional nullable; `actorId`/`tenantId`/`projectId`/`operation` on preflight; `idempotencyKey`; response echoes `agentId`. `applicationOwnedAgentId()` never invents. HotelOS CIO sends `agent.cio`; embed sends `null`. CaseFlow/BrokerOS send `null`. Civio letter=`LEGAL_LETTER_AGENT`, housing=`HOUSING_AGENT`, others `null`. | `packages/shared/src/platform/application-preflight.ts`; `apps/api/src/services/application-preflight.ts` `finish()`; HotelOS `packages/ai-gateway/src/gateway.ts`; tests `application-preflight-identity.test.ts` | PARTIAL | Wrong attribution | Wave 1 commit | CTRL-001; do not invent IDs for CaseFlow |
 | G2 | Intent / purpose | `operation` + `operationClass` (GOVERNED_DECISION / INFORMATIONAL / HIGH_RISK / TOOL_ACTION). No purpose/intent class/expected outcome fields. Full prompts not sent (correct). | `application-preflight.ts` schema | PARTIAL | Cannot distinguish why two GOVERNED_DECISION differ | G1 | Optional purpose class later — do not send prompts |
 | G3 | Authorization | HMAC, tenant/project binding, nonce, denyImpersonation, kill, destructive DENY, HIGH/TOOL approval. Decisions ALLOW/DENY/REQUIRE_APPROVAL/KILLED/INVALID/OUT_OF_SCOPE. | `evaluateAuthorized()`; `apps/api/src/routes/application-preflight.test.ts` | PROVEN (unit + route) | Bypass if client ignores ALLOW-only or secret unset fail-open | — | Do not redesign. Document fail-open. |
-| G4 | Necessity | No `UNNECESSARY` / `proposedPath` / `knowledgeSufficient`. Semantic Conclusion C: cannot infer from availability. HotelOS pack is LLM context, not an answer. CaseFlow cache is a real cheap path **before** preflight. Civio FAQ can skip Gemini **after** preflight. | HotelOS gateway; CaseFlow wrap; Civio `ai.ts`; prior semantic audit | MISSING (correctly) | Fake savings / false DENY | Proven cheap path + attestation | Model C path authorization only when app proves a cheap completion. **Not Wave 1.** |
+| G4 | Necessity | No `UNNECESSARY` / `proposedPath` / `knowledgeSufficient`. Semantic Conclusion C: cannot infer from availability. HotelOS pack is LLM context, not an answer. CaseFlow cache is a real cheap path **before** preflight. Civio FAQ can skip Gemini **after** preflight. CTRL-016 adds optional `declaredCompletionPath` (`LOCAL_COMPLETION_PATH` / `MODEL_PATH`) so the app can attest a path. Control does not infer sufficiency from that declaration. | HotelOS gateway; CaseFlow wrap; Civio `ai.ts`; `c0ca916` preflight contract | MISSING (correctly) | Fake savings / false DENY | Proven cheap path + attestation | Necessity engine still must not be built. CTRL-016 is declaration only. Execution/outcome is CTRL-017. |
 | G5 | Knowledge sufficiency | Atlas-self `CONTINUE/HALT/INCONCLUSIVE` in `packages/shared/src/constants/evidence-sufficiency.ts`. Not used as sibling knowledge judgment. Document count ≠ sufficiency. | evidence-sufficiency.ts | MISSING as Control domain engine (correct) | False domain judgment | Application attestation | Control must not own |
 | G6 | Memory | Owner-scoped ACTIVE/SUPERSEDED; `allowedAgents`; retrieve returns statements. HotelOS actorId ≠ Atlas ownerId → no join. Control must not own user memory. | Atlas memory services; HotelOS actor | PARTIAL | Poisoning / cross-user leak if joined wrongly | Identity join (does not exist) | Memory-based necessity = NOT AVAILABLE |
 | G7 | Retrieval / tool necessity | HotelOS embed INFORMATIONAL preflight is the cheap-hop gate. Tools/HIGH require approval. Retrieval may already have happened before Control if app skips preflight. | HotelOS `atlas-preflight.ts`; evaluateAuthorized TOOL_ACTION | PARTIAL | Spend after the fact | App calls preflight first | Keep two-point model; do not add a third invented gate |
@@ -340,7 +342,7 @@ Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `N
 | G4 cheap-path existence, G5 sufficiency, G8 model choice, G15 sibling verify, G16 facts | APPLICATION RESPONSIBILITY |
 | G6 store, G14 Atlas-self evidence | ATLAS CORE RESPONSIBILITY |
 | G9 FinOps product, G28 offsite DR, OTel backends | EXTERNAL INTEGRATION |
-| G4 Model C, G8 router, G9 tokens, G19 hop fields, G21 learning | OPTIONAL FUTURE until attestation exists |
+| G4 Model C declaration (CTRL-016 VERIFIED), G8 router, G9 tokens, G19 hop fields, G21 learning | OPTIONAL FUTURE except CTRL-016 declaration; remaining items wait for outcome attestation (CTRL-017+) |
 | Fabric promotion, Control-owned app knowledge, fake UNNECESSARY, NLI everywhere | NOT NEEDED |
 
 ---
@@ -363,8 +365,8 @@ PARALLEL after WAVE 1
    ├── CTRL-013  G24 fail-open/closed matrix (docs + tests)
    └── CTRL-014  G23 impersonation / binding regression lock
    ↓
-BLOCKED ON APPLICATION ATTESTATION (do not start)
-   WAVE 2  Model C path authorization (G4/G7/G8) — only if a cheap completion is proven
+WAVE 2  Model C path **declaration** VERIFIED (`c0ca916`) — not sufficiency, not execution
+BLOCKED ON SIBLING REPORT-BACK (do not start)
    WAVE 4  outcome / executionId report-back (G13/G15/G16)
    WAVE 5  resource attribution fields (G9) after outcome
    WAVE 7  human-governed learning proposals (G21)
@@ -388,7 +390,7 @@ ENVIRONMENT
 | ---- | ---- | ------------------- |
 | 0 | Baseline and Evidence | **VERIFIED** as living baseline (CTRL-000 / CTRL-015). This document remains the source of truth. Not CLOSED. |
 | 1 | Identity and Contract Closure | CTRL-001 **VERIFIED** and committed (`400759a`). Not CLOSED (CORE still 0). |
-| 2 | Decision Engine (necessity / path) | **DEFERRED** until a cheap completion is proven and attested |
+| 2 | Decision Engine (necessity / path) | Path **declaration** CTRL-016 **VERIFIED** (`c0ca916`). Necessity/UNNECESSARY engine still not built (G4 remains MISSING, correctly). Execution/outcome remains CTRL-017. |
 | 3 | Runtime Governance | Fabric already pause/quarantine; sibling live-stop **not** claimed |
 | 4 | Evidence and Verification | Atlas-self only; sibling outcome **MISSING** |
 | 5 | Resource and Cost | Attribution later; FinOps external |
@@ -396,7 +398,7 @@ ENVIRONMENT
 | 7 | Learning | Human proposals only |
 | 8 | Resilience | Measure + env blockers |
 
-Wave 2 is **not** “build a Decision Engine.” The engine exists (`evaluateAuthorized`). Wave 2 is only path-authorization **if** Model C becomes truthful.
+Wave 2 is **not** “build a Decision Engine.” The engine exists (`evaluateAuthorized`). Wave 2 is the optional `declaredCompletionPath` attestation on v1. It does not authorize a different decision and does not prove execution.
 
 ---
 
@@ -410,7 +412,7 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | 2026-09-23 → 2026-09-25 | CTRL-001 Atlas-only commit of identity/telemetry **after operator authorization**. |
 | 2026-09-25 → 2026-09-30 | CTRL-012, CTRL-013, CTRL-014 (docs + lock tests). |
 | 2026-10-01 → 2026-10-07 | After CTRL-001: confirm HEAD contains the 14 Atlas paths and CTRL-015 pointer. |
-| 2026-10-08 → 2026-10-21 | Review whether any sibling has a **proven cheap completion** (re-open Wave 2 only then). |
+| 2026-10-08 → 2026-10-21 | Wave 2 path declaration recorded (`c0ca916`). Do not reopen as a necessity/UNNECESSARY engine. |
 | 2026-10-22 → 2026-11-11 | Wave 3 sibling-authority documentation + Fabric intervention regression (no per-Agent sibling kill). |
 | 2026-11-12 → 2026-12-09 | Wave 4 outcome contract design (schema only after hop evidence). |
 | 2026-12-10 → 2027-01-20 | Wave 5–6 attribution + portfolio/shadow observe. |
@@ -429,7 +431,7 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | CTRL-013 | 8 | Document and test fail-open / fail-closed by operation class | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Matrix in §15 matches `evaluateAuthorized`; tests for unset secret | shared `CTRL-013: unavailablePolicyForClass covers only the four existing operation classes`; API `CTRL-013: unset connector secret returns 401 INVALID…`; shared 9/9; API preflight+identity 27/27 | Committed `455b205`. Not pushed. G24 remains PARTIAL |
 | CTRL-014 | 1 | Lock impersonation / application-binding regressions | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Existing denyImpersonation tests remain green; no new bypass route | `denies PSA impersonation`; `denies Fabric impersonation`; `rejects a caller-supplied tenant that does not match the binding`; `rejects a spoofed applicationId that does not match the HMAC secret`; `allows a valid HMAC-bound informational/governed request`; `only Atlas-self has a gateway fulfill execute contract`; API preflight+identity 27/27; shared preflight+connected 13/13; commit `28ef9f2` | Committed `28ef9f2`. Not pushed. No production change. G24 remains PARTIAL |
 | CTRL-015 | 0 | Keep remaining-work 01–19 historical; pointer only | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000 | Pointer exists; 01–19 not rewritten | In `400759a` as `docs/architecture/remaining-work.md` | None |
-| CTRL-016 | 2 | Architecture review: Model C path authorization | DEFERRED | — | 2026-10-21 | Proven cheap **completion** in an app | Written review: cheap path exists, app can attest, Control authorizes path not sufficiency | HotelOS pack is **not** a completion — current evidence says DEFER | No truthful sufficiency signal |
+| CTRL-016 | 2 | Model C path declaration (not sufficiency, not execution) | VERIFIED | 2026-09-23 | 2026-09-23 | Proven cheap **completion** exists in-app (CaseFlow cache before preflight; Civio FAQ after). HotelOS pack is not a completion. CTRL-001 | Optional nullable `declaredCompletionPath` on `atlas.application-preflight.v1` (`LOCAL_COMPLETION_PATH` \| `MODEL_PATH`); omit/null valid and fingerprint-compatible (append path only when present); `evaluateAuthorized` has no path branch; `executed: false`; no `UNNECESSARY` / `knowledgeSufficient` / `executionId` | Commit `c0ca916`; exactly 6 Atlas files; shared 11/11; API 37/37; Civio 2/2; CP G12-C 14/14; `@atlas/shared` typecheck+build PASS; `@atlas/api` typecheck PASS | Declaration ≠ execution. CTRL-017 owns correlation. Sibling send of the field is APPLICATION-OWNED. Not pushed. Gate 1: no new Control knowledge gap; do not create CTRL-023 |
 | CTRL-017 | 4 | Outcome / execution correlation contract | DEFERRED | — | 2026-12-09 | CTRL-001; app report-back design | Schema + one sibling hop proving executionId↔preflight | None yet | No sibling report-back |
 | CTRL-018 | 6 | Observed vs expected application Agent IDs (no Fabric registry) | DEFERRED | — | 2027-01-20 | CTRL-001 | Surface unexpected agentId; `notAnAgentRegistry` remains true | portfolio-governance-view.ts | Identity commit + telemetry volume |
 | CTRL-019 | 7 | Human-governed learning proposals from repeated failures | DEFERRED | — | 2027-02-17 | CTRL-017 | Proposals only; `autoApply: false` | — | Outcome missing |
@@ -437,7 +439,7 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | CTRL-021 | 8 | Performance budgets for preflight/audit/telemetry | DEFERRED | — | 2027-02-17 | CTRL-001 | Measured numbers in this plan | — | Measure env |
 | CTRL-022 | 8 | Production DR / audit offsite | BLOCKED | — | — | G-P1-06–09 | External restore | remaining-external-dependencies.md | AWS / Supabase / secrets |
 
-IDs CTRL-002–CTRL-011 reserved unused (never reuse). Next new ID = CTRL-023.
+IDs CTRL-002–CTRL-011 reserved unused (never reuse). Next unused ID remains CTRL-023. **Do not create CTRL-023.** Gate 1 (Knowledge Integration Audit) found no new Control knowledge gap.
 
 ---
 
@@ -564,11 +566,11 @@ CORE CONTROL rows:            G1, G3, G11, G12, G20, G23
 CORE closed (10/10 ten-point): 0
 CORE remaining:               6 (G3/G11 PROVEN but not 10/10-closed — no security-review + runtime + plan evidence block yet)
 CONTROL SUPPORTING remaining: see §6
-OPTIONAL / DEFERRED:          CTRL-016–CTRL-022
+OPTIONAL / DEFERRED:          CTRL-017–CTRL-022
 Environment blockers:         6 rows in §16
 ```
 
-Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). G12 remains PARTIAL. G24 remains PARTIAL. Counts unchanged. CORE closed remains 0. Local `main` is ahead of `origin/main` by 4.
+Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). CTRL-016 is VERIFIED and committed (`c0ca916`) as a **declaration** contract, not execution proof. G4 remains MISSING (correctly — no necessity engine). G12 remains PARTIAL. G24 remains PARTIAL. Counts unchanged. CORE closed remains 0. Local `main` is ahead of `origin/main` by 6.
 
 ---
 
@@ -585,6 +587,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CTRL-012 VERIFIED | 2026-09-23 | `a363b5764f19612616d923a4baf214126303996a` | `application-preflight.test.ts`; `atlas-self-agent-control.test.ts`; this file | shared 8 / API 20 / CP 14 | n/a — no new runtime | G12 PARTIAL. G12-E not a defect. G12-F out of scope. Pushed. |
 | CTRL-013 VERIFIED | 2026-09-23 | `455b205b07dd507ddeb0407da9abaac5e8b17232` | `application-preflight.ts` comments; shared + API tests; this §15 | shared 9/9; API preflight+identity 27/27 | n/a — no new runtime | G24 remains PARTIAL. No invented production evidence. Not pushed. |
 | CTRL-014 VERIFIED | 2026-09-23 | `28ef9f20177dcdfa62719073182bc32104ecc7b2` | this file only (audit lock; no production edit) | API preflight+identity 27/27; shared preflight+connected 13/13; public-routes 4/4 | n/a — no new runtime | Existing tests remain the lock. No new bypass route. G24 remains PARTIAL. Not pushed. |
+| CTRL-016 VERIFIED | 2026-09-23 | `c0ca916ed28f4147587675aa8fa0a3070fd211ac` | 6 Atlas files in that commit (this file is docs recon only) | shared 11/11; API 37/37; Civio 2/2; CP 14/14 | n/a — declaration is not execution | Fingerprint appends path only when present. No path branch in `evaluateAuthorized`. `executed: false`. CTRL-017 owns outcome. Not pushed. |
 
 **Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 15 / 10 / 1 / CORE 0.
 
@@ -593,10 +596,12 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 ## 19. Remaining Work
 
 1. CTRL-013 is VERIFIED and committed (`455b205`; local, not pushed). G24 remains PARTIAL.
-2. CTRL-014 is VERIFIED and committed (`28ef9f2`; local, not pushed). Do not start CTRL-015 work.
-3. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, outcome schema, or learning loop until this plan reopens those IDs.
-4. Keep G-P1-06–09 blocked.
-5. LexStudy / Vantera remain NOT ACCESSIBLE.
+2. CTRL-014 is VERIFIED and committed (`28ef9f2`; local, not pushed).
+3. CTRL-016 is VERIFIED and committed (`c0ca916`; local, not pushed) as path **declaration**. It is not execution, outcome, cost, or sufficiency proof.
+4. Do **not** start CTRL-017 until a sibling can report execution/outcome truthfully. Do not create CTRL-023.
+5. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, or a new Knowledge Authority.
+6. Keep G-P1-06–09 blocked.
+7. LexStudy / Vantera remain NOT ACCESSIBLE.
 
 ---
 
@@ -606,7 +611,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | -- | -------- | ------ |
 | CAD-001 | 28 gates are a checklist, not 28 products | Active |
 | CAD-002 | Only Atlas API preflight can stop sibling hops | Active (Conclusion B) |
-| CAD-003 | UNNECESSARY must not be inferred (Conclusion C). Model C only with proven cheap **completion** | Active |
+| CAD-003 | UNNECESSARY must not be inferred (Conclusion C). Model C is optional `declaredCompletionPath` (CTRL-016 VERIFIED), not sufficiency or execution | Active |
 | CAD-004 | `applicationOwnedAgentId()` never invents IDs | Active |
 | CAD-005 | HotelOS HITL / payment / HR events stay rejected at Atlas gateway | Active |
 | CAD-006 | Telemetry is not an execution gate | Active |
@@ -614,7 +619,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). Local HEAD `28ef9f2`; `main` ahead of `origin/main` by 4 | Active |
+| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). CTRL-016 is VERIFIED (`c0ca916`, local, not pushed) as declaration only. Local HEAD `c0ca916`; `main` ahead of `origin/main` by 6 | Active |
 | CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
 
 If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replacement, update this graph, keep history in §23.
@@ -623,7 +628,6 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 
 ## 21. Deferred Work
 
-- Model C path authorization (CTRL-016)
 - Outcome / executionId (CTRL-017)
 - Shadow Agent observe (CTRL-018)
 - Learning proposals (CTRL-019)
@@ -666,6 +670,8 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | 2026-09-23 | CTRL-013 operator verification accepted. Status VERIFIED. G24 remains PARTIAL. CTRL-014 not started. Not pushed. | shared 9/9; API preflight+identity 27/27; this commit |
 | 2026-09-23 | CTRL-014 audit: existing denyImpersonation + binding tests already satisfy DoD. No production change. No new bypass route (`evaluateAuthorized` unexported; single POST preflight; `applicationMayExecuteViaGateway` is `def-000` only). G24 remains PARTIAL. Status VERIFIED — not committed. | API 27/27; shared 13/13; public-routes 4/4 |
 | 2026-09-23 | Current-state docs reconciliation after local commits `455b205` and `28ef9f2`. Header/§10 blockers/§17/§18/§19/CAD-011 no longer say HEAD `78f6a66` or CTRL-014 uncommitted. Historical Change Log rows unchanged. G24 PARTIAL. Counts unchanged. CORE closed 0. | local HEAD `28ef9f2`; `main` ahead of `origin/main` by 4 |
+| 2026-09-23 | Prior docs recon `e53681c` is the parent of CTRL-016 implementation. | `e53681c7f0225b3b62ae3c1de9c110f4a87209f2` |
+| 2026-09-23 | CTRL-016 documentation reconciliation. Implementation already committed as `c0ca916` (6 Atlas files). Status VERIFIED from existing DoD: written review + cheap completion exists + app can attest via `declaredCompletionPath` + Control authorizes path not sufficiency. Runtime/production sibling proof is **not** in the CTRL-016 DoD (declaration ≠ execution; CTRL-017). G4 remains MISSING. Counts unchanged. CORE closed 0. Gate 1: no new Control knowledge gap; no CTRL-023. Not committed in this pass. | local HEAD `c0ca916`; `main` ahead of `origin/main` by 6 |
 
 ---
 
@@ -673,7 +679,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 
 | Artifact | Path / ref |
 | -------- | ---------- |
-| Preflight schema + `applicationOwnedAgentId` | `packages/shared/src/platform/application-preflight.ts` |
+| Preflight schema + `applicationOwnedAgentId` + `declaredCompletionPath` | `packages/shared/src/platform/application-preflight.ts` |
 | Decision engine | `apps/api/src/services/application-preflight.ts` `evaluateAuthorized` |
 | Identity tests | `apps/api/src/services/application-preflight-identity.test.ts` |
 | Connected apps | `packages/shared/src/platform/connected-applications.ts` |
@@ -699,9 +705,9 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 
 1. **Last safe point before a paid/resource-consuming operation:** the application’s HMAC call to `POST /api/v1/governance/application-preflight` immediately before the model/tool hop (HotelOS CIO / CaseFlow wrap / Civio Gemini / BrokerOS Gemini). HotelOS embed is an earlier INFORMATIONAL gate before retrieval expansion.
 2. **Where Control can still prevent it:** only that Atlas API evaluateAuthorized path, and only if the client uses ALLOW-only. Control Plane `:3100` cannot stop sibling execution.
-3. **Cheaper path without owning knowledge:** only if the application already has a proven cheap **completion** (CaseFlow cache before preflight; Civio FAQ after preflight). HotelOS pack is not a completion. Control cannot infer sufficiency.
+3. **Cheaper path without owning knowledge:** only if the application already has a proven cheap **completion** (CaseFlow cache before preflight; Civio FAQ after preflight). HotelOS pack is not a completion. Control cannot infer sufficiency. CTRL-016 lets the app declare `LOCAL_COMPLETION_PATH` or `MODEL_PATH`; omit/null is legacy. That declaration is not proof the path ran.
 4. **Control vs application:** Control = identity, authz, risk class, approval/SoD, next-hop authority, audit. Application = cheap path, sufficiency, model choice, result, outcome facts.
-5. **Signals that may cross the boundary:** applicationId, agentId (or null), actorId, tenantId, projectId, request/idempotency, operation, operationClass, riskLevel, decision, evidence refs — not prompts, not memory contents, not domain documents.
+5. **Signals that may cross the boundary:** applicationId, agentId (or null), actorId, tenantId, projectId, request/idempotency, operation, operationClass, riskLevel, decision, evidence refs, optional `declaredCompletionPath` — not prompts, not memory contents, not domain documents. The path field is a declaration, not execution evidence.
 6. **Request → Agent → execution → result:** PARTIAL. Identity on preflight/audit after CTRL-001. Execution/result not reported by siblings.
 7. **Stop an Agent:** Fabric/Atlas-self at Control eval. Application Agent: record kill / deny next preflight — not a live abort.
 8. **Continue after authorization expires:** yes until the next evaluateAuthorized; no mid-flight sibling revoke.
