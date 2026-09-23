@@ -258,6 +258,103 @@ describe("POST /api/v1/governance/application-preflight", () => {
     });
   });
 
+  it("CTRL-012 G12-A: agentDispatch returns KILLED on GOVERNED sibling preflight (next hop only)", async () => {
+    process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
+    process.env.ATLAS_HOTELOS_CONNECTOR_SECRET = SECRET;
+    process.env.ATLAS_HOTELOS_CONNECTOR_TENANT_ID = TENANT;
+    process.env.ATLAS_HOTELOS_CONNECTOR_PROJECT_ID = PROJECT;
+    const civio = body();
+    const civioRes = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(civio),
+      payload: civio,
+    });
+    expect(civioRes.statusCode).toBe(409);
+    expect(civioRes.json()).toMatchObject({
+      decision: "KILLED",
+      executed: false,
+      killSwitchCategory: "agentDispatch",
+      applicationId: "civio",
+      operationClass: "GOVERNED_DECISION",
+    });
+
+    const hotelos = body({
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+      operation: "hotelos.gateway.agent.cio",
+    });
+    const hotelosRes = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(hotelos),
+      payload: hotelos,
+    });
+    expect(hotelosRes.statusCode).toBe(409);
+    expect(hotelosRes.json()).toMatchObject({
+      decision: "KILLED",
+      executed: false,
+      killSwitchCategory: "agentDispatch",
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+      operationClass: "GOVERNED_DECISION",
+    });
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_SECRET;
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_TENANT_ID;
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_PROJECT_ID;
+  });
+
+  it.each(["payments", "webhooksInbound", "webhooksOutbound"] as const)(
+    "CTRL-012 G12-B: %s kill does not kill GOVERNED application preflight",
+    async (category) => {
+      process.env.ATLAS_KILL_SWITCHES = category;
+      const rawBody = body();
+      const res = await app.inject({
+        method: "POST",
+        url: APPLICATION_PREFLIGHT_PATH,
+        headers: sign(rawBody),
+        payload: rawBody,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        decision: "ALLOW",
+        executed: false,
+        killSwitchCategory: null,
+        applicationId: "civio",
+        operationClass: "GOVERNED_DECISION",
+      });
+    },
+  );
+
+  it("CTRL-012 G12-D: hotelos agent.cio is not gated by Fabric pause/quarantine", async () => {
+    delete process.env.ATLAS_KILL_SWITCHES;
+    process.env.ATLAS_HOTELOS_CONNECTOR_SECRET = SECRET;
+    process.env.ATLAS_HOTELOS_CONNECTOR_TENANT_ID = TENANT;
+    process.env.ATLAS_HOTELOS_CONNECTOR_PROJECT_ID = PROJECT;
+    const rawBody = body({
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+      operation: "hotelos.gateway.agent.cio",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(rawBody),
+      payload: rawBody,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      decision: "ALLOW",
+      executed: false,
+      applicationId: "hotelos",
+      agentId: "agent.cio",
+      killSwitchCategory: null,
+    });
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_SECRET;
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_TENANT_ID;
+    delete process.env.ATLAS_HOTELOS_CONNECTOR_PROJECT_ID;
+  });
+
   it("denies destructive operations", async () => {
     const rawBody = body({ operation: "civio.record.delete" });
     const res = await app.inject({

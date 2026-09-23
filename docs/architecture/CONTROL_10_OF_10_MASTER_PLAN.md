@@ -2,8 +2,9 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (commit-boundary reconciliation; no implementation)
-**Git HEAD at reconciliation:** `d596564f50cc9481631af203cf61bf2ff5dac898` (`main`)
+**Last updated:** 2026-09-23 (CTRL-012 tests ready for verify; uncommitted with CTRL-001 evidence)
+**Git HEAD at CTRL-001:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572` (`main`)
+**Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
 **Classification rule:** INTENT ≠ IMPLEMENTATION ≠ REACHABILITY ≠ ENFORCEMENT ≠ TEST COVERAGE ≠ PRODUCTION PROOF
 
 This document is the only authoritative Control-progress register. Remaining-work 01–19 stay historical closure. Gap-analysis stays a separate roadmap. Do not implement from conversation claims.
@@ -85,11 +86,10 @@ Authoritative Atlas commands (`git diff --name-only` + `git ls-files --others --
 
 ```text
 branch: main
-HEAD:   d596564f50cc9481631af203cf61bf2ff5dac898
-git diff --check: PASS (empty)
-git diff --name-only: 12 tracked paths
-untracked (Atlas):    2 paths
-Atlas working-tree total: 14 paths
+CTRL-001 commit: 400759ac3b0ce1c4a32c8f46c13fda18ad228572
+message: control: close agent identity and hotelos telemetry boundary
+files in that commit: 14 (exact §2.2 list)
+parent: d596564f50cc9481631af203cf61bf2ff5dac898
 ```
 
 The prior report said “13 files” and printed 11 bullets. Both were incomplete as a path list. Two bullets were source+test pairs (`application-preflight.ts` + test, `atlas-gateway.ts` + test). The identity/telemetry set is **13 Atlas paths** (the 12 tracked diffs plus the untracked identity test). This WAVE 0 document is a **14th** Atlas path. Do not use “13” as the operator commit set.
@@ -276,7 +276,7 @@ Research is an input. Only requirements that survive code review become tasks.
 | Unknown / shadow Agents (CSA) | Unexpected activity | HotelOS `agent.cio` now explicit on CIO hop (uncommitted). Null is honest. | No observed-vs-known Agent set. Telemetry Agent not a registry. | CORE SUPPORTING | CTRL-018 surface unexpected `agentId` vs known application IDs — no Fabric promotion |
 | Portable Agent identity | Attribution across hops | Schema `agentId` optional; fingerprint includes it; audit echoes it | Delegation hop fields not implemented; CaseFlow/BrokerOS remain null | CORE | CTRL-001 close commit; later only if a real hop exists |
 | Pre-execution authorization | Stop before spend | HMAC preflight; ALLOW-only client | Fail-open when secret unset; CaseFlow cache before preflight | CORE | Document; do not silently fail-closed all classes |
-| Runtime intervention | Stop a running Agent | Fabric pause/quarantine; category kill | Application Agents stop only at next preflight | CORE | CTRL-012 document + test “kill ≠ live stop of sibling Agent” |
+| Runtime intervention | Stop a running Agent | Fabric pause/quarantine; `aiWorkers`/`agentDispatch` next-hop `KILLED` | No sibling live-abort (G12-E NOT A DEFECT) | CORE | CTRL-012 tests READY FOR VERIFY |
 | AI Control Plane (Forrester 3-plane) | Separate control from user plane | ADR-021 PUBLIC / USER / CONTROL / ADMIN | Do not merge ports | CORE | Preserve ADR-021 |
 | AI governance | Policy + HITL + SoD | Approvals DB SoD; HIGH/TOOL require approval | HotelOS HITL (`ai.approval.approved`) is **not** Atlas approval | CORE | Keep rejected; do not map HotelOS HITL into Atlas SoD |
 | AI FinOps (98% unused spend claims) | Accountable spend | Who/operation can be attributed once `agentId` present | No tokens/cost/outcome fields | EXTERNAL / OPTIONAL | CTRL-020 attribution fields only after outcome contract |
@@ -308,7 +308,7 @@ Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `N
 | G9 | Cost / resource | No estimated/actual tokens or cost fields. Attribution possible via applicationId+agentId+operation once committed. | audit input in application-preflight.ts | MISSING | Unaccountable spend | G1, G16 | Attribution only; FinOps stays external |
 | G10 | Risk | HIGH/CRITICAL via operation class + body `riskLevel` on telemetry. Global kill categories. Not Agent-specific. | evaluateAuthorized; atlas-gateway preserve riskLevel | PARTIAL | Under-gated destructive work | G3 | Keep operation-class risk; do not invent Agent risk scores |
 | G11 | Human approval / SoD | Atlas approvals: `decidedBy !== requestedBy`, DB-enforced. Approval context may include optional agentId. HotelOS `ai.approval.approved` is **rejected** at gateway (not Atlas SoD). | approvals path; `atlas-gateway.test.ts` reject HITL | PROVEN (Atlas SoD) | Silent cross-action approval | G3 | Do not map HotelOS HITL |
-| G12 | Runtime authority | Preflight `executed:false`. Fabric pause/quarantine via `atlas-self-agent-control.ts`. Category kill. Application Agent continues until next preflight. Approval expiry / policy change enforced at next evaluate, not mid-token. | kill-switches.ts; atlas-self-agent-control.ts | PARTIAL | Agent runs after kill until next hop | G3 | CTRL-012 prove kill vs live-stop |
+| G12 | Runtime authority | Next-hop only: `aiWorkers`/`agentDispatch` → preflight `KILLED` + `executed:false`. `payments`/`webhooksInbound`/`webhooksOutbound` do not kill application preflight. Fabric pause/quarantine is `def-000` registered Agents only; `agent.cio` is not found. No abort API. In-flight sibling work is not Control-stopped (G12-E NOT A DEFECT). G12-F fail-open/cache bypass stays out of this task. | `application-preflight.test.ts` G12-A/B/D; `atlas-self-agent-control.test.ts` G12-C/D | PARTIAL | In-flight sibling continues after kill | G3 | Do not add live-abort or per-Agent sibling kill |
 | G13 | Execution observability | authorized via preflight audit. executed/failed/skipped not reported by siblings. Telemetry is observational, not a gate (`atlas-gateway.test.ts`). | finish() audit; gateway | PARTIAL | Cannot prove execution | Outcome contract | Wave 4 |
 | G14 | Evidence / provenance | Canonical audit + Atlas-self evidence. Authorization ≠ grounding. | unified-audit-entry.schema.ts; evidence-sufficiency | PARTIAL | Ungrounded claims look authorized | G3, G15 | Do not assume authz = evidence |
 | G15 | Result verification | Atlas-self ALLOW writes verify on fulfill hop. Sibling hops: application-owned, not federated. | control-operations execution notes | MISSING (siblings) | False “success” | Application report-back | Do not force NLI |
@@ -418,12 +418,12 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 
 | ID | Wave | Task | Status | Start | Target | Dependency | DoD | Evidence | Blocker |
 | -- | ---- | ---- | ------ | ----- | ------ | ---------- | --- | -------- | ------- |
-| CTRL-000 | 0 | Repository reconciliation + this Master Plan | VERIFIED | 2026-09-23 | 2026-09-23 | — | Document exists; 24 sections; matrix from source; A–N report recorded | This file; HEAD `d596564`; 2026-09-23 reconciliation + boundary pass | Uncommitted (closes with CTRL-001) |
-| CTRL-001 | 1 | Commit identity + HotelOS telemetry (Atlas-only) | NOT STARTED | 2026-09-23 | 2026-09-25 | CTRL-000; **operator commit authorization** | Implementation verified; tests verified (shared 17 / API 18 / CP 74); HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED; commit not made. DoD = Atlas-only commit of the 14 paths in §2.2; siblings excluded; no UNNECESSARY fields | `git show` after authorization | Operator has not authorized commit |
-| CTRL-012 | 3 | Prove kill/quarantine vs sibling live-stop | NOT STARTED | 2026-09-25 | 2026-09-30 | CTRL-001 | Tests + plan text: category kill + Fabric pause; application Agent stops only at next preflight | New tests on evaluateAuthorized + atlas-self-agent-control | None after commit |
+| CTRL-000 | 0 | Repository reconciliation + this Master Plan | VERIFIED | 2026-09-23 | 2026-09-23 | — | Document exists; 24 sections; matrix from source; A–N report recorded | Commit `400759a` includes this file | Post-commit evidence edit pending |
+| CTRL-001 | 1 | Commit identity + HotelOS telemetry (Atlas-only) | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000; operator authorization | Implementation verified; tests verified (shared 17 / API 18 / CP 74); HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED; Atlas-only 14-file commit made; siblings excluded; no UNNECESSARY fields | `git show --name-only 400759a` = 14 paths | Not pushed. CORE still 0 |
+| CTRL-012 | 3 | Prove kill/quarantine vs sibling live-stop | READY FOR VERIFY | 2026-09-23 | 2026-09-23 | CTRL-001 | G12-A–D tests PASS; G12-E documented NOT A DEFECT; G12-F excluded; no abort API; no Fabric promotion; no runtime capability | API 20/20 + CP 14/14 (2026-09-23) | Not committed. Status set only after operator verify |
 | CTRL-013 | 8 | Document and test fail-open / fail-closed by operation class | NOT STARTED | 2026-09-25 | 2026-09-30 | CTRL-001 | Matrix in §15 matches `evaluateAuthorized`; tests for unset secret | Test names + this §15 | None |
 | CTRL-014 | 1 | Lock impersonation / application-binding regressions | NOT STARTED | 2026-09-25 | 2026-09-30 | CTRL-001 | Existing denyImpersonation tests remain green; no new bypass route | application-preflight tests | None |
-| CTRL-015 | 0 | Keep remaining-work 01–19 historical; pointer only | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000 | Pointer exists; 01–19 not rewritten | `remaining-work.md` lines 16–20; `git diff` shows only the two new headings | Not in HEAD until CTRL-001 |
+| CTRL-015 | 0 | Keep remaining-work 01–19 historical; pointer only | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000 | Pointer exists; 01–19 not rewritten | In `400759a` as `docs/architecture/remaining-work.md` | None |
 | CTRL-016 | 2 | Architecture review: Model C path authorization | DEFERRED | — | 2026-10-21 | Proven cheap **completion** in an app | Written review: cheap path exists, app can attest, Control authorizes path not sufficiency | HotelOS pack is **not** a completion — current evidence says DEFER | No truthful sufficiency signal |
 | CTRL-017 | 4 | Outcome / execution correlation contract | DEFERRED | — | 2026-12-09 | CTRL-001; app report-back design | Schema + one sibling hop proving executionId↔preflight | None yet | No sibling report-back |
 | CTRL-018 | 6 | Observed vs expected application Agent IDs (no Fabric registry) | DEFERRED | — | 2027-01-20 | CTRL-001 | Surface unexpected agentId; `notAnAgentRegistry` remains true | portfolio-governance-view.ts | Identity commit + telemetry volume |
@@ -479,7 +479,7 @@ Do not add tests that invent Agent IDs or UNNECESSARY decisions.
 | Preflight stops CIO | HotelOS calls API; ALLOW-only before Gemini | Local tests; HotelOS package test blocked |
 | Telemetry does not authorize | CP test: ingest ≠ execution gate | PASS in CP suite |
 | Fabric pause | atlas-self-agent-control path | Code + existing CP tests |
-| Sibling Agent live-stop | **Cannot** be proven — not implemented | Document as limitation |
+| Sibling Agent live-stop | **Cannot** be proven — not implemented (G12-E NOT A DEFECT) | CTRL-012 tests + this row |
 | Production HMAC | Needs live secrets | ENVIRONMENT BLOCKED |
 | LexStudy / Vantera | Repos not on workstation | NOT ACCESSIBLE |
 
@@ -512,7 +512,7 @@ Do not add tests that invent Agent IDs or UNNECESSARY decisions.
 | Telemetry unavailable | Execution may proceed | Telemetry is not a gate |
 | Audit unavailable | Treat as reliability incident; do not silently drop CORE proof | Canonical audit is the record |
 | Duplicate / retry | Nonce + idempotency | Replay resistance |
-| Kill category engaged | Next preflight KILLED | Not a mid-flight sibling abort |
+| Kill category engaged | Next preflight `KILLED` for `aiWorkers`/`agentDispatch` only | Not a mid-flight sibling abort (G12-E). `payments`/webhook kills do not apply to application preflight |
 | Policy change | Next evaluate | No live rewrite of in-flight tokens |
 | Model unavailable | Application failure | Application-owned |
 | LexStudy/Vantera missing | NOT ACCESSIBLE | Do not invent connectors |
@@ -528,7 +528,7 @@ Do not add tests that invent Agent IDs or UNNECESSARY decisions.
 | LexStudy repo | G1/G22 lexstudy | Not on workstation | Contract row only | Clone / access |
 | Vantera repo | G1/G22 vantera | Not on workstation | Contract row only | Clone / access |
 | G-P1-06–09 | G28, production proof | `docs/architecture/remaining-external-dependencies.md` | Local HMAC tests | AWS / Supabase / production secrets |
-| Operator commit not authorized | CTRL-001 | Policy: no commit unless asked | Code + tests already run | Explicit commit ask |
+| Operator commit not authorized | CTRL-001 | Cleared 2026-09-23 | Commit `400759a` | None |
 | Sibling dirty trees (pre-existing + this pass) | Commit hygiene | Separate repos | Atlas-only commit path B | Do not reset siblings |
 
 ---
@@ -558,7 +558,7 @@ OPTIONAL / DEFERRED:          CTRL-016–CTRL-022
 Environment blockers:         6 rows in §16
 ```
 
-Uncommitted identity work is **PARTIAL / READY TO COMMIT**, not CLOSED.
+Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 next-hop kill/Fabric-scope tests are uncommitted and READY FOR VERIFY. Counts unchanged (G12 remains PARTIAL). CORE closed remains 0.
 
 ---
 
@@ -568,17 +568,19 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 
 | Item | Date | Commit | Files | Tests | Runtime | Remaining limitation |
 | ---- | ---- | ------ | ----- | ----- | ------- | -------------------- |
-| CTRL-000 VERIFIED | 2026-09-23 | none | this file | n/a (docs) | n/a | Uncommitted until CTRL-001 |
-| CTRL-015 VERIFIED | 2026-09-23 | none | `docs/architecture/remaining-work.md` (pointer only) | n/a (docs) | n/a | Pointer not in HEAD until CTRL-001. 01–19 unchanged. |
+| CTRL-000 VERIFIED | 2026-09-23 | `400759a` | this file (as committed) | n/a (docs) | n/a | Later evidence edits to this file are uncommitted |
+| CTRL-001 VERIFIED | 2026-09-23 | `400759ac3b0ce1c4a32c8f46c13fda18ad228572` | 14 paths from `git show --name-only --format="" HEAD` | shared 17 / API 18 / CP 74 (prior pass) | HotelOS ai-gateway + BrokerOS vitest ENVIRONMENT BLOCKED | Not pushed. Not CORE-closed. Sibling trees not committed. |
+| CTRL-015 VERIFIED | 2026-09-23 | `400759a` | `docs/architecture/remaining-work.md` | n/a (docs) | n/a | 01–19 unchanged |
+| CTRL-012 READY FOR VERIFY | 2026-09-23 | none | `application-preflight.test.ts`; `atlas-self-agent-control.test.ts`; this file | API 20/20; CP 14/14 | n/a — no new runtime | G12 stays PARTIAL. G12-E not a defect. G12-F out of scope. Not committed. |
 
-**Recorded but not closed:** identity + telemetry implementation (2026-09-23). Implementation and focused Atlas tests are verified; commit is CTRL-001 (NOT STARTED). CORE closed remains 0 — identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, not committed, no closed evidence block).
+**Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 15 / 10 / 1 / CORE 0.
 
 ---
 
 ## 19. Remaining Work
 
-1. CTRL-001: authorize the Atlas-only commit of the 14 paths in §2.2. Do not start CTRL-012.
-2. CTRL-012 / 013 / 014 lock tests and fail/kill honesty.
+1. Operator verify of CTRL-012 (no commit until authorized).
+2. CTRL-013 / CTRL-014 after CTRL-012 is verified.
 3. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, outcome schema, or learning loop until this plan reopens those IDs.
 4. Keep G-P1-06–09 blocked.
 5. LexStudy / Vantera remain NOT ACCESSIBLE.
@@ -599,7 +601,8 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | First implementation task after this plan is CTRL-001 only | Active |
+| CAD-011 | After CTRL-001 (`400759a`), CTRL-012 is the only opened implementation | Active |
+| CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
 
 If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replacement, update this graph, keep history in §23.
 
@@ -641,6 +644,8 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | ---- | ------ | -------- |
 | 2026-09-23 | Created Master Plan from repository reconciliation. No Control feature implementation in that step. Pointer added in remaining-work.md. | HEAD `d596564` |
 | 2026-09-23 | Commit-boundary reconciliation. Corrected “13 files / 11 bullets” to 12 tracked + 2 untracked = 14 Atlas paths. CTRL-000 and CTRL-015 → VERIFIED (not CLOSED). CTRL-001 remains NOT STARTED. Capability counts unchanged (2+15+10+1=28). CORE closed remains 0. No implementation in this pass. | `git diff --name-only` (12); untracked identity test + this file; `git diff --check` PASS |
+| 2026-09-23 | CTRL-001 Atlas-only commit `400759ac3b0ce1c4a32c8f46c13fda18ad228572` — 14 files, message `control: close agent identity and hotelos telemetry boundary`. Not pushed. Trailing whitespace stripped from this file so `git diff --cached --check` could PASS; no second commit of this evidence update. Counts unchanged. CORE closed 0. | `git show --name-only --format="" 400759a` |
+| 2026-09-23 | CTRL-012 Atlas-only tests for G12-A–D. No runtime capability, no abort API, no Fabric promotion, no sibling edits. G12-E NOT A DEFECT. G12-F excluded. G12 stays PARTIAL. Counts unchanged. CORE closed 0. Status READY FOR VERIFY — not committed. | API 20/20; CP 14/14 |
 
 ---
 

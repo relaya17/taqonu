@@ -93,6 +93,58 @@ describe("Atlas-self agent control", () => {
     expect(getRegisteredAgent("CODE_ENGINEER")?.status).not.toBe("REVOKED");
   });
 
+  it("CTRL-012 G12-C: application-owned agent.cio is not a Fabric control target", async () => {
+    expect(getRegisteredAgent("agent.cio")).toBeUndefined();
+    expect(getRegisteredAgent("LEGAL_LETTER_AGENT")).toBeUndefined();
+    expect(getRegisteredAgent("HOUSING_AGENT")).toBeUndefined();
+
+    const applied = await applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "agent.cio",
+      action: "pause",
+      reason: "must not promote application Agents",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "44444444-4444-4444-8444-444444444444",
+    });
+    expect(applied.decision).toBe("DENY");
+    expect(applied.executed).toBe(false);
+    expect(applied.applicationId).toBe(ATLAS_SELF_APPLICATION_ID);
+    expect(applied.reason).toMatch(/Agent "agent\.cio" not found/);
+    expect(getRegisteredAgent("agent.cio")).toBeUndefined();
+  });
+
+  it("CTRL-012 G12-D: pause and quarantine apply only to registered Atlas-self Agents", async () => {
+    const paused = await applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "CODE_ENGINEER",
+      action: "pause",
+      reason: "registered Fabric overlay",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "55555555-5555-4555-8555-555555555555",
+    });
+    expect(paused.decision).toBe("ALLOW");
+    expect(paused.executed).toBe(true);
+    expect(paused.applicationId).toBe("def-000");
+    expect(getRegisteredAgent("CODE_ENGINEER")?.status).toBe("PAUSED");
+
+    const quarantined = await applyAtlasSelfAgentControl({
+      actorId: "cp:service",
+      agentId: "RESEARCHER",
+      action: "quarantine",
+      reason: "registered Fabric overlay",
+      reauthenticated: true,
+      independentApprovalVerified: true,
+      approvalId: "66666666-6666-4666-8666-666666666666",
+    });
+    expect(quarantined.decision).toBe("ALLOW");
+    expect(quarantined.executed).toBe(true);
+    expect(getRegisteredAgent("RESEARCHER")?.status).toBe("QUARANTINED");
+    expect(getRegisteredAgent("agent.cio")).toBeUndefined();
+    expect(getRegisteredAgent("LEGAL_LETTER_AGENT")).toBeUndefined();
+  });
+
   it("applies the overlay only after independently verified approval", async () => {
     const applied = await applyAtlasSelfAgentControl({
       actorId: "cp:service",
