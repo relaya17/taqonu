@@ -192,4 +192,62 @@ describe("application preflight agent identity audit", () => {
     delete process.env.ATLAS_CASEFLOW_CONNECTOR_TENANT_ID;
     delete process.env.ATLAS_CASEFLOW_CONNECTOR_PROJECT_ID;
   });
+
+  it("CTRL-016: audit records declaredCompletionPath without claiming execution or sufficiency", async () => {
+    process.env.ATLAS_CASEFLOW_CONNECTOR_SECRET = SECRET;
+    process.env.ATLAS_CASEFLOW_CONNECTOR_TENANT_ID = TENANT;
+    process.env.ATLAS_CASEFLOW_CONNECTOR_PROJECT_ID = PROJECT;
+    const rawBody = JSON.stringify({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: TENANT,
+      projectId: PROJECT,
+      actorId: "caseflow-runtime",
+      actorKind: "USER",
+      agentId: null,
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+      requestId: "req-cf-path-audit",
+      idempotencyKey: "idem-cf-path-audit",
+    });
+    const result = await evaluateApplicationPreflight({
+      rawBody,
+      headers: sign(rawBody),
+    });
+    expect(result.status).toBe(200);
+    if (!("decision" in result.body)) throw new Error("expected preflight response");
+    expect(result.body).toMatchObject({
+      decision: "ALLOW",
+      executed: false,
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    expect(result.body).not.toHaveProperty("knowledgeSufficient");
+    expect(result.body).not.toHaveProperty("UNNECESSARY");
+    expect(result.body).not.toHaveProperty("executionId");
+
+    const latest = listUnifiedAuditEntries()
+      .filter((entry) => entry.type === "application.preflight.evaluated")
+      .at(-1);
+    expect(latest?.result).toBe("SUCCESS");
+    expect(latest?.verificationVerdict).toBe("NOT_APPLICABLE");
+    expect(latest?.input).toMatchObject({
+      applicationId: "caseflow",
+      operation: "caseflow.openai.chat",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    expect(latest?.output).toMatchObject({
+      decision: "ALLOW",
+      executed: false,
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    expect(latest?.input).not.toHaveProperty("knowledgeSufficient");
+    expect(latest?.input).not.toHaveProperty("UNNECESSARY");
+    expect(latest?.input).not.toHaveProperty("executionId");
+    expect(latest?.output).not.toHaveProperty("outcomeStatus");
+    expect(latest?.output).not.toHaveProperty("resultStatus");
+    delete process.env.ATLAS_CASEFLOW_CONNECTOR_SECRET;
+    delete process.env.ATLAS_CASEFLOW_CONNECTOR_TENANT_ID;
+    delete process.env.ATLAS_CASEFLOW_CONNECTOR_PROJECT_ID;
+  });
 });

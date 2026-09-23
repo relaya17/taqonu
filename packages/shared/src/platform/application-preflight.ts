@@ -61,6 +61,18 @@ export const APPLICATION_PREFLIGHT_DECISIONS = [
 export type ApplicationPreflightDecision =
   (typeof APPLICATION_PREFLIGHT_DECISIONS)[number];
 
+/**
+ * Application-declared completion path for a governed hop.
+ * Declaration only — not execution, outcome, sufficiency, or UNNECESSARY.
+ * Omit or send `null` for legacy callers.
+ */
+export const APPLICATION_PREFLIGHT_COMPLETION_PATHS = [
+  "LOCAL_COMPLETION_PATH",
+  "MODEL_PATH",
+] as const;
+export type ApplicationPreflightDeclaredCompletionPath =
+  (typeof APPLICATION_PREFLIGHT_COMPLETION_PATHS)[number];
+
 export const applicationPreflightRequestSchema = z.object({
   schemaVersion: z.literal(APPLICATION_PREFLIGHT_SCHEMA),
   applicationId: z.string().trim().min(1).max(64),
@@ -78,6 +90,14 @@ export const applicationPreflightRequestSchema = z.object({
   agentId: z.string().trim().min(1).max(200).nullable().optional(),
   operation: z.string().trim().min(1).max(200),
   operationClass: z.enum(APPLICATION_PREFLIGHT_OPERATION_CLASSES),
+  /**
+   * Pre-execution path declaration. Not execution evidence, not sufficiency,
+   * not an UNNECESSARY decision. Omit or `null` = undeclared / legacy.
+   */
+  declaredCompletionPath: z
+    .enum(APPLICATION_PREFLIGHT_COMPLETION_PATHS)
+    .nullable()
+    .optional(),
   risk: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   requestId: z.string().trim().min(1).max(128),
   idempotencyKey: z.string().trim().min(1).max(200),
@@ -104,6 +124,16 @@ export const applicationPreflightResponseSchema = z.object({
   approvalRequestId: z.string().uuid().nullable(),
   killSwitchCategory: z.string().nullable(),
   decisionId: z.string().min(1).max(128),
+  /**
+   * Echo of the request declaration, or `null` when omitted.
+   * Optional on the schema so older serialized responses still parse.
+   * Atlas `finish()` always emits `null` or the declared value.
+   * Not proof that the path executed.
+   */
+  declaredCompletionPath: z
+    .enum(APPLICATION_PREFLIGHT_COMPLETION_PATHS)
+    .nullable()
+    .optional(),
 });
 export type ApplicationPreflightResponse = z.infer<
   typeof applicationPreflightResponseSchema
@@ -118,6 +148,15 @@ export function applicationOwnedAgentId(
 ): string | null {
   const trimmed = value?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Omit / null / unknown → `null`. Does not invent a path. */
+export function applicationDeclaredCompletionPath(
+  value: ApplicationPreflightDeclaredCompletionPath | null | undefined,
+): ApplicationPreflightDeclaredCompletionPath | null {
+  return value === "LOCAL_COMPLETION_PATH" || value === "MODEL_PATH"
+    ? value
+    : null;
 }
 
 /** Only ALLOW may proceed to the application model/tool. */

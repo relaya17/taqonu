@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  APPLICATION_PREFLIGHT_COMPLETION_PATHS,
   APPLICATION_PREFLIGHT_OPERATION_CLASSES,
   APPLICATION_PREFLIGHT_SCHEMA,
+  applicationDeclaredCompletionPath,
   applicationOwnedAgentId,
   applicationPreflightAllowsExecution,
   applicationPreflightRequestSchema,
@@ -78,6 +80,7 @@ describe("application preflight contract", () => {
     });
     expect(parsed.applicationId).toBe("civio");
     expect(parsed.agentId).toBeUndefined();
+    expect(parsed.declaredCompletionPath).toBeUndefined();
   });
 
   it("accepts an explicit application-owned agentId and records omitted as absent", () => {
@@ -149,7 +152,128 @@ describe("application preflight contract", () => {
       approvalRequestId: null,
       killSwitchCategory: null,
       decisionId: "decision-1",
+      declaredCompletionPath: null,
     });
     expect(parsed.agentId).toBeNull();
+    expect(parsed.declaredCompletionPath).toBeNull();
+
+    const legacyResponse = applicationPreflightResponseSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      decision: "ALLOW",
+      executed: false,
+      reason: "allowed",
+      requestId: "req-legacy",
+      applicationId: "hotelos",
+      agentId: null,
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      operation: "hotelos.gateway.embed",
+      operationClass: "INFORMATIONAL",
+      unavailablePolicy: "FAIL_OPEN",
+      approvalRequestId: null,
+      killSwitchCategory: null,
+      decisionId: "decision-legacy",
+    });
+    expect(legacyResponse.declaredCompletionPath).toBeUndefined();
+  });
+
+  it("CTRL-016: accepts LOCAL_COMPLETION_PATH and MODEL_PATH and rejects unknown paths", () => {
+    expect(APPLICATION_PREFLIGHT_COMPLETION_PATHS).toEqual([
+      "LOCAL_COMPLETION_PATH",
+      "MODEL_PATH",
+    ]);
+    const local = applicationPreflightRequestSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "caseflow-runtime",
+      actorKind: "USER",
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+      requestId: "req-local",
+      idempotencyKey: "idem-local",
+    });
+    expect(local.declaredCompletionPath).toBe("LOCAL_COMPLETION_PATH");
+    expect(applicationDeclaredCompletionPath(local.declaredCompletionPath)).toBe(
+      "LOCAL_COMPLETION_PATH",
+    );
+
+    const model = applicationPreflightRequestSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "caseflow-runtime",
+      actorKind: "USER",
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      declaredCompletionPath: "MODEL_PATH",
+      requestId: "req-model",
+      idempotencyKey: "idem-model",
+    });
+    expect(model.declaredCompletionPath).toBe("MODEL_PATH");
+
+    const explicitNull = applicationPreflightRequestSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "caseflow-runtime",
+      actorKind: "USER",
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      declaredCompletionPath: null,
+      requestId: "req-null-path",
+      idempotencyKey: "idem-null-path",
+    });
+    expect(explicitNull.declaredCompletionPath).toBeNull();
+    expect(applicationDeclaredCompletionPath(undefined)).toBeNull();
+    expect(applicationDeclaredCompletionPath(null)).toBeNull();
+
+    const unknown = applicationPreflightRequestSchema.safeParse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      actorId: "caseflow-runtime",
+      actorKind: "USER",
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      declaredCompletionPath: "UNNECESSARY",
+      requestId: "req-unknown",
+      idempotencyKey: "idem-unknown",
+    });
+    expect(unknown.success).toBe(false);
+  });
+
+  it("CTRL-016: response echo is not execution, sufficiency, or UNNECESSARY", () => {
+    const parsed = applicationPreflightResponseSchema.parse({
+      schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
+      decision: "ALLOW",
+      executed: false,
+      reason: "allowed",
+      requestId: "req-1",
+      applicationId: "caseflow",
+      agentId: null,
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      operation: "caseflow.openai.chat",
+      operationClass: "GOVERNED_DECISION",
+      unavailablePolicy: "FAIL_OPEN",
+      approvalRequestId: null,
+      killSwitchCategory: null,
+      decisionId: "decision-1",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    expect(parsed.executed).toBe(false);
+    expect(parsed.declaredCompletionPath).toBe("LOCAL_COMPLETION_PATH");
+    expect(parsed).not.toHaveProperty("knowledgeSufficient");
+    expect(parsed).not.toHaveProperty("UNNECESSARY");
+    expect(parsed).not.toHaveProperty("executionId");
+    expect(parsed).not.toHaveProperty("outcomeStatus");
+    expect(parsed).not.toHaveProperty("resultStatus");
+    expect(parsed).not.toHaveProperty("proposedPath");
   });
 });

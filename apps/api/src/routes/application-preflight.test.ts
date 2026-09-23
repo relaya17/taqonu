@@ -540,4 +540,147 @@ describe("POST /api/v1/governance/application-preflight", () => {
       expect(String(res.json().reason)).toMatch(/CONNECTOR_SECRET must be set/i);
     },
   );
+
+  it.each([
+    { declaredCompletionPath: undefined, echo: null },
+    { declaredCompletionPath: null, echo: null },
+    { declaredCompletionPath: "MODEL_PATH" as const, echo: "MODEL_PATH" },
+    {
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH" as const,
+      echo: "LOCAL_COMPLETION_PATH",
+    },
+  ])(
+    "CTRL-016: GOVERNED_DECISION $echo produces the same ALLOW class and echoes the declaration",
+    async ({ declaredCompletionPath, echo }) => {
+      const rawBody = body(
+        declaredCompletionPath === undefined
+          ? {}
+          : { declaredCompletionPath },
+      );
+      const res = await app.inject({
+        method: "POST",
+        url: APPLICATION_PREFLIGHT_PATH,
+        headers: sign(rawBody),
+        payload: rawBody,
+      });
+      expect(res.statusCode).toBe(200);
+      const json = res.json() as Record<string, unknown>;
+      expect(json).toMatchObject({
+        decision: "ALLOW",
+        executed: false,
+        operationClass: "GOVERNED_DECISION",
+        declaredCompletionPath: echo,
+      });
+      expect(json).not.toHaveProperty("knowledgeSufficient");
+      expect(json).not.toHaveProperty("UNNECESSARY");
+      expect(json).not.toHaveProperty("executionId");
+      expect(json).not.toHaveProperty("outcomeStatus");
+      expect(json).not.toHaveProperty("resultStatus");
+    },
+  );
+
+  it("CTRL-016: LOCAL_COMPLETION_PATH does not bypass HIGH_RISK approval", async () => {
+    const rawBody = body({
+      operation: "civio.legal.scan-contract",
+      operationClass: "HIGH_RISK",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(rawBody),
+      payload: rawBody,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({
+      decision: "REQUIRE_APPROVAL",
+      executed: false,
+      unavailablePolicy: "FAIL_CLOSED",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+  });
+
+  it("CTRL-016: LOCAL_COMPLETION_PATH does not bypass TOOL_ACTION approval", async () => {
+    const rawBody = body({
+      operation: "civio.legal.tool",
+      operationClass: "TOOL_ACTION",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(rawBody),
+      payload: rawBody,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({
+      decision: "REQUIRE_APPROVAL",
+      executed: false,
+      unavailablePolicy: "FAIL_CLOSED",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+  });
+
+  it("CTRL-016: unknown declaredCompletionPath is rejected before authorization", async () => {
+    const rawBody = body({ declaredCompletionPath: "UNNECESSARY" });
+    const res = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(rawBody),
+      payload: rawBody,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "Preflight request is invalid" });
+  });
+
+  it("CTRL-016: same idempotency key with a different declared path is not reused", async () => {
+    const firstBody = body({
+      requestId: "req-path-idem-1",
+      idempotencyKey: "idem-path-stable-1",
+      declaredCompletionPath: "MODEL_PATH",
+    });
+    const first = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(firstBody),
+      payload: firstBody,
+    });
+    const secondBody = body({
+      requestId: "req-path-idem-1",
+      idempotencyKey: "idem-path-stable-1",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(secondBody),
+      payload: secondBody,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().declaredCompletionPath).toBe("MODEL_PATH");
+    expect(second.statusCode).toBe(409);
+    expect(second.json()).toMatchObject({
+      decision: "DENY",
+      executed: false,
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+  });
+
+  it("CTRL-016: LOCAL_COMPLETION_PATH does not bypass agentDispatch kill", async () => {
+    process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
+    const rawBody = body({ declaredCompletionPath: "LOCAL_COMPLETION_PATH" });
+    const res = await app.inject({
+      method: "POST",
+      url: APPLICATION_PREFLIGHT_PATH,
+      headers: sign(rawBody),
+      payload: rawBody,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      decision: "KILLED",
+      executed: false,
+      killSwitchCategory: "agentDispatch",
+      declaredCompletionPath: "LOCAL_COMPLETION_PATH",
+    });
+  });
 });

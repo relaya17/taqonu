@@ -11,6 +11,7 @@ import {
   APPLICATION_PREFLIGHT_SCHEMA,
   APPLICATION_PREFLIGHT_SECRET_MIN_LENGTH,
   FABRIC_AGENT_IDS,
+  applicationDeclaredCompletionPath,
   applicationOwnedAgentId,
   applicationPreflightRequestSchema,
   httpStatusForPreflightDecision,
@@ -104,7 +105,7 @@ function pruneNonces(now: number): void {
 }
 
 function fingerprintOf(request: ApplicationPreflightRequest): string {
-  return [
+  const parts = [
     request.applicationId,
     request.tenantId,
     request.projectId,
@@ -115,7 +116,12 @@ function fingerprintOf(request: ApplicationPreflightRequest): string {
     request.requestId,
     request.idempotencyKey,
     request.approvalId ?? "",
-  ].join("\n");
+  ];
+  const declaredPath = applicationDeclaredCompletionPath(
+    request.declaredCompletionPath,
+  );
+  if (declaredPath) parts.push(declaredPath);
+  return parts.join("\n");
 }
 
 function denyImpersonation(
@@ -167,6 +173,9 @@ function finish(input: {
   readonly killSwitchCategory?: string | null;
 }): ApplicationPreflightResponse {
   const agentId = applicationOwnedAgentId(input.request.agentId);
+  const declaredCompletionPath = applicationDeclaredCompletionPath(
+    input.request.declaredCompletionPath,
+  );
   const response: ApplicationPreflightResponse = {
     schemaVersion: APPLICATION_PREFLIGHT_SCHEMA,
     decision: input.decision,
@@ -183,6 +192,7 @@ function finish(input: {
     approvalRequestId: input.approvalRequestId ?? null,
     killSwitchCategory: input.killSwitchCategory ?? null,
     decisionId: randomUUID(),
+    declaredCompletionPath,
   };
   appendUnifiedAuditEntry({
     type: "application.preflight.evaluated",
@@ -210,12 +220,14 @@ function finish(input: {
       operation: input.request.operation,
       operationClass: input.request.operationClass,
       idempotencyKey: input.request.idempotencyKey,
+      declaredCompletionPath,
     },
     output: {
       decision: input.decision,
       executed: false,
       decisionId: response.decisionId,
       killSwitchCategory: input.killSwitchCategory ?? null,
+      declaredCompletionPath,
     },
     result: "SUCCESS",
     verificationVerdict: "NOT_APPLICABLE",
