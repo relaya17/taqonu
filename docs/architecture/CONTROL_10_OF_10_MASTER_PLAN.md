@@ -2,20 +2,21 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (CTRL-019 documentation reconciliation; implementation `ecdae7b`; PARTIAL — code/tests proven; repeated-FAILURE runtime unproven)
-**Git HEAD:** `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` (`main`; this documentation recon is uncommitted)
+**Last updated:** 2026-09-23 (full Task 19 + Task 20 reconciliation into this file only; G16 durability `39f654b` is IMPLEMENTED + TESTED, not production-VERIFIED)
+**Git HEAD:** `39f654b12c33dd39b2b0c5396b4977e8a80dc5b5` (`main`; this documentation recon is uncommitted; `main` ahead of `origin/main` by 2)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
 **CTRL-013 commit:** `455b205b07dd507ddeb0407da9abaac5e8b17232`
 **CTRL-014 commit:** `28ef9f20177dcdfa62719073182bc32104ecc7b2`
 **CTRL-016 commit:** `c0ca916ed28f4147587675aa8fa0a3070fd211ac` (parent `e53681c7f0225b3b62ae3c1de9c110f4a87209f2`)
-**CTRL-017 commit:** none — VERIFIED by LOCAL RUNTIME proof; implementation and this recon are uncommitted
+**CTRL-017 commit:** none recorded as a dedicated commit — VERIFIED by LOCAL RUNTIME proof (CaseFlow hop). Process-local decision/report Maps are superseded on the **live Postgres path** by `39f654b`.
 **CTRL-018 commit:** `bd1d2db2fe46e19d54b50332d2aede62cf1597bd` (PARTIAL — implementation + tests; runtime EXPECTED/UNEXPECTED not proven)
 **CTRL-019 commit:** `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` (PARTIAL — implementation + tests; repeated-FAILURE runtime unproven)
+**G16 durability commit (R01+R02+R03):** `39f654b12c33dd39b2b0c5396b4977e8a80dc5b5` — 13 Atlas files; local only; **not pushed**. Master Plan was intentionally not in that commit.
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
 **Classification rule:** INTENT ≠ IMPLEMENTATION ≠ REACHABILITY ≠ ENFORCEMENT ≠ TEST COVERAGE ≠ PRODUCTION PROOF
 
-This document is the only authoritative Control-progress register. Remaining-work 01–19 stay historical closure. Gap-analysis stays a separate roadmap. Do not implement from conversation claims.
+This document is the **only** authoritative Control remediation register. All Task 19 findings (F01–F42 / R01–R20), Task 20 design lock + implementation evidence, CTRL-001–CTRL-022, and intentional non-goals live here. Remaining-work 01–19 stay historical closure. Gap-analysis stays a separate roadmap. Do not implement from conversation claims. Do not create a second gap/remediation file.
 
 ---
 
@@ -297,44 +298,112 @@ Research is an input. Only requirements that survive code review become tasks.
 | Kill / intervention | Enforceable stop | Category kill + Fabric quarantine | Global categories, not per-app/per-Agent | CORE | Do not fake per-Agent kill for siblings |
 | Agent lifecycle | Known / observed / retired | Fabric catalog only | Application Agents are not lifecycle-managed by Control | APPLICATION | Observe only |
 | Unnecessary inference | Avoid paid path | Two preflight points exist | UNNECESSARY decision = not implementable without cheap-path proof | APPLICATION then path-authz | Model C only; no Model B |
-| Cost/outcome attribution | Who spent, what resulted | Audit has applicationId/agentId/actorId/operation; one local CaseFlow hop correlated `executionId`↔preflight | Not production; not all siblings; no FinOps | CORE SUPPORTING | CTRL-017 LOCAL RUNTIME only; CTRL-020 still deferred |
+| Cost/outcome attribution | Who spent, what resulted | Audit has applicationId/agentId/actorId/operation; one local CaseFlow hop correlated `executionId`↔preflight | Not production; not all siblings; no FinOps | CORE SUPPORTING | CTRL-017 LOCAL RUNTIME only; CTRL-020 / R14 still deferred |
+| Durable connector nonce / replay (F02, F24, F25, F26) | Multi-isolate + restart replay safety | HMAC + 5 min skew + 10 min TTL preserved. Live path: Postgres `connector_nonces` T0 (`39f654b`). Local/test: Maps. | Real PG apply, multi-isolate, production Vercel, production 503 | CORE | R01 → **G3**. IMPLEMENTED + TESTED. Not production-VERIFIED. |
+| Durable decision/report correlation (F08) | G16 on serverless | Live path: `preflight_decisions` + `execution_reports` T1/T2 (`39f654b`). Binding is not `decisionId` alone. | Same production blockers as R01 | CORE | R02 → **G16**. IMPLEMENTED + TESTED. Not production-VERIFIED. |
+| Canonical application audit (F14) | Shared audit on Vercel | Live path: RPC INSERTs `public.audit_logs` inside T1/T2. Node must not dual-write canonical audit. | Real PG transaction + production | CORE | R03 → **G20**. IMPLEMENTED + TESTED. Not production-VERIFIED. |
+| Full-file NDJSON audit scan (F30) | Query cost at volume | `listUnifiedAuditEntries` still `readFileSync` entire file | Production volume | CORE SUPPORTING | R04 → **G20**. Still MISSING. Not G16. |
+| Top-level tenant/project on audit (F15) | Reconstruction without JSON mining | Promoted on `application.preflight.evaluated` + `application.execution.reported` only | Other event types still nest ids | CORE SUPPORTING | R05 → **G20**. PARTIAL. |
+| Audit export / pagination / retention (F16) | Incidents without SSH; operator UX; compliance | GET `/audit` list+limit only | No export, no cursor, no TTL policy | CORE SUPPORTING | R06/R18 → **G20/G27**. R20 → **G20/G28**. Still MISSING / optional. |
+| Admin/operator privilege contract (F18) | Prevent silent scope drift | Instance-admin all-owners is **intentional** (F17/F39) | Written admin vs operator contract not locked | Control + Web | R07 → §6.2 (not a Control G engine; no new CTRL). |
+| Kernel lessons GET auth (F38) | Defense in depth | Handler is not on the public-route list | `requireUser` missing | Shared/API | R08 → §6.2. Not a Control preflight gap. |
+| Learning citation index (F40) | Avoid O(n²) audit walks | CTRL-019 rebuilds from unified audit (correct durability pattern) | Nested full-file scan | CONTROL SUPPORTING | R09 → **G21**. Still MISSING. |
+| Memory DELETE / TTL (F19) | Ownership completeness | Supersede + user isolation tests (F33) | No explicit DELETE/TTL | Web/API | R10 → **G6**. Not a Control engine. |
+| SSRF / generic HTTP egress (F21) | Unsafe user-influenced fetch | LLM egress (`assertLlmEgressAllowed`) is SATISFIED (F22). Not IP/URL SSRF. | Generic fetch allow-list missing | API (cross-plane) | R11 → **G23**. MISSING. Design-locked. Not authorized. |
+| Studio ask-agent / loop cancel (F31) | Operator stop of runaway run | Studio patch SoD/rollback SATISFIED (F32) | No AbortController in Studio app | Studio | R12 → §6.2. Not a Control gap. |
+| Measured Control budgets (F29) | G25 honesty | `PERFORMANCE_LIMITS` defaults exist | No measured preflight/audit/telemetry numbers | Control | R13 → **G25 / CTRL-021**. Still MISSING. |
+| Secret redaction residual (F23) | New-route leak risk | `redactSecrets` on memory/agent/governed | Residual on new routes | Shared/API | Recorded on **G23**. Not a new product. |
+| Offsite DR (F28, F42) | Audit/loss recovery | Local hash-chain exists | AWS / Supabase / offsite dest | Operations | R17 → **G28 / CTRL-022**. ENVIRONMENT BLOCKED. |
+| i18n / accessibility completeness (F34) | Access | 1675×3 keys exist | No WCAG proof | Web/Studio | R19 → §6.2. Not a Control architectural gap. |
+
+### 5.1 Finding → home map (Task 19 F01–F42)
+
+Every investigation finding has exactly one authoritative home in this file. R01–R20 are the remediation IDs for the same findings (see §10). Do **not** treat G16 as a catch-all.
+
+| Finding | Home | Plane | Status in this register |
+| ------- | ---- | ----- | ----------------------- |
+| F01 HMAC + binding + impersonation | G3 / CTRL-014 | Control | ALREADY SATISFIED / G3 PROVEN (unit+route) |
+| F02 nonce/replay process-local | G3 / R01 | Control | R01 IMPLEMENTED + TESTED; not production-VERIFIED |
+| F03 authorization / operation classes | G3 / CTRL-013 | Control | ALREADY SATISFIED |
+| F04 client FAIL_OPEN GOVERNED/INFORMATIONAL | G24 | Control | INTENTIONAL / NOT A GAP |
+| F05 approval SoD + durable store | G11 | Control | ALREADY SATISFIED (prod needs live Supabase) |
+| F06 kill = next hop | G12 / CTRL-012 | Control | ALREADY SATISFIED; in-flight abort INTENTIONAL / NOT A GAP |
+| F07 execution correlation contract | G16 / CTRL-017 | Control | CTRL-017 LOCAL RUNTIME VERIFIED; general siblings PARTIAL |
+| F08 process-local decisions/reports | G16 / R02 | Control | R02 IMPLEMENTED + TESTED; not production-VERIFIED |
+| F09 CTRL-018 observation runtime | G18 / CTRL-018 / R15 | Control | PARTIAL; runtime ENVIRONMENT BLOCKED |
+| F10 CTRL-019 learning runtime | G21 / CTRL-019 / R16 | Control | PARTIAL; repeated-FAILURE runtime ENVIRONMENT BLOCKED |
+| F11 sibling result verification | G15 | Application | INTENTIONAL / NOT A GAP as a Control engine (G15 MISSING correctly) |
+| F12 audit hash chain | G20 | Control | ALREADY SATISFIED (local NDJSON) |
+| F13 dual audit planes (API vs CP) | G20 | Control + Control Plane | INTENTIONAL / NOT A GAP |
+| F14 application audit not Postgres-canonical | G20 / R03 | Control | R03 IMPLEMENTED + TESTED; not production-VERIFIED |
+| F15 tenant/project nested in `input` | G20 / R05 | Control | PARTIAL (two application events only) |
+| F16 audit export | G20 / G27 / R06 | Control | MISSING |
+| F16 retention / TTL | G20 / G28 / R20 | Control + Operations | MISSING / useful-but-optional; env first |
+| F17 customer-admin memory all-owners | G6 | Web/API | INTENTIONAL / NOT A GAP under `ownerId` |
+| F18 admin vs operator unscope inconsistency | §6.2 / R07 | Control + Web | MISSING written contract; do not treat F17 as a leak |
+| F19 memory DELETE / TTL | G6 / R10 | Web/API | MISSING (not Control) |
+| F20 epistemic halt on retrieve | G5 | Atlas Core | INTENTIONAL / NOT A GAP (no G5 Control engine) |
+| F21 SSRF / generic HTTP allow-list | G23 / R11 | API (cross-plane) | MISSING; design-locked; not authorized |
+| F22 LLM egress policy | G23 | API | ALREADY SATISFIED for LLM class |
+| F23 secret redaction | G23 | Shared/API | ALREADY SATISFIED with residual new-route risk |
+| F24 multi-instance Control API | G3 + G16 + G20 via R01–R03 | Control | Covered by R01–R03; production still blocked |
+| F25 restart recovery of correlation | G3 + G16 via R01–R02 | Control | Covered by R01–R02; production still blocked |
+| F26 preflight idempotency Map | G3 / R01–R02 | Control | Live path durable with T0/T1; Maps remain local/test |
+| F27 approval store down | G11 / G24 | Control | ALREADY SATISFIED (DENY + 503) |
+| F28 offsite DR | G28 / CTRL-022 / R17 | Operations | ENVIRONMENT BLOCKED |
+| F29 measured Control budgets | G25 / CTRL-021 / R13 | Control | MISSING |
+| F30 full-file NDJSON scan | G20 / R04 | Control | MISSING |
+| F31 Studio ask-agent / loop stop | §6.2 / R12 | Studio | MISSING (Studio, not Control) |
+| F32 Studio patch SoD / rollback | §6.2 | Studio | ALREADY SATISFIED |
+| F33 Web user memory isolation | G6 | Web/API | ALREADY SATISFIED for `user` |
+| F34 i18n key parity vs WCAG | §6.2 / R19 | Web/Studio | USEFUL BUT OPTIONAL |
+| F35 Agent 365-style registry | G17 | Control | INTENTIONAL / NOT A GAP |
+| F36 necessity / UNNECESSARY engine | G4 | Control | INTENTIONAL / NOT A GAP (MISSING correctly) |
+| F37 token/cost fields | G9 / CTRL-020 / R14 | Control | MISSING / DEFERRED |
+| F38 kernel lessons GET no `requireUser` | §6.2 / R08 | Shared/API | MISSING |
+| F39 GET `/audit` customer-admin cross-owner | G20 | Control | INTENTIONAL (same instance-admin model as F17) |
+| F40 learning `listRecordedProposals` full scan | G21 / R09 | Control | MISSING (engineering improvement) |
+| F41 HotelOS/BrokerOS vitest | §16 | Environment | ENVIRONMENT BLOCKED |
+| F42 G-P1-06–09 | §16 / G28 | Operations | ENVIRONMENT BLOCKED |
 
 ---
 
 ## 6. Capability Matrix
 
-Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `NOT APPLICABLE` | `DUPLICATED / REDUNDANT` | `INCORRECT IMPLEMENTATION` | `ARCHITECTURALLY UNCLEAR`.
+Status vocabulary (do not collapse): `PROVEN` | `IMPLEMENTED + TESTED` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `INTENTIONAL / NOT A GAP` | `NOT APPLICABLE` | `DUPLICATED / REDUNDANT` | `INCORRECT IMPLEMENTATION` | `ARCHITECTURALLY UNCLEAR`.
+
+`PROVEN` is reserved for production-or-official-DoD verification already recorded in this plan. `IMPLEMENTED + TESTED` means code + automated tests exist and are **not** production-VERIFIED. Do not mark a row `PROVEN` merely because unit tests pass.
 
 | ID | Capability | Current implementation | Evidence | Status | Risk if missing | Dependency | Proposed action |
 | -- | ---------- | ---------------------- | -------- | ------ | --------------- | ---------- | --------------- |
 | G1 | Identity | `applicationId` required; `agentId` optional nullable; `actorId`/`tenantId`/`projectId`/`operation` on preflight; `idempotencyKey`; response echoes `agentId`. `applicationOwnedAgentId()` never invents. HotelOS CIO sends `agent.cio`; embed sends `null`. CaseFlow/BrokerOS send `null`. Civio letter=`LEGAL_LETTER_AGENT`, housing=`HOUSING_AGENT`, others `null`. | `packages/shared/src/platform/application-preflight.ts`; `apps/api/src/services/application-preflight.ts` `finish()`; HotelOS `packages/ai-gateway/src/gateway.ts`; tests `application-preflight-identity.test.ts` | PARTIAL | Wrong attribution | Wave 1 commit | CTRL-001; do not invent IDs for CaseFlow |
 | G2 | Intent / purpose | `operation` + `operationClass` (GOVERNED_DECISION / INFORMATIONAL / HIGH_RISK / TOOL_ACTION). No purpose/intent class/expected outcome fields. Full prompts not sent (correct). | `application-preflight.ts` schema | PARTIAL | Cannot distinguish why two GOVERNED_DECISION differ | G1 | Optional purpose class later — do not send prompts |
-| G3 | Authorization | HMAC, tenant/project binding, nonce, denyImpersonation, kill, destructive DENY, HIGH/TOOL approval. Decisions ALLOW/DENY/REQUIRE_APPROVAL/KILLED/INVALID/OUT_OF_SCOPE. | `evaluateAuthorized()`; `apps/api/src/routes/application-preflight.test.ts` | PROVEN (unit + route) | Bypass if client ignores ALLOW-only or secret unset fail-open | — | Do not redesign. Document fail-open. |
-| G4 | Necessity | No `UNNECESSARY` / `proposedPath` / `knowledgeSufficient`. Semantic Conclusion C: cannot infer from availability. HotelOS pack is LLM context, not an answer. CaseFlow cache is a real cheap path **before** preflight. Civio FAQ can skip Gemini **after** preflight. CTRL-016 adds optional `declaredCompletionPath` (`LOCAL_COMPLETION_PATH` / `MODEL_PATH`) so the app can attest a path. Control does not infer sufficiency from that declaration. | HotelOS gateway; CaseFlow wrap; Civio `ai.ts`; `c0ca916` preflight contract | MISSING (correctly) | Fake savings / false DENY | Proven cheap path + attestation | Necessity engine still must not be built. CTRL-016 is declaration only. Execution/outcome is CTRL-017. |
-| G5 | Knowledge sufficiency | Atlas-self `CONTINUE/HALT/INCONCLUSIVE` in `packages/shared/src/constants/evidence-sufficiency.ts`. Not used as sibling knowledge judgment. Document count ≠ sufficiency. | evidence-sufficiency.ts | MISSING as Control domain engine (correct) | False domain judgment | Application attestation | Control must not own |
-| G6 | Memory | Owner-scoped ACTIVE/SUPERSEDED; `allowedAgents`; retrieve returns statements. HotelOS actorId ≠ Atlas ownerId → no join. Control must not own user memory. | Atlas memory services; HotelOS actor | PARTIAL | Poisoning / cross-user leak if joined wrongly | Identity join (does not exist) | Memory-based necessity = NOT AVAILABLE |
+| G3 | Authorization | HMAC, tenant/project binding, denyImpersonation, kill, destructive DENY, HIGH/TOOL approval unchanged and still the only sibling stop. Decisions ALLOW/DENY/REQUIRE_APPROVAL/KILLED/INVALID/OUT_OF_SCOPE. **R01 nonce/replay:** live Postgres `consume_application_connector_nonce` (T0) is the shared authority; duplicate nonce → 401 INVALID; nonce stays consumed after DENY/KILLED/INVALID/OUT_OF_SCOPE; 5 min skew and 10 min TTL unchanged; uniqueness is **only within the replay window**, not permanent. Local/test without live Supabase keeps Maps. Vercel production without live Postgres → 503 (no HMAC-success ALLOW). **F26 idempotency:** live path lookup before evaluate; Maps remain local/test. | `evaluateAuthorized()`; `application-preflight.test.ts`; `39f654b` T0 RPC + durability tests (in-process double). Real PG / multi-isolate / production **not** run. | PROVEN (HMAC/authz unit+route, F01/F03). R01 **IMPLEMENTED + TESTED**, not production-VERIFIED | Bypass if client ignores ALLOW-only; production replay unproven until live PG | — | Do not redesign evaluateAuthorized. Do not widen skew. Production close of R01 is a verification gate, not more design. |
+| G4 | Necessity | No `UNNECESSARY` / `proposedPath` / `knowledgeSufficient`. Semantic Conclusion C: cannot infer from availability. HotelOS pack is LLM context, not an answer. CaseFlow cache is a real cheap path **before** preflight. Civio FAQ can skip Gemini **after** preflight. CTRL-016 adds optional `declaredCompletionPath` (`LOCAL_COMPLETION_PATH` / `MODEL_PATH`) so the app can attest a path. Control does not infer sufficiency from that declaration. F36: do not build a necessity engine. | HotelOS gateway; CaseFlow wrap; Civio `ai.ts`; `c0ca916` preflight contract | MISSING (correctly) / INTENTIONAL / NOT A GAP as a Control engine | Fake savings / false DENY | Proven cheap path + attestation | Necessity engine still must not be built. CTRL-016 is declaration only. Execution/outcome is CTRL-017. |
+| G5 | Knowledge sufficiency | Atlas-self `CONTINUE/HALT/INCONCLUSIVE` in `packages/shared/src/constants/evidence-sufficiency.ts`. Not used as sibling knowledge judgment. Document count ≠ sufficiency. F20 retrieve labeling is optional; do not build a Control sufficiency engine. | evidence-sufficiency.ts | MISSING as Control domain engine (correct) / INTENTIONAL / NOT A GAP | False domain judgment | Application attestation | Control must not own |
+| G6 | Memory | Owner-scoped ACTIVE/SUPERSEDED; `allowedAgents`; retrieve returns statements. HotelOS actorId ≠ Atlas ownerId → no join (CAD-008). Control must not own user memory. **F33:** `user` isolation SATISFIED. **F17:** instance-admin all-owners is INTENTIONAL under `ownerId` (not a leak). **R10 / F19:** explicit memory DELETE / TTL is MISSING on Web/API — ownership completeness, **not** a Control engine gap. | Atlas memory services; `cross-tenant-isolation`; HotelOS actor | PARTIAL (store). R10 MISSING on Web/API. F17 INTENTIONAL / NOT A GAP | Poisoning / cross-user leak if joined wrongly | Identity join (does not exist) | Memory-based necessity = NOT AVAILABLE. Do not start R10 from this Control wave. |
 | G7 | Retrieval / tool necessity | HotelOS embed INFORMATIONAL preflight is the cheap-hop gate. Tools/HIGH require approval. Retrieval may already have happened before Control if app skips preflight. | HotelOS `atlas-preflight.ts`; evaluateAuthorized TOOL_ACTION | PARTIAL | Spend after the fact | App calls preflight first | Keep two-point model; do not add a third invented gate |
-| G8 | AI necessity | No Control “does this need AI?” engine. CaseFlow cache and Civio FAQ are application-owned skips. Model choice stays application-owned. | CaseFlow cache; Civio FAQ | MISSING (Control) | Unnecessary inference | G4 Model C | Do not build a model router |
-| G9 | Cost / resource | No estimated/actual tokens or cost fields. Attribution possible via applicationId+agentId+operation once committed. | audit input in application-preflight.ts | MISSING | Unaccountable spend | G1, G16 | Attribution only; FinOps stays external |
+| G8 | AI necessity | No Control “does this need AI?” engine. CaseFlow cache and Civio FAQ are application-owned skips. Model choice stays application-owned. | CaseFlow cache; Civio FAQ | MISSING (Control) / INTENTIONAL / NOT A GAP as a router engine | Unnecessary inference | G4 Model C | Do not build a model router |
+| G9 | Cost / resource | No estimated/actual tokens or cost fields. Attribution possible via applicationId+agentId+operation once committed. **R14 / F37:** optional `actualCost` on the execution report later. Not FinOps. Not started. Depends on durable G16 (R02) existing — that dependency is now code, not a reason to start R14. | audit input in application-preflight.ts | MISSING | Unaccountable spend | G1, G16, CTRL-020 | Attribution only; FinOps stays external. R14 not authorized. |
 | G10 | Risk | HIGH/CRITICAL via operation class + body `riskLevel` on telemetry. Global kill categories. Not Agent-specific. | evaluateAuthorized; atlas-gateway preserve riskLevel | PARTIAL | Under-gated destructive work | G3 | Keep operation-class risk; do not invent Agent risk scores |
 | G11 | Human approval / SoD | Atlas approvals: `decidedBy !== requestedBy`, DB-enforced. Approval context may include optional agentId. HotelOS `ai.approval.approved` is **rejected** at gateway (not Atlas SoD). | approvals path; `atlas-gateway.test.ts` reject HITL | PROVEN (Atlas SoD) | Silent cross-action approval | G3 | Do not map HotelOS HITL |
 | G12 | Runtime authority | Next-hop only: `aiWorkers`/`agentDispatch` → preflight `KILLED` + `executed:false`. `payments`/`webhooksInbound`/`webhooksOutbound` do not kill application preflight. Fabric pause/quarantine is `def-000` registered Agents only; `agent.cio` is not found. No abort API. In-flight sibling work is not Control-stopped (G12-E NOT A DEFECT). G12-F fail-open/cache bypass stays out of this task. | `application-preflight.test.ts` G12-A/B/D; `atlas-self-agent-control.test.ts` G12-C/D | PARTIAL | In-flight sibling continues after kill | G3 | Do not add live-abort or per-Agent sibling kill |
 | G13 | Execution observability | authorized via preflight audit. CaseFlow reports `executionStatus` via `atlas.application-execution-report.v1` (CTRL-017). Other siblings do not report executed/failed/skipped. Telemetry is observational, not a gate (`atlas-gateway.test.ts`). | finish() audit; CTRL-017 report hop; gateway | PARTIAL | Cannot prove execution where siblings do not report | Outcome contract | Wave 4 |
 | G14 | Evidence / provenance | Canonical audit + Atlas-self evidence. Authorization ≠ grounding. | unified-audit-entry.schema.ts; evidence-sufficiency | PARTIAL | Ungrounded claims look authorized | G3, G15 | Do not assume authz = evidence |
-| G15 | Result verification | Atlas-self ALLOW writes verify on fulfill hop. Sibling hops: application-owned, not federated. | control-operations execution notes | MISSING (siblings) | False “success” | Application report-back | Do not force NLI |
-| G16 | Outcome | Generic `atlas.application-execution-report.v1` exists: application-owned `executionId` + `executionStatus` SUCCESS\|FAILURE correlated to a preceding ALLOW. ALLOW is not SUCCESS. One local CaseFlow hop proven (CTRL-017). General sibling coverage remains unproven. `actualCost` remains G9 / CTRL-020, not this contract. | CTRL-017 LOCAL RUNTIME: `decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` ↔ `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`; `application.execution.reported` | PARTIAL | Allowed ≠ completed where siblings do not report | G1, G13 | Wave 4 contract exists; general sibling coverage unproven |
-| G17 | Portfolio | `portfolio-governance-view.ts` `notAnAgentRegistry: true`. Supervision snapshot observational. Registry seeded Atlas-self; Civio after HMAC event. | portfolio-governance-view.ts; supervision-snapshot.ts | PARTIAL | Operator inspects source instead | Telemetry identity | No arbitrary scores |
-| G18 | Unknown / shadow Agents | Application-owned Expected set (`ATLAS_{APP}_EXPECTED_AGENT_IDS`); observed `agentId` classified EXPECTED / UNKNOWN / UNEXPECTED on existing `application.preflight.evaluated` / `application.execution.reported`. Null, missing Expected, or empty Expected = UNKNOWN. Reserved `psa:*` / `cp:*` / Fabric stay CTRL-014, not UNEXPECTED. UNEXPECTED does not change ALLOW/DENY. | Commit `bd1d2db`; `application-agent-observation.ts`; CP `notAnAgentRegistry: true` | PARTIAL | Shadow activity still not runtime-proven | G1, G22 | Runtime EXPECTED/UNEXPECTED blocked on HotelOS connector env. CaseFlow has no legitimate non-null preflight Agent ID. No Fabric registry. |
+| G15 | Result verification | Atlas-self ALLOW writes verify on fulfill hop. Sibling hops: application-owned, not federated. F11 / `verificationVerdict: NOT_APPLICABLE`. | control-operations execution notes | MISSING (siblings) / INTENTIONAL / NOT A GAP as a Control NLI engine | False “success” | Application report-back | Do not force NLI. Do not build result-verification ownership into Atlas. |
+| G16 | Outcome | Generic `atlas.application-execution-report.v1` exists: application-owned `executionId` + `executionStatus` SUCCESS\|FAILURE correlated to a preceding ALLOW. ALLOW is not SUCCESS. One local CaseFlow hop proven (CTRL-017). General sibling coverage remains unproven. `actualCost` remains G9 / CTRL-020 / R14, not this contract. **R02 durability:** live Postgres `preflight_decisions` + `preflight_idempotency` + `execution_reports`. T1 commits decision+idempotency+canonical preflight audit before HTTP 200 ALLOW. T2 validates **applicationId, tenantId, projectId, operation, requestId, decision===ALLOW, not expired, agentId when both non-null** — `decisionId` alone is not enough. Duplicate identical report is idempotent; conflicting report → 409. Local/test Maps remain. Vercel production without live Postgres → 503. **Not absorbed into this row:** R01 (G3), R03–R06/R18/R20 (G20), R11 (G23), R13 (G25), R14 (G9), R15 (G18), R16 (G21). | CTRL-017 LOCAL RUNTIME hop (unchanged). `39f654b` 13 files: in-process RPC double + API durability 81/81; database 100/100 (17 new). Real PG apply, multi-process, production Vercel+PG, production 503: **not run**. | PARTIAL (contract + one hop + sibling coverage). R02 **IMPLEMENTED + TESTED**, not production-VERIFIED | Allowed ≠ completed where siblings do not report; production correlation unproven | G1, G13 | Wave 4 contract exists. Production close of R02 is verification, not more features. |
+| G17 | Portfolio | `portfolio-governance-view.ts` `notAnAgentRegistry: true`. Supervision snapshot observational. Registry seeded Atlas-self; Civio after HMAC event. F35 Agent 365-style registry is INTENTIONAL / NOT A GAP. | portfolio-governance-view.ts; supervision-snapshot.ts | PARTIAL. F35 INTENTIONAL / NOT A GAP | Operator inspects source instead | Telemetry identity | No arbitrary scores. Do not build a sibling Agent registry. |
+| G18 | Unknown / shadow Agents | Application-owned Expected set (`ATLAS_{APP}_EXPECTED_AGENT_IDS`); observed `agentId` classified EXPECTED / UNKNOWN / UNEXPECTED on existing `application.preflight.evaluated` / `application.execution.reported`. Null, missing Expected, or empty Expected = UNKNOWN. Reserved `psa:*` / `cp:*` / Fabric stay CTRL-014, not UNEXPECTED. UNEXPECTED does not change ALLOW/DENY. **R15 / F09:** runtime EXPECTED/UNEXPECTED hop is the remaining proof, not more classifier work. | Commit `bd1d2db`; `application-agent-observation.ts`; CP `notAnAgentRegistry: true` | PARTIAL. R15 ENVIRONMENT BLOCKED | Shadow activity still not runtime-proven | G1, G22, CTRL-018 | Runtime EXPECTED/UNEXPECTED blocked on HotelOS connector env. CaseFlow has no legitimate non-null preflight Agent ID. No Fabric registry. Do not invent hops. |
 | G19 | Multi-hop / delegation | No originAgent / delegatingAgent fields. Identity may drop on hop. | schema has single optional agentId | MISSING | Accountability break | Real hop evidence | Add fields only when a hop exists |
-| G20 | Audit integrity | Canonical NDJSON / unified audit; append-oriented. Hash-chain / offsite DR not proven here. | unified-audit-entry.schema.ts | PARTIAL | Tamper / loss | G1 | Wave 8; env blockers separate |
-| G21 | Feedback / learning | Observe→proposal→authenticated-human-decision→audit exists (`atlas.application-learning-proposal.v1`, Alt 2). Citations must be unified-audit `application.execution.reported` with `executionStatus === FAILURE`, scoped to the same applicationId+tenantId+projectId+operation. Literals `autoApply/executes/mutatesGovernance/mutatesMemory/mutatesKnowledge: false`. No ApprovalRequest and no execution authority. `requestedBy=cp:service`; `decidedBy` is requireAdmin `user.id`; SoD rejects `cp:service` as decider. Stops at audit — no policy/memory/knowledge apply. | Commit `ecdae7b`; `application-learning-proposal.ts` | PARTIAL | No real repeated-FAILURE runtime; no production or autonomous learning | G16 | Wave 7 proposals only; autoApply false; not VERIFIED |
+| G20 | Audit integrity | Canonical NDJSON + unified audit remain. F12 local hash-chain ALREADY SATISFIED. F13 CP audit observational is INTENTIONAL. F39 instance-admin `/audit` cross-owner is INTENTIONAL (same model as F17). **R03 / F14:** live path RPC INSERTs `public.audit_logs` **inside** T1/T2 (same transaction as decision/report). Node must not `appendCanonicalAuditEntry` after RPC commit. Local/test without live Supabase still uses NDJSON via `appendUnifiedAuditEntry`. **R05 / F15:** `tenantId` + `projectId` promoted to top-level unified payload **only** for `application.preflight.evaluated` and `application.execution.reported`. Other event types remain nested. **R04 / F30:** `listUnifiedAuditEntries` still full-file `readFileSync` — MISSING. **R06:** no admin export stream — MISSING. **R18:** no cursor pagination — MISSING. **R20:** no retention/TTL policy — MISSING / optional; depends on R17. T1/T2 point inserts do **not** close R04–R06/R18/R20. | `unified-audit-entry.schema.ts`; `39f654b` T1/T2 SQL + in-process tests. Real PG transaction execution **not** run. | PARTIAL. R03 **IMPLEMENTED + TESTED**, not production-VERIFIED. R04/R06/R18/R20 MISSING. R05 PARTIAL | Tamper / loss / unqueryable volume | G1 | Do not claim R03 production-VERIFIED. Do not start R04/R06/R18/R20 in this recon. |
+| G21 | Feedback / learning | Observe→proposal→authenticated-human-decision→audit exists (`atlas.application-learning-proposal.v1`, Alt 2). Citations must be unified-audit `application.execution.reported` with `executionStatus === FAILURE`, scoped to the same applicationId+tenantId+projectId+operation. Literals `autoApply/executes/mutatesGovernance/mutatesMemory/mutatesKnowledge: false`. No ApprovalRequest and no execution authority. `requestedBy=cp:service`; `decidedBy` is requireAdmin `user.id`; SoD rejects `cp:service` as decider. Stops at audit — no policy/memory/knowledge apply. Positive: proposals are **rebuilt from unified audit**, not a process Map. **R16 / F10:** repeated-FAILURE runtime still unproven. **R09 / F40:** dedicated citation index still MISSING (nested full-file scan). R03 makes multi-instance learning *possible* when audit is shared; it does not implement R09. | Commit `ecdae7b`; `application-learning-proposal.ts` | PARTIAL. R16 ENVIRONMENT BLOCKED. R09 MISSING | No real repeated-FAILURE runtime; no production or autonomous learning | G16, CTRL-019 | Wave 7 proposals only; autoApply false; not VERIFIED. Do not build a second approval engine. |
 | G22 | Telemetry contract | Aliases: `ai.gateway.invoke`→`agent.completed`, `autonomy.act`→`tool.executed`. Reject: `ai.approval.approved`, `payment.intent.created`, `hr.document.*`. HotelOS live emit uses X-Atlas-Reason + top-level agentId (uncommitted sibling). `ai.gateway.invoke` is HotelOS local onAudit only — **not** on live emit. | atlas-gateway.ts; HotelOS alert-on-sensitive-audit.ts SENSITIVE_ACTIONS | PARTIAL | Rejected legitimate / wrong channel | G1 | Taxonomy closed for known types; do not invent invoke emit |
-| G23 | Security / isolation | HMAC, tenant/project, denyImpersonation, owner memory. Fail-open GOVERNED/INFORMATIONAL. | evaluateAuthorized | PARTIAL | Cross-app authority if binding skipped | G3 | Security review on each CORE close |
-| G24 | Failure / recovery | Fail-open vs fail-closed by the four existing operation classes. Duplicate/retry via nonce/idempotency. Atlas secret unset: API 401 INVALID; client skip only if FAIL_OPEN. | evaluateAuthorized comments; `unavailablePolicyForClass`; CTRL-013 tests | PARTIAL | Silent skip of governed hops remains a client FAIL_OPEN path | CTRL-013 docs + tests | Do not globally fail-closed |
-| G25 | Performance | No measured preflight/audit/telemetry budgets in this reconciliation. | — | MISSING | Control becomes the expensive path | Measure first | Wave 8 measure, do not optimize blindly |
-| G26 | Operator experience | Admin :3200 + Control :3100 surfaces exist. Every widget must bind real data. Portfolio is not a live connector. | apps/admin; apps/control-plane | PARTIAL | Decorative dashboards | Real fields only | No decorative work in this program |
-| G27 | Incident / investigation | Reconstructable when audit has applicationId+agentId+actorId+operation+decision. One local CaseFlow hop has execution/outcome (CTRL-017). Other siblings still missing execution/outcome. | audit input; CTRL-017 hop | PARTIAL | Incomplete incident story | G13, G16 | Wave 4+6 |
-| G28 | DR / audit preservation | Production DR / offsite / AWS / Supabase classified as environment. | remaining-external-dependencies.md G-P1-06–09 | ENVIRONMENT BLOCKED | Audit loss | External | Do not hide as “not implemented” |
+| G23 | Security / isolation | HMAC, tenant/project, denyImpersonation, owner memory remain. Fail-open GOVERNED/INFORMATIONAL is documented (G24). F22 LLM egress (`assertLlmEgressAllowed` / `decideEgress`) ALREADY SATISFIED for the LLM class. F23 `redactSecrets` ALREADY SATISFIED with residual new-route risk. **R11 / F21:** generic HTTP/SSRF allow-list is **MISSING**. LLM egress is not IP/URL SSRF. Design-locked (resolve/check/connect pin; IPv4/IPv6/DNS64/redirects/link-local/RFC1918/loopback/ULA/metadata; `atlas_internal` only for exact `ATLAS_API_URL` / `ATLAS_CONTROL_PLANE_URL`). Implementation **not** authorized. Not part of `39f654b`. | evaluateAuthorized; egress-gate LLM tests; R11 design lock in this file’s history / Task 20 §B | PARTIAL. F22 SATISFIED. R11 MISSING | Cross-app authority if binding skipped; unguarded fetch | G3 | Security review on each CORE close. Do not start R11 in this recon. |
+| G24 | Failure / recovery | Fail-open vs fail-closed by the four existing operation classes. F04 client FAIL_OPEN GOVERNED/INFORMATIONAL is INTENTIONAL / NOT A GAP. F27 approval-store failure DENY+503 ALREADY SATISFIED. Atlas secret unset: API 401 INVALID; client skip only if FAIL_OPEN. Duplicate/retry: live path uses durable nonce + idempotency (G3/G16); Maps remain local/test. Durable store unavailable on Vercel production → 503 (no ALLOW, no accepted report). | evaluateAuthorized comments; `unavailablePolicyForClass`; CTRL-013 tests; `applicationGovernanceMode()` | PARTIAL. F04 INTENTIONAL / NOT A GAP | Silent skip of governed hops remains a client FAIL_OPEN path | CTRL-013 docs + tests | Do not globally fail-closed |
+| G25 | Performance | No measured preflight/audit/telemetry budgets. `PERFORMANCE_LIMITS` defaults exist; they are not measurements. **R13 / F29 / CTRL-021:** measure first. Full-file NDJSON cost is recorded on G20/R04 (CODE-OBSERVED, not timed). | — | MISSING | Control becomes the expensive path | Measure first | Wave 8 measure, do not optimize blindly. R13 not authorized. |
+| G26 | Operator experience | Admin :3200 + Control :3100 surfaces exist. Every widget must bind real data. Portfolio is not a live connector. R19 i18n/a11y completeness is **Web/Studio**, not a Control architectural gap — see §6.2. R07 admin/operator contract is §6.2, not a dashboard rewrite. | apps/admin; apps/control-plane | PARTIAL | Decorative dashboards | Real fields only | No decorative work in this program |
+| G27 | Incident / investigation | Reconstructable when audit has applicationId+agentId+actorId+operation+decision. One local CaseFlow hop has execution/outcome (CTRL-017). Other siblings still missing execution/outcome. **R06 export** and **R18 pagination** would help operators without SSH; they remain G20 work items, not a second incident product. | audit input; CTRL-017 hop | PARTIAL | Incomplete incident story | G13, G16, G20 | Wave 4+6. Do not start export/pagination here. |
+| G28 | DR / audit preservation | Production DR / offsite / AWS / Supabase classified as environment. **R17 / F28 / F42:** offsite dest + drill still ENVIRONMENT BLOCKED. R20 retention policy waits on offsite first. Local hash-chain (F12) is not offsite DR. | remaining-external-dependencies.md G-P1-06–09 | ENVIRONMENT BLOCKED | Audit loss | External / CTRL-022 | Do not hide as “not implemented”. Do not start R17 from application code. |
 
 ### 6.1 Ownership class per capability
 
@@ -347,6 +416,20 @@ Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `N
 | G9 FinOps product, G28 offsite DR, OTel backends | EXTERNAL INTEGRATION |
 | G4 Model C declaration (CTRL-016 VERIFIED), G8 router, G9 tokens, G19 hop fields, G21 learning | OPTIONAL FUTURE except CTRL-016 declaration; remaining items wait for outcome attestation (CTRL-017+) |
 | Fabric promotion, Control-owned app knowledge, fake UNNECESSARY, NLI everywhere | NOT NEEDED |
+
+### 6.2 Cross-plane / non-Control tracked findings
+
+These are material Task 19 findings with **no Control G-engine home**. They are tracked here so they cannot disappear. They are **not** Control capability rows and are **not** counted in §17 G1–G28 totals. No new CTRL IDs.
+
+| ID | Finding | Plane | Owner | Status | Related | Implementation authorized? |
+| -- | ------- | ----- | ----- | ------ | ------- | -------------------------- |
+| R07 | Written admin vs operator unscope contract (memory / projects / audit). F17/F39 instance-admin all-owners behavior stays INTENTIONAL. | Control + Web | Privacy / ADR-021 | MISSING (contract + tests). F17 INTENTIONAL / NOT A GAP | F18; do not silently revoke admin instance read | **No** |
+| R08 | Kernel lessons GET handler has no `requireUser` (not on the public-route list) | Shared/API | Shared Core | MISSING | F38 | **No** |
+| R10 | Explicit memory DELETE / TTL / erasure completeness | Web/API | Web | MISSING | G6, F19. F33 user isolation SATISFIED | **No** |
+| R12 | Cancel in-flight Studio ask-agent / engineering loop | Studio | Studio | MISSING | F31. F32 Studio patch SoD ALREADY SATISFIED | **No** |
+| R19 | i18n key parity vs WCAG / accessibility completeness | Web/Studio | Web / Studio | USEFUL BUT OPTIONAL | F34. Not a Control gap | **No** |
+| F23-residual | Secret redaction residual risk on new routes | Shared/API | Shared Core | ALREADY SATISFIED with residual | G23 | **No** (keep existing helper) |
+| F32 | Studio patch SoD / rollback | Studio | Studio | ALREADY SATISFIED | — | n/a |
 
 ---
 
@@ -371,14 +454,24 @@ PARALLEL after WAVE 1
 WAVE 2  Model C path **declaration** VERIFIED (`c0ca916`) — not sufficiency, not execution
 BLOCKED ON SIBLING REPORT-BACK (do not start)
    WAVE 4  outcome / executionId report-back (G13/G15/G16)
-   WAVE 5  resource attribution fields (G9) after outcome
+            G16 R02 durability IMPLEMENTED + TESTED (`39f654b`); not production-VERIFIED
+            G3 R01 nonce durability IMPLEMENTED + TESTED (`39f654b`); not production-VERIFIED
+            G20 R03 canonical application audit IMPLEMENTED + TESTED (`39f654b`); not production-VERIFIED
+   WAVE 5  resource attribution fields (G9 / R14) after outcome — **not started**
    WAVE 7  human-governed learning proposals (G21) — CTRL-019 PARTIAL (`ecdae7b`); runtime unproven
    ↓
 AFTER CORRELATION EXISTS
    WAVE 6  portfolio / shadow Agents / incidents (G17/G18/G27)
    ↓
+NOT STARTED (correct homes; not authorized by this recon)
+   G23 R11 SSRF (design-locked)
+   G20 R04/R06/R18/R20 audit query/export/pagination/retention
+   G21 R09 citation index
+   §6.2 R07/R08/R10/R12/R19
+   ↓
 ENVIRONMENT
-   WAVE 8  G25 measure, G28 DR — G-P1-06–09 remain BLOCKED
+   WAVE 8  G25/R13 measure, G28/R17 DR — G-P1-06–09 remain BLOCKED
+   R01/R02/R03 production proofs (live PG + Vercel) remain BLOCKED
 ```
 
 **Parallelizable now:** documentation of fail modes, kill semantics, security regression tests — after CTRL-001.
@@ -395,7 +488,7 @@ ENVIRONMENT
 | 1 | Identity and Contract Closure | CTRL-001 **VERIFIED** and committed (`400759a`). Not CLOSED (CORE still 0). |
 | 2 | Decision Engine (necessity / path) | Path **declaration** CTRL-016 **VERIFIED** (`c0ca916`). Necessity/UNNECESSARY engine still not built (G4 remains MISSING, correctly). Execution/outcome is CTRL-017 **VERIFIED** (LOCAL RUNTIME, one CaseFlow hop). |
 | 3 | Runtime Governance | Fabric already pause/quarantine; sibling live-stop **not** claimed |
-| 4 | Evidence and Verification | CTRL-017 **VERIFIED** for one local CaseFlow OpenAI hop. Not production. G16 is **PARTIAL** (generic contract exists; general sibling coverage remains unproven). G15 remains separate and **MISSING**. |
+| 4 | Evidence and Verification | CTRL-017 **VERIFIED** for one local CaseFlow OpenAI hop. Not production. G16 is **PARTIAL** (generic contract + one hop; general sibling coverage unproven). R02 durability is **IMPLEMENTED + TESTED** (`39f654b`), not production-VERIFIED. G15 remains separate and **MISSING** (intentional as a Control engine). |
 | 5 | Resource and Cost | Attribution later; FinOps external |
 | 6 | Portfolio Supervision | Projection exists; no scores |
 | 7 | Learning | CTRL-019 **PARTIAL** (`ecdae7b`). Human proposals + decide exist. Repeated-FAILURE runtime unproven. Not VERIFIED. |
@@ -435,14 +528,39 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | CTRL-014 | 1 | Lock impersonation / application-binding regressions | VERIFIED | 2026-09-23 | 2026-09-30 | CTRL-001 | Existing denyImpersonation tests remain green; no new bypass route | `denies PSA impersonation`; `denies Fabric impersonation`; `rejects a caller-supplied tenant that does not match the binding`; `rejects a spoofed applicationId that does not match the HMAC secret`; `allows a valid HMAC-bound informational/governed request`; `only Atlas-self has a gateway fulfill execute contract`; API preflight+identity 27/27; shared preflight+connected 13/13; commit `28ef9f2` | Committed `28ef9f2`. Not pushed. No production change. G24 remains PARTIAL |
 | CTRL-015 | 0 | Keep remaining-work 01–19 historical; pointer only | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-000 | Pointer exists; 01–19 not rewritten | In `400759a` as `docs/architecture/remaining-work.md` | None |
 | CTRL-016 | 2 | Model C path declaration (not sufficiency, not execution) | VERIFIED | 2026-09-23 | 2026-09-23 | Proven cheap **completion** exists in-app (CaseFlow cache before preflight; Civio FAQ after). HotelOS pack is not a completion. CTRL-001 | Optional nullable `declaredCompletionPath` on `atlas.application-preflight.v1` (`LOCAL_COMPLETION_PATH` \| `MODEL_PATH`); omit/null valid and fingerprint-compatible (append path only when present); `evaluateAuthorized` has no path branch; `executed: false`; no `UNNECESSARY` / `knowledgeSufficient` / `executionId` | Commit `c0ca916`; exactly 6 Atlas files; shared 11/11; API 37/37; Civio 2/2; CP G12-C 14/14; `@atlas/shared` typecheck+build PASS; `@atlas/api` typecheck PASS | Declaration ≠ execution. CTRL-017 owns correlation. Sibling send of the field is APPLICATION-OWNED. Not pushed. Gate 1: no new Control knowledge gap; do not create CTRL-023 |
-| CTRL-017 | 4 | Outcome / execution correlation contract | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-001; app report-back design | Schema + one sibling hop proving executionId↔preflight | LOCAL RUNTIME CaseFlow wrap (not tests, not production). `atlas.application-execution-report.v1` POST `/api/v1/governance/application-execution-report`. Hop: preflight ALLOW `decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` · `requestId` `2fb06f9a-c1c2-4622-bde4-79423bff0ed2` · operation `caseflow.openai.chat` · provider `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO` · `executionStatus` SUCCESS · Atlas `accepted=true` · audit `application.preflight.evaluated` + `application.execution.reported`. Implementation uncommitted (working tree). Not a second OpenAI call. Initial audit miss was reader-path (`row.input` vs canonical `payload.input`), not a correlation failure. HMAC replay only confirmed already-accepted report. | LOCAL RUNTIME only. Not Vercel/production. Not HotelOS/Civio/BrokerOS. In-memory `decisionId` index is process-local. Do not start CTRL-018. |
+| CTRL-017 | 4 | Outcome / execution correlation contract | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-001; app report-back design | Schema + one sibling hop proving executionId↔preflight | LOCAL RUNTIME CaseFlow wrap (not tests, not production). `atlas.application-execution-report.v1` POST `/api/v1/governance/application-execution-report`. Hop: preflight ALLOW `decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` · `requestId` `2fb06f9a-c1c2-4622-bde4-79423bff0ed2` · operation `caseflow.openai.chat` · provider `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO` · `executionStatus` SUCCESS · Atlas `accepted=true` · audit `application.preflight.evaluated` + `application.execution.reported`. Not a second OpenAI call. Initial audit miss was reader-path (`row.input` vs canonical `payload.input`), not a correlation failure. HMAC replay only confirmed already-accepted report. | LOCAL RUNTIME only. Not Vercel/production. Not HotelOS/Civio/BrokerOS. Process-local Maps remain the **local/test** path. Live Postgres authority for decisions/reports is R02 (`39f654b`) — IMPLEMENTED + TESTED, not production-VERIFIED. |
 | CTRL-018 | 6 | Observed vs expected application Agent IDs (no Fabric registry) | PARTIAL | 2026-09-23 | 2026-09-23 | CTRL-001 | Surface unexpected agentId; `notAnAgentRegistry` remains true | Commit `bd1d2db` (6 Atlas files). Expected is application-owned (`ATLAS_{APP}_EXPECTED_AGENT_IDS`). Classifier EXPECTED/UNKNOWN/UNEXPECTED is observational only. Tests: shared observation 8/8; API observation+identity 12/12; CP 58/58 (`notAnAgentRegistry` true; `agent.cio` not a Fabric target). No registry, Fabric promotion, or authorization change. | NOT VERIFIED. HotelOS `agent.cio` is a legitimate application-owned identity in repository evidence; HotelOS connector env is ABSENT — no real HotelOS→Atlas hop. CaseFlow verified hop is `agentId=null` → UNKNOWN; CaseFlow has no legitimate non-null Agent ID on the Atlas preflight path. EXPECTED and UNEXPECTED runtime observations remain unproven. Not an Atlas implementation defect. Not production. |
 | CTRL-019 | 7 | Human-governed learning proposals from repeated failures | PARTIAL | 2026-09-23 | 2026-09-23 | CTRL-017 | Proposals only; `autoApply: false` | Commit `ecdae7b` (8 Atlas files). Alt 2 non-redeemable human learning decision. Contract `atlas.application-learning-proposal.v1`. Audit-grounded FAILURE citations; same applicationId+tenantId+projectId+operation. Tests: shared 9/9; API 14/14; regression 160/160. requireAdmin + SoD (`requestedBy=cp:service`, `decidedBy=user.id`). Decision ACCEPT/REJECT on unified audit (`approval: NOT_REQUIRED`). | NOT VERIFIED. No real repeated `application.execution.reported` FAILURE in authoritative local runtime. Not production. No ApprovalRequest. No execution authority. |
-| CTRL-020 | 5 | Resource attribution fields (not FinOps) | DEFERRED | — | 2027-01-20 | CTRL-017 | Who/Agent/operation/resource/outcome refs | — | Outcome missing |
-| CTRL-021 | 8 | Performance budgets for preflight/audit/telemetry | DEFERRED | — | 2027-02-17 | CTRL-001 | Measured numbers in this plan | — | Measure env |
-| CTRL-022 | 8 | Production DR / audit offsite | BLOCKED | — | — | G-P1-06–09 | External restore | remaining-external-dependencies.md | AWS / Supabase / secrets |
+| CTRL-020 | 5 | Resource attribution fields (not FinOps) | DEFERRED | — | 2027-01-20 | CTRL-017; R02 | Who/Agent/operation/resource/outcome refs | Same work as **R14 / G9**. Not started. | Outcome durable in code; R14 still not authorized |
+| CTRL-021 | 8 | Performance budgets for preflight/audit/telemetry | DEFERRED | — | 2027-02-17 | CTRL-001 | Measured numbers in this plan | Same work as **R13 / G25**. Defaults exist; no measurements. | Measure env |
+| CTRL-022 | 8 | Production DR / audit offsite | BLOCKED | — | — | G-P1-06–09 | External restore | Same work as **R17 / G28**. remaining-external-dependencies.md | AWS / Supabase / secrets |
 
 IDs CTRL-002–CTRL-011 reserved unused (never reuse). Next unused ID remains CTRL-023. **Do not create CTRL-023.** Gate 1 (Knowledge Integration Audit) found no new Control knowledge gap.
+
+R01–R20 are remediation IDs from the Task 19 investigation. They are **not** CTRL IDs. Each maps to an existing G/CTRL/§6.2 home. Implementation is unauthorized except R01–R03 (already committed as `39f654b`).
+
+| ID | Home | Task | Status | Evidence | Blocker / next proof | Authorized? |
+| -- | ---- | ---- | ------ | -------- | -------------------- | ----------- |
+| R01 | **G3** | Durable/shared connector nonce (T0). Keep 5 min skew, 10 min TTL. Uniqueness only inside the replay window. | **IMPLEMENTED + TESTED**. Not production-VERIFIED. | `39f654b`; T0 RPC `consume_application_connector_nonce`; durability + database tests | Real PG migration/apply; real PG txn; multi-process/multi-isolate; production Vercel+live PG; production Vercel 503 | Done in code. Production verify **not** authorized here. |
+| R02 | **G16** | Durable preflight decision + accepted execution report correlation (T1/T2). Binding is not `decisionId` alone. | **IMPLEMENTED + TESTED**. Not production-VERIFIED. | `39f654b`; `record_application_preflight_outcome` + `record_application_execution_report` | Same production blockers as R01 | Done in code. Production verify **not** authorized here. |
+| R03 | **G20** | Canonical application audit: RPC INSERTs `public.audit_logs` inside T1/T2. No Node post-commit canonical write. | **IMPLEMENTED + TESTED**. Not production-VERIFIED. | `39f654b`; T1/T2 SQL `INSERT public.audit_logs`; in-process rollback tests | Same production blockers as R01, especially real PG transaction execution | Done in code. Production verify **not** authorized here. |
+| R04 | **G20** | Incremental/index/PG audit query instead of full-file NDJSON `readFileSync` | MISSING | CODE-OBSERVED `listUnifiedAuditEntries` | Not G16. T1/T2 point inserts do not close this. | **No** |
+| R05 | **G20** | Top-level `tenantId`/`projectId` on unified audit | PARTIAL | `39f654b` only for `application.preflight.evaluated` + `application.execution.reported`. Other events OPEN. | Broader event-type migration | **No** (slice complete; rest not authorized) |
+| R06 | **G20 / G27** | Admin audit export stream (hash included) | MISSING | GET `/audit` list+limit only | requireAdmin | **No** |
+| R07 | §6.2 | Written admin vs operator privilege contract | MISSING (contract). F17 INTENTIONAL | Instance-admin all-owners tests | Owner product call; do not revoke admin read as a “fix” | **No** |
+| R08 | §6.2 | Kernel lessons GET `requireUser` or honest public allow-list | MISSING | Handler unauthenticated; not on public list | Session gate | **No** |
+| R09 | **G21** | Learning citation index by `decisionId:executionId` | MISSING | Nested full-file scan in `listRecordedProposals` | Prefer after R04 | **No** |
+| R10 | **G6 / Web** | Memory DELETE / TTL / erasure completeness | MISSING | Supersede only | Web/API; not Control | **No** |
+| R11 | **G23** | Generic SSRF / HTTP egress allow-list (not LLM egress) | MISSING (design-locked) | LLM egress SATISFIED (F22). Design lock: pin connect to checked address. | Inventory all `fetch` | **No** |
+| R12 | §6.2 Studio | Cancel in-flight Studio ask-agent / engineering loop | MISSING | No AbortController in Studio app | Studio plane only | **No** |
+| R13 | **G25 / CTRL-021** | Measure Control preflight/audit/telemetry budgets | MISSING | Defaults only | RUNTIME measure | **No** |
+| R14 | **G9 / CTRL-020** | Optional attribution/cost fields (not FinOps) | MISSING / DEFERRED | — | After R02 (now code) | **No** |
+| R15 | **G18 / CTRL-018** | EXPECTED/UNEXPECTED runtime hop | ENVIRONMENT BLOCKED / PARTIAL | Classifier + tests exist | HotelOS connector env | **No** (env, not code) |
+| R16 | **G21 / CTRL-019** | Repeated FAILURE runtime proof | ENVIRONMENT BLOCKED / PARTIAL | Alt 2 + tests exist | Real repeated `application.execution.reported` FAILURE | **No** (runtime, not code) |
+| R17 | **G28 / CTRL-022** | Offsite DR + restore drill | ENVIRONMENT BLOCKED | Drill `OFFSITE_NOT_CONFIGURED` | AWS / Supabase / offsite dest | **No** |
+| R18 | **G20 / G27** | Cursor pagination on `/audit` and `/audit/mine` | MISSING | limit-only list | Prefer after R04 | **No** |
+| R19 | §6.2 Web/Studio | i18n / accessibility completeness | USEFUL BUT OPTIONAL | 1675×3 keys; no WCAG proof | Not Control | **No** |
+| R20 | **G20 / G28** | Retention / TTL policy | MISSING / optional | Nonce/decision TTL is operational hygiene, not product retention | After R17 | **No** |
 
 ---
 
@@ -507,6 +625,9 @@ Do not add tests that invent Agent IDs or UNNECESSARY decisions.
 - Secrets never printed; `.env` never committed.
 - Fail-open GOVERNED/INFORMATIONAL and fail-closed HIGH/TOOL stay explicit.
 - No secondary execute path for siblings (`applicationMayExecuteViaGateway` is `def-000` only).
+- Durable application governance (R01–R03) uses `service_role` RPCs only; `public`/`anon`/`authenticated` revoked on the new tables/functions.
+- Generic SSRF/HTTP allow-list (R11) is **not** implemented. LLM egress policy is not a substitute.
+- Nonce uniqueness is only guaranteed inside the existing replay-protection window (5 min skew / 10 min TTL).
 
 ---
 
@@ -526,7 +647,14 @@ This matrix matches `evaluateAuthorized` / `evaluateApplicationPreflight` / `una
 | HIGH/TOOL authorized, approval store available, no approvalId | REQUIRE_APPROVAL (HTTP 202) + `FAIL_CLOSED` stamp | Human gate |
 | Telemetry unavailable | Execution may proceed | Telemetry is not a gate |
 | Audit unavailable | Treat as reliability incident; do not silently drop CORE proof | Canonical audit is the record |
-| Duplicate / retry | Nonce + idempotency | Replay resistance |
+| Live Postgres unavailable, local/test | Maps remain the authority (existing unit-test path) | Not a second competing store. Dual-write Map+Postgres is forbidden. |
+| Live Postgres unavailable, Vercel production | HTTP 503. No ALLOW. No `accepted: true`. No connector-HMAC success path. | Fail-closed. Simulated in unit test only — **not** a production 503 proof. |
+| T1 persist fails | No decision row, no idempotency row, no canonical `application.preflight.evaluated`. No HTTP 200 ALLOW. | RPC transaction: all three or none. |
+| T2 persist fails | No execution report, no canonical `application.execution.reported`. No HTTP 200 `accepted: true`. | RPC transaction: validate + report + audit or none. |
+| Duplicate nonce (same isolate or another) | 401 INVALID. Nonce stays consumed. | T0 committed before evaluate. |
+| Same idempotency key + same fingerprint | Return stored response. No second T1. No second audit. | Lookup before evaluate. |
+| Same idempotency key + different fingerprint | 409. Loser evaluation must not persist. | Concurrent: at most one T1 winner. |
+| Duplicate / retry | Nonce + idempotency (durable on live path; Maps on local/test) | Replay resistance inside the 10 min nonce TTL / 5 min skew. Not permanent uniqueness. |
 | Kill category engaged | Next preflight `KILLED` for `aiWorkers`/`agentDispatch` only | Not a mid-flight sibling abort (G12-E). `payments`/webhook kills do not apply to application preflight |
 | Policy change | Next evaluate | No live rewrite of in-flight tokens |
 | Model unavailable | Application failure | Application-owned |
@@ -545,35 +673,86 @@ This matrix matches `evaluateAuthorized` / `evaluateApplicationPreflight` / `una
 | G-P1-06–09 | G28, production proof | `docs/architecture/remaining-external-dependencies.md` | Local HMAC tests | AWS / Supabase / production secrets |
 | Operator commit not authorized | CTRL-001 | Cleared 2026-09-23 | Commit `400759a` | None |
 | Sibling dirty trees (pre-existing + this pass) | Commit hygiene | Separate repos | Atlas-only commit path B | Do not reset siblings |
+| Real PostgreSQL migration/apply | R01/R02/R03 production close | SQL script exists (`20260923180000_application_governance_durability.sql`); **not applied** here | In-process RPC double + Map tests | Live Supabase/Postgres apply |
+| Real PostgreSQL transaction execution | R03 T1/T2 atomicity; R01 T0 | SQL test script exists; **not executed** against real PG | In-process rollback doubles | Live PG txn proof |
+| Multi-process / multi-isolate validation | G3 replay + G16 correlation | In-process shared-memory double only | Unit tests | Two OS processes or two Vercel isolates |
+| Production Vercel + live PostgreSQL | R01/R02/R03 | Not run | Local code + tests | Production env |
+| Production Vercel 503 without live Postgres | G24 fail-closed | Unit simulation (`VERCEL=1`, `NODE_ENV=production`) only | Simulated 503 | Production 503 proof |
+| HotelOS connector env (CTRL-018 / R15) | G18 | Connector absent | Classifier tests | HotelOS env |
+| Repeated FAILURE hop (CTRL-019 / R16) | G21 | No real repeated `application.execution.reported` FAILURE | Learning unit tests | Real FAILURE hop |
 
 ---
 
 ## 17. Current Progress
 
-Counts are **capability rows in §6**, not scores.
+Counts are mechanical from the registers in this file. They are **not** scores.
+
+### 17.1 Capability rows (§6 G1–G28)
+
+Primary status of each G row (R-substatuses do not change the G primary count):
 
 ```text
 Total gated capabilities:     28
-PROVEN:                       2   (G3 Authorization, G11 Atlas SoD)
-PARTIAL:                      18
+PROVEN:                       2   (G3 HMAC/authz unit+route; G11 Atlas SoD)
+PARTIAL:                      18  (G1, G2, G6, G7, G10, G12, G13, G14, G16, G17, G18, G20, G21, G22, G23, G24, G26, G27)
 MISSING:                      7   (G4, G5, G8, G9, G15, G19, G25)
 ENVIRONMENT BLOCKED:          1   (G28)
+IMPLEMENTED + TESTED (G primary): 0
+INTENTIONAL / NOT A GAP:      recorded as annotation on G4, G5, G8, G15, G17/F35, G24/F04 — not a separate G-primary bucket
 NOT APPLICABLE:               0
 INCORRECT IMPLEMENTATION:     0
+2 + 18 + 7 + 1 = 28
 ```
 
-G5/G8 are MISSING **as Control engines** and correctly APPLICATION-owned — they do not count as Control defects.
+G4/G5/G8/G15 are MISSING **as Control engines** and correctly APPLICATION-owned — they do not count as Control defects.
+
+R01/R02/R03 are **IMPLEMENTED + TESTED** remediations living on G3/G16/G20. Those G rows stay PROVEN (G3 authz) or PARTIAL (G16/G20) because production verification and remaining sibling/audit-query work are incomplete. Do **not** count G16 as PROVEN.
+
+### 17.2 Remediation rows (§10 R01–R20)
+
+```text
+Total remediations:           20
+IMPLEMENTED + TESTED:         3   (R01, R02, R03) — not production-VERIFIED
+PARTIAL:                      1   (R05 two application events only)
+MISSING:                      12  (R04, R06, R07, R08, R09, R10, R11, R12, R13, R14, R18, R20)
+ENVIRONMENT BLOCKED:          3   (R15, R16, R17)
+USEFUL BUT OPTIONAL:          1   (R19)
+3 + 1 + 12 + 3 + 1 = 20
+Production-VERIFIED remediations: 0
+```
+
+### 17.3 CTRL task rows (§10 CTRL-000–CTRL-022, excluding unused 002–011)
+
+```text
+CTRL VERIFIED:                8   (000, 001, 012, 013, 014, 015, 016, 017)
+CTRL PARTIAL:                 2   (018, 019)
+CTRL DEFERRED:                2   (020, 021)
+CTRL BLOCKED:                 1   (022)
+CTRL unused reserved:         10  (002–011)
+Do not create CTRL-023.
+```
+
+### 17.4 Cross-plane §6.2
+
+```text
+Tracked non-Control / cross-plane rows: 7
+MISSING:                      4   (R07, R08, R10, R12)
+ALREADY SATISFIED:            2   (F32; F23-residual with residual risk)
+USEFUL BUT OPTIONAL:          1   (R19)
+```
+
+### 17.5 CORE / remaining
 
 ```text
 CORE CONTROL rows:            G1, G3, G11, G12, G20, G23
 CORE closed (10/10 ten-point): 0
-CORE remaining:               6 (G3/G11 PROVEN but not 10/10-closed — no security-review + runtime + plan evidence block yet)
+CORE remaining:               6 (G3/G11 PROVEN but not 10/10-closed — no security-review + production runtime + plan evidence block yet)
 CONTROL SUPPORTING remaining: see §6
-OPTIONAL / DEFERRED:          CTRL-019 runtime proof; CTRL-020–CTRL-022
-Environment blockers:         6 rows in §16
+OPTIONAL / DEFERRED:          CTRL-019 runtime; CTRL-020–CTRL-022; R13/R14/R19/R20
+Environment blockers:         §16 (original 6 + 7 new production/runtime rows)
 ```
 
-Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). CTRL-016 is VERIFIED and committed (`c0ca916`) as a **declaration** contract, not execution proof. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (implementation uncommitted; this file is docs recon only). CTRL-018 is PARTIAL (`bd1d2db`): implementation and tests committed; runtime EXPECTED/UNEXPECTED not proven. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). G21 is PARTIAL (proposal/decision/audit loop exists; no production learning). G15 remains MISSING. G4 remains MISSING (correctly — no necessity engine). G12 remains PARTIAL. G18 is PARTIAL (not PROVEN). G24 remains PARTIAL. CTRL-019 is PARTIAL (`ecdae7b`) — do **not** mark VERIFIED. CORE closed remains 0.
+Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). CTRL-016 is VERIFIED and committed (`c0ca916`) as a **declaration** contract, not execution proof. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop. CTRL-018 is PARTIAL (`bd1d2db`): implementation and tests committed; runtime EXPECTED/UNEXPECTED not proven. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). R02 on G16 is IMPLEMENTED + TESTED (`39f654b`), not production-VERIFIED. G20 is PARTIAL; R03 is IMPLEMENTED + TESTED, not production-VERIFIED. G21 is PARTIAL (proposal/decision/audit loop exists; no production learning). G15 remains MISSING. G4 remains MISSING (correctly — no necessity engine). G12 remains PARTIAL. G18 is PARTIAL (not PROVEN). G23 remains PARTIAL (R11 SSRF still MISSING). G24 remains PARTIAL. CTRL-019 is PARTIAL (`ecdae7b`) — do **not** mark VERIFIED. CORE closed remains 0.
 
 ---
 
@@ -591,21 +770,37 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CTRL-013 VERIFIED | 2026-09-23 | `455b205b07dd507ddeb0407da9abaac5e8b17232` | `application-preflight.ts` comments; shared + API tests; this §15 | shared 9/9; API preflight+identity 27/27 | n/a — no new runtime | G24 remains PARTIAL. No invented production evidence. Not pushed. |
 | CTRL-014 VERIFIED | 2026-09-23 | `28ef9f20177dcdfa62719073182bc32104ecc7b2` | this file only (audit lock; no production edit) | API preflight+identity 27/27; shared preflight+connected 13/13; public-routes 4/4 | n/a — no new runtime | Existing tests remain the lock. No new bypass route. G24 remains PARTIAL. Not pushed. |
 | CTRL-016 VERIFIED | 2026-09-23 | `c0ca916ed28f4147587675aa8fa0a3070fd211ac` | 6 Atlas files in that commit (this file is docs recon only) | shared 11/11; API 37/37; Civio 2/2; CP 14/14 | n/a — declaration is not execution | Fingerprint appends path only when present. No path branch in `evaluateAuthorized`. `executed: false`. CTRL-017 owns outcome. Not pushed. |
-| CTRL-017 VERIFIED | 2026-09-23 | none yet (implementation + this recon uncommitted) | this file is docs recon only; Gate 3B contract remains in the working tree | existing Gate 3B tests are not the VERIFIED proof | LOCAL RUNTIME: CaseFlow `caseflow.openai.chat` cache-miss wrap → real `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO` → HMAC report accepted → `application.execution.reported` | DoD met by one sibling hop. Not production. Reader-path miss (`row.input` vs `payload.input`) was query error, not a failed hop. Replay was HMAC-only. Do not start CTRL-018. |
+| CTRL-017 VERIFIED | 2026-09-23 | none recorded as a dedicated commit | Gate 3B contract in tree | existing Gate 3B tests are not the VERIFIED proof | LOCAL RUNTIME: CaseFlow `caseflow.openai.chat` cache-miss wrap → real `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO` → HMAC report accepted → `application.execution.reported` | DoD met by one sibling hop. Not production. Process-local Maps remain local/test. Live durability is R02 (`39f654b`), not this CTRL-017 proof. |
 | CTRL-018 PARTIAL | 2026-09-23 | `bd1d2db2fe46e19d54b50332d2aede62cf1597bd` | 6 Atlas files in that commit (this file is docs recon only) | shared observation 8/8; API observation+identity 12/12; CP 58/58 | No HotelOS→Atlas hop. CaseFlow hop remains `agentId=null` → UNKNOWN | NOT VERIFIED. Expected is application-owned. Classification observational only. `notAnAgentRegistry` remains true. No Fabric registry. HotelOS connector env absent — not an Atlas implementation defect. Not production. |
 | CTRL-019 PARTIAL | 2026-09-23 | `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` | 8 Atlas files in that commit (this file is docs recon only) | shared 9/9; API 14/14; regression 160/160 | No real repeated `application.execution.reported` FAILURE | NOT VERIFIED. Alt 2 only. No ApprovalRequest. No execution authority. No policy/memory/knowledge mutation. Not production. |
+| G16 durability R01+R02+R03 IMPLEMENTED + TESTED | 2026-09-23 | `39f654b12c33dd39b2b0c5396b4977e8a80dc5b5` | 13 Atlas files (`git show --name-only 39f654b`). Master Plan not in that commit. | database 100/100 (17 new); API durability+Map path 81/81; shared contracts 34/34; schema 7/7; Control regression 118/118 | No real PG apply; no multi-process; no production Vercel+PG; no production 503 | NOT production-VERIFIED. Homes: R01→G3, R02→G16, R03→G20. R05 partial (two events). Local only; not pushed. |
 
-**Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 18 / 7 / 1 / CORE 0.
+**Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). §17.1 counts remain 28 / 2 / 18 / 7 / 1 / CORE 0. R01–R03 do not change those G-primary totals.
 
 ---
 
 ## 19. Remaining Work
 
+What comes next is **not authorized** by this documentation recon. Suggested engineering order from Task 19, with correct homes:
+
+1. **Production verification of R01/R02/R03** (Operations): real PG migration/apply, real PG transactions, multi-process/multi-isolate, production Vercel+live PG, production Vercel 503. Until then they stay IMPLEMENTED + TESTED, not PROVEN.
+2. **R11 SSRF** (G23) — design-locked; implementation not authorized here.
+3. **R07 / R08** (§6.2) — privilege contract + kernel-lessons auth. Not Control engines.
+4. **R04 / R06 / R18** (G20) — audit query/export/pagination. Not G16.
+5. **R09** (G21) — citation index after R04.
+6. **R13** (G25 / CTRL-021) — measure, do not guess.
+7. **R14** (G9 / CTRL-020) — attribution fields only; no FinOps product.
+8. **R15 / R16** — runtime proofs (HotelOS env; repeated FAILURE). Do not invent hops.
+9. **R10 / R12 / R19** — Web/Studio. Not Control gaps.
+10. **R17 / R20** — Operations DR then retention.
+
+Still true:
+
 1. CTRL-013 is VERIFIED and committed (`455b205`; local, not pushed). G24 remains PARTIAL.
 2. CTRL-014 is VERIFIED and committed (`28ef9f2`; local, not pushed).
 3. CTRL-016 is VERIFIED and committed (`c0ca916`; local, not pushed) as path **declaration**. It is not execution, outcome, cost, or sufficiency proof.
-4. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (`decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` ↔ `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`). CTRL-018 is PARTIAL (`bd1d2db`) — do **not** mark VERIFIED. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). G15 remains MISSING. CTRL-019 is PARTIAL (`ecdae7b`) — do **not** mark VERIFIED. Do not create CTRL-023.
-5. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, or a new Knowledge Authority.
+4. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (`decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` ↔ `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`). CTRL-018 is PARTIAL (`bd1d2db`) — do **not** mark VERIFIED. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). R02 is IMPLEMENTED + TESTED, not production-VERIFIED. G15 remains MISSING. CTRL-019 is PARTIAL (`ecdae7b`) — do **not** mark VERIFIED. Do not create CTRL-023.
+5. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, a new Knowledge Authority, a second learning approval engine, live sibling abort, IDE clone, Redis-only SoT, or NLI sibling verification.
 6. Keep G-P1-06–09 blocked.
 7. LexStudy / Vantera remain NOT ACCESSIBLE.
 
@@ -625,8 +820,10 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). CTRL-016 is VERIFIED (`c0ca916`, local, not pushed) as declaration only. CTRL-017 is VERIFIED by LOCAL RUNTIME CaseFlow hop (implementation uncommitted). CTRL-018 is PARTIAL (`bd1d2db`): implementation+tests committed; runtime EXPECTED/UNEXPECTED not proven. CTRL-019 is PARTIAL (`ecdae7b`): implementation+tests committed; repeated-FAILURE runtime unproven. Local HEAD `ecdae7b` | Active |
+| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). CTRL-016 is VERIFIED (`c0ca916`, local, not pushed) as declaration only. CTRL-017 is VERIFIED by LOCAL RUNTIME CaseFlow hop. CTRL-018 is PARTIAL (`bd1d2db`): implementation+tests committed; runtime EXPECTED/UNEXPECTED not proven. CTRL-019 is PARTIAL (`ecdae7b`): implementation+tests committed; repeated-FAILURE runtime unproven. G16 durability R01+R02+R03 is IMPLEMENTED + TESTED (`39f654b`, local, not pushed), not production-VERIFIED. Local HEAD `39f654b` | Active |
 | CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
+| CAD-013 | Live production authority for connector nonces, preflight decisions, idempotency, execution reports, and application canonical audit is Postgres RPCs. Local/test without live Supabase may use Maps. Vercel production without live Postgres fails closed (503). Do not dual-write Map+Postgres as competing authorities. Do not rebuild ALLOW from audit. Do not use Redis as the sole source of truth. | Active |
+| CAD-014 | Do not create CTRL-023. Do not build an Agent 365 / sibling Fabric registry. Do not mint sibling Agent IDs. Do not build a second learning approval engine or redeemable ApprovalRequest. Do not build necessity / knowledge-sufficiency / router engines to close G4/G5/G8. Do not take G15 sibling result verification into Atlas. Do not clone VS Code/Cursor into Studio. Do not create FinOps as a product. | Active |
 
 If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replacement, update this graph, keep history in §23.
 
@@ -634,11 +831,17 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 
 ## 21. Deferred Work
 
-- CTRL-018 runtime EXPECTED/UNEXPECTED hop (HotelOS connector env absent; not an Atlas implementation defect)
-- CTRL-019 repeated-FAILURE runtime proof (implementation `ecdae7b` committed; not VERIFIED)
-- Cost attribution fields (CTRL-020)
-- Performance budgets (CTRL-021)
-- Production DR (CTRL-022)
+- R01/R02/R03 **production** verification (live PG apply/txn, multi-isolate, Vercel+PG, production 503) — code is done; proofs are not
+- CTRL-018 / R15 runtime EXPECTED/UNEXPECTED hop (HotelOS connector env absent; not an Atlas implementation defect)
+- CTRL-019 / R16 repeated-FAILURE runtime proof (implementation `ecdae7b` committed; not VERIFIED)
+- Cost attribution fields (CTRL-020 / R14 / G9)
+- Performance budgets (CTRL-021 / R13 / G25)
+- Production DR (CTRL-022 / R17 / G28)
+- Audit query/export/pagination/retention (R04, R06, R18, R20 / G20)
+- R05 remainder (non-application event types)
+- R07 admin/operator contract; R08 kernel lessons auth; R09 citation index
+- R10 Web memory DELETE/TTL; R12 Studio cancel; R19 i18n/a11y
+- R11 SSRF implementation (design-locked; not authorized)
 - Purpose/intent class on preflight
 - Delegation hop fields
 - LexStudy / Vantera runtime wiring
@@ -650,13 +853,23 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 - FinOps product, OTel vendor, model marketplace, model router, RAG, NLI everywhere
 - Memory database owned by Control
 - Application Agent runtime or Fabric promotion
-- Fake Agent IDs, fake cost savings, fake verification, fake scores
+- Fake Agent IDs, fake cost savings, fake verification, fake scores, fake EXPECTED/FAILURE hops
 - Decorative Control dashboards
 - Merging HotelOS HITL into Atlas SoD
 - Global fail-closed
 - Cleaning sibling dirty trees
 - Implementing gap-analysis as this program
 - Investor-doc edits unless separately asked
+- Agent 365-style registry / minting sibling Agent identities
+- Second learning approval engine / redeemable ApprovalRequest for learning
+- Necessity / knowledge-sufficiency / AI-router engines merely to close G4/G5/G8
+- NLI / result-verification ownership in Atlas for G15
+- Live sibling abort (next-hop kill is the architecture)
+- Cloning VS Code / Cursor into Studio (LSP, debugger, extensions) for benchmark parity
+- Redis-only source of truth
+- CTRL-023
+- Treating Web/Studio/Operations findings as Control architectural gaps
+- Marking R01/R02/R03 PROVEN or production-VERIFIED from unit tests or in-process doubles
 
 ---
 
@@ -681,6 +894,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | 2026-09-23 | CTRL-018 documentation reconciliation. Implementation already committed as `bd1d2db` (6 Atlas files). Status PARTIAL, not VERIFIED. Official DoD (`Surface unexpected agentId`; `notAnAgentRegistry` remains true) is satisfied in CODE+TEST only. HotelOS `agent.cio` is application-owned in repository evidence; HotelOS connector env ABSENT — no real hop. CaseFlow preflight remains `agentId=null` → UNKNOWN; no legitimate CaseFlow non-null Agent ID. EXPECTED/UNEXPECTED runtime unproven. G18 MISSING→PARTIAL (mechanical count 15/10 → 16/9). CORE closed 0. No CTRL-023. Not committed in this pass. | local HEAD `bd1d2db`; `main` ahead of `origin/main` by 10 |
 | 2026-09-23 | G16 documentation reconciliation. Status MISSING→PARTIAL. Generic `atlas.application-execution-report.v1` exists (`executionId` + `executionStatus` SUCCESS\|FAILURE, correlated to a preceding ALLOW; ALLOW is not SUCCESS). One local CaseFlow hop proven (CTRL-017). General sibling coverage remains unproven. No `resultStatus` / `outcomeStatus` / `actualCost` added as G16 requirements. `actualCost` remains G9 / CTRL-020. G15 remains MISSING. CTRL-019 unchanged (DEFERRED; Outcome missing). Mechanical count 16/9 → 17/8. CORE closed 0. Not committed in this pass. | local HEAD `dc94361`; `main` ahead of `origin/main` by 10 |
 | 2026-09-23 | CTRL-019 documentation reconciliation. Implementation already committed as `ecdae7b` (8 Atlas files). Status DEFERRED→PARTIAL, not VERIFIED. Alt 2 non-redeemable human learning decision. G21 MISSING→PARTIAL (proposal/decision/audit loop; no production or autonomous learning). Repeated real FAILURE runtime unproven. G15/G16/CTRL-017/CTRL-018/CTRL-020–022 unchanged. Mechanical count 17/8 → 18/7. CORE closed 0. No CTRL-023. Not committed in this pass. | local HEAD `ecdae7b` |
+| 2026-09-23 | Full Task 19 + Task 20 documentation reconciliation **into this file only**. No new documents. R01/R02/R03 recorded IMPLEMENTED + TESTED at `39f654b` (13 files; not pushed); not production-VERIFIED. Homes: R01→G3, R02→G16, R03→G20. R04–R20 mapped to existing G/CTRL/§6.2 rows — G16 is not a catch-all. F01–F42 finding map added. G-primary counts unchanged (28 / 2 / 18 / 7 / 1 / CORE 0). R counts: 3 IMPLEMENTED+TESTED / 1 PARTIAL / 12 MISSING / 3 ENVIRONMENT BLOCKED / 1 OPTIONAL. No CTRL-023. No implementation in this pass. | local HEAD `39f654b`; this file uncommitted |
 
 ---
 
@@ -714,6 +928,13 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | CaseFlow | sibling `apps/server/src/services/atlas/atlasPreflight.js` |
 | Civio | sibling `atlasControlConnector.ts`, `ai.ts` |
 | BrokerOS | sibling `packages/api/src/agent/atlas-preflight.ts` |
+| G16 durability migration / T0 T1 T2 RPCs | `supabase/migrations/20260923180000_application_governance_durability.sql` |
+| G16 durability SQL tests (not run on real PG here) | `supabase/tests/20260923180000_application_governance_durability.test.sql` |
+| Application governance repository | `packages/database/src/repositories/application-governance.ts` |
+| In-process governance double | `packages/database/src/repositories/application-governance.in-process.ts` |
+| Mode switch (maps / durable / unavailable) | `apps/api/src/services/application-governance-store.ts` |
+| Durability service tests | `apps/api/src/services/application-governance-durability.test.ts` |
+| G16 durability commit | `39f654b12c33dd39b2b0c5396b4977e8a80dc5b5` (13 files; local; not pushed) |
 
 ---
 
@@ -724,16 +945,17 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 3. **Cheaper path without owning knowledge:** only if the application already has a proven cheap **completion** (CaseFlow cache before preflight; Civio FAQ after preflight). HotelOS pack is not a completion. Control cannot infer sufficiency. CTRL-016 lets the app declare `LOCAL_COMPLETION_PATH` or `MODEL_PATH`; omit/null is legacy. That declaration is not proof the path ran.
 4. **Control vs application:** Control = identity, authz, risk class, approval/SoD, next-hop authority, audit. Application = cheap path, sufficiency, model choice, result, outcome facts.
 5. **Signals that may cross the boundary:** applicationId, agentId (or null), actorId, tenantId, projectId, request/idempotency, operation, operationClass, riskLevel, decision, evidence refs, optional `declaredCompletionPath` — not prompts, not memory contents, not domain documents. The path field is a declaration, not execution evidence.
-6. **Request → Agent → execution → result:** PARTIAL. Identity on preflight/audit after CTRL-001. One LOCAL RUNTIME CaseFlow hop reported (`CTRL-017` VERIFIED). Other siblings and production are not proven.
+6. **Request → Agent → execution → result:** PARTIAL. Identity on preflight/audit after CTRL-001. One LOCAL RUNTIME CaseFlow hop reported (`CTRL-017` VERIFIED). Live-path decision/report durability is R02 IMPLEMENTED + TESTED (`39f654b`), not production-VERIFIED. Other siblings and production are not proven.
 7. **Stop an Agent:** Fabric/Atlas-self at Control eval. Application Agent: record kill / deny next preflight — not a live abort.
 8. **Continue after authorization expires:** yes until the next evaluateAuthorized; no mid-flight sibling revoke.
 9. **Bypass:** fail-open skip, CaseFlow cache (intentional cheap path), unconfigured secret, any hop that never calls preflight, CP ingest (not a gate).
 10. **Why a decision was made:** PARTIAL — audit has decision + policy/operation class; no purpose/necessity explanation.
-11. **What actually happened:** PARTIAL — authorized is recorded; one local CaseFlow OpenAI hop has correlated `executionId` (CTRL-017). Other sibling executions remain unreported.
+11. **What actually happened:** PARTIAL — authorized is recorded; one local CaseFlow OpenAI hop has correlated `executionId` (CTRL-017). Live-path correlation is durable in code (R02), not production-proven. Other sibling executions remain unreported.
 12. **Outcome acceptable:** MISSING for siblings; Atlas-self fulfill only.
 13. **Learn without autonomous policy change:** PARTIAL — CTRL-019 (`ecdae7b`) proposal/decision/audit exists; `autoApply: false`. Repeated-FAILURE runtime unproven. No autonomous policy mutation.
-14. **2026 research core vs optional:** see §5. Core = identity, pre-exec authz, SoD, kill honesty, audit, plane separation. Optional/external = FinOps product, router, NLI, OTel, portable hop fields until a hop exists.
+14. **2026 research core vs optional:** see §5 and §5.1. Core = identity, pre-exec authz, SoD, kill honesty, audit, plane separation. Production-scale durability of nonce/decision/audit is IMPLEMENTED + TESTED, not PROVEN. Optional/external = FinOps product, router, NLI, OTel, portable hop fields until a hop exists.
 15. **Smallest architecture:** Identity → Authorization → Approval → next-hop authority → Audit, plus observational telemetry/portfolio. Everything else waits for truthful application attestation.
+16. **What remediation comes next:** §19. Not authorized by this recon. Do not start R11 or R04–R20 from this documentation pass.
 
 ---
 
