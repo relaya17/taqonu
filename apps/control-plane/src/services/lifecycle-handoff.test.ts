@@ -3,6 +3,7 @@ import type { SupervisedGovernanceDecision } from "./supervised-governance.js";
 import {
   handoffGovernedDecisionToApi,
   resolveAtlasApiTarget,
+  setAtlasApiFetchForTests,
 } from "./lifecycle-handoff.js";
 
 const decision: SupervisedGovernanceDecision = {
@@ -33,6 +34,7 @@ describe("Control Plane lifecycle handoff", () => {
   afterEach(() => {
     delete process.env["ATLAS_API_URL"];
     delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+    setAtlasApiFetchForTests(null);
     vi.unstubAllGlobals();
   });
 
@@ -54,8 +56,7 @@ describe("Control Plane lifecycle handoff", () => {
   it("records HANDOFF_FAILED when the API rejects authentication", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:3999";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "token";
-    vi.stubGlobal(
-      "fetch",
+    setAtlasApiFetchForTests(
       vi.fn(async () =>
         new Response(JSON.stringify({ error: { message: "unauthorized" } }), {
           status: 401,
@@ -92,7 +93,7 @@ describe("Control Plane lifecycle handoff", () => {
         { status: 200 },
       );
     });
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await handoffGovernedDecisionToApi(decision);
     expect(result.status).toBe("HANDED_OFF");
     expect(result.executed).toBe(false);
@@ -103,7 +104,7 @@ describe("Control Plane lifecycle handoff", () => {
     process.env["ATLAS_API_URL"] = "file:///etc/passwd";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "token";
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await handoffGovernedDecisionToApi(decision);
     expect(result.status).toBe("HANDOFF_FAILED");
     expect(result.reason).toMatch(/http or https/i);

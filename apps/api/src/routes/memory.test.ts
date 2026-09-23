@@ -754,3 +754,81 @@ describe("POST /api/v1/memory/:id/correct", () => {
     expect(second.json().error.code).toBe("ALREADY_SUPERSEDED");
   });
 });
+
+describe("R10 DELETE / TTL", () => {
+  it("401s DELETE when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/memory/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("erases an owned memory and hides it from retrieve", async () => {
+    seedMemory(ownerA.id, "erase me");
+    const row = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.statement === "erase me");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/memory/${row!.id}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().erased).toBe(true);
+    const list = await app.inject({ method: "GET", url: "/api/v1/memory" });
+    const erased = list
+      .json()
+      .items.find((item: { id: string }) => item.id === row!.id);
+    expect(erased.status).toBe("SUPERSEDED");
+    expect(erased.statement).toBe("[erased]");
+  });
+
+  it("404s DELETE of another tenant's memory and does not erase it", async () => {
+    seedMemory(ownerB.id, "owner B erase target");
+    const foreign = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.statement === "owner B erase target");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/memory/${foreign!.id}`,
+    });
+    expect(res.statusCode).toBe(404);
+    getRequestUser.mockReturnValue(ownerB);
+    const check = await app.inject({ method: "GET", url: "/api/v1/memory" });
+    const mine = check
+      .json()
+      .items.find((item: { id: string }) => item.id === foreign!.id);
+    expect(mine.status).toBe("ACTIVE");
+    expect(mine.statement).toBe("owner B erase target");
+  });
+
+  it("expires a TTL'd memory on list and retrieve", async () => {
+    seedMemory(ownerA.id, "ttl soon");
+    const row = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.statement === "ttl soon");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const past = new Date(Date.now() - 1000).toISOString();
+    const ttl = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${row!.id}/ttl`,
+      payload: { validUntil: past },
+    });
+    expect(ttl.statusCode).toBe(200);
+    expect(ttl.json().status).toBe("SUPERSEDED");
+    const retrieve = await app.inject({
+      method: "GET",
+      url: "/api/v1/memory?mode=retrieve&budget=20",
+    });
+    const statements = retrieve
+      .json()
+      .items.map((item: { statement: string }) => item.statement);
+    expect(statements).not.toContain("ttl soon");
+  });
+});

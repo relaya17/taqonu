@@ -91,6 +91,9 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(studio).toContain("engineerRole");
     expect(studio).toContain("<SupervisingAgentPanel");
     expect(studio).toContain("/api/v1/studio/ask-agent");
+    expect(studio).toContain("cancelRun");
+    expect(studio).toContain("createStudioRunAbort");
+    expect(studio).toContain("runAbort.start()");
     expect(studio).toContain("projectsQuery.isError");
     expect(studio).toContain("buildStudioSearch");
     expect(studio).toContain("StudioCodeEditor");

@@ -135,6 +135,14 @@ function auditUuid(value: string | null | undefined): string | undefined {
   return undefined;
 }
 
+function optionalAuditScope(
+  value: string | null | undefined,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function policyLabel(decision: GovernedLifecycleDecision): string {
   return `${decision.policy.entityType}.${decision.policy.action}`;
 }
@@ -194,6 +202,10 @@ function audit(input: {
   readonly result: "SUCCESS" | "FAILURE";
   readonly evidence: GovernedLifecycleEvidence;
 }): void {
+  const tenantId = optionalAuditScope(input.evidence.tenantId);
+  const projectId = optionalAuditScope(
+    input.projectId ?? input.evidence.projectId,
+  );
   appendUnifiedAuditEntry({
     type: input.type,
     actorId: input.actorId,
@@ -220,7 +232,8 @@ function audit(input: {
     approval: input.approval,
     result: input.result,
     ...(auditUuid(input.ownerId) ? { ownerId: auditUuid(input.ownerId) } : {}),
-    ...(auditUuid(input.projectId) ? { projectId: auditUuid(input.projectId) } : {}),
+    ...(tenantId !== undefined ? { tenantId } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
   });
 }
 

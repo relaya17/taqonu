@@ -6,6 +6,12 @@ export {
   atlasSelfControlArtifactHash,
 } from "./constants/atlas-self-hash.js";
 export {
+  SafeOutboundHttpError,
+  defaultPinnedConnect,
+  defaultResolveOutboundAddresses,
+  safeOutboundFetch,
+} from "./node/safe-outbound-http.js";
+export {
   controlPlaneOperatorSecrets,
   controlPlaneOwnerSecrets,
   matchControlPlaneBearer,

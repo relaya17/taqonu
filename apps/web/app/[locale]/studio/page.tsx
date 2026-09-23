@@ -25,6 +25,7 @@ import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Link, usePathname, useRouter } from "@/i18n/routing";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { createStudioRunAbort } from "@/lib/studio-run-abort";
 import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { ChatPanel } from "@/components/studio/ChatPanel";
@@ -533,15 +534,21 @@ export default function StudioPage() {
       ),
   });
 
+  const runAbort = useMemo(() => createStudioRunAbort(), []);
+
   const propose = useMutation({
     mutationFn: () =>
-      apiPost<AskResult>("/api/v1/studio/ask-agent", {
-        projectId: projectId || null,
-        path: selectedPath ?? undefined,
-        mode: modeAsk,
-        instruction,
-        ...(selectedFindingId ? { findingId: selectedFindingId } : {}),
-      }),
+      apiPost<AskResult>(
+        "/api/v1/studio/ask-agent",
+        {
+          projectId: projectId || null,
+          path: selectedPath ?? undefined,
+          mode: modeAsk,
+          instruction,
+          ...(selectedFindingId ? { findingId: selectedFindingId } : {}),
+        },
+        { signal: runAbort.start() },
+      ),
     onSuccess: (data) => {
       if (projectId && data.patch?.id) {
         void queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
@@ -560,13 +567,17 @@ export default function StudioPage() {
       if (!selectedProject?.workspaceRoot) {
         throw new Error(t("loopNoRoot"));
       }
-      return apiPost<EngineeringLoopRun>("/api/v1/engineering/loop", {
-        workspaceRoot: selectedProject.workspaceRoot,
-        userRequest: instruction,
-        projectId,
-        projectSlug: selectedProject.slug,
-        mode: modeAsk,
-      });
+      return apiPost<EngineeringLoopRun>(
+        "/api/v1/engineering/loop",
+        {
+          workspaceRoot: selectedProject.workspaceRoot,
+          userRequest: instruction,
+          projectId,
+          projectSlug: selectedProject.slug,
+          mode: modeAsk,
+        },
+        { signal: runAbort.start() },
+      );
     },
   });
 
@@ -1356,9 +1367,22 @@ export default function StudioPage() {
                           ? t("saveRemind")
                           : t("saveSummary")}
                 </Button>
+                {(intent === "propose" || intent === "loop") &&
+                (propose.isPending || runLoop.isPending) ? (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={() => runAbort.cancel()}
+                    sx={{ whiteSpace: "nowrap", alignSelf: { sm: "flex-start" } }}
+                  >
+                    {t("cancelRun")}
+                  </Button>
+                ) : null}
               </Stack>
 
-              {(propose.isError || runLoop.isError || saveNote.isError) && (
+              {(propose.isError || runLoop.isError || saveNote.isError) &&
+                !((propose.error || runLoop.error) instanceof Error &&
+                  (propose.error || runLoop.error)?.name === "AbortError") && (
                 <Alert severity="error" sx={{ mt: 1.5 }}>
                   {(
                     (propose.error || runLoop.error || saveNote.error) as Error

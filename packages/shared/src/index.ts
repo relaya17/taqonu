@@ -21,5 +21,6 @@ export * from "./platform/production-publish-guard.js";
 export * from "./platform/agent-project-knowledge.js";
 export * from "./platform/agent-guardian.js";
 export * from "./approval/canonicalization.js";
+export * from "./security/outbound-address.js";
 
 export type AgentReputationSummary = { score: number; details?: string; };

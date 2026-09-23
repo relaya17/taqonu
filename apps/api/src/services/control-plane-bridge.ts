@@ -5,6 +5,7 @@ import {
   type AgentRuntimeControl,
   type DomainEvent,
 } from "@atlas/shared";
+import { safeOutboundFetch } from "@atlas/shared/node";
 import { assertEgressAllowed } from "./egress-gate.js";
 
 const GATEWAY_MAP: Partial<Record<DomainEvent["type"], string>> = {
@@ -77,7 +78,7 @@ export async function lookupControlPlaneAgentRuntimeStatus(
     return { configured: true, status: "UNKNOWN", unreachable: true };
   }
   try {
-    const response = await fetch(
+    const response = await safeOutboundFetch(
       `${base}/api/v1/agents/${encodeURIComponent(agentId)}`,
       {
         headers: { authorization: `Bearer ${token}` },
@@ -127,7 +128,7 @@ export function registerControlPlaneBridge(): () => void {
     } catch {
       return;
     }
-    void fetch(`${base}/api/v1/gateway/events`, {
+    void safeOutboundFetch(`${base}/api/v1/gateway/events`, {
       method: "POST",
       headers,
       body: JSON.stringify({

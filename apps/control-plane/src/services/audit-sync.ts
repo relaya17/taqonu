@@ -6,6 +6,7 @@
  * canonical API audit trail.
  */
 
+import { safeOutboundFetch } from "@atlas/shared/node";
 import { listAuditEntries, type AuditEntry } from "./governance-state.js";
 import { assertControlPlaneApiEgress } from "./control-plane-egress.js";
 
@@ -79,7 +80,7 @@ export async function syncAuditToApi(): Promise<{
       headers.authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${apiBaseUrl}/api/v1/audit/cp-import`, {
+    const response = await safeOutboundFetch(`${apiBaseUrl}/api/v1/audit/cp-import`, {
       method: "POST",
       headers,
       body: JSON.stringify({ entries: pending }),

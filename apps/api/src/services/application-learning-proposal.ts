@@ -22,7 +22,11 @@ import {
   type ApplicationLearningDecision,
   type ApplicationLearningProposal,
 } from "@atlas/shared";
-import { appendUnifiedAuditEntry, listUnifiedAuditEntries } from "./audit-log.js";
+import {
+  appendUnifiedAuditEntry,
+  listIndexedUnifiedByType,
+  lookupIndexedFailureCitation,
+} from "./audit-log.js";
 
 const LEARNING_REQUESTED_BY = CONTROL_PLANE_SERVICE_ID;
 
@@ -36,60 +40,37 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function readReportedFailure(
-  entry: ReturnType<typeof listUnifiedAuditEntries>[number],
-): ApplicationLearningCitation | null {
-  if (entry.type !== "application.execution.reported") return null;
-  const input = asRecord(entry.input);
-  const output = asRecord(entry.output);
-  const executionStatus = input.executionStatus ?? output.executionStatus;
-  if (executionStatus !== "FAILURE") return null;
-  const candidate = {
-    auditType: "application.execution.reported" as const,
-    decisionId: String(input.decisionId ?? ""),
-    requestId: String(input.requestId ?? ""),
-    executionId: String(input.executionId ?? ""),
-    executionStatus: "FAILURE" as const,
-    applicationId: String(input.applicationId ?? ""),
-    tenantId: String(input.tenantId ?? ""),
-    projectId: String(input.projectId ?? ""),
-    operation: String(input.operation ?? entry.action ?? ""),
-  };
-  if (
-    !candidate.decisionId ||
-    !candidate.requestId ||
-    !candidate.executionId ||
-    !candidate.applicationId ||
-    !candidate.tenantId ||
-    !candidate.projectId ||
-    !candidate.operation
-  ) {
-    return null;
-  }
-  return candidate;
-}
-
 function findAuthoritativeFailure(
   citation: ApplicationLearningCitation,
 ): ApplicationLearningCitation | null {
-  for (const entry of listUnifiedAuditEntries()) {
-    const recorded = readReportedFailure(entry);
-    if (!recorded) continue;
-    if (learningCitationKey(recorded) !== learningCitationKey(citation)) {
-      continue;
-    }
-    if (
-      recorded.requestId !== citation.requestId ||
-      recorded.applicationId !== citation.applicationId ||
-      recorded.tenantId !== citation.tenantId ||
-      recorded.projectId !== citation.projectId ||
-      recorded.operation !== citation.operation
-    ) {
-      return null;
-    }
-    return recorded;
+  const recorded = lookupIndexedFailureCitation(
+    citation.decisionId,
+    citation.executionId,
+  );
+  if (!recorded) return null;
+  if (learningCitationKey(recorded) !== learningCitationKey(citation)) {
+    return null;
   }
-  return null;
+  if (
+    recorded.requestId !== citation.requestId ||
+    recorded.applicationId !== citation.applicationId ||
+    recorded.tenantId !== citation.tenantId ||
+    recorded.projectId !== citation.projectId ||
+    recorded.operation !== citation.operation
+  ) {
+    return null;
+  }
+  return {
+    auditType: "application.execution.reported",
+    decisionId: recorded.decisionId,
+    requestId: recorded.requestId,
+    executionId: recorded.executionId,
+    executionStatus: "FAILURE",
+    applicationId: recorded.applicationId,
+    tenantId: recorded.tenantId,
+    projectId: recorded.projectId,
+    operation: recorded.operation,
+  };
 }
 
 function proposalFromAuditInput(
@@ -101,15 +82,17 @@ function proposalFromAuditInput(
 
 function listRecordedProposals(): ApplicationLearningProposal[] {
   const byId = new Map<string, ApplicationLearningProposal>();
-  for (const entry of listUnifiedAuditEntries()) {
-    if (entry.type === APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT) {
-      const proposal = proposalFromAuditInput(asRecord(entry.input));
-      if (proposal) byId.set(proposal.proposalId, proposal);
-    }
-    if (entry.type === APPLICATION_LEARNING_PROPOSAL_DECIDED_AUDIT) {
-      const decided = proposalFromAuditInput(asRecord(entry.output));
-      if (decided) byId.set(decided.proposalId, decided);
-    }
+  for (const entry of listIndexedUnifiedByType(
+    APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT,
+  )) {
+    const proposal = proposalFromAuditInput(asRecord(entry.input));
+    if (proposal) byId.set(proposal.proposalId, proposal);
+  }
+  for (const entry of listIndexedUnifiedByType(
+    APPLICATION_LEARNING_PROPOSAL_DECIDED_AUDIT,
+  )) {
+    const decided = proposalFromAuditInput(asRecord(entry.output));
+    if (decided) byId.set(decided.proposalId, decided);
   }
   return [...byId.values()];
 }
@@ -129,24 +112,18 @@ function agentIdFromAudit(
   const ids = new Set<string>();
   let sawNull = false;
   for (const citation of citations) {
-    for (const entry of listUnifiedAuditEntries()) {
-      if (entry.type !== "application.execution.reported") continue;
-      const input = asRecord(entry.input);
-      if (learningCitationKey({
-        decisionId: String(input.decisionId ?? ""),
-        executionId: String(input.executionId ?? ""),
-      }) !== learningCitationKey(citation)) {
-        continue;
-      }
-      const agentId =
-        typeof input.agentId === "string" && input.agentId.trim()
-          ? input.agentId
-          : entry.agentId;
-      if (typeof agentId === "string" && agentId.trim()) {
-        ids.add(agentId);
-      } else {
-        sawNull = true;
-      }
+    const recorded = lookupIndexedFailureCitation(
+      citation.decisionId,
+      citation.executionId,
+    );
+    if (!recorded) {
+      sawNull = true;
+      continue;
+    }
+    if (typeof recorded.agentId === "string" && recorded.agentId.trim()) {
+      ids.add(recorded.agentId);
+    } else {
+      sawNull = true;
     }
   }
   if (sawNull || ids.size !== 1) return null;
@@ -169,6 +146,8 @@ function writeProposalAudit(
     actorKind:
       type === APPLICATION_LEARNING_PROPOSAL_DECIDED_AUDIT ? "USER" : "SYSTEM",
     agentId: proposal.agentId,
+    tenantId: proposal.tenantId,
+    projectId: proposal.projectId,
     reason:
       type === APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT
         ? "Learning proposal constructed from cited execution FAILURE audits"

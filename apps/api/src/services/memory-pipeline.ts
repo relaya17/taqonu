@@ -440,10 +440,133 @@ export function findOwnedMemory(input: {
   return null;
 }
 
+export function memoryIsExpired(
+  memory: Memory,
+  nowMs = Date.now(),
+): boolean {
+  if (!memory.validUntil) return false;
+  const until = new Date(memory.validUntil).getTime();
+  return Number.isFinite(until) && until <= nowMs;
+}
+
+export function expireDueMemories(nowMs = Date.now()): number {
+  osStore.ensureLoaded();
+  let count = 0;
+  const nowIso = new Date(nowMs).toISOString();
+  for (const [key, list] of osStore.memories) {
+    let changed = false;
+    const next = list.map((row) => {
+      if (row.status !== "ACTIVE" || !memoryIsExpired(row, nowMs)) return row;
+      changed = true;
+      count += 1;
+      return {
+        ...row,
+        status: "SUPERSEDED" as const,
+        epistemicState:
+          row.epistemicState === "FACT" || row.epistemicState === "VERIFIED"
+            ? ("STALE" as const)
+            : row.epistemicState,
+        updatedAt: nowIso,
+      };
+    });
+    if (changed) osStore.replaceMemories(key, next);
+  }
+  return count;
+}
+
+/**
+ * Owner-scoped erasure. Redacts statement/evidence and supersedes the row.
+ * Does not use RECORD.DELETE entity policy (that gate requires approval and
+ * is for business records, not tenant memory ownership).
+ *
+ * R10 DoD (Master Plan G6 / F19 / §10 R10): the authoritative store for
+ * this scope is the Web/API local memory store (`osStore`). CAD-013
+ * Postgres dual-write is for connector nonce / preflight / execution
+ * report / application audit — not tenant memory. `tryPersistMemoryToSupabase`
+ * remains best-effort create only. Supabase dual-write erasure is not
+ * required to close R10 and is not invented here.
+ */
+export function eraseOwnedMemory(input: {
+  memoryId: string;
+  ownerId?: string;
+}):
+  | { ok: true; memory: Memory; alreadyErased: boolean }
+  | { ok: false; reason: "not_found" } {
+  const located = findOwnedMemory({
+    memoryId: input.memoryId,
+    ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+  });
+  if (!located) return { ok: false, reason: "not_found" };
+  const alreadyErased =
+    located.memory.status === "SUPERSEDED" &&
+    located.memory.reason.includes("erased");
+  if (alreadyErased) {
+    return { ok: true, memory: located.memory, alreadyErased: true };
+  }
+  const now = new Date().toISOString();
+  const list = [...osStore.getMemories(located.key)];
+  const idx = list.findIndex((row) => row.id === input.memoryId);
+  if (idx < 0) return { ok: false, reason: "not_found" };
+  const current = list[idx]!;
+  const erased: Memory = {
+    ...current,
+    statement: "[erased]",
+    evidence: [],
+    reason: [...current.reason, "erased"].slice(-12),
+    status: "SUPERSEDED",
+    supersededBy: null,
+    validUntil: now,
+    updatedAt: now,
+    epistemicState:
+      current.epistemicState === "FACT" || current.epistemicState === "VERIFIED"
+        ? "STALE"
+        : current.epistemicState,
+  };
+  list[idx] = erased;
+  osStore.replaceMemories(located.key, list);
+  appendDomainEvent({
+    type: "memory.superseded",
+    projectId: current.projectId,
+    ownerId: current.ownerId,
+    epistemicState: "STALE",
+    payload: {
+      memoryId: input.memoryId,
+      erased: true,
+      supersededCount: 1,
+    },
+  });
+  return { ok: true, memory: erased, alreadyErased: false };
+}
+
+export function setOwnedMemoryTtl(input: {
+  memoryId: string;
+  ownerId?: string;
+  validUntil: string | null;
+}): { ok: true; memory: Memory } | { ok: false; reason: "not_found" } {
+  const located = findOwnedMemory({
+    memoryId: input.memoryId,
+    ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+  });
+  if (!located) return { ok: false, reason: "not_found" };
+  const list = [...osStore.getMemories(located.key)];
+  const idx = list.findIndex((row) => row.id === input.memoryId);
+  if (idx < 0) return { ok: false, reason: "not_found" };
+  const current = list[idx]!;
+  const updated: Memory = {
+    ...current,
+    validUntil: input.validUntil,
+    updatedAt: new Date().toISOString(),
+  };
+  list[idx] = updated;
+  osStore.replaceMemories(located.key, list);
+  return { ok: true, memory: updated };
+}
+
 /**
  * Supersede exactly one owned ACTIVE memory. Does not delete the row.
  * Statement-matching is intentionally not used — a human correction targets
- * a specific id (G-P1-04). GAP-034 delete/TTL is not implemented here.
+ * a specific id (G-P1-04). Explicit DELETE/TTL lives in eraseOwnedMemory /
+ * expireDueMemories.
  */
 export function supersedeMemoryById(input: {
   memoryId: string;
@@ -761,6 +884,7 @@ export async function retrieveMemories(input: MemoryRetrieveInput): Promise<{
   truncated: boolean;
   embeddingKind: MemoryRetrievalEmbeddingKind;
 }> {
+  expireDueMemories();
   const budget = Math.max(1, Math.min(input.budget ?? 12, 40));
   const key = input.projectId ?? null;
   const pools: Memory[] = [];

@@ -304,6 +304,7 @@
     "saveRemind": "حفظ التذكير",
     "saveSummary": "حفظ الملخص",
     "asking": "جارٍ العمل…",
+    "cancelRun": "إلغاء التشغيل",
     "openPatches": "افتح Patches للموافقة",
     "openMemory": "افتح الذاكرة",
     "remindSaved": "تم حفظ التذكير في الذاكرة.",
@@ -1451,7 +1452,10 @@
     "export": "تصدير ذاكرتي",
     "cloudSynced": "متزامن مع السحابة",
     "provenance": "{sourceType} · {source} · أدلة {evidence} · ثقة {confidence}",
-    "verified": "موثّق"
+    "verified": "موثّق",
+    "erase": "مسح",
+    "ttlHours": "TTL (ساعات، اختياري)",
+    "ttlHelp": "اتركه فارغاً بلا انتهاء. الذكريات المنتهية تُعلَّم superseded تلقائياً."
   },
   "notifications": {
     "title": "الوارد",

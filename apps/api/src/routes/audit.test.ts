@@ -134,6 +134,124 @@ describe("GET /api/v1/audit", () => {
   });
 });
 
+describe("GET /api/v1/audit R18 cursor", () => {
+  it("pages /audit without duplicates and 400s an invalid cursor", async () => {
+    for (let i = 0; i < 4; i += 1) {
+      appendUnifiedAuditEntry({
+        type: "patch.applied",
+        actorId: "actor-page",
+        actorKind: "USER",
+        reason: `page-marker-${i}`,
+        risk: "LOW",
+        approval: "NOT_REQUIRED",
+        result: "SUCCESS",
+      });
+    }
+    const first = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit?actorId=actor-page&limit=2",
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json() as {
+      unified: Array<{ reason: string }>;
+      nextCursor: string | null;
+    };
+    expect(firstBody.unified).toHaveLength(2);
+    expect(firstBody.nextCursor).toBeTruthy();
+
+    const second = await app.inject({
+      method: "GET",
+      url: `/api/v1/audit?actorId=actor-page&limit=2&cursor=${encodeURIComponent(firstBody.nextCursor ?? "")}`,
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json() as {
+      unified: Array<{ reason: string }>;
+      nextCursor: string | null;
+    };
+    const reasons = [...firstBody.unified, ...secondBody.unified].map(
+      (row) => row.reason,
+    );
+    expect(new Set(reasons).size).toBe(reasons.length);
+    expect(reasons.sort()).toEqual([
+      "page-marker-0",
+      "page-marker-1",
+      "page-marker-2",
+      "page-marker-3",
+    ]);
+
+    const bad = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit?cursor=not-valid",
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it("403s cursor pagination for a non-admin on /audit", async () => {
+    getRequestUser.mockReturnValue(regularUser);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit?limit=1&cursor=0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("GET /api/v1/audit/export R06", () => {
+  it("401s when not signed in and 403s for a non-admin", async () => {
+    getRequestUser.mockReturnValue(null);
+    const anon = await app.inject({ method: "GET", url: "/api/v1/audit/export" });
+    expect(anon.statusCode).toBe(401);
+    getRequestUser.mockReturnValue(regularUser);
+    const user = await app.inject({ method: "GET", url: "/api/v1/audit/export" });
+    expect(user.statusCode).toBe(403);
+  });
+
+  it("streams NDJSON with chain hashes from the query index", async () => {
+    const written = appendUnifiedAuditEntry({
+      type: "patch.applied",
+      actorId: "actor-export",
+      actorKind: "USER",
+      reason: "export-hash-marker",
+      risk: "LOW",
+      approval: "NOT_REQUIRED",
+      result: "SUCCESS",
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit/export?actorId=actor-export&limit=10",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/ndjson/);
+    const lines = res.body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines[0]).toMatchObject({
+      kind: "atlas.audit.export.manifest",
+      canonical: "ndjson",
+      hashedWith: "sha256",
+    });
+    const exported = lines.filter(
+      (line) => line.kind === "atlas.audit.export.entry",
+    ) as Array<{ hash: string; prevHash: string; entry: { reason: string } }>;
+    expect(exported.length).toBeGreaterThanOrEqual(1);
+    const match = exported.find(
+      (row) => row.entry.reason === "export-hash-marker",
+    );
+    expect(match?.hash).toBe(written.hash);
+    expect(match?.prevHash).toBe(written.prevHash);
+    expect(match?.hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("400s an invalid export cursor", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit/export?cursor=not-valid",
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 describe("GET /api/v1/audit/mine", () => {
   it("401s when not signed in", async () => {
     getRequestUser.mockReturnValue(null);
@@ -178,6 +296,48 @@ describe("GET /api/v1/audit/mine", () => {
           entry.reason === "c1-mine-visible-marker",
       ),
     ).toBe(true);
+  });
+
+  it("pages /audit/mine without leaking another actor", async () => {
+    for (let i = 0; i < 3; i += 1) {
+      appendUnifiedAuditEntry({
+        type: "patch.applied",
+        actorId: regularUser.id,
+        actorKind: "USER",
+        reason: `mine-page-${i}`,
+        risk: "LOW",
+        approval: "NOT_REQUIRED",
+        result: "SUCCESS",
+      });
+    }
+    getRequestUser.mockReturnValue(regularUser);
+    const first = await app.inject({
+      method: "GET",
+      url: "/api/v1/audit/mine?limit=2",
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json() as {
+      unified: Array<{ actorId: string | null; reason?: string }>;
+      nextCursor: string | null;
+    };
+    expect(firstBody.unified.every((row) => row.actorId === regularUser.id)).toBe(
+      true,
+    );
+    expect(JSON.stringify(firstBody)).not.toContain("actor-a");
+    expect(firstBody.nextCursor).toBeTruthy();
+
+    const second = await app.inject({
+      method: "GET",
+      url: `/api/v1/audit/mine?limit=2&cursor=${encodeURIComponent(firstBody.nextCursor ?? "")}`,
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json() as {
+      unified: Array<{ actorId: string | null }>;
+    };
+    expect(secondBody.unified.every((row) => row.actorId === regularUser.id)).toBe(
+      true,
+    );
+    expect(JSON.stringify(secondBody)).not.toContain("actor-b");
   });
 });
 

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { planAgentWork } from "@atlas/agent-core";
+import { safeOutboundFetch } from "@atlas/shared/node";
 import {
   createDatabaseClients,
   isLiveSupabase,
@@ -197,12 +198,24 @@ async function persist(
   }
 }
 
+function optionalAuditScope(
+  value: string | null | undefined,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function audit(input: {
   readonly type: string;
   readonly ownerId: string;
   readonly reason: string;
   readonly extra?: Record<string, unknown>;
+  readonly tenantId?: string | null;
+  readonly projectId?: string | null;
 }): void {
+  const tenantId = optionalAuditScope(input.tenantId);
+  const projectId = optionalAuditScope(input.projectId);
   appendUnifiedAuditEntry({
     type: input.type,
     actorId: personalSupervisingAgentId(input.ownerId),
@@ -219,6 +232,8 @@ function audit(input: {
     risk: "LOW",
     approval: "NOT_REQUIRED",
     result: "SUCCESS",
+    ...(tenantId !== undefined ? { tenantId } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
   });
 }
 
@@ -369,6 +384,7 @@ export async function ensurePersonalSupervisingAgent(input: {
     type: "psa.created",
     ownerId: input.ownerId,
     reason: "Personal Supervising Agent initialized",
+    tenantId: scope.tenantId,
     extra: { tenantId: scope.tenantId, applicationIds: scope.applicationIds },
   });
   return record;
@@ -413,6 +429,7 @@ export async function setPersonalSupervisingAgentStatus(
     type: "psa.lifecycle",
     ownerId,
     reason: `Personal Supervising Agent status set to ${status}`,
+    tenantId: existing.scope.tenantId,
     extra: { status },
   });
   return next;
@@ -650,6 +667,7 @@ async function recordAttention(
     type: kind === "recommendation" ? "psa.recommend" : "psa.escalate",
     ownerId,
     reason: input.reason,
+    tenantId: agent.scope.tenantId,
     extra: { severity: input.severity, executed: false },
   });
   return entry;
@@ -701,6 +719,8 @@ export async function coordinateSpecialists(
     type: "psa.coordinate",
     ownerId,
     reason: "Coordinated Fabric specialists without expanding permissions",
+    tenantId: agent.scope.tenantId,
+    projectId: input.projectId,
     extra: {
       planId: plan.id,
       specialists: plan.steps.map((step) => step.agentId),
@@ -736,6 +756,8 @@ export async function requestGovernedAction(
     type: "psa.request",
     ownerId,
     reason: "User request entered existing governance via specialist proposal",
+    tenantId: agent.scope.tenantId,
+    projectId: proposal.projectId,
     extra: {
       specialistId: proposal.agentId,
       decision: result.decision,
@@ -789,7 +811,7 @@ async function fetchControlJson<T>(path: string): Promise<T | null> {
   const token = process.env.ATLAS_CONTROL_PLANE_TOKEN?.trim();
   if (!base || !token) return null;
   try {
-    const response = await fetch(`${base.replace(/\/$/, "")}${path}`, {
+    const response = await safeOutboundFetch(`${base.replace(/\/$/, "")}${path}`, {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(8_000),
     });

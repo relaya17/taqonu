@@ -83,8 +83,17 @@ function parseToolOutput(output: string, query: string): KnowledgeSearchResult {
   };
 }
 
+function optionalAuditScope(
+  value: string | null | undefined,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function auditRetrieval(input: {
   readonly ownerId: string;
+  readonly tenantId?: string | null;
   readonly projectId: string | null;
   readonly agentId: string;
   readonly query: string;
@@ -96,11 +105,8 @@ function auditRetrieval(input: {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       input.ownerId,
     );
-  const projectIsUuid =
-    input.projectId != null &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      input.projectId,
-    );
+  const tenantId = optionalAuditScope(input.tenantId);
+  const projectId = optionalAuditScope(input.projectId);
   appendUnifiedAuditEntry({
     type: "knowledge.retrieved",
     toolName: "knowledge_search",
@@ -109,7 +115,8 @@ function auditRetrieval(input: {
     actorId: input.agentId,
     actorKind: "AGENT",
     ...(ownerIsUuid ? { ownerId: input.ownerId } : {}),
-    ...(projectIsUuid ? { projectId: input.projectId } : {}),
+    ...(tenantId !== undefined ? { tenantId } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
     agentId: input.agentId,
     reason: input.reason,
     intent: "knowledge_fabric_retrieval",
@@ -158,6 +165,7 @@ export async function retrieveGovernedKnowledge(input: {
     });
     auditRetrieval({
       ownerId: input.sessionOwnerId,
+      tenantId: input.scope.tenantId,
       projectId: scopedProjectId,
       agentId: scopedAgentId,
       query: input.query,
@@ -218,6 +226,7 @@ export async function retrieveGovernedKnowledge(input: {
     const reason = "reason" in outcome ? outcome.reason : "knowledge_search was not executed";
     auditRetrieval({
       ownerId: input.sessionOwnerId,
+      tenantId: input.scope.tenantId,
       projectId: input.scope.projectId,
       agentId: identity.agentId,
       query: input.query,
@@ -236,6 +245,7 @@ export async function retrieveGovernedKnowledge(input: {
   const result = parseToolOutput(outcome.output, input.query);
   auditRetrieval({
     ownerId: input.sessionOwnerId,
+    tenantId: input.scope.tenantId,
     projectId: input.scope.projectId,
     agentId: identity.agentId,
     query: input.query,
@@ -270,6 +280,7 @@ export async function searchEligibleKnowledge(input: {
   });
   auditRetrieval({
     ownerId: input.scope?.ownerId ?? "unknown",
+    tenantId: input.scope?.tenantId ?? null,
     projectId: input.scope?.projectId ?? null,
     agentId: input.scope?.requestingAgentId ?? "UNKNOWN",
     query: input.query,

@@ -44,7 +44,11 @@ import { appendDomainEvent } from "../services/memory-pipeline.js";
 import { osStore } from "../store/os-store.js";
 import { runSecuritySpecialistViaSentinel } from "../services/security-sentinel-dispatch.js";
 import { z } from "zod";
-import { requireOperator, requireSignedInForWrite } from "../middleware/auth-guards.js";
+import {
+  requireOperator,
+  requireSignedInForWrite,
+  requireUser,
+} from "../middleware/auth-guards.js";
 import {
   atlasSelfExecutedEvidence,
   auditAtlasSelfDecision,
@@ -307,10 +311,15 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
   });
 
   /** P9 Memory */
-  app.get("/api/v1/kernel/memory/lessons", async () => ({
-    items: listEngineeringLessons().map((l) => engineeringLessonSchema.parse(l)),
-    note: "Cross-project patterns only — no raw business evidence leakage.",
-  }));
+  app.get("/api/v1/kernel/memory/lessons", async (request) => {
+    await requireUser(app, request);
+    return {
+      items: listEngineeringLessons().map((l) =>
+        engineeringLessonSchema.parse(l),
+      ),
+      note: "Cross-project patterns only — no raw business evidence leakage.",
+    };
+  });
 
   app.post("/api/v1/kernel/memory/lessons", async (request, reply) => {
     await requireSignedInForWrite(app, request);
@@ -434,7 +443,10 @@ export async function registerKernelRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get("/api/v1/kernel/improve/rules", async () => ({
-    items: listImprovementRules().map((r) => improvementRuleSchema.parse(r)),
-  }));
+  app.get("/api/v1/kernel/improve/rules", async (request) => {
+    await requireUser(app, request);
+    return {
+      items: listImprovementRules().map((r) => improvementRuleSchema.parse(r)),
+    };
+  });
 }

@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { isActiveMemory } from "@/lib/memory-active";
 import { memoryProvenanceLine } from "@/lib/memory-provenance";
 
@@ -63,7 +63,9 @@ function MemoryRow({
   item,
   onApprove,
   onCorrect,
+  onErase,
   approving,
+  erasing,
   correcting,
   draft,
   onDraftChange,
@@ -74,7 +76,9 @@ function MemoryRow({
   item: Memory;
   onApprove?: (item: Memory) => void;
   onCorrect?: (item: Memory) => void;
+  onErase?: (item: Memory) => void;
   approving: boolean;
+  erasing: boolean;
   correcting: boolean;
   draft: string;
   onDraftChange: (value: string) => void;
@@ -144,6 +148,17 @@ function MemoryRow({
             {t("correct")}
           </Button>
         ) : null}
+        {onErase ? (
+          <Button
+            size="small"
+            variant="outlined"
+            color="warning"
+            disabled={erasing}
+            onClick={() => onErase(item)}
+          >
+            {t("erase")}
+          </Button>
+        ) : null}
       </Stack>
       {correcting ? (
         <Stack spacing={1} sx={{ mt: 1 }}>
@@ -185,6 +200,7 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [ttlHours, setTtlHours] = useState("");
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -202,8 +218,13 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
   });
 
   const create = useMutation({
-    mutationFn: () =>
-      apiPost<Memory>("/api/v1/memory", {
+    mutationFn: () => {
+      const hours = Number(ttlHours);
+      const validUntil =
+        Number.isFinite(hours) && hours > 0
+          ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+          : undefined;
+      return apiPost<Memory>("/api/v1/memory", {
         type,
         projectId: projectId || null,
         statement: statement.trim(),
@@ -214,7 +235,9 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
         sourceType: "USER",
         scope: projectId ? "PROJECT" : "GLOBAL",
         priority: "MEDIUM",
-      }),
+        ...(validUntil ? { validUntil } : {}),
+      });
+    },
     onSuccess: async () => {
       setStatement("");
       await queryClient.invalidateQueries({ queryKey: ["memory"] });
@@ -227,6 +250,14 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
       apiPost<Memory>(`/api/v1/memory/${item.id}/approve`, {
         projectId: item.projectId,
       }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["memory"] });
+      await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
+    },
+  });
+
+  const erase = useMutation({
+    mutationFn: (item: Memory) => apiDelete(`/api/v1/memory/${item.id}`),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["memory"] });
       await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
@@ -320,6 +351,15 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
           minRows={2}
           fullWidth
         />
+        <TextField
+          label={t("ttlHours")}
+          value={ttlHours}
+          onChange={(e) => setTtlHours(e.target.value)}
+          type="number"
+          inputProps={{ min: 0, step: 1 }}
+          fullWidth
+          helperText={t("ttlHelp")}
+        />
         <Button
           variant="contained"
           disabled={create.isPending || statement.trim().length < 3}
@@ -382,6 +422,11 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
             {(correct.error as Error).message}
           </Alert>
         ) : null}
+        {erase.isError ? (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {(erase.error as Error).message}
+          </Alert>
+        ) : null}
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           {t("correctHelp")}
         </Typography>
@@ -394,7 +439,9 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
                 key={item.id}
                 item={item}
                 approving={approve.isPending}
+                erasing={erase.isPending}
                 onApprove={(m) => approve.mutate(m)}
+                onErase={(m) => erase.mutate(m)}
                 onCorrect={(m) => {
                   setCorrectingId(m.id);
                   setCorrectionDraft(m.statement);
@@ -427,6 +474,8 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
                 key={item.id}
                 item={item}
                 approving={false}
+                erasing={erase.isPending}
+                onErase={(m) => erase.mutate(m)}
                 onCorrect={(m) => {
                   setCorrectingId(m.id);
                   setCorrectionDraft(m.statement);

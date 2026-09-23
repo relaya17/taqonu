@@ -139,6 +139,14 @@ export function RegisterPluginDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      <Box
+        component="form"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmit();
+        }}
+      >
       <DialogTitle>רישום פלאגין חדש</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
@@ -247,7 +255,7 @@ export function RegisterPluginDialog({
             fullWidth
           />
           {touched && errors.length > 0 ? (
-            <Alert severity="warning">
+            <Alert severity="warning" role="alert">
               <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
                 {errors.map((err) => (
                   <li key={err}>
@@ -257,7 +265,7 @@ export function RegisterPluginDialog({
               </Box>
             </Alert>
           ) : null}
-          {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+          {submitError ? <Alert severity="error" role="alert">{submitError}</Alert> : null}
           <Alert severity="info">
             הפלאגין יירשם במצב &quot;ממתין לבדיקה&quot; — אישור/דחייה נדרשים בנפרד.
           </Alert>
@@ -267,10 +275,11 @@ export function RegisterPluginDialog({
         <Button onClick={handleClose} disabled={submitting}>
           ביטול
         </Button>
-        <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
+        <Button type="submit" variant="contained" disabled={submitting}>
           {submitting ? "רושם…" : "רישום"}
         </Button>
       </DialogActions>
+      </Box>
     </Dialog>
   );
 }

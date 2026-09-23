@@ -583,4 +583,109 @@ describe("application execution report correlation", () => {
     expect(result.status).toBe(409);
     expect(result.body).toMatchObject({ accepted: false });
   });
+
+  it("R14 — persists application-attested attribution and does not invent missing cost/tokens", async () => {
+    const { body } = await allowCivio();
+    const raw = reportBody("civio", {
+      decisionId: body.decisionId,
+      requestId: body.requestId,
+      operation: "civio.legal.query",
+      executionId: "chatcmpl-attr-1",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      tokens: { prompt: 20, completion: 6 },
+      modelCallCount: 1,
+      retries: 0,
+      declaredCompletionPath: "MODEL_PATH",
+      actualCost: 0.0015,
+      currency: "USD",
+    });
+    const result = await evaluateApplicationExecutionReport({
+      rawBody: raw,
+      headers: sign(CIVIO_SECRET, raw),
+    });
+    expect(result.status).toBe(200);
+    const stored = listAcceptedExecutionReportsForTests();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.attribution).toEqual({
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      tokens: { prompt: 20, completion: 6 },
+      modelCallCount: 1,
+      retries: 0,
+      declaredCompletionPath: "MODEL_PATH",
+      actualCost: 0.0015,
+      currency: "USD",
+    });
+    const audit = listUnifiedAuditEntries().find(
+      (entry) => entry.type === "application.execution.reported",
+    );
+    expect(audit?.input).toMatchObject({
+      decisionId: body.decisionId,
+      executionId: "chatcmpl-attr-1",
+      provider: "openai",
+      actualCost: 0.0015,
+    });
+    expect(audit?.input).not.toHaveProperty("estimatedCost");
+  });
+
+  it("R14 — omitted attribution stays absent; malformed optional values are rejected", async () => {
+    const { body } = await allowCivio();
+    const omitted = reportBody("civio", {
+      decisionId: body.decisionId,
+      requestId: body.requestId,
+      operation: "civio.legal.query",
+      executionId: "chatcmpl-no-attr",
+    });
+    const accepted = await evaluateApplicationExecutionReport({
+      rawBody: omitted,
+      headers: sign(CIVIO_SECRET, omitted),
+    });
+    expect(accepted.status).toBe(200);
+    expect(listAcceptedExecutionReportsForTests()[0]).not.toHaveProperty(
+      "attribution",
+    );
+    const audit = listUnifiedAuditEntries().find(
+      (entry) =>
+        entry.type === "application.execution.reported" &&
+        (entry.input as { executionId?: string }).executionId ===
+          "chatcmpl-no-attr",
+    );
+    expect(audit?.input).not.toHaveProperty("actualCost");
+    expect(audit?.input).not.toHaveProperty("tokens");
+    expect(audit?.input).not.toHaveProperty("currency");
+    expect(audit?.input).not.toHaveProperty("provider");
+
+    const bad = reportBody("civio", {
+      decisionId: body.decisionId,
+      requestId: body.requestId,
+      operation: "civio.legal.query",
+      executionId: "chatcmpl-bad-cost",
+      actualCost: -2,
+    });
+    const rejected = await evaluateApplicationExecutionReport({
+      rawBody: bad,
+      headers: sign(CIVIO_SECRET, bad),
+    });
+    expect(rejected.status).toBe(400);
+    expect(listAcceptedExecutionReportsForTests()).toHaveLength(1);
+  });
+
+  it("R14 — binding is unchanged when attribution is present", async () => {
+    const { body } = await allowCivio();
+    const raw = reportBody("civio", {
+      decisionId: body.decisionId,
+      requestId: "req-not-the-authorization",
+      operation: "civio.legal.query",
+      actualCost: 1,
+      currency: "USD",
+    });
+    const result = await evaluateApplicationExecutionReport({
+      rawBody: raw,
+      headers: sign(CIVIO_SECRET, raw),
+    });
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({ accepted: false });
+    expect(listAcceptedExecutionReportsForTests()).toEqual([]);
+  });
 });

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -149,6 +150,32 @@ describe("append-only audit log", () => {
     const verification = verifyAuditLogChain();
     expect(verification.ok).toBe(false);
     expect(verification.status).toBe("BROKEN");
+  });
+
+  it("re-reads disk tail so an interleaved foreign append does not reuse a stale prevHash", () => {
+    const first = appendAuditLogLine({ type: "local.first" });
+    const foreignPayload = {
+      type: "foreign.interleaved",
+      at: "2026-09-23T00:00:00.000Z",
+      id: "foreign-1",
+    };
+    const foreignHash = hashAuditPayload(first.hash, foreignPayload);
+    appendFileSync(
+      logFile,
+      `${JSON.stringify({
+        id: "foreign-1",
+        at: "2026-09-23T00:00:00.000Z",
+        type: "foreign.interleaved",
+        prevHash: first.hash,
+        hash: foreignHash,
+        payload: foreignPayload,
+      })}\n`,
+      "utf8",
+    );
+    const second = appendAuditLogLine({ type: "local.second" });
+    expect(second.prevHash).toBe(foreignHash);
+    expect(second.prevHash).not.toBe(first.hash);
+    expect(verifyAuditLogChain()).toMatchObject({ ok: true, status: "VALID" });
   });
 
   it("continues the chain after process restart (tail hash from file)", () => {

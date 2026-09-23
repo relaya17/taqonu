@@ -36,6 +36,82 @@ describe("application execution report contract", () => {
     expect(parsed.executionId).toBe("chatcmpl-abc123");
     expect(parsed.executionStatus).toBe("SUCCESS");
     expect(parsed.agentId).toBeUndefined();
+    expect(parsed).not.toHaveProperty("actualCost");
+    expect(parsed).not.toHaveProperty("tokens");
+    expect(parsed).not.toHaveProperty("provider");
+    expect(parsed).not.toHaveProperty("currency");
+    expect(parsed).not.toHaveProperty("modelCallCount");
+  });
+
+  it("accepts optional attribution only when the application supplies real values", () => {
+    const parsed = applicationExecutionReportRequestSchema.parse({
+      schemaVersion: APPLICATION_EXECUTION_REPORT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      decisionId: "dec-1",
+      requestId: "req-1",
+      operation: "caseflow.openai.chat",
+      executionId: "chatcmpl-abc123",
+      executionStatus: "SUCCESS",
+      provider: "openai",
+      model: "gpt-4.1",
+      tokens: { prompt: 12, completion: 4 },
+      modelCallCount: 1,
+      retries: 0,
+      declaredCompletionPath: "MODEL_PATH",
+      actualCost: 0.0021,
+      currency: "USD",
+    });
+    expect(parsed.provider).toBe("openai");
+    expect(parsed.tokens).toEqual({ prompt: 12, completion: 4 });
+    expect(parsed.actualCost).toBe(0.0021);
+    expect(parsed.declaredCompletionPath).toBe("MODEL_PATH");
+    expect(parsed.retries).toBe(0);
+  });
+
+  it("rejects malformed optional attribution without inventing replacements", () => {
+    const base = {
+      schemaVersion: APPLICATION_EXECUTION_REPORT_SCHEMA,
+      applicationId: "caseflow",
+      tenantId: "tenant-a",
+      projectId: "project-a",
+      decisionId: "dec-1",
+      requestId: "req-1",
+      operation: "caseflow.openai.chat",
+      executionId: "chatcmpl-abc123",
+      executionStatus: "SUCCESS",
+    };
+    expect(
+      applicationExecutionReportRequestSchema.safeParse({
+        ...base,
+        actualCost: -1,
+      }).success,
+    ).toBe(false);
+    expect(
+      applicationExecutionReportRequestSchema.safeParse({
+        ...base,
+        tokens: -4,
+      }).success,
+    ).toBe(false);
+    expect(
+      applicationExecutionReportRequestSchema.safeParse({
+        ...base,
+        tokens: {},
+      }).success,
+    ).toBe(false);
+    expect(
+      applicationExecutionReportRequestSchema.safeParse({
+        ...base,
+        declaredCompletionPath: "UNNECESSARY",
+      }).success,
+    ).toBe(false);
+    expect(
+      applicationExecutionReportRequestSchema.safeParse({
+        ...base,
+        currency: "12",
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts FAILURE and a null agentId", () => {

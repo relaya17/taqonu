@@ -28,6 +28,7 @@ const { decideApprovalRequest, revokeApprovalRequest } = await import(
 const {
   listUnifiedAuditEntries,
   setAuditLogPathForTests,
+  verifyAuditLogChain,
 } = await import("./audit-log.js");
 const { resetApprovalsForTests } = await import("./approvals-test-store.js");
 
@@ -147,6 +148,8 @@ describe("atlas-self-governance", () => {
     expect(last.input["verified"]).toBe(false);
     expect(last.verificationVerdict).toBe("INCONCLUSIVE");
     expect(last.projectId).toBe(ATLAS_SELF_PROJECT_ID);
+    expect(last.tenantId).toBe(ATLAS_SELF_TENANT_ID);
+    expect(verifyAuditLogChain().ok).toBe(true);
   });
 
   it("verifies only an independently APPROVED Atlas-self control binding", async () => {

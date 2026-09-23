@@ -9,8 +9,24 @@ import {
   type GovernedHandoffDecision,
   type GovernedIdentity,
 } from "@atlas/shared";
+import { safeOutboundFetch } from "@atlas/shared/node";
 import type { SupervisedGovernanceDecision } from "./supervised-governance.js";
 import { assertControlPlaneApiEgress } from "./control-plane-egress.js";
+
+type AtlasApiFetch = typeof safeOutboundFetch;
+let atlasApiFetch: AtlasApiFetch = safeOutboundFetch;
+
+/**
+ * Test harness only. Production always uses `safeOutboundFetch` (resolve /
+ * classify / pin). Existing CP suites that used to stub `globalThis.fetch`
+ * must target this hook instead of leaving the hop unpinned.
+ */
+export function setAtlasApiFetchForTests(fn: AtlasApiFetch | null): void {
+  if (process.env.VITEST !== "true" && process.env.NODE_ENV !== "test") {
+    throw new Error("setAtlasApiFetchForTests is test-only");
+  }
+  atlasApiFetch = fn ?? safeOutboundFetch;
+}
 
 export type LifecycleHandoffStatus =
   | "NOT_ATTEMPTED"
@@ -102,7 +118,7 @@ export async function callAtlasApi(
     return { ok: false, reason: target.reason };
   }
   try {
-    const response = await fetch(target.url, {
+    const response = await atlasApiFetch(target.url, {
       method: init.method,
       headers: {
         "content-type": "application/json",

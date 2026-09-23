@@ -334,6 +334,7 @@ export function auditAtlasSelfDecision(input: {
     decision: input.decision,
     result: input.executed ? "SUCCESS" : input.decision === "DENY" ? "FAILURE" : "PARTIAL",
     verificationVerdict: input.verificationVerdict ?? (input.executed ? "INCONCLUSIVE" : "NOT_APPLICABLE"),
+    tenantId: ATLAS_SELF_TENANT_ID,
     projectId: ATLAS_SELF_PROJECT_ID,
     input: {
       applicationId: ATLAS_SELF_APPLICATION_ID,

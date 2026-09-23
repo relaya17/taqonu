@@ -3,6 +3,7 @@ import {
   listOfficialRefreshTargets,
   type OfficialRefreshTarget,
 } from "@atlas/shared";
+import { safeOutboundFetch } from "@atlas/shared/node";
 import { hydrateKnowledgeCorpus } from "@atlas/knowledge";
 import { osStore } from "../store/os-store.js";
 import {
@@ -208,7 +209,7 @@ export async function refreshVerifiedKnowledge(input: {
   const startedAt = new Date().toISOString();
   hydrateKnowledgeCorpus({ enablePersist: input.persist !== false });
   const targets = input.targets ?? listOfficialRefreshTargets();
-  const fetchFn = input.fetchFn ?? fetch;
+  const fetchFn = input.fetchFn ?? safeOutboundFetch;
   let pgvectorWrites = 0;
 
   const items = await mapPool(targets, CONCURRENCY, async (target) => {

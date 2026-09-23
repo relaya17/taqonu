@@ -14,8 +14,12 @@ process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
 delete process.env.ATLAS_SKIP_AUDIT_LOG;
 
-const { appendUnifiedAuditEntry, listUnifiedAuditEntries, setAuditLogPathForTests } =
-  await import("./audit-log.js");
+const {
+  appendUnifiedAuditEntry,
+  listUnifiedAuditEntries,
+  setAuditLogPathForTests,
+  verifyAuditLogChain,
+} = await import("./audit-log.js");
 const {
   createApplicationLearningProposal,
   decideApplicationLearningProposal,
@@ -307,6 +311,13 @@ describe("application learning proposal service", () => {
     expect(events.some((entry) => entry.type === APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT)).toBe(
       true,
     );
+    const createdAudit = events.find(
+      (entry) => entry.type === APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT,
+    );
+    expect(createdAudit?.tenantId).toBe("tenant-a");
+    expect(createdAudit?.projectId).toBe("project-a");
+    expect(decisionAudit?.tenantId).toBe("tenant-a");
+    expect(decisionAudit?.projectId).toBe("project-a");
     expect(getApplicationLearningProposal(created.body.proposalId)?.state).toBe(
       "ACCEPTED",
     );
@@ -329,5 +340,82 @@ describe("application learning proposal service", () => {
         decidedBy: CONTROL_PLANE_SERVICE_ID,
       }),
     ).toThrow(/cp:service/);
+  });
+
+  it("promotes proposal tenant/project to top-level audit fields without fabricating", () => {
+    writeFailureAudit();
+    writeFailureAudit({ decisionId: "dec-2", requestId: "req-2", executionId: "exec-2" });
+    const created = createApplicationLearningProposal({
+      rawBody: createBody([
+        citation(),
+        citation({ decisionId: "dec-2", requestId: "req-2", executionId: "exec-2" }),
+      ]),
+    });
+    expect(created.status).toBe(201);
+    if ("error" in created.body) throw new Error(created.body.error);
+    const createdAudit = listUnifiedAuditEntries().find(
+      (entry) => entry.type === APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT,
+    );
+    expect(createdAudit?.tenantId).toBe(created.body.tenantId);
+    expect(createdAudit?.projectId).toBe(created.body.projectId);
+    expect(createdAudit?.tenantId).toBe("tenant-a");
+    expect(createdAudit?.projectId).toBe("project-a");
+    expect(verifyAuditLogChain().ok).toBe(true);
+  });
+
+  it("keeps learning audit tenant/project isolated per proposal scope", () => {
+    writeFailureAudit();
+    writeFailureAudit({ decisionId: "dec-2", requestId: "req-2", executionId: "exec-2" });
+    writeFailureAudit({
+      tenantId: "tenant-b",
+      projectId: "project-b",
+      decisionId: "dec-3",
+      requestId: "req-3",
+      executionId: "exec-3",
+    });
+    writeFailureAudit({
+      tenantId: "tenant-b",
+      projectId: "project-b",
+      decisionId: "dec-4",
+      requestId: "req-4",
+      executionId: "exec-4",
+    });
+    const first = createApplicationLearningProposal({
+      rawBody: createBody([
+        citation(),
+        citation({ decisionId: "dec-2", requestId: "req-2", executionId: "exec-2" }),
+      ]),
+    });
+    const second = createApplicationLearningProposal({
+      rawBody: createBody([
+        citation({
+          tenantId: "tenant-b",
+          projectId: "project-b",
+          decisionId: "dec-3",
+          requestId: "req-3",
+          executionId: "exec-3",
+        }),
+        citation({
+          tenantId: "tenant-b",
+          projectId: "project-b",
+          decisionId: "dec-4",
+          requestId: "req-4",
+          executionId: "exec-4",
+        }),
+      ]),
+    });
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    if ("error" in first.body || "error" in second.body) {
+      throw new Error("isolated learning create failed");
+    }
+    const created = listUnifiedAuditEntries().filter(
+      (entry) => entry.type === APPLICATION_LEARNING_PROPOSAL_CREATED_AUDIT,
+    );
+    expect(created).toHaveLength(2);
+    expect(created.map((entry) => entry.tenantId).sort()).toEqual(["tenant-a", "tenant-b"]);
+    expect(created.map((entry) => entry.projectId).sort()).toEqual(["project-a", "project-b"]);
+    expect(created.every((entry) => entry.tenantId !== "hotel-os-actor")).toBe(true);
+    expect(verifyAuditLogChain().ok).toBe(true);
   });
 });

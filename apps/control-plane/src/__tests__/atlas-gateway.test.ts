@@ -17,6 +17,7 @@ import {
   resetAgentRuntimeForTests,
   setAgentRuntimeStatus,
 } from "../services/agent-registry.js";
+import { setAtlasApiFetchForTests } from "../services/lifecycle-handoff.js";
 
 describe("Atlas Gateway", () => {
   beforeEach(() => {
@@ -415,6 +416,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
   afterEach(() => {
     delete process.env["ATLAS_API_URL"];
     delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+    setAtlasApiFetchForTests(null);
     vi.unstubAllGlobals();
   });
 
@@ -449,7 +451,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
         { status: 200 },
       );
     });
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
 
     const result = await dispatchGatewayOperation(allowedWrite);
     expect(result.decision).toBe("ALLOW");
@@ -473,7 +475,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
       expect(body.agentRuntimeStatus).toBe("ACTIVE");
       return new Response(JSON.stringify({ executed: false }), { status: 200 });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await dispatchGatewayOperation({ ...allowedWrite, requestId });
     expect(result.receipt?.requestId).toBe(requestId);
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -483,7 +485,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
 
     const result = await dispatchGatewayOperation({
       actorId: "owner",
@@ -517,7 +519,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
       }
       return new Response("unexpected", { status: 500 });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await dispatchGatewayOperation({
       actorId: "owner",
       applicationId: "def-000",
@@ -565,7 +567,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await dispatchGatewayOperation({
       actorId: "owner",
       applicationId: "hotel-os",
@@ -587,7 +589,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await dispatchGatewayOperation({
       actorId: "owner",
       applicationId: "def-000",
@@ -602,8 +604,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
   it("unreachable fulfill fails closed and does not execute locally", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:3999";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-    vi.stubGlobal(
-      "fetch",
+    setAtlasApiFetchForTests(
       vi.fn(async () => {
         throw new Error("connect ECONNREFUSED");
       }),
@@ -618,7 +619,7 @@ describe("Atlas Gateway fulfill handoff (CP → API)", () => {
 
   it("missing API config fails closed and does not execute locally", async () => {
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    setAtlasApiFetchForTests(fetchMock);
     const result = await dispatchGatewayOperation(allowedWrite);
     expect(result.executed).toBe(false);
     expect(result.receipt?.verification.verdict).toBe("FAILED");

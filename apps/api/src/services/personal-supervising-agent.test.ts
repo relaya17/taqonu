@@ -14,6 +14,7 @@ import { osStore } from "../store/os-store.js";
 import {
   listUnifiedAuditEntries,
   setAuditLogPathForTests,
+  verifyAuditLogChain,
 } from "./audit-log.js";
 import { resetApprovalsForTests } from "./approvals-test-store.js";
 import { createApprovalRequest } from "./approvals.js";
@@ -441,6 +442,48 @@ describe("Personal Supervising Agent", () => {
     const types = listUnifiedAuditEntries().map((entry) => entry.type);
     expect(types).toContain("psa.created");
     expect(types).toContain("psa.recommend");
+  });
+
+  it("attributes PSA audits from persisted scope and does not invent a projectId from the list", async () => {
+    await initA();
+    await recommendFromPsa(OWNER_A, { reason: "attention", severity: "LOW", applicationId: "civio" });
+    const created = listUnifiedAuditEntries().find((entry) => entry.type === "psa.created");
+    const recommended = listUnifiedAuditEntries().find((entry) => entry.type === "psa.recommend");
+    expect(created?.tenantId).toBe("tenant-alpha");
+    expect(recommended?.tenantId).toBe("tenant-alpha");
+    expect(created?.projectId == null || created.projectId === "").toBe(true);
+    expect(recommended?.projectId == null || recommended.projectId === "").toBe(true);
+    expect(verifyAuditLogChain().ok).toBe(true);
+  });
+
+  it("attributes a single authoritative projectId on coordinate and request audits", async () => {
+    await initA();
+    await coordinateSpecialists(OWNER_A, {
+      request: "summarize the authorized Civio process",
+      projectId: PROJECT_UUID,
+      agentIds: ["RESEARCHER"],
+    });
+    await requestGovernedAction(OWNER_A, proposal(OWNER_A));
+    const psaActor = personalSupervisingAgentId(OWNER_A);
+    const coordinate = listUnifiedAuditEntries().find((entry) => entry.type === "psa.coordinate");
+    const request = listUnifiedAuditEntries().find(
+      (entry) => entry.type === "psa.request" && entry.actorId === psaActor,
+    );
+    expect(coordinate?.tenantId).toBe("tenant-alpha");
+    expect(coordinate?.projectId).toBe(PROJECT_UUID);
+    expect(request?.tenantId).toBe("tenant-alpha");
+    expect(request?.projectId).toBe(PROJECT_UUID);
+  });
+
+  it("omits projectId on coordinate when no single project is supplied", async () => {
+    await initA();
+    await coordinateSpecialists(OWNER_A, {
+      request: "summarize without a project",
+      projectId: null,
+    });
+    const coordinate = listUnifiedAuditEntries().find((entry) => entry.type === "psa.coordinate");
+    expect(coordinate?.tenantId).toBe("tenant-alpha");
+    expect(coordinate?.projectId == null || coordinate.projectId === "").toBe(true);
   });
 
   it("resolves the same owner and authorized scope after repeated requests", async () => {

@@ -8,8 +8,10 @@ import {
   requireControlPlaneService,
 } from "../services/governed-lifecycle-handoff.js";
 import {
+  AUDIT_GENESIS_HASH,
   countAuditLogLines,
-  listUnifiedAuditEntries,
+  pageUnifiedAuditEntries,
+  pageUnifiedAuditIndex,
   resolveAuditLogPath,
   verifyAuditLogChain,
 } from "../services/audit-log.js";
@@ -21,7 +23,14 @@ import {
 const querySchema = z.object({
   actorId: z.string().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(2000).optional(),
+  cursor: z.string().min(1).max(200).optional(),
 });
+
+function sortUnifiedNewestFirst<T extends { at?: string }>(entries: T[]): T[] {
+  return [...entries].sort(
+    (a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime(),
+  );
+}
 
 /**
  * SECURITY FIX (found while scoping the Command Center Audit/Event Log
@@ -50,19 +59,24 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
     const items = [...osStore.listAudit()].reverse();
     const logPath = resolveAuditLogPath();
     const durableCount = countAuditLogLines();
-    const unified = listUnifiedAuditEntries({ limit: query.limit ?? 200 });
-    const filteredUnified = query.actorId
-      ? unified.filter((entry) => entry.actorId === query.actorId)
-      : unified;
-    const unifiedSorted = [...filteredUnified].sort(
-      (a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime(),
-    );
+    const paged = pageUnifiedAuditEntries({
+      limit: query.limit ?? 200,
+      ...(query.actorId ? { actorId: query.actorId } : {}),
+      ...(query.cursor ? { cursor: query.cursor } : {}),
+    });
+    if (!paged.ok) {
+      throw new AtlasError("VALIDATION_ERROR", "Invalid audit cursor", {
+        statusCode: 400,
+      });
+    }
+    const unifiedSorted = sortUnifiedNewestFirst(paged.entries);
     return {
       items,
       total: items.length,
       durableCount,
       durablePath: logPath,
       unified: unifiedSorted,
+      nextCursor: paged.nextCursor,
       note:
         "Recent ring in memory/store.json; full append-only hash-chained log at .atlas/audit/audit.ndjson (never truncated). `unified` is the standardized WHO/WHAT/WHEN/WHY/INPUT/OUTPUT/POLICY/RISK/APPROVAL/RESULT subset (only entries written via appendUnifiedAuditEntry parse into it), optionally filtered by actorId.",
     };
@@ -78,21 +92,73 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
     const query = z
       .object({
         limit: z.coerce.number().int().min(1).max(2000).optional(),
+        cursor: z.string().min(1).max(200).optional(),
       })
       .parse(request.query ?? {});
-    const unified = listUnifiedAuditEntries({
+    const paged = pageUnifiedAuditEntries({
       actorId: user.id,
       limit: query.limit ?? 200,
+      ...(query.cursor ? { cursor: query.cursor } : {}),
     });
-    const unifiedSorted = [...unified].sort(
-      (a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime(),
-    );
+    if (!paged.ok) {
+      throw new AtlasError("VALIDATION_ERROR", "Invalid audit cursor", {
+        statusCode: 400,
+      });
+    }
+    const unifiedSorted = sortUnifiedNewestFirst(paged.entries);
     return {
       items: [],
       total: 0,
       unified: unifiedSorted,
+      nextCursor: paged.nextCursor,
       note: "Caller-scoped unified audit only. Platform-wide trail remains GET /api/v1/audit (admin).",
     };
+  });
+
+  /**
+   * R06 — admin export stream from the same R04/R18 index.
+   * Canonical NDJSON remains the SoR; this is a projection with chain hashes.
+   */
+  app.get("/api/v1/audit/export", async (request, reply) => {
+    await requireAdmin(app, request);
+    const query = querySchema.parse(request.query ?? {});
+    const paged = pageUnifiedAuditIndex({
+      limit: query.limit ?? 200,
+      ...(query.actorId ? { actorId: query.actorId } : {}),
+      ...(query.cursor ? { cursor: query.cursor } : {}),
+    });
+    if (!paged.ok) {
+      throw new AtlasError("VALIDATION_ERROR", "Invalid audit cursor", {
+        statusCode: 400,
+      });
+    }
+    const manifest = {
+      kind: "atlas.audit.export.manifest" as const,
+      schemaVersion: 1,
+      canonical: "ndjson" as const,
+      hashedWith: "sha256",
+      genesis: AUDIT_GENESIS_HASH,
+      durablePath: resolveAuditLogPath(),
+      durableCount: countAuditLogLines(),
+      exported: paged.rows.length,
+      nextCursor: paged.nextCursor,
+    };
+    const lines = [
+      JSON.stringify(manifest),
+      ...paged.rows.map((row) =>
+        JSON.stringify({
+          kind: "atlas.audit.export.entry",
+          seq: row.seq,
+          hash: row.hash,
+          prevHash: row.prevHash,
+          entry: row.entry,
+        }),
+      ),
+    ];
+    return reply
+      .header("content-type", "application/x-ndjson; charset=utf-8")
+      .header("content-disposition", 'attachment; filename="atlas-audit.ndjson"')
+      .send(`${lines.join("\n")}\n`);
   });
 
   /**

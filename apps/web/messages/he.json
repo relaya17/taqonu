@@ -359,6 +359,7 @@
     "saveRemind": "שמור תזכורת",
     "saveSummary": "שמור סיכום",
     "asking": "עובד…",
+    "cancelRun": "בטל ריצה",
     "openPatches": "לתיקוני קוד לאישור",
     "openMemory": "לזיכרון",
     "remindSaved": "התזכורת נשמרה בזיכרון.",
@@ -1451,7 +1452,10 @@
     "export": "ייצא את הזיכרונות שלי",
     "cloudSynced": "מסונכרן לענן",
     "provenance": "{sourceType} · {source} · ראיות {evidence} · ביטחון {confidence}",
-    "verified": "מאומת"
+    "verified": "מאומת",
+    "erase": "מחק",
+    "ttlHours": "TTL (שעות, אופציונלי)",
+    "ttlHelp": "השאירו ריק ללא תפוגה. זיכרונות שפג תוקפם מסומנים כ־superseded אוטומטית."
   },
   "notifications": {
     "title": "תיבה",

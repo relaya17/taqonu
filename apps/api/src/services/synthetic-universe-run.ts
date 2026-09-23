@@ -101,6 +101,7 @@ async function persistCanonicalAudit(input: {
       actorKind: "USER",
       ownerId: input.user.id,
       agentId: input.evidence.agent,
+      tenantId: input.evidence.tenantId,
       input: {
         ...(entry.input ?? {}),
         tenantId: input.evidence.tenantId,
@@ -119,6 +120,7 @@ async function persistCanonicalAudit(input: {
     actorKind: "USER",
     agentId: input.evidence.agent,
     ownerId: input.user.id,
+    tenantId: input.evidence.tenantId,
     reason: `Synthetic scenario ${input.evidence.scenarioId} verdict ${input.verdict}`,
     intent: "synthetic_universe",
     policy: "synthetic.sandbox",
@@ -228,6 +230,7 @@ export async function runSyntheticClosedLoopForAtlas(input: {
     actorKind: "USER",
     agentId: loop.failureRun.evidence.agent,
     ownerId: input.user.id,
+    tenantId: scenario.tenantId,
     reason: `Synthetic closed loop ${scenario.id} verdict ${loop.loopVerdict}`,
     intent: "synthetic_universe",
     policy: "synthetic.sandbox",

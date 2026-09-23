@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   AtlasError,
   createMemorySchema,
+  isoDateTimeSchema,
   memorySchema,
   type AuthUser,
   type Memory,
@@ -17,8 +18,11 @@ import {
   approveMemory,
   classifyMemoryType,
   commitMemory,
+  eraseOwnedMemory,
+  expireDueMemories,
   findOwnedMemory,
   retrieveMemories,
+  setOwnedMemoryTtl,
   supersedeMatchingMemories,
   supersedeMemoryById,
 } from "../services/memory-pipeline.js";
@@ -40,6 +44,7 @@ function scopeMemoriesToCaller(items: readonly Memory[], user: AuthUser): Memory
 export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/memory", async (request) => {
     const user = await requireUser(app, request);
+    expireDueMemories();
     const q = z
       .object({
         projectId: z.string().uuid().optional(),
@@ -407,6 +412,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
   /** Pending review queue — items an approver still needs to act on. */
   app.get("/api/v1/memory/pending", async (request) => {
     const user = await requireUser(app, request);
+    expireDueMemories();
     const all = scopeMemoriesToCaller(
       [...osStore.memories.values()].flat(),
       user,
@@ -429,6 +435,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
    */
   app.get("/api/v1/memory/export", async (request) => {
     const user = await requireUser(app, request);
+    expireDueMemories();
     const items = scopeMemoriesToCaller(
       [...osStore.memories.values()].flat(),
       user,
@@ -447,6 +454,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
    */
   app.get("/api/v1/memory/moat", async (request) => {
     const user = await requireUser(app, request);
+    expireDueMemories();
     const callerOwnerId = user.role === "admin" ? undefined : user.id;
     const q = z
       .object({
@@ -511,5 +519,62 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
           ? "No ACTIVE memories — moat empty until classify/approve accumulates."
           : "Portfolio memory rollup — prefer CONFIRMED/VERIFIED over PROPOSED.",
     };
+  });
+
+  /**
+   * R10 / F19 — owner-scoped erasure. Instance-admin may erase any row
+   * (F17). Operator stays owner-scoped (F18). Foreign ids 404.
+   */
+  app.delete("/api/v1/memory/:id", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+    const ownerId = user.role === "admin" ? undefined : identity.ownerId;
+    const result = eraseOwnedMemory({
+      memoryId: params.id,
+      ...(ownerId !== undefined ? { ownerId } : {}),
+    });
+    if (!result.ok) {
+      return reply.status(404).send({ error: { message: "Memory not found" } });
+    }
+    atlasMetrics.record("memory_write_rate", 1, { kind: "erase" });
+    return {
+      id: result.memory.id,
+      status: result.memory.status,
+      erased: true,
+      alreadyErased: result.alreadyErased,
+    };
+  });
+
+  /**
+   * R10 — set or clear validUntil on an owned memory. Expired rows are
+   * superseded on the next read/retrieve.
+   */
+  app.post("/api/v1/memory/:id/ttl", async (request, reply) => {
+    const user = await requireSignedInForWrite(app, request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z
+      .object({
+        validUntil: isoDateTimeSchema.nullable(),
+      })
+      .parse(request.body ?? {});
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+    const ownerId = user.role === "admin" ? undefined : identity.ownerId;
+    const result = setOwnedMemoryTtl({
+      memoryId: params.id,
+      validUntil: body.validUntil,
+      ...(ownerId !== undefined ? { ownerId } : {}),
+    });
+    if (!result.ok) {
+      return reply.status(404).send({ error: { message: "Memory not found" } });
+    }
+    expireDueMemories();
+    const located = findOwnedMemory({
+      memoryId: params.id,
+      ...(ownerId !== undefined ? { ownerId } : {}),
+    });
+    return located?.memory ?? result.memory;
   });
 }

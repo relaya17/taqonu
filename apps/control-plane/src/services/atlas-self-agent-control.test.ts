@@ -15,6 +15,7 @@ import {
   listAuditEntries,
   resetGovernanceStateForTests,
 } from "./governance-state.js";
+import { setAtlasApiFetchForTests } from "./lifecycle-handoff.js";
 
 describe("Atlas-self agent control", () => {
   beforeEach(() => {
@@ -30,8 +31,7 @@ describe("Atlas-self agent control", () => {
     // below already stubs the same hop for its own purpose.
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-    vi.stubGlobal(
-      "fetch",
+    setAtlasApiFetchForTests(
       vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
     );
   });
@@ -39,6 +39,7 @@ describe("Atlas-self agent control", () => {
   afterEach(() => {
     delete process.env["ATLAS_API_URL"];
     delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+    setAtlasApiFetchForTests(null);
     vi.unstubAllGlobals();
   });
 
@@ -253,6 +254,7 @@ describe("Atlas-self control production verifier (CP → API)", () => {
   afterEach(() => {
     delete process.env["ATLAS_API_URL"];
     delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+    setAtlasApiFetchForTests(null);
     vi.unstubAllGlobals();
     setAtlasSelfControlApprovalVerifier(null);
   });
@@ -260,8 +262,7 @@ describe("Atlas-self control production verifier (CP → API)", () => {
   function stubVerify(body: unknown, status = 200): void {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-    vi.stubGlobal(
-      "fetch",
+    setAtlasApiFetchForTests(
       vi.fn(async () => new Response(JSON.stringify(body), { status })),
     );
   }
@@ -269,8 +270,7 @@ describe("Atlas-self control production verifier (CP → API)", () => {
   it("fail-closes when the API is unavailable", async () => {
     process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
     process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-    vi.stubGlobal(
-      "fetch",
+    setAtlasApiFetchForTests(
       vi.fn(async () => {
         throw new Error("connect ECONNREFUSED");
       }),

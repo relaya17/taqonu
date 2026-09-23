@@ -116,9 +116,17 @@ const defaultInit: NonNullable<Parameters<typeof fetch>[1]> = {
   cache: "no-store",
 };
 
-export async function apiGet<T>(path: string): Promise<T> {
+export type ApiRequestInit = {
+  readonly signal?: AbortSignal;
+};
+
+export async function apiGet<T>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<T> {
   const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
+    ...(init.signal ? { signal: init.signal } : {}),
   });
   if (!response.ok) {
     await readError(path, response);
@@ -126,12 +134,17 @@ export async function apiGet<T>(path: string): Promise<T> {
   return readSuccessJson<T>(response);
 }
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T>(
+  path: string,
+  body: unknown,
+  init: ApiRequestInit = {},
+): Promise<T> {
   const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    ...(init.signal ? { signal: init.signal } : {}),
   });
   if (!response.ok) {
     await readError(path, response);

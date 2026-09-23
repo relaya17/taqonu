@@ -11,6 +11,7 @@ import {
   resetAgentRuntimeForTests,
 } from "../services/agent-registry.js";
 import { setAtlasSelfControlApprovalVerifier } from "../services/atlas-self-agent-control.js";
+import { setAtlasApiFetchForTests } from "../services/lifecycle-handoff.js";
 import {
   authorizeControlPlaneRequest,
   issueReauthTicket,
@@ -765,8 +766,7 @@ describe("Control Plane — API Routes", () => {
       // same reasoning as the "production verifier" stub below.
       process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
       process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-      vi.stubGlobal(
-        "fetch",
+      setAtlasApiFetchForTests(
         vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
       );
       const ticket = issueReauthTicket();
@@ -799,14 +799,14 @@ describe("Control Plane — API Routes", () => {
     afterEach(() => {
       delete process.env["ATLAS_API_URL"];
       delete process.env["ATLAS_CONTROL_PLANE_TOKEN"];
+      setAtlasApiFetchForTests(null);
       vi.unstubAllGlobals();
     });
 
     it("production verifier fail-closes when the API is down; overlay unchanged", async () => {
       process.env["ATLAS_API_URL"] = "http://127.0.0.1:4000";
       process.env["ATLAS_CONTROL_PLANE_TOKEN"] = "cp-token";
-      vi.stubGlobal(
-        "fetch",
+      setAtlasApiFetchForTests(
         vi.fn(async () => {
           throw new Error("API unavailable");
         }),
@@ -863,7 +863,7 @@ describe("Control Plane — API Routes", () => {
           { status: 200 },
         );
       });
-      vi.stubGlobal("fetch", fetchMock);
+      setAtlasApiFetchForTests(fetchMock);
       const ticket = issueReauthTicket();
       const res = createMockRes();
       await router.handle(

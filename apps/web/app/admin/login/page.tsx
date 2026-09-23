@@ -106,6 +106,16 @@ export default function AdminLoginPage() {
 
         <Divider sx={{ borderColor: "rgba(154,158,168,0.18)" }} />
 
+        <Box
+          component="form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canSubmit) login.mutate();
+          }}
+          sx={{ width: "100%" }}
+        >
+          <Stack spacing={2} alignItems="center">
         <TextField
           label="אימייל"
           type="email"
@@ -113,6 +123,7 @@ export default function AdminLoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="username"
           fullWidth
+          required
           inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
           InputLabelProps={{ sx: { color: "rgba(210, 216, 224, 0.9)" } }}
           sx={{
@@ -130,6 +141,7 @@ export default function AdminLoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           fullWidth
+          required
           inputProps={{ dir: "rtl", style: { textAlign: "start" } }}
           InputLabelProps={{ sx: { color: "rgba(210, 216, 224, 0.9)" } }}
           sx={{
@@ -141,9 +153,9 @@ export default function AdminLoginPage() {
           }}
         />
         <Button
+          type="submit"
           variant="contained"
           disabled={!canSubmit}
-          onClick={() => login.mutate()}
           sx={{
             bgcolor: "#D2D4D8",
             color: "#12141A",
@@ -153,6 +165,8 @@ export default function AdminLoginPage() {
         >
           כניסה למרכז הפיקוד
         </Button>
+          </Stack>
+        </Box>
         <Button
           variant="outlined"
           disabled={!canSubmit}
@@ -171,7 +185,7 @@ export default function AdminLoginPage() {
           הרשמה ואז כניסה
         </Button>
         {login.isError ? (
-          <Alert severity="error" sx={{ textAlign: "start" }}>{(login.error as Error).message}</Alert>
+          <Alert severity="error" role="alert" sx={{ textAlign: "start" }}>{(login.error as Error).message}</Alert>
         ) : null}
 
         <Typography variant="body2" sx={{ color: "rgba(170,200,198,0.85)" }}>

@@ -177,7 +177,16 @@ describe("POST /api/v1/kernel/eval/run", () => {
 });
 
 describe("GET/POST /api/v1/kernel/memory/lessons", () => {
-  it("GET lists seeded lessons", async () => {
+  it("GET 401s when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/kernel/memory/lessons",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("GET lists seeded lessons for a signed-in user", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/kernel/memory/lessons" });
     expect(res.statusCode).toBe(200);
     expect(res.json().items.length).toBeGreaterThan(0);
@@ -218,6 +227,26 @@ describe("GET/POST /api/v1/kernel/memory/lessons", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().pattern).toBe("TEST_ROUTE_PATTERN");
+  });
+});
+
+describe("GET /api/v1/kernel/improve/rules", () => {
+  it("401s when unsigned", async () => {
+    getRequestUser.mockReturnValue(null);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/kernel/improve/rules",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("200s for a signed-in user", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/kernel/improve/rules",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.json().items)).toBe(true);
   });
 });
 

@@ -11,7 +11,10 @@ import {
   retrieveMemories,
   seedPortfolioPatternMemories,
   commitMemory,
+  eraseOwnedMemory,
+  expireDueMemories,
   findOwnedMemory,
+  setOwnedMemoryTtl,
   supersedeMemoryById,
   toMemoryCitations,
   MEMORY_AGENT_VISIBILITY_CONTRACT,
@@ -637,5 +640,68 @@ describe("toMemoryCitations", () => {
     expect(citations[0]?.statement).toHaveLength(240);
     expect(citations[0]).not.toHaveProperty("evidence");
     expect(toMemoryCitations([])).toEqual([]);
+  });
+});
+
+describe("R10 expire / erase", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
+  it("expires an ACTIVE memory whose validUntil has passed", async () => {
+    const row = memory(PROJECT_A, "expired lesson");
+    osStore.addMemory({
+      ...row,
+      validUntil: new Date(Date.now() - 5_000).toISOString(),
+    });
+    expect(expireDueMemories()).toBe(1);
+    const { items } = await retrieveMemories({
+      projectId: PROJECT_A,
+      budget: 20,
+    });
+    expect(items.map((item) => item.statement)).not.toContain("expired lesson");
+  });
+
+  it("erases only the owned row", () => {
+    osStore.addMemory(memory(PROJECT_A, "keep me", OWNER_A));
+    osStore.addMemory(memory(PROJECT_A, "erase me", OWNER_B));
+    const target = osStore
+      .getMemories(PROJECT_A)
+      .find((row) => row.statement === "erase me")!;
+    const denied = eraseOwnedMemory({
+      memoryId: target.id,
+      ownerId: OWNER_A,
+    });
+    expect(denied.ok).toBe(false);
+    const erased = eraseOwnedMemory({
+      memoryId: target.id,
+      ownerId: OWNER_B,
+    });
+    expect(erased.ok).toBe(true);
+    if (erased.ok) {
+      expect(erased.memory.statement).toBe("[erased]");
+      expect(erased.memory.status).toBe("SUPERSEDED");
+    }
+  });
+
+  it("sets TTL on an owned memory", () => {
+    const row = memory(PROJECT_A, "ttl target", OWNER_A);
+    osStore.addMemory(row);
+    const until = new Date(Date.now() + 60_000).toISOString();
+    const updated = setOwnedMemoryTtl({
+      memoryId: row.id,
+      ownerId: OWNER_A,
+      validUntil: until,
+    });
+    expect(updated.ok).toBe(true);
+    if (updated.ok) expect(updated.memory.validUntil).toBe(until);
   });
 });

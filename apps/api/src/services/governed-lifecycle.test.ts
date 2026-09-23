@@ -6,6 +6,7 @@ import { registerTool, resetToolRegistryForTests } from "@atlas/agent-core";
 import {
   listUnifiedAuditEntries,
   setAuditLogPathForTests,
+  verifyAuditLogChain,
 } from "./audit-log.js";
 import {
   createApprovalRequest,
@@ -424,6 +425,36 @@ describe("Phase 10 — governed operational lifecycle", () => {
     expect(types).toContain("approval.decided");
     expect(types).toContain("lifecycle.execution.started");
     expect(types).toContain("lifecycle.verified");
+    const lifecycle = listUnifiedAuditEntries().filter((entry) =>
+      entry.type.startsWith("lifecycle."),
+    );
+    expect(lifecycle.length).toBeGreaterThan(0);
+    for (const entry of lifecycle) {
+      expect(entry.tenantId).toBe(OWNER_A);
+      expect(entry.projectId).toBe(PROJECT_A);
+    }
+    const approvalRequested = listUnifiedAuditEntries().find(
+      (entry) => entry.type === "approval.requested",
+    );
+    expect(approvalRequested).toBeDefined();
+    expect(approvalRequested?.tenantId == null || approvalRequested.tenantId === "").toBe(
+      true,
+    );
+    expect(approvalRequested?.projectId == null || approvalRequested.projectId === "").toBe(
+      true,
+    );
+    expect(verifyAuditLogChain().ok).toBe(true);
+  });
+
+  it("promotes non-UUID lifecycle project slugs to top-level audit fields", async () => {
+    await runGovernedLifecycle({
+      decision: decision("DENY", { tenantId: "tenant-slug", projectId: "connector-project" }),
+    });
+    const denied = listUnifiedAuditEntries().find(
+      (entry) => entry.type === "lifecycle.decision.denied",
+    );
+    expect(denied?.tenantId).toBe("tenant-slug");
+    expect(denied?.projectId).toBe("connector-project");
   });
 
   it("REQUIRE_APPROVAL mint is idempotent", async () => {

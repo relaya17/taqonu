@@ -124,7 +124,7 @@ begin
   -- verification pass, re-running this same computation, can detect a
   -- tampered or deleted row.
   computed_hash := encode(
-    digest(current_tip || '|' || coalesce(new.payload::text, '{}'), 'sha256'),
+    extensions.digest(current_tip || '|' || coalesce(new.payload::text, '{}'), 'sha256'),
     'hex'
   );
 

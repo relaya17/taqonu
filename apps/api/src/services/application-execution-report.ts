@@ -10,10 +10,12 @@
 
 import {
   APPLICATION_EXECUTION_REPORT_SCHEMA,
+  applicationExecutionAttributionFromRequest,
   applicationExecutionReportRequestSchema,
   applicationOwnedAgentId,
   applicationPreflightAllowsExecution,
   classifyApplicationAgentObservation,
+  type ApplicationExecutionAttribution,
   type ApplicationExecutionReportRequest,
   type ApplicationExecutionReportResponse,
   type ApplicationExecutionStatus,
@@ -49,6 +51,7 @@ export interface AcceptedExecutionReport {
   readonly projectId: string;
   readonly operation: string;
   readonly agentId: string | null;
+  readonly attribution?: ApplicationExecutionAttribution;
 }
 
 const acceptedReports = new Map<string, AcceptedExecutionReport>();
@@ -130,6 +133,7 @@ function executionReportAuditPayload(input: {
       agentId: input.recordedAgentId,
       expectedAgentIds,
       agentObservation: agentObservation.observation,
+      ...applicationExecutionAttributionFromRequest(input.request),
     },
     output: {
       accepted: true,
@@ -478,6 +482,7 @@ export async function evaluateApplicationExecutionReport(input: {
     });
   }
 
+  const attribution = applicationExecutionAttributionFromRequest(request);
   const recorded: AcceptedExecutionReport = {
     decisionId: request.decisionId,
     requestId: request.requestId,
@@ -488,6 +493,7 @@ export async function evaluateApplicationExecutionReport(input: {
     projectId: request.projectId,
     operation: request.operation,
     agentId: recordedAgentId,
+    ...(attribution ? { attribution } : {}),
   };
   acceptedReports.set(key, recorded);
 
@@ -523,6 +529,7 @@ export async function evaluateApplicationExecutionReport(input: {
       agentId: recordedAgentId,
       expectedAgentIds,
       agentObservation: agentObservation.observation,
+      ...attribution,
     },
     output: {
       accepted: true,

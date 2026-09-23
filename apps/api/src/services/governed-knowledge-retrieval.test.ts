@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,13 +11,17 @@ import {
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-gov-knowledge-"));
 process.env.ATLAS_STORE_PATH = join(tmpDir, "store.json");
 process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+delete process.env.ATLAS_SKIP_AUDIT_LOG;
 
 const {
   retrieveGovernedKnowledge,
   resolveAtlasSurfaceKnowledgeScope,
+  searchEligibleKnowledge,
 } = await import("./governed-knowledge-retrieval.js");
 const { osStore } = await import("../store/os-store.js");
 const { bindProjectOwner } = await import("./project-access.js");
+const { listUnifiedAuditEntries, setAuditLogPathForTests, verifyAuditLogChain } =
+  await import("./audit-log.js");
 
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
@@ -30,6 +34,14 @@ const OTHER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const PROJECT = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 describe("governed knowledge retrieval", () => {
+  beforeEach(() => {
+    setAuditLogPathForTests(join(tmpDir, `audit-${Date.now()}-${Math.random()}.ndjson`));
+  });
+
+  afterEach(() => {
+    setAuditLogPathForTests(null);
+  });
+
   it("fails closed when session owner does not match requested owner scope", async () => {
     const result = await retrieveGovernedKnowledge({
       env,
@@ -49,6 +61,43 @@ describe("governed knowledge retrieval", () => {
     if (!result.ok) {
       expect(result.reason).toMatch(/owner scope/);
     }
+    expect(
+      listUnifiedAuditEntries().some((entry) => entry.type === "knowledge.retrieved"),
+    ).toBe(false);
+  });
+
+  it("attributes incomplete-scope retrieval audits from the supplied scope", async () => {
+    const result = await retrieveGovernedKnowledge({
+      env,
+      sessionOwnerId: OWNER,
+      scope: {
+        ownerId: OWNER,
+        tenantId: "tenant-test",
+        projectId: PROJECT,
+        applicationId: "",
+        requestingAgentId: "RESEARCHER",
+      },
+      query: "webhook idempotency",
+      requestId: "req-incomplete",
+      routeLabel: "knowledge.search",
+    });
+    expect(result.ok).toBe(false);
+    const entry = listUnifiedAuditEntries().find((row) => row.type === "knowledge.retrieved");
+    expect(entry?.tenantId).toBe("tenant-test");
+    expect(entry?.projectId).toBe(PROJECT);
+    expect(verifyAuditLogChain().ok).toBe(true);
+  });
+
+  it("does not fabricate tenant or project when retrieval scope is missing", async () => {
+    await searchEligibleKnowledge({
+      env,
+      query: "no scope",
+      scope: null,
+    });
+    const entry = listUnifiedAuditEntries().find((row) => row.type === "knowledge.retrieved");
+    expect(entry).toBeDefined();
+    expect(entry?.tenantId == null || entry.tenantId === "").toBe(true);
+    expect(entry?.projectId == null || entry.projectId === "").toBe(true);
   });
 });
 

@@ -28,6 +28,21 @@ describe("isPublicAtlasRoute (ADR-021 allow-list)", () => {
     ).toBe(true);
   });
 
+  it("does not expose kernel lessons as a public route (R08 / F38)", () => {
+    expect(isPublicAtlasRoute("GET", "/api/v1/kernel/memory/lessons")).toBe(
+      false,
+    );
+    expect(isPublicAtlasRoute("HEAD", "/api/v1/kernel/memory/lessons")).toBe(
+      false,
+    );
+    expect(isPublicAtlasRoute("POST", "/api/v1/kernel/memory/lessons")).toBe(
+      false,
+    );
+    expect(isPublicAtlasRoute("GET", "/api/v1/kernel/improve/rules")).toBe(
+      false,
+    );
+  });
+
   it("denies tenant and studio reads", () => {
     expect(isPublicAtlasRoute("GET", "/api/v1/studio/tree")).toBe(false);
     expect(isPublicAtlasRoute("GET", "/api/v1/memory")).toBe(false);

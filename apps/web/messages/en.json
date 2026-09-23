@@ -304,6 +304,7 @@
     "saveRemind": "Save reminder",
     "saveSummary": "Save summary",
     "asking": "Working…",
+    "cancelRun": "Cancel run",
     "openPatches": "Open Patches to Approve",
     "openMemory": "Open Memory",
     "remindSaved": "Reminder saved to Memory.",
@@ -1451,7 +1452,10 @@
     "export": "Export my memories",
     "cloudSynced": "Cloud synced",
     "provenance": "{sourceType} · {source} · evidence {evidence} · confidence {confidence}",
-    "verified": "Verified"
+    "verified": "Verified",
+    "erase": "Erase",
+    "ttlHours": "TTL (hours, optional)",
+    "ttlHelp": "Leave empty for no expiry. Expired memories are superseded automatically."
   },
   "notifications": {
     "title": "Inbox",

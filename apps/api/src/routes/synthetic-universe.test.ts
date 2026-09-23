@@ -8,7 +8,7 @@ import {
   SYNTHETIC_SCENARIO_CLOSED_LOOP_PATH,
   SYNTHETIC_SCENARIO_RUN_PATH,
 } from "@atlas/synthetic-universe";
-import { setAuditLogPathForTests } from "../services/audit-log.js";
+import { setAuditLogPathForTests, verifyAuditLogChain } from "../services/audit-log.js";
 import { listGovernanceDecisions } from "../services/governance-decision.js";
 
 const getRequestUser = vi.fn();
@@ -145,14 +145,17 @@ describe("POST /api/v1/synthetic/scenarios/run", () => {
     expect(persisted.some((entry) => entry.type === "synthetic.scenario.run")).toBe(true);
     const runEntry = persisted.find((entry) => entry.type === "synthetic.scenario.run");
     expect(runEntry?.actorId).toBe(user.id);
+    expect(runEntry?.tenantId).toBe("TEST-REALTY-001");
     expect(runEntry?.input.tenantId).toBe("TEST-REALTY-001");
     expect(runEntry?.input.scenarioId).toBe("real-estate-deal-completion");
+    expect(runEntry?.projectId == null || runEntry.projectId === "").toBe(true);
     expect(runEntry?.input.runId).toBe(body.runId);
     expect(runEntry?.output).toMatchObject({
       verdict: "VERIFIED",
       realExternalExecuted: false,
     });
     expect(runEntry?.correlationId).toBe(body.runId);
+    expect(verifyAuditLogChain().ok).toBe(true);
   });
 
   it("detects an incomplete process (missing payment transition) as PROCESS_FAILURE", async () => {
@@ -305,6 +308,10 @@ describe("POST /api/v1/synthetic/scenarios/closed-loop", () => {
 
     const persisted = listUnifiedAuditEntries({ ownerId: user.id });
     expect(persisted.some((entry) => entry.type === "synthetic.closed_loop")).toBe(true);
+    const loopEntry = persisted.find((entry) => entry.type === "synthetic.closed_loop");
+    expect(loopEntry?.tenantId).toBe("TEST-REALTY-LOOP");
+    expect(loopEntry?.projectId == null || loopEntry.projectId === "").toBe(true);
+    expect(verifyAuditLogChain().ok).toBe(true);
     const decisions = listGovernanceDecisions();
     expect(decisions.some((row) => row.id === body.governanceDecisionId)).toBe(true);
     expect(
