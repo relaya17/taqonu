@@ -2,8 +2,8 @@
 
 **Status:** WAVE 0 BASELINE — living source of truth
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (G16 documentation reconciliation; generic execution-report contract + one CaseFlow hop; general sibling coverage unproven)
-**Git HEAD:** `dc9436178f7092fb729e56db4710b30180e6a683` (`main`, ahead of `origin/main` by 10; this documentation recon is uncommitted)
+**Last updated:** 2026-09-23 (CTRL-019 documentation reconciliation; implementation `ecdae7b`; PARTIAL — code/tests proven; repeated-FAILURE runtime unproven)
+**Git HEAD:** `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` (`main`; this documentation recon is uncommitted)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
 **CTRL-013 commit:** `455b205b07dd507ddeb0407da9abaac5e8b17232`
@@ -11,6 +11,7 @@
 **CTRL-016 commit:** `c0ca916ed28f4147587675aa8fa0a3070fd211ac` (parent `e53681c7f0225b3b62ae3c1de9c110f4a87209f2`)
 **CTRL-017 commit:** none — VERIFIED by LOCAL RUNTIME proof; implementation and this recon are uncommitted
 **CTRL-018 commit:** `bd1d2db2fe46e19d54b50332d2aede62cf1597bd` (PARTIAL — implementation + tests; runtime EXPECTED/UNEXPECTED not proven)
+**CTRL-019 commit:** `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` (PARTIAL — implementation + tests; repeated-FAILURE runtime unproven)
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
 **Classification rule:** INTENT ≠ IMPLEMENTATION ≠ REACHABILITY ≠ ENFORCEMENT ≠ TEST COVERAGE ≠ PRODUCTION PROOF
 
@@ -326,7 +327,7 @@ Status vocabulary: `PROVEN` | `PARTIAL` | `MISSING` | `ENVIRONMENT BLOCKED` | `N
 | G18 | Unknown / shadow Agents | Application-owned Expected set (`ATLAS_{APP}_EXPECTED_AGENT_IDS`); observed `agentId` classified EXPECTED / UNKNOWN / UNEXPECTED on existing `application.preflight.evaluated` / `application.execution.reported`. Null, missing Expected, or empty Expected = UNKNOWN. Reserved `psa:*` / `cp:*` / Fabric stay CTRL-014, not UNEXPECTED. UNEXPECTED does not change ALLOW/DENY. | Commit `bd1d2db`; `application-agent-observation.ts`; CP `notAnAgentRegistry: true` | PARTIAL | Shadow activity still not runtime-proven | G1, G22 | Runtime EXPECTED/UNEXPECTED blocked on HotelOS connector env. CaseFlow has no legitimate non-null preflight Agent ID. No Fabric registry. |
 | G19 | Multi-hop / delegation | No originAgent / delegatingAgent fields. Identity may drop on hop. | schema has single optional agentId | MISSING | Accountability break | Real hop evidence | Add fields only when a hop exists |
 | G20 | Audit integrity | Canonical NDJSON / unified audit; append-oriented. Hash-chain / offsite DR not proven here. | unified-audit-entry.schema.ts | PARTIAL | Tamper / loss | G1 | Wave 8; env blockers separate |
-| G21 | Feedback / learning | No observe→policy-proposal loop. Human governance required. | — | MISSING | Repeat failures | G16 | Wave 7 proposals only, autoApply false |
+| G21 | Feedback / learning | Observe→proposal→authenticated-human-decision→audit exists (`atlas.application-learning-proposal.v1`, Alt 2). Citations must be unified-audit `application.execution.reported` with `executionStatus === FAILURE`, scoped to the same applicationId+tenantId+projectId+operation. Literals `autoApply/executes/mutatesGovernance/mutatesMemory/mutatesKnowledge: false`. No ApprovalRequest and no execution authority. `requestedBy=cp:service`; `decidedBy` is requireAdmin `user.id`; SoD rejects `cp:service` as decider. Stops at audit — no policy/memory/knowledge apply. | Commit `ecdae7b`; `application-learning-proposal.ts` | PARTIAL | No real repeated-FAILURE runtime; no production or autonomous learning | G16 | Wave 7 proposals only; autoApply false; not VERIFIED |
 | G22 | Telemetry contract | Aliases: `ai.gateway.invoke`→`agent.completed`, `autonomy.act`→`tool.executed`. Reject: `ai.approval.approved`, `payment.intent.created`, `hr.document.*`. HotelOS live emit uses X-Atlas-Reason + top-level agentId (uncommitted sibling). `ai.gateway.invoke` is HotelOS local onAudit only — **not** on live emit. | atlas-gateway.ts; HotelOS alert-on-sensitive-audit.ts SENSITIVE_ACTIONS | PARTIAL | Rejected legitimate / wrong channel | G1 | Taxonomy closed for known types; do not invent invoke emit |
 | G23 | Security / isolation | HMAC, tenant/project, denyImpersonation, owner memory. Fail-open GOVERNED/INFORMATIONAL. | evaluateAuthorized | PARTIAL | Cross-app authority if binding skipped | G3 | Security review on each CORE close |
 | G24 | Failure / recovery | Fail-open vs fail-closed by the four existing operation classes. Duplicate/retry via nonce/idempotency. Atlas secret unset: API 401 INVALID; client skip only if FAIL_OPEN. | evaluateAuthorized comments; `unavailablePolicyForClass`; CTRL-013 tests | PARTIAL | Silent skip of governed hops remains a client FAIL_OPEN path | CTRL-013 docs + tests | Do not globally fail-closed |
@@ -371,7 +372,7 @@ WAVE 2  Model C path **declaration** VERIFIED (`c0ca916`) — not sufficiency, n
 BLOCKED ON SIBLING REPORT-BACK (do not start)
    WAVE 4  outcome / executionId report-back (G13/G15/G16)
    WAVE 5  resource attribution fields (G9) after outcome
-   WAVE 7  human-governed learning proposals (G21)
+   WAVE 7  human-governed learning proposals (G21) — CTRL-019 PARTIAL (`ecdae7b`); runtime unproven
    ↓
 AFTER CORRELATION EXISTS
    WAVE 6  portfolio / shadow Agents / incidents (G17/G18/G27)
@@ -397,7 +398,7 @@ ENVIRONMENT
 | 4 | Evidence and Verification | CTRL-017 **VERIFIED** for one local CaseFlow OpenAI hop. Not production. G16 is **PARTIAL** (generic contract exists; general sibling coverage remains unproven). G15 remains separate and **MISSING**. |
 | 5 | Resource and Cost | Attribution later; FinOps external |
 | 6 | Portfolio Supervision | Projection exists; no scores |
-| 7 | Learning | Human proposals only |
+| 7 | Learning | CTRL-019 **PARTIAL** (`ecdae7b`). Human proposals + decide exist. Repeated-FAILURE runtime unproven. Not VERIFIED. |
 | 8 | Resilience | Measure + env blockers |
 
 Wave 2 is **not** “build a Decision Engine.” The engine exists (`evaluateAuthorized`). Wave 2 is the optional `declaredCompletionPath` attestation on v1. It does not authorize a different decision and does not prove execution.
@@ -436,7 +437,7 @@ Start: **2026-09-23**. Dates are targets, not promises. BLOCKED / DEFERRED items
 | CTRL-016 | 2 | Model C path declaration (not sufficiency, not execution) | VERIFIED | 2026-09-23 | 2026-09-23 | Proven cheap **completion** exists in-app (CaseFlow cache before preflight; Civio FAQ after). HotelOS pack is not a completion. CTRL-001 | Optional nullable `declaredCompletionPath` on `atlas.application-preflight.v1` (`LOCAL_COMPLETION_PATH` \| `MODEL_PATH`); omit/null valid and fingerprint-compatible (append path only when present); `evaluateAuthorized` has no path branch; `executed: false`; no `UNNECESSARY` / `knowledgeSufficient` / `executionId` | Commit `c0ca916`; exactly 6 Atlas files; shared 11/11; API 37/37; Civio 2/2; CP G12-C 14/14; `@atlas/shared` typecheck+build PASS; `@atlas/api` typecheck PASS | Declaration ≠ execution. CTRL-017 owns correlation. Sibling send of the field is APPLICATION-OWNED. Not pushed. Gate 1: no new Control knowledge gap; do not create CTRL-023 |
 | CTRL-017 | 4 | Outcome / execution correlation contract | VERIFIED | 2026-09-23 | 2026-09-23 | CTRL-001; app report-back design | Schema + one sibling hop proving executionId↔preflight | LOCAL RUNTIME CaseFlow wrap (not tests, not production). `atlas.application-execution-report.v1` POST `/api/v1/governance/application-execution-report`. Hop: preflight ALLOW `decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` · `requestId` `2fb06f9a-c1c2-4622-bde4-79423bff0ed2` · operation `caseflow.openai.chat` · provider `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO` · `executionStatus` SUCCESS · Atlas `accepted=true` · audit `application.preflight.evaluated` + `application.execution.reported`. Implementation uncommitted (working tree). Not a second OpenAI call. Initial audit miss was reader-path (`row.input` vs canonical `payload.input`), not a correlation failure. HMAC replay only confirmed already-accepted report. | LOCAL RUNTIME only. Not Vercel/production. Not HotelOS/Civio/BrokerOS. In-memory `decisionId` index is process-local. Do not start CTRL-018. |
 | CTRL-018 | 6 | Observed vs expected application Agent IDs (no Fabric registry) | PARTIAL | 2026-09-23 | 2026-09-23 | CTRL-001 | Surface unexpected agentId; `notAnAgentRegistry` remains true | Commit `bd1d2db` (6 Atlas files). Expected is application-owned (`ATLAS_{APP}_EXPECTED_AGENT_IDS`). Classifier EXPECTED/UNKNOWN/UNEXPECTED is observational only. Tests: shared observation 8/8; API observation+identity 12/12; CP 58/58 (`notAnAgentRegistry` true; `agent.cio` not a Fabric target). No registry, Fabric promotion, or authorization change. | NOT VERIFIED. HotelOS `agent.cio` is a legitimate application-owned identity in repository evidence; HotelOS connector env is ABSENT — no real HotelOS→Atlas hop. CaseFlow verified hop is `agentId=null` → UNKNOWN; CaseFlow has no legitimate non-null Agent ID on the Atlas preflight path. EXPECTED and UNEXPECTED runtime observations remain unproven. Not an Atlas implementation defect. Not production. |
-| CTRL-019 | 7 | Human-governed learning proposals from repeated failures | DEFERRED | — | 2027-02-17 | CTRL-017 | Proposals only; `autoApply: false` | — | Outcome missing |
+| CTRL-019 | 7 | Human-governed learning proposals from repeated failures | PARTIAL | 2026-09-23 | 2026-09-23 | CTRL-017 | Proposals only; `autoApply: false` | Commit `ecdae7b` (8 Atlas files). Alt 2 non-redeemable human learning decision. Contract `atlas.application-learning-proposal.v1`. Audit-grounded FAILURE citations; same applicationId+tenantId+projectId+operation. Tests: shared 9/9; API 14/14; regression 160/160. requireAdmin + SoD (`requestedBy=cp:service`, `decidedBy=user.id`). Decision ACCEPT/REJECT on unified audit (`approval: NOT_REQUIRED`). | NOT VERIFIED. No real repeated `application.execution.reported` FAILURE in authoritative local runtime. Not production. No ApprovalRequest. No execution authority. |
 | CTRL-020 | 5 | Resource attribution fields (not FinOps) | DEFERRED | — | 2027-01-20 | CTRL-017 | Who/Agent/operation/resource/outcome refs | — | Outcome missing |
 | CTRL-021 | 8 | Performance budgets for preflight/audit/telemetry | DEFERRED | — | 2027-02-17 | CTRL-001 | Measured numbers in this plan | — | Measure env |
 | CTRL-022 | 8 | Production DR / audit offsite | BLOCKED | — | — | G-P1-06–09 | External restore | remaining-external-dependencies.md | AWS / Supabase / secrets |
@@ -554,8 +555,8 @@ Counts are **capability rows in §6**, not scores.
 ```text
 Total gated capabilities:     28
 PROVEN:                       2   (G3 Authorization, G11 Atlas SoD)
-PARTIAL:                      17
-MISSING:                      8   (G4, G5, G8, G9, G15, G19, G21, G25)
+PARTIAL:                      18
+MISSING:                      7   (G4, G5, G8, G9, G15, G19, G25)
 ENVIRONMENT BLOCKED:          1   (G28)
 NOT APPLICABLE:               0
 INCORRECT IMPLEMENTATION:     0
@@ -568,11 +569,11 @@ CORE CONTROL rows:            G1, G3, G11, G12, G20, G23
 CORE closed (10/10 ten-point): 0
 CORE remaining:               6 (G3/G11 PROVEN but not 10/10-closed — no security-review + runtime + plan evidence block yet)
 CONTROL SUPPORTING remaining: see §6
-OPTIONAL / DEFERRED:          CTRL-019–CTRL-022
+OPTIONAL / DEFERRED:          CTRL-019 runtime proof; CTRL-020–CTRL-022
 Environment blockers:         6 rows in §16
 ```
 
-Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). CTRL-016 is VERIFIED and committed (`c0ca916`) as a **declaration** contract, not execution proof. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (implementation uncommitted; this file is docs recon only). CTRL-018 is PARTIAL (`bd1d2db`): implementation and tests committed; runtime EXPECTED/UNEXPECTED not proven. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). G15 remains MISSING. G4 remains MISSING (correctly — no necessity engine). G12 remains PARTIAL. G18 is PARTIAL (not PROVEN). G24 remains PARTIAL. CORE closed remains 0. Local `main` is ahead of `origin/main` by 10.
+Identity/telemetry is **committed** (`400759a`) and CTRL-001 is VERIFIED, not CORE-closed. CTRL-012 is VERIFIED and pushed (`a363b57`). CTRL-013 is VERIFIED and committed (`455b205`). CTRL-014 is VERIFIED and committed (`28ef9f2`). CTRL-016 is VERIFIED and committed (`c0ca916`) as a **declaration** contract, not execution proof. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (implementation uncommitted; this file is docs recon only). CTRL-018 is PARTIAL (`bd1d2db`): implementation and tests committed; runtime EXPECTED/UNEXPECTED not proven. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). G21 is PARTIAL (proposal/decision/audit loop exists; no production learning). G15 remains MISSING. G4 remains MISSING (correctly — no necessity engine). G12 remains PARTIAL. G18 is PARTIAL (not PROVEN). G24 remains PARTIAL. CTRL-019 is PARTIAL (`ecdae7b`) — do **not** mark VERIFIED. CORE closed remains 0.
 
 ---
 
@@ -592,8 +593,9 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CTRL-016 VERIFIED | 2026-09-23 | `c0ca916ed28f4147587675aa8fa0a3070fd211ac` | 6 Atlas files in that commit (this file is docs recon only) | shared 11/11; API 37/37; Civio 2/2; CP 14/14 | n/a — declaration is not execution | Fingerprint appends path only when present. No path branch in `evaluateAuthorized`. `executed: false`. CTRL-017 owns outcome. Not pushed. |
 | CTRL-017 VERIFIED | 2026-09-23 | none yet (implementation + this recon uncommitted) | this file is docs recon only; Gate 3B contract remains in the working tree | existing Gate 3B tests are not the VERIFIED proof | LOCAL RUNTIME: CaseFlow `caseflow.openai.chat` cache-miss wrap → real `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO` → HMAC report accepted → `application.execution.reported` | DoD met by one sibling hop. Not production. Reader-path miss (`row.input` vs `payload.input`) was query error, not a failed hop. Replay was HMAC-only. Do not start CTRL-018. |
 | CTRL-018 PARTIAL | 2026-09-23 | `bd1d2db2fe46e19d54b50332d2aede62cf1597bd` | 6 Atlas files in that commit (this file is docs recon only) | shared observation 8/8; API observation+identity 12/12; CP 58/58 | No HotelOS→Atlas hop. CaseFlow hop remains `agentId=null` → UNKNOWN | NOT VERIFIED. Expected is application-owned. Classification observational only. `notAnAgentRegistry` remains true. No Fabric registry. HotelOS connector env absent — not an Atlas implementation defect. Not production. |
+| CTRL-019 PARTIAL | 2026-09-23 | `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` | 8 Atlas files in that commit (this file is docs recon only) | shared 9/9; API 14/14; regression 160/160 | No real repeated `application.execution.reported` FAILURE | NOT VERIFIED. Alt 2 only. No ApprovalRequest. No execution authority. No policy/memory/knowledge mutation. Not production. |
 
-**Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 17 / 8 / 1 / CORE 0.
+**Not CORE-closed:** identity/telemetry does not satisfy the ten-point CORE definition (no security-review close, HotelOS ai-gateway runtime blocked, no closed CORE evidence block). Counts remain 28 / 2 / 18 / 7 / 1 / CORE 0.
 
 ---
 
@@ -602,7 +604,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 1. CTRL-013 is VERIFIED and committed (`455b205`; local, not pushed). G24 remains PARTIAL.
 2. CTRL-014 is VERIFIED and committed (`28ef9f2`; local, not pushed).
 3. CTRL-016 is VERIFIED and committed (`c0ca916`; local, not pushed) as path **declaration**. It is not execution, outcome, cost, or sufficiency proof.
-4. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (`decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` ↔ `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`). CTRL-018 is PARTIAL (`bd1d2db`) — do **not** mark VERIFIED. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). G15 remains MISSING. CTRL-019 remains DEFERRED. Do not create CTRL-023.
+4. CTRL-017 is VERIFIED by one LOCAL RUNTIME CaseFlow OpenAI hop (`decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` ↔ `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`). CTRL-018 is PARTIAL (`bd1d2db`) — do **not** mark VERIFIED. G16 is PARTIAL (generic contract + one hop; general sibling coverage unproven). G15 remains MISSING. CTRL-019 is PARTIAL (`ecdae7b`) — do **not** mark VERIFIED. Do not create CTRL-023.
 5. Do **not** implement UNNECESSARY, proposedPath, knowledgeSufficient, FinOps, Fabric app-Agent registry, or a new Knowledge Authority.
 6. Keep G-P1-06–09 blocked.
 7. LexStudy / Vantera remain NOT ACCESSIBLE.
@@ -623,7 +625,7 @@ Nothing in this program is CLOSED. CLOSED still requires a commit reference.
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). CTRL-016 is VERIFIED (`c0ca916`, local, not pushed) as declaration only. CTRL-017 is VERIFIED by LOCAL RUNTIME CaseFlow hop (implementation uncommitted). CTRL-018 is PARTIAL (`bd1d2db`): implementation+tests committed; runtime EXPECTED/UNEXPECTED not proven. Local HEAD `bd1d2db`; `main` ahead of `origin/main` by 10 | Active |
+| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`, local, not pushed). CTRL-014 is VERIFIED (`28ef9f2`, local, not pushed). CTRL-016 is VERIFIED (`c0ca916`, local, not pushed) as declaration only. CTRL-017 is VERIFIED by LOCAL RUNTIME CaseFlow hop (implementation uncommitted). CTRL-018 is PARTIAL (`bd1d2db`): implementation+tests committed; runtime EXPECTED/UNEXPECTED not proven. CTRL-019 is PARTIAL (`ecdae7b`): implementation+tests committed; repeated-FAILURE runtime unproven. Local HEAD `ecdae7b` | Active |
 | CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
 
 If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replacement, update this graph, keep history in §23.
@@ -633,7 +635,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 ## 21. Deferred Work
 
 - CTRL-018 runtime EXPECTED/UNEXPECTED hop (HotelOS connector env absent; not an Atlas implementation defect)
-- Learning proposals (CTRL-019)
+- CTRL-019 repeated-FAILURE runtime proof (implementation `ecdae7b` committed; not VERIFIED)
 - Cost attribution fields (CTRL-020)
 - Performance budgets (CTRL-021)
 - Production DR (CTRL-022)
@@ -678,6 +680,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | 2026-09-23 | CTRL-017 documentation reconciliation. Status VERIFIED from official DoD: schema + one sibling hop proving `executionId`↔preflight. Proof is LOCAL RUNTIME (CaseFlow OpenAI wrap), not tests and not production. `decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc`; `requestId` `2fb06f9a-c1c2-4622-bde4-79423bff0ed2`; operation `caseflow.openai.chat`; provider `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`; `executionStatus` SUCCESS; Atlas `accepted=true`; audit `application.preflight.evaluated` + `application.execution.reported`. Initial audit miss was reader-path (`row.input` vs canonical `payload.input`), not an execution/correlation failure. HMAC replay was not another OpenAI call. Implementation uncommitted. No CTRL-018. Counts unchanged. CORE closed 0. Not committed in this pass. | local HEAD `b70f555`; `main` ahead of `origin/main` by 7 |
 | 2026-09-23 | CTRL-018 documentation reconciliation. Implementation already committed as `bd1d2db` (6 Atlas files). Status PARTIAL, not VERIFIED. Official DoD (`Surface unexpected agentId`; `notAnAgentRegistry` remains true) is satisfied in CODE+TEST only. HotelOS `agent.cio` is application-owned in repository evidence; HotelOS connector env ABSENT — no real hop. CaseFlow preflight remains `agentId=null` → UNKNOWN; no legitimate CaseFlow non-null Agent ID. EXPECTED/UNEXPECTED runtime unproven. G18 MISSING→PARTIAL (mechanical count 15/10 → 16/9). CORE closed 0. No CTRL-023. Not committed in this pass. | local HEAD `bd1d2db`; `main` ahead of `origin/main` by 10 |
 | 2026-09-23 | G16 documentation reconciliation. Status MISSING→PARTIAL. Generic `atlas.application-execution-report.v1` exists (`executionId` + `executionStatus` SUCCESS\|FAILURE, correlated to a preceding ALLOW; ALLOW is not SUCCESS). One local CaseFlow hop proven (CTRL-017). General sibling coverage remains unproven. No `resultStatus` / `outcomeStatus` / `actualCost` added as G16 requirements. `actualCost` remains G9 / CTRL-020. G15 remains MISSING. CTRL-019 unchanged (DEFERRED; Outcome missing). Mechanical count 16/9 → 17/8. CORE closed 0. Not committed in this pass. | local HEAD `dc94361`; `main` ahead of `origin/main` by 10 |
+| 2026-09-23 | CTRL-019 documentation reconciliation. Implementation already committed as `ecdae7b` (8 Atlas files). Status DEFERRED→PARTIAL, not VERIFIED. Alt 2 non-redeemable human learning decision. G21 MISSING→PARTIAL (proposal/decision/audit loop; no production or autonomous learning). Repeated real FAILURE runtime unproven. G15/G16/CTRL-017/CTRL-018/CTRL-020–022 unchanged. Mechanical count 17/8 → 18/7. CORE closed 0. No CTRL-023. Not committed in this pass. | local HEAD `ecdae7b` |
 
 ---
 
@@ -688,6 +691,8 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 | Preflight schema + `applicationOwnedAgentId` + `declaredCompletionPath` | `packages/shared/src/platform/application-preflight.ts` |
 | CTRL-018 observation classifier + Expected parse | `packages/shared/src/platform/application-agent-observation.ts` |
 | Execution-report schema `atlas.application-execution-report.v1` | `packages/shared/src/platform/application-execution-report.ts` |
+| Learning-proposal schema `atlas.application-learning-proposal.v1` | `packages/shared/src/platform/application-learning-proposal.ts` |
+| Learning-proposal service + routes | `apps/api/src/services/application-learning-proposal.ts`; `apps/api/src/routes/application-learning-proposal.ts` |
 | Execution-report evaluate + ALLOW correlation | `apps/api/src/services/application-execution-report.ts` |
 | CaseFlow OpenAI wrap + HMAC report | sibling `apps/server/src/infrastructure/ai/openai.service.js`, `apps/server/src/services/atlas/atlasExecutionReport.js` |
 | CTRL-017 LOCAL RUNTIME hop | `decisionId` `f3a2539c-8499-462e-b600-8a9b9bf1a0bc` ↔ `executionId` `chatcmpl-ERG9FKN5Bmxjqxw17Ih5tw4IIjsQO`; `.atlas/audit/audit.ndjson` `application.execution.reported` |
@@ -726,7 +731,7 @@ If a task is wrong: mark `ARCHITECTURE REVIEW`, record evidence, propose replace
 10. **Why a decision was made:** PARTIAL — audit has decision + policy/operation class; no purpose/necessity explanation.
 11. **What actually happened:** PARTIAL — authorized is recorded; one local CaseFlow OpenAI hop has correlated `executionId` (CTRL-017). Other sibling executions remain unreported.
 12. **Outcome acceptable:** MISSING for siblings; Atlas-self fulfill only.
-13. **Learn without autonomous policy change:** MISSING; future CTRL-019 `autoApply: false`.
+13. **Learn without autonomous policy change:** PARTIAL — CTRL-019 (`ecdae7b`) proposal/decision/audit exists; `autoApply: false`. Repeated-FAILURE runtime unproven. No autonomous policy mutation.
 14. **2026 research core vs optional:** see §5. Core = identity, pre-exec authz, SoD, kill honesty, audit, plane separation. Optional/external = FinOps product, router, NLI, OTel, portable hop fields until a hop exists.
 15. **Smallest architecture:** Identity → Authorization → Approval → next-hop authority → Audit, plus observational telemetry/portfolio. Everything else waits for truthful application attestation.
 
