@@ -15,9 +15,12 @@ open engineering backlog.
 
 ### CONTROL 10/10 PROGRAM (2026-09-23)
 
-Authoritative Control supervision roadmap:
+Authoritative Control supervision register:
 `docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md`.
 Do not treat remaining-work 01–19 or gap-analysis as that source of truth.
+Do not create R21/R22 or CTRL-023.
+
+Waves 1–9 are landed for the actionable R01–R20 scope. R01–R03 are **VERIFIED AGAINST REAL LOCAL POSTGRES / PRODUCTION NOT VERIFIED**. R04–R14 and R18–R20 are **IMPLEMENTED + TESTED**. R15–R17 remain **ENVIRONMENT BLOCKED** (HotelOS runtime, repeated FAILURE runtime, offsite DR). Cost attribution is implemented and tested; quantified cost savings are not. The historical canonical audit break at index 605 is preserved; the current writer is fixed and regression-tested. GitHub `verify` passed after test-fixture commit `4689e5f` (**CI FAILURE CLOSED — TEST FIXTURE CORRECTED AND VERIFIED**). That closure did not change production kill behavior. Production verification of Control remains unproven.
 
 ### CONTROL AUTHORIZATION / AGENT IDENTITY (2026-09-23)
 

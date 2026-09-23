@@ -1,9 +1,10 @@
 # Atlas Investor Reality Map
 
-**Status:** internal + sendable memo  
-**Date:** 2026-09-20  
-**Audience:** founder first; selected investors second  
-**Rule:** market numbers are cited; Atlas claims are only what is locally proven. Production is **not** proven. No Atlas valuation is asserted.
+**Status:** internal + sendable memo
+**Date:** 2026-09-20 market memo; **current-state reconciliation 2026-09-23**
+
+**Audience:** founder first; selected investors second
+**Rule:** market numbers are cited; Atlas claims are only what is locally proven or tested. Production is **not** proven. No Atlas valuation is asserted. Cost attribution is not cost savings.
 
 ---
 
@@ -14,7 +15,7 @@
 | [`ATLAS-INVESTOR-ONE-PAGER.md`](./ATLAS-INVESTOR-ONE-PAGER.md) | Google Docs | Paste and share a link |
 | [`ATLAS-INVESTOR-ONE-PAGER.html`](./ATLAS-INVESTOR-ONE-PAGER.html) | PDF | Open in Chrome → Ctrl+P → Save as PDF (A4; page 1 EN, 1–2 bilingual) |
 | [`ATLAS-INVESTOR-OUTREACH.md`](./ATLAS-INVESTOR-OUTREACH.md) | You | First email; no amount; three thesis families |
-| English one-pager (below) | Same text as the dedicated one-pager | Kept here so this file still stands alone |
+| English summary (below) | Same audience as the one-pager | Current-state summary. The sendable page is [`ATLAS-INVESTOR-ONE-PAGER.md`](./ATLAS-INVESTOR-ONE-PAGER.md) |
 | Full Hebrew memo | You + Israeli investors | Positioning, map, proofs, dilution math |
 | Competitive table | Any investor who asks “is this Cursor?” | Category, not feature list |
 | Proof stack | Diligence | What is proven vs missing |
@@ -39,9 +40,9 @@ That second-order market is already being priced:
 
 Atlas is not a better Cursor. Cursor sells speed of writing. Atlas sells **whether an Agent may act, on what evidence, under whose authority, and whether the result was verified**.
 
-**What exists today (local, not production):** a governed Agent path — proposal → deterministic Guardian (`CONSISTENT` / `CONFLICT` / `UNKNOWN`) → human SoD approval → Apply → Verify → scoped memory. Agent ≠ Model. Agent ≠ unrestricted shell. Control is a separate trust plane from Studio.
+**What exists today (local, not production):** a governed Agent path — proposal → deterministic Guardian (`CONSISTENT` / `CONFLICT` / `UNKNOWN`) → human SoD approval → Apply → Verify → scoped memory. Agent ≠ Model. Agent ≠ unrestricted shell. Control is a separate trust plane from Studio and is implemented: authorization, approval boundaries, audit query/export, owner-scoped memory delete/TTL, and supplied-only cost attribution. Nonce, preflight decision, and execution-report binding are verified against real local PostgreSQL. One CaseFlow execution hop is local-runtime verified. GitHub CI verify passed after a test-fixture correction (`4689e5f`); production kill behavior was not changed.
 
-**What does not exist yet:** production proof, paying customers, a measured Proof-of-Value, cloud memory sync, a debugger.
+**What does not exist yet:** production proof, paying customers, a measured Proof-of-Value, quantified cost savings or ROI, cloud memory sync, a debugger, genuine HotelOS runtime, genuine repeated-failure runtime, and offsite disaster recovery.
 
 **Ask:** not a priced round this week. First: finish the eight proofs on real work, then a small paid design-partner, then a raise sized to the next 18 months of evidence — not to a feature list.
 
@@ -49,8 +50,8 @@ Atlas is not a better Cursor. Cursor sells speed of writing. Atlas sells **wheth
 
 ## 1. המשפט האחד
 
-> AI יודע לייצר תוכנה מהר יותר ממה שבני אדם יודעים לאמת אותה.  
-> Atlas נבנה כשכבת **ראיות, זיכרון ושליטה** שהופכת עבודה של Agent לניתנת לאמון ולניהול.  
+> AI יודע לייצר תוכנה מהר יותר ממה שבני אדם יודעים לאמת אותה.
+> Atlas נבנה כשכבת **ראיות, זיכרון ושליטה** שהופכת עבודה של Agent לניתנת לאמון ולניהול.
 > Arlet Studio הוא היישום הראשון שמוכיח את התזה.
 
 זה הסיפור. לא “IDE עם AI”.
@@ -118,7 +119,8 @@ Human
 
 **Control ≠ Studio.** מישורי אמון נפרדים (ADR-021). אל תמזגו אותם במשפט אחד למשקיע.
 
-**Verticals ≠ “יש לנו הרבה אפליקציות”.**  
+**Verticals ≠ “יש לנו הרבה אפליקציות”.**
+
 Atlas **לא מבצע** את הכלים של האפליקציות המחוברות (ADR-022). הן סביבות שבהן אפשר להראות: איזה Agent, איזה הקשר, איזה HMAC/preflight, איזה חסימה, איזה audit. זה **פיקוח על עולם אמיתי**, לא “עוד SaaS שכתבנו”.
 
 ---
@@ -157,18 +159,20 @@ Atlas **לא מבצע** את הכלים של האפליקציות המחוברו
 | 7 | בידוד | עובדה מפרויקט A לא זולגת ל-B | **מומש מקומית** בטסטים ובנתיבים חיים מקומיים. |
 | 8 | Audit | who / agent / project / proposal / policy / approval / result / verify | **מומש מקומית** (NDJSON/API). Control נפרד. Production audit **לא** proven. |
 
+**2026-09-23 reconciliation.** The eight rows above remain the local product proofs as of 2026-09-20. They are not withdrawn. Control remediations R01–R20 are closed for the actionable scope: R01–R03 are verified against real local PostgreSQL and are not production-verified; R04–R14 and R18–R20 are implemented and tested; R15–R17 stay environment-blocked. Supplied cost attribution is implemented and tested. Quantified cost savings are not. The historical audit chain break at index 605 is preserved; the current writer is fixed and regression-tested. GitHub CI verify passed after a test-only fixture correction. That is not a production kill-switch fix.
+
 **חסר למשקיע רציני, בלי קישוט:**
 
-- לקוחות משלמים / design partner עם שימוש לאורך זמן  
-- מדד Before/After (שעות, דחיות, רגרסיות, reuse של memory)  
-- Production (AWS עדיין חסום; **PRODUCTION: NOT PROVEN**)  
-- Debugger  
-- סנכרון זיכרון ענן  
+- לקוחות משלמים / design partner עם שימוש לאורך זמן
+- מדד Before/After (שעות, דחיות, רגרסיות, reuse של memory)
+- Production (AWS עדיין חסום; **PRODUCTION: NOT PROVEN**)
+- Debugger
+- סנכרון זיכרון ענן
 
-Market thesis: **חזקה**.  
-Technical thesis: **מעניינת ומתקדמת מקומית**.  
-Product thesis: **מתגבשת**.  
-Production + customer proof: **חסרים**.  
+Market thesis: **חזקה**.
+Technical thesis: **מעניינת ומתקדמת מקומית**.
+Product thesis: **מתגבשת**.
+Production + customer proof: **חסרים**.
 Investor readiness: **עוד לא**. זה תקין — קודם המכונה, אחר כך הדלק.
 
 ---
@@ -177,19 +181,19 @@ Investor readiness: **עוד לא**. זה תקין — קודם המכונה, א
 
 **כן:**
 
-- בעיה אחת: אמון ושליטה על עבודת Agent במערכות אמיתיות  
-- Studio כ-wedge שמוכיח את Atlas  
-- Control כשכבה ארגונית מאוחרת יותר  
-- Verticals כ-testbed של פיקוח, לא כפורטפוליו מוצרים  
-- הוכחות 1–8, עם הפרדה בין local ל-production  
+- בעיה אחת: אמון ושליטה על עבודת Agent במערכות אמיתיות
+- Studio כ-wedge שמוכיח את Atlas
+- Control כמישור מפעיל נפרד שכבר ממומש ונבדק מקומית — בלי לטעון ייצור
+- Verticals כ-testbed של פיקוח, לא כפורטפוליו מוצרים
+- הוכחות 1–8, עם הפרדה בין local ל-production
 
 **לא:**
 
-- “בנינו IDE עם AI, LSP, Git, terminal, debugger, Atlas, Control, CaseFlow…”  
-- “אנחנו ה-Cursor הבא”  
-- “Atlas שווה $X מיליארד”  
-- “הענן עובד” כשהסנכרון חסום  
-- “ייצור מוכן”  
+- “בנינו IDE עם AI, LSP, Git, terminal, debugger, Atlas, Control, CaseFlow…”
+- “אנחנו ה-Cursor הבא”
+- “Atlas שווה $X מיליארד”
+- “הענן עובד” כשהסנכרון חסום
+- “ייצור מוכן”
 - “אנחנו מריצים את CaseFlow/Vantera” — Atlas מפקח; הוא לא ממלא את תפקיד האפליקציה (ADR-022)
 
 ---
@@ -210,8 +214,9 @@ GTM שכבר כתוב אצלכם: **Readiness Audit / design partner מקומי*
 
 אין משמעות לשאלה “כמה לתת למשקיע?” בלי: כמה כסף, לכמה חודשים, לאילו הוכחות.
 
-**עובדות שוק (לא מחיר של Atlas):**  
-Carta, שישה חודשים עד יולי 2026, תוכנה: חציון Seed **$4.1M על $24.3M post-money ≈ 18% דילול**. Q4 2025: חציון Seed post **$24M**. Pre-seed SAFE $1–2.5M נע סביב cap ~$15M ב-2025.  
+**עובדות שוק (לא מחיר של Atlas):**
+
+Carta, שישה חודשים עד יולי 2026, תוכנה: חציון Seed **$4.1M על $24.3M post-money ≈ 18% דילול**. Q4 2025: חציון Seed post **$24M**. Pre-seed SAFE $1–2.5M נע סביב cap ~$15M ב-2025.
 Carta Q1 2026: >60% מההון ל-AI — **פער עצום בין מי שיש traction לבין השאר.**
 
 Atlas היום: מוצר מקומי חזק, **בלי ייצור ובלי לקוחות**. זה **לא** מצדיק אוטומטית את חציון ה-AI. חציון הוא רצפה של חברות עם סיפור *ו* שימוש, לא תג מחיר על thesis.
@@ -226,11 +231,12 @@ Atlas היום: מוצר מקומי חזק, **בלי ייצור ובלי לקו�
 | **B · Seed** | $3.5–5M | $20–28M (סביב חציון Carta אם יש PoV) | ~16–20% | צוות קטן, אבטחה, פיילוטים, Control ראשוני | אחרי PoV מדיד, לא לפני |
 | **C · Aggressive** | $8–12M | $40–70M | ~15–25% | enterprise, compliance, כמה verticals | רק עם לקוחות + מדדים; אחרת דילול יקר על אוויר |
 
-**דוגמה חשבונית בלבד:** $4M / $20M post = **20%**. $4M / $30M post = **13.3%**.  
+**דוגמה חשבונית בלבד:** $4M / $20M post = **20%**. $4M / $30M post = **13.3%**.
 Option pool refresh בדרך כלל מוסיף 5–10% דילול למייסדים מעבר לשורה הזו.
 
-**מה מזיז את ה-valuation למעלה (בשליטתך):**  
-הוכחות 1–8 בלייב → PoV מספרי → design partner משלם → production plane.  
+**מה מזיז את ה-valuation למעלה (בשליטתך):**
+
+הוכחות 1–8 בלייב → PoV מספרי → design partner משלם → production plane.
 לא עוד פיצ’ר ב-Studio.
 
 **Insight / a16z / Team8 — התאמת thesis, לא “מי הכי טוב”:**
@@ -245,12 +251,12 @@ Option pool refresh בדרך כלל מוסיף 5–10% דילול למייסדי
 
 ## 9. סדר עבודה לפני חדר משקיעים
 
-1. **סגירת נתיב הסוכן** (Guardian → SoD → Apply → Verify → memory) יציב על פרויקט אמיתי  
-2. **עימות סופי** — שמונה ההוכחות, בלי פיצ’רים מסיחים  
-3. **Proof-of-Value** על צוות קטן: זמן פתרון, דחיות Guardian, כשלי verify, reuse של memory, אישורי אדם  
-4. **Investor Reality Room** (המסמך הזה + data room: ארכיטקטורה, ADRs, ראיות, מדדים)  
-5. **Fundraising model** — בחירת מסלול A/B/C  
-6. **רק אז** סכום, cap, ודילול  
+1. **סגירת נתיב הסוכן** (Guardian → SoD → Apply → Verify → memory) יציב על פרויקט אמיתי
+2. **עימות סופי** — שמונה ההוכחות, בלי פיצ’רים מסיחים
+3. **Proof-of-Value** על צוות קטן: זמן פתרון, דחיות Guardian, כשלי verify, reuse של memory, אישורי אדם
+4. **Investor Reality Room** (המסמך הזה + data room: ארכיטקטורה, ADRs, ראיות, מדדים)
+5. **Fundraising model** — בחירת מסלול A/B/C
+6. **רק אז** סכום, cap, ודילול
 
 האפליקציות המחוברות נכנסות לחדר כ:
 
@@ -278,10 +284,10 @@ Atlas (memory / evidence / policy)
 
 ## Sources (market; not Atlas)
 
-- Cognition $2B / $48B, run-rate ~$900M — Reuters, 8 Sep 2026  
-- Factory $200M / $5B — Reuters + Factory, 15 Sep 2026  
-- CodeRabbit $143M / $1.5B, Agentic Change Management — Reuters, 12 Aug 2026; CodeRabbit: 17k+ customers, ~2M reviews/week (company)  
-- LangChain $125M / $1.25B — company + TechCrunch, 20 Oct 2025  
-- Carta seed medians and AI share of VC — Carta State of Private Markets Q1 2026; Carta LinkedIn software benchmarks Jul 2026  
-- Stack Overflow Developer Survey 2025 (AI trust / usage)  
+- Cognition $2B / $48B, run-rate ~$900M — Reuters, 8 Sep 2026
+- Factory $200M / $5B — Reuters + Factory, 15 Sep 2026
+- CodeRabbit $143M / $1.5B, Agentic Change Management — Reuters, 12 Aug 2026; CodeRabbit: 17k+ customers, ~2M reviews/week (company)
+- LangChain $125M / $1.25B — company + TechCrunch, 20 Oct 2025
+- Carta seed medians and AI share of VC — Carta State of Private Markets Q1 2026; Carta LinkedIn software benchmarks Jul 2026
+- Stack Overflow Developer Survey 2025 (AI trust / usage)
 - Atlas product claims in this memo: local remaining-work + ADRs 017/021/022; production explicitly **NOT PROVEN**

@@ -1,9 +1,9 @@
 # Atlas Control — 10/10 Supervision Master Plan
 
-**Status:** WAVES 1–9 IMPLEMENTATION LANDED — this file is the post-Wave-9 owner reconciliation (documentation only)
+**Status:** WAVES 1–9 IMPLEMENTATION LANDED — post-Wave-9 owner reconciliation, plus CI fixture closure (documentation only)
 **Created:** 2026-09-23
-**Last updated:** 2026-09-23 (final owner reconciliation after Waves 1–9; no new implementation; no R21/R22; no new CTRL)
-**Git HEAD:** `73462307767557257c4c8d9c3f15e816c3543d51` (`main`; message `control: close remaining Control remediations through Wave 9`; this documentation recon is the only working-tree change)
+**Last updated:** 2026-09-23 (documentation reconciliation after CI fixture closure; no new implementation; no R21/R22; no new CTRL)
+**Git HEAD at this recon:** `4689e5f8bba1c4bd8a0e129c0f1d8fd4c9db295c` (`main`; message `test: make governed command kill fixture deterministic`)
 **CTRL-001 commit:** `400759ac3b0ce1c4a32c8f46c13fda18ad228572`
 **CTRL-012 commit:** `a363b5764f19612616d923a4baf214126303996a`
 **CTRL-013 commit:** `455b205b07dd507ddeb0407da9abaac5e8b17232`
@@ -14,6 +14,7 @@
 **CTRL-019 commit:** `ecdae7b1facbbb44dfef5e9a7e82956db51995ff` (IMPLEMENTED + TESTED locally; repeated-FAILURE runtime ENVIRONMENT BLOCKED)
 **G16 durability commit (R01+R02+R03 code):** `39f654b12c33dd39b2b0c5396b4977e8a80dc5b5`
 **Waves 1–9 remaining remediations commit:** `73462307767557257c4c8d9c3f15e816c3543d51`
+**CI fixture closure:** `4689e5f8bba1c4bd8a0e129c0f1d8fd4c9db295c` — test-only correction of the governed-command kill fixture. Production `killGovernedExecution` was not changed. GitHub `verify` and Playwright passed on that commit. Classification: **CI FAILURE CLOSED — TEST FIXTURE CORRECTED AND VERIFIED**. Not a production kill-switch defect. Not R21.
 **Canonical audit SHA-256 (unchanged this recon):** `ff6b801da227fa983df0f41b2127097dea4685ba0a1338e1ad5d27d84697dfe4`
 **Prior baseline HEAD:** `d596564f50cc9481631af203cf61bf2ff5dac898`
 **Classification rule:** INTENT ≠ IMPLEMENTATION ≠ REACHABILITY ≠ ENFORCEMENT ≠ TEST COVERAGE ≠ PRODUCTION PROOF
@@ -862,6 +863,10 @@ Still open as **environment / production proof** (do not hide):
 4. **R17 / offsite DR** — ENVIRONMENT BLOCKED. No dest. Do not provision infrastructure. R20 policy exists and is gated.
 5. **Historical canonical NDJSON** — HISTORICAL INTEGRITY ISSUE at index 605. Do not repair. Do not create R21.
 
+Closed outside the remediation register (not a new R item):
+
+6. **Governed-command CI kill test** — **CI FAILURE CLOSED — TEST FIXTURE CORRECTED AND VERIFIED** at `4689e5f`. The Node 22 fixture exited before kill (code 13, unsettled top-level await). The fixture now stays alive until SIGTERM. Production `killGovernedExecution` was not changed. GitHub `verify` and Playwright passed. This is not a production kill-switch defect.
+
 Implemented + tested locally and **not** production-proven: R04–R14, R18–R20, CTRL-019–CTRL-021.
 
 Still true:
@@ -891,7 +896,7 @@ Still true:
 | CAD-008 | Memory-based necessity is NOT AVAILABLE (no owner join) | Active |
 | CAD-009 | ADR-021 trust planes stay separate | Active |
 | CAD-010 | Remaining-work 01–19 and gap-analysis stay out of this register | Active |
-| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`). CTRL-014 is VERIFIED (`28ef9f2`). CTRL-016 is VERIFIED (`c0ca916`) as declaration only. CTRL-017 is VERIFIED by LOCAL RUNTIME CaseFlow hop. CTRL-018 is PARTIAL / ENVIRONMENT BLOCKED (`bd1d2db`). CTRL-019 is IMPLEMENTED + TESTED (`ecdae7b`); repeated-FAILURE runtime ENVIRONMENT BLOCKED. CTRL-020/CTRL-021 are IMPLEMENTED + TESTED locally (not FinOps / not production SLOs). CTRL-022 is ENVIRONMENT BLOCKED. R01–R03 are VERIFIED AGAINST REAL LOCAL POSTGRES / PRODUCTION NOT VERIFIED. R04–R14 and R18–R20 are IMPLEMENTED + TESTED. R15–R17 remain ENVIRONMENT BLOCKED. Historical canonical audit is a HISTORICAL INTEGRITY ISSUE; current writer is FIXED + TESTED. HEAD `7346230`. Do not create R21 or CTRL-023. | Active |
+| CAD-011 | CTRL-001 (`400759a`) and CTRL-012 (`a363b57`) are VERIFIED and pushed. CTRL-013 is VERIFIED (`455b205`). CTRL-014 is VERIFIED (`28ef9f2`). CTRL-016 is VERIFIED (`c0ca916`) as declaration only. CTRL-017 is VERIFIED by LOCAL RUNTIME CaseFlow hop. CTRL-018 is PARTIAL / ENVIRONMENT BLOCKED (`bd1d2db`). CTRL-019 is IMPLEMENTED + TESTED (`ecdae7b`); repeated-FAILURE runtime ENVIRONMENT BLOCKED. CTRL-020/CTRL-021 are IMPLEMENTED + TESTED locally (not FinOps / not production SLOs). CTRL-022 is ENVIRONMENT BLOCKED. R01–R03 are VERIFIED AGAINST REAL LOCAL POSTGRES / PRODUCTION NOT VERIFIED. R04–R14 and R18–R20 are IMPLEMENTED + TESTED. R15–R17 remain ENVIRONMENT BLOCKED. Historical canonical audit is a HISTORICAL INTEGRITY ISSUE; current writer is FIXED + TESTED. Remediation commit remains `7346230`. Later `main` includes test-fixture commit `4689e5f`: CI FAILURE CLOSED — TEST FIXTURE CORRECTED AND VERIFIED; production kill path unchanged. Do not create R21 or CTRL-023. | Active |
 | CAD-012 | Sibling live-abort is not a Control capability. Kill = next preflight. Fabric pause = registered `def-000` Agents only | Active |
 | CAD-013 | Live production authority for connector nonces, preflight decisions, idempotency, execution reports, and application canonical audit is Postgres RPCs. Local/test without live Supabase may use Maps. Vercel production without live Postgres fails closed (503). Do not dual-write Map+Postgres as competing authorities. Do not rebuild ALLOW from audit. Do not use Redis as the sole source of truth. | Active |
 | CAD-014 | Do not create CTRL-023. Do not build an Agent 365 / sibling Fabric registry. Do not mint sibling Agent IDs. Do not build a second learning approval engine or redeemable ApprovalRequest. Do not build necessity / knowledge-sufficiency / router engines to close G4/G5/G8. Do not take G15 sibling result verification into Atlas. Do not clone VS Code/Cursor into Studio. Do not create FinOps as a product. | Active |
@@ -973,6 +978,7 @@ Intentionally not Control engines (unchanged):
 | 2026-09-23 | Full Task 19 + Task 20 documentation reconciliation **into this file only**. No new documents. R01/R02/R03 recorded IMPLEMENTED + TESTED at `39f654b` (13 files; not pushed); not production-VERIFIED. Homes: R01→G3, R02→G16, R03→G20. R04–R20 mapped to existing G/CTRL/§6.2 rows — G16 is not a catch-all. F01–F42 finding map added. G-primary counts unchanged (28 / 2 / 18 / 7 / 1 / CORE 0). R counts: 3 IMPLEMENTED+TESTED / 1 PARTIAL / 12 MISSING / 3 ENVIRONMENT BLOCKED / 1 OPTIONAL. No CTRL-023. No implementation in this pass. | local HEAD `39f654b`; this file uncommitted |
 | 2026-09-23 | Final owner reconciliation after Waves 1–9 **into this file only**. No implementation. No R21/R22. No new CTRL. R01–R03 → VERIFIED AGAINST REAL LOCAL POSTGRES / PRODUCTION NOT VERIFIED (Wave 7). R04–R14, R18–R20 → IMPLEMENTED + TESTED. R15–R17 remain ENVIRONMENT BLOCKED. R19 a11y/i18n IMPLEMENTED + TESTED (1679×3). Historical canonical audit recorded as HISTORICAL INTEGRITY ISSUE (break at 605; SHA `ff6b801d…`); current writer FIXED + TESTED. G9/G25 MISSING→PARTIAL. G-primary 28 / 2 / 20 / 5 / 1 / CORE 0. Production-VERIFIED remediations remain 0. | HEAD `7346230`; this file uncommitted |
 | 2026-09-23 | Documentation correction only. CTRL-020/021/022 confirmed pre-existing on `7346230` and retained. G4/G5/G8/G15 classified INTENTIONAL / NOT A GAP (not MISSING). Added Control Outcome Evidence, Cost Efficiency Evidence, and the value chain. R13 is local timing, not savings. R14 is attribution. COST SAVINGS NOT YET QUANTIFIED. No new R. No new CTRL. No percentage or ROI. | This file only |
+| 2026-09-23 | Documentation reconciliation after CI fixture closure. No implementation. No R21/R22. No CTRL-023. R01–R20 statuses unchanged. Governed-command CI failure recorded as **CI FAILURE CLOSED — TEST FIXTURE CORRECTED AND VERIFIED** at `4689e5f`. Production `killGovernedExecution` unchanged. Historical audit file unchanged. | HEAD at recon start `4689e5f`; GitHub verify and Playwright passed |
 
 ---
 
@@ -1024,6 +1030,7 @@ Intentionally not Control engines (unchanged):
 | Durability service tests | `apps/api/src/services/application-governance-durability.test.ts` |
 | G16 durability commit | `39f654b12c33dd39b2b0c5396b4977e8a80dc5b5` (13 files) |
 | Waves 1–9 remediations commit | `73462307767557257c4c8d9c3f15e816c3543d51` |
+| Governed-command kill fixture (test only) | `4689e5f8bba1c4bd8a0e129c0f1d8fd4c9db295c` — CI FAILURE CLOSED. Production kill path unchanged. |
 
 ---
 

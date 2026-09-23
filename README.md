@@ -42,6 +42,25 @@ Do **not** invent customers, “10/10 everywhere,” or Stripe/Sentry as live.
 
 Paid **pilot without the production VM:** [`docs/strategy/pilot-offer.md`](docs/strategy/pilot-offer.md) — `pnpm pilot:preflight`. Not a production claim.
 
+### Control evidence (2026-09-23)
+
+Authoritative register: [`docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md`](docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md). Operator scores above are not this register.
+
+Control is governance over connected work: authorization, approval boundaries, audit and evidence, agent identity, execution correlation, failure learning, owner-scoped memory, safe outbound requests on the defined path, audit query and export, supplied execution attribution, local observability, and supervised agent operation. It is not an IDE, a chatbot, or a generic memory database.
+
+| Evidence class | What it covers |
+| --- | --- |
+| **Implemented + tested** | Audit query index (full-chain verification still reads the chain), top-level tenant/project attribution only where those values already exist, hashed audit export, privilege-scope contract, kernel authentication, learning citation index, owner-scoped memory DELETE/TTL on the local Web/API store, defined-path SSRF protection, Studio client cancellation, local Control timing measurements, supplied-only cost attribution, audit pagination, targeted admin accessibility and en/he/ar parity, retention policy |
+| **Verified against real local PostgreSQL / production not verified** | Durable nonce consumption, idempotency, preflight decision, execution-report binding, replay/conflict, negative binding, canonical audit transaction behavior |
+| **Local runtime verified** | One CaseFlow execution-report hop. Not every connected application. |
+| **Environment blocked** | Genuine HotelOS runtime, genuine repeated FAILURE runtime, real offsite disaster-recovery configuration |
+| **Historical, preserved** | Canonical audit chain break from index 605. The file was not rewritten. The current writer’s concurrency defect is fixed and regression-tested. |
+| **Not claimed** | Production verification, quantified cost savings or ROI, WCAG certification, destructive production purge, a production kill-switch defect |
+
+GitHub CI `verify` and Playwright passed after commit `4689e5f`. The earlier governed-command failure was an invalid Node 22 test fixture. Production process-kill behavior was not changed. **CI FAILURE CLOSED — TEST FIXTURE CORRECTED AND VERIFIED.**
+
+Cost attribution records supplied provider, model, tokens, call count, retries, declared path, actual cost, and currency. It does not prove savings.
+
 ## Where to sell (in the app)
 
 The offer is a **Readiness Audit**. Usage meters exist so the product stays
@@ -205,7 +224,7 @@ later — sell **time + risk + money**, not seats.
 | Readiness | Certificate with openable dimensions |
 | ACT | Approve → Apply is ownership-gated; LOW auto-apply never hits production |
 | Workbench | Files · code · Visual Studio path · Cloud consoles · Cursor · agent chat |
-| Studio | Human view-only · agent proposes patches (Approve → Apply) |
+| Studio | Supervised workspace: propose, Guardian, dual-control approve, apply, then verify. Not an IDE clone |
 | Process / E2E | Internal deep process audits · opinion-style UI |
 | Freemium | Audit offer · usage ceilings · BYO Cloudflare · optional Pro evidence mirror |
 | Verified knowledge | Daily allow-listed refresh → corpus + DB · pack download |
