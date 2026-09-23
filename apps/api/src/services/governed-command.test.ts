@@ -196,7 +196,14 @@ describe("runGovernedCommand", () => {
     mkdirSync(join(root, "node_modules", "vitest"), { recursive: true });
     writeFileSync(
       join(root, "node_modules", "vitest", "vitest.mjs"),
-      "await new Promise(() => {});\n",
+      [
+        "const keepAlive = setInterval(() => {}, 60_000);",
+        "process.on('SIGTERM', () => {",
+        "  clearInterval(keepAlive);",
+        "  process.exit(0);",
+        "});",
+        "",
+      ].join("\n"),
       "utf8",
     );
     const executionId = "00000000-0000-4000-8000-000000000042";
