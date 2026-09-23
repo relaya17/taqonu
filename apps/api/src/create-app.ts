@@ -73,6 +73,7 @@ import { registerPerformanceRoutes } from "./routes/performance.js";
 import { registerIntelligenceRoutes } from "./routes/intelligence.js";
 import { registerCostIntelligenceRoutes } from "./routes/cost-intelligence.js";
 import { registerApplicationPreflightRoutes } from "./routes/application-preflight.js";
+import { registerApplicationExecutionReportRoutes } from "./routes/application-execution-report.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { registerAtlasSessionGate } from "./middleware/atlas-session-gate.js";
 import { registerRequestTiming } from "./middleware/request-timing.js";
@@ -241,6 +242,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerIntelligenceRoutes(app);
   await registerCostIntelligenceRoutes(app);
   await registerApplicationPreflightRoutes(app);
+  await registerApplicationExecutionReportRoutes(app);
 
   void maybeRefreshVerifiedKnowledge({ env }).catch((err) => {
     logger.warn("knowledge_refresh_boot_failed", {

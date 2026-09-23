@@ -42,9 +42,45 @@ const idempotencyCache = new Map<
   { readonly fingerprint: string; readonly response: ApplicationPreflightResponse }
 >();
 
+export interface RememberedPreflightDecision {
+  readonly decision: ApplicationPreflightDecision;
+  readonly decisionId: string;
+  readonly requestId: string;
+  readonly operation: string;
+  readonly applicationId: string;
+  readonly tenantId: string;
+  readonly projectId: string;
+  readonly agentId: string | null;
+}
+
+/** Process-local decisionId index. Same lifetime as idempotencyCache. Not durable. */
+const decisionsById = new Map<string, RememberedPreflightDecision>();
+
 export function resetApplicationPreflightForTests(): void {
   usedNonces.clear();
   idempotencyCache.clear();
+  decisionsById.clear();
+}
+
+/** Process-local ALLOW/DENY lookup for execution report-back. Not durable. */
+export function lookupRememberedPreflightDecision(
+  decisionId: string,
+): RememberedPreflightDecision | null {
+  return decisionsById.get(decisionId) ?? null;
+}
+
+export function consumeApplicationConnectorNonce(
+  applicationId: string,
+  nonce: string,
+): { readonly ok: true } | { readonly ok: false; readonly reason: string } {
+  const now = Date.now();
+  pruneNonces(now);
+  const nonceKey = `${applicationId}:${nonce}`;
+  if (usedNonces.has(nonceKey)) {
+    return { ok: false, reason: "Application connector nonce has already been used" };
+  }
+  usedNonces.set(nonceKey, now + NONCE_TTL_MS);
+  return { ok: true };
 }
 
 export interface ApplicationConnectorBinding {
@@ -97,6 +133,7 @@ export function loadApplicationConnectorBinding(
     binding: { applicationId, secret, tenantId, projectId },
   };
 }
+
 
 function pruneNonces(now: number): void {
   for (const [nonce, expires] of usedNonces) {
@@ -231,6 +268,16 @@ function finish(input: {
     },
     result: "SUCCESS",
     verificationVerdict: "NOT_APPLICABLE",
+  });
+  decisionsById.set(response.decisionId, {
+    decision: response.decision,
+    decisionId: response.decisionId,
+    requestId: input.request.requestId,
+    operation: input.request.operation,
+    applicationId: input.request.applicationId,
+    tenantId: input.request.tenantId,
+    projectId: input.request.projectId,
+    agentId,
   });
   return response;
 }

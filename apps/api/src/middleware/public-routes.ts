@@ -37,6 +37,8 @@ const PUBLIC_EXACT = new Set([
   "POST /api/v1/audit/cp-import",
   // HMAC-authenticated application preflight — handler verifies connector identity.
   "POST /api/v1/governance/application-preflight",
+  // HMAC-authenticated execution report-back — handler verifies connector identity.
+  "POST /api/v1/governance/application-execution-report",
 ]);
 
 const PUBLIC_PREFIXES: ReadonlyArray<{ method: string; prefix: string }> = [
