@@ -13,6 +13,7 @@ export * from "./platform/application-learning-proposal.js";
 export * from "./platform/supervised-process.js";
 export * from "./platform/governed-lifecycle-handoff.js";
 export * from "./platform/personal-supervising-agent.js";
+export * from "./platform/control-agent-profile.js";
 export * from "./platform/connected-applications.js";
 export * from "./platform/supply-chain.js";
 export * from "./platform/demo-login.js";

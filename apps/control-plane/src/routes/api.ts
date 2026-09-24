@@ -12,6 +12,12 @@ import {
   verifyIndependentAtlasSelfControlApproval,
 } from "../services/atlas-self-agent-control.js";
 import { getFabricProjection } from "../services/fabric-projection.js";
+import {
+  getControlAgentProfile,
+  listControlAgentProfiles,
+  unprovenCaseflowAgent,
+} from "../services/agent-identity-profile.js";
+import { isControlAgentIdentitySource } from "@atlas/shared";
 import { getControlPlanePortfolioView } from "../services/portfolio-governance-view.js";
 import {
   listAuditEntries,
@@ -95,6 +101,8 @@ import {
  *   GET /api/v1/agents/:id
  *   GET /api/v1/agents/stats
  *   GET /api/v1/agents/fabric-projection  — FABRIC_AGENT_CATALOG projection
+ *   GET /api/v1/agent-profiles           — governance identity; not execution
+ *   GET /api/v1/agent-profiles/:source/:id
  *
  * Portfolio Governance (observability; writes stay on Atlas API):
  *   GET /api/v1/portfolio-governance
@@ -165,6 +173,34 @@ export function createApiRouter(): Router {
 
   router.get("/api/v1/agents", (_req, res) => {
     json(res, listRegisteredAgents());
+  });
+
+  router.get("/api/v1/agent-profiles", (_req, res) => {
+    json(res, {
+      executionAuthorityGrantedByProfile: false,
+      portfolioIsRuntime: false,
+      caseflow: unprovenCaseflowAgent(),
+      items: listControlAgentProfiles(),
+    });
+  });
+
+  router.get("/api/v1/agent-profiles/:source/:id", (_req, res, params) => {
+    const source = params["source"];
+    const agentId = params["id"];
+    if (!source || !agentId) {
+      json(res, { error: "identity source and agent id required" }, 400);
+      return;
+    }
+    if (!isControlAgentIdentitySource(source)) {
+      json(res, { error: "unknown identity source" }, 400);
+      return;
+    }
+    const profile = getControlAgentProfile(source, agentId);
+    if (!profile) {
+      json(res, { error: "agent profile not found" }, 404);
+      return;
+    }
+    json(res, profile);
   });
 
   // ── Audit Trail ─────────────────────────────────────────────────────

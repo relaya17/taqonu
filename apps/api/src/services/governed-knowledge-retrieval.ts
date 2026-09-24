@@ -1,5 +1,6 @@
 import {
   AtlasError,
+  controlGovernedKnowledgeAllows,
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_PROJECT_ID,
   ATLAS_SELF_TENANT_ID,
@@ -180,6 +181,15 @@ export async function retrieveGovernedKnowledge(input: {
   if (input.scope.ownerId !== input.sessionOwnerId) {
     const reason = "INSUFFICIENT_EVIDENCE — owner scope must match the authenticated session";
     return { ok: false, reason, stage: "AUTHORIZATION" };
+  }
+
+  const knowledge = controlGovernedKnowledgeAllows(input.scope.requestingAgentId);
+  if (knowledge.governed && !knowledge.allowed) {
+    return {
+      ok: false,
+      reason: "CONTROL_PROFILE_DENIES_PROFESSIONAL_KNOWLEDGE",
+      stage: "AUTHORIZATION",
+    };
   }
 
   let identity: AuthenticatedAgentIdentity;

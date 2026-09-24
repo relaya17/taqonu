@@ -85,6 +85,9 @@ describe("governed knowledge retrieval", () => {
     const entry = listUnifiedAuditEntries().find((row) => row.type === "knowledge.retrieved");
     expect(entry?.tenantId).toBe("tenant-test");
     expect(entry?.projectId).toBe(PROJECT);
+    expect(entry?.agentId).toBe("RESEARCHER");
+    expect(entry?.ownerId).toBe(OWNER);
+    expect(entry?.agentId).not.toBe(entry?.ownerId);
     expect(verifyAuditLogChain().ok).toBe(true);
   });
 

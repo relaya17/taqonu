@@ -237,6 +237,40 @@ describe("Control Plane — API Routes", () => {
     });
   });
 
+  describe("GET /api/v1/agent-profiles", () => {
+    it("returns governance profiles without replacing the oversight list", async () => {
+      const legacy = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/agents"), legacy);
+      expect(JSON.parse(legacy._mock.body)).toHaveLength(9);
+
+      const res = createMockRes();
+      await router.handle(createMockReq("GET", "/api/v1/agent-profiles"), res);
+      const body = JSON.parse(res._mock.body) as {
+        executionAuthorityGrantedByProfile: boolean;
+        caseflow: { kind: string; agentId: null };
+        items: { identitySource: string; agentId: string }[];
+      };
+      expect(body.executionAuthorityGrantedByProfile).toBe(false);
+      expect(body.caseflow.kind).toBe("NOT_AN_AGENT");
+      expect(body.caseflow.agentId).toBeNull();
+      expect(
+        body.items.some(
+          (item) => item.identitySource === "FABRIC" && item.agentId === "LEGAL_MEDIA_COMMS",
+        ),
+      ).toBe(true);
+      expect(body.items.some((item) => item.agentId.startsWith("CF-AG-"))).toBe(false);
+    });
+
+    it("rejects an unknown identity source", async () => {
+      const res = createMockRes();
+      await router.handle(
+        createMockReq("GET", "/api/v1/agent-profiles/NOT_A_SOURCE/CODE_ENGINEER"),
+        res,
+      );
+      expect(res._mock.statusCode).toBe(400);
+    });
+  });
+
   describe("GET /api/v1/agents/stats", () => {
     it("returns registry statistics", async () => {
       const res = createMockRes();

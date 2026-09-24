@@ -2,7 +2,10 @@ import {
   SYSTEM_OWNER_ID,
   domainEventSchema,
   memoryEpistemicAfterAction,
+  controlGovernedMemoryAllows,
+  controlMemoryDecisionForProfile,
   memorySchema,
+  type ControlAgentProfile,
   type DomainEvent,
   type DomainEventType,
   type EpistemicState,
@@ -24,6 +27,7 @@ import {
   type EmbeddingProvider,
 } from "@atlas/embeddings";
 import { osStore } from "../store/os-store.js";
+import { appendUnifiedAuditEntry } from "./audit-log.js";
 
 /** Evidence-tagged memory slice for agent payloads — never silent FACT merge. */
 export type MemoryContextItem = {
@@ -748,8 +752,10 @@ export function approveMemory(input: {
  * list. When both requester fields are omitted, the memory stays visible:
  * this is the backward-compat guarantee for human-facing callers
  * (conversation, generic agent run, memory list) that never identify an
- * agent. Enforcement only kicks in for callers that opt in by passing
- * requester identity.
+ * agent. An id that is not a Control profile stays on that rule.
+ * A known Control profile is checked first: personal read is denied when
+ * the profile does not grant it, including when allowedAgents is empty.
+ * A listed allowedAgents entry does not override that deny.
  *
  * INTENTIONAL CONTRACT — do not flip empty allowedAgents to fail-closed
  * without an explicit product decision. Tenant/owner isolation is a
@@ -781,15 +787,116 @@ export const MEMORY_DURABILITY_CONTRACT = {
  * Cloud dual-write runs only when `env` is provided; unavailable cloud is
  * fail-open (`cloudSynced: false`) unless `requireCloudSuccess`.
  */
+const OWNER_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function auditGovernedMemoryDecision(input: {
+  readonly profile: ControlAgentProfile;
+  readonly ownerId?: string | null;
+  readonly action: "READ" | "WRITE";
+  readonly operation: "read" | "write" | "persist";
+  readonly allowed: boolean;
+}): void {
+  const ownerId =
+    input.ownerId && OWNER_UUID.test(input.ownerId) ? input.ownerId : undefined;
+  appendUnifiedAuditEntry({
+    type: "memory.governance",
+    toolName: "memory",
+    entityType: "MEMORY",
+    action: input.action,
+    actorId: input.profile.agentId,
+    actorKind: "AGENT",
+    agentId: input.profile.agentId,
+    ...(ownerId ? { ownerId } : {}),
+    reason: input.allowed
+      ? "Control profile allows the memory operation"
+      : "Control profile denies the memory operation",
+    intent: "control_memory_governance",
+    policy: input.profile.policyRef,
+    model: input.profile.modelReference,
+    risk: "LOW",
+    approval: "NOT_REQUIRED",
+    decision: input.allowed ? "ALLOW" : "DENY",
+    input: {
+      applicationId: input.profile.applicationId,
+      supervisorAgentId: input.profile.supervisorAgentId,
+      supervisorType: input.profile.supervisorType,
+      operation: input.operation,
+      identitySource: input.profile.identitySource,
+    },
+    output: {
+      memoryOwner: input.profile.memory.memoryOwner,
+    },
+    result: input.allowed ? "SUCCESS" : "FAILURE",
+    verificationVerdict: "NOT_APPLICABLE",
+  });
+}
+
+function auditGovernedRequesters(input: {
+  readonly ownerId?: string | null;
+  readonly requestingAgentId?: string;
+  readonly requestingAgentIds?: readonly string[];
+}): void {
+  const ids = [
+    ...(input.requestingAgentId ? [input.requestingAgentId] : []),
+    ...(input.requestingAgentIds ?? []),
+  ];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const decision = controlGovernedMemoryAllows(id, "read");
+    if (!decision.governed || !decision.profile) continue;
+    auditGovernedMemoryDecision({
+      profile: decision.profile,
+      ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+      action: "READ",
+      operation: "read",
+      allowed: decision.allowed,
+    });
+  }
+}
+
 export async function commitMemory(input: {
   readonly memory: Memory;
   readonly env?: MemoryStoreEnv | null;
   readonly userAccessToken?: string | null;
   readonly requireCloudSuccess?: boolean;
-}): Promise<{ readonly cloudSynced: boolean }> {
+  /**
+   * Set only when a Control agent identity is the writer. Human owner
+   * writes omit this and keep the existing persist path. A governed
+   * identity must be allowed to write and to persist; read does not imply either.
+   */
+  readonly controlAgentId?: string;
+}): Promise<{ readonly cloudSynced: boolean; readonly persisted: boolean }> {
+  if (input.controlAgentId) {
+    const write = controlGovernedMemoryAllows(input.controlAgentId, "write");
+    const persist = controlGovernedMemoryAllows(input.controlAgentId, "persist");
+    if (write.profile) {
+      auditGovernedMemoryDecision({
+        profile: write.profile,
+        ownerId: input.memory.ownerId,
+        action: "WRITE",
+        operation: "write",
+        allowed: write.allowed,
+      });
+    }
+    if (persist.profile) {
+      auditGovernedMemoryDecision({
+        profile: persist.profile,
+        ownerId: input.memory.ownerId,
+        action: "WRITE",
+        operation: "persist",
+        allowed: persist.allowed,
+      });
+    }
+    if ((write.governed && !write.allowed) || (persist.governed && !persist.allowed)) {
+      return { cloudSynced: false, persisted: false };
+    }
+  }
   osStore.addMemory(input.memory);
   if (!input.env) {
-    return { cloudSynced: false };
+    return { cloudSynced: false, persisted: true };
   }
   const row = await tryPersistMemoryToSupabase(
     input.env,
@@ -802,7 +909,7 @@ export async function commitMemory(input: {
         : {}),
     },
   );
-  return { cloudSynced: Boolean(row) };
+  return { cloudSynced: Boolean(row), persisted: true };
 }
 
 export function memoryIsVisibleToAgent(
@@ -810,14 +917,31 @@ export function memoryIsVisibleToAgent(
   requestingAgentId?: string,
   requestingAgentIds?: readonly string[],
 ): boolean {
-  const allowed = memory.allowedAgents;
-  if (!allowed || allowed.length === 0) return true;
   const candidates = [
     ...(requestingAgentId ? [requestingAgentId] : []),
     ...(requestingAgentIds ?? []),
   ];
   if (candidates.length === 0) return true;
-  return candidates.some((id) => allowed.includes(id));
+  const admitted = candidates.filter((id) => {
+    const decision = controlGovernedMemoryAllows(id, "read");
+    return !decision.governed || decision.allowed;
+  });
+  if (admitted.length === 0) return false;
+  const allowed = memory.allowedAgents;
+  if (!allowed || allowed.length === 0) return true;
+  return admitted.some((id) => allowed.includes(id));
+}
+
+/** Same read gate as catalog identities, for a profile that is not catalogued. */
+export function memoryVisibleForControlProfile(
+  memory: Memory,
+  profile: ControlAgentProfile,
+): boolean {
+  const decision = controlMemoryDecisionForProfile(profile, "read");
+  if (!decision.allowed) return false;
+  const allowed = memory.allowedAgents;
+  if (!allowed || allowed.length === 0) return true;
+  return allowed.includes(profile.agentId);
 }
 
 function isVisibleToAgent(
@@ -948,6 +1072,7 @@ export async function retrieveMemories(input: MemoryRetrieveInput): Promise<{
     })
     .sort((a, b) => b.score - a.score);
   const items = ranked.slice(0, budget).map((r) => r.m);
+  auditGovernedRequesters(input);
   return {
     items,
     budget,

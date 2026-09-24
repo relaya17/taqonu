@@ -1,4 +1,8 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { controlProfileTestFixture } from "@atlas/shared";
 import {
   memorySchema,
   type MemoryEvidence,
@@ -20,7 +24,11 @@ import {
   MEMORY_AGENT_VISIBILITY_CONTRACT,
   MEMORY_DURABILITY_CONTRACT,
   memoryIsVisibleToAgent,
+  memoryVisibleForControlProfile,
 } from "./memory-pipeline.js";
+import { listUnifiedAuditEntries, setAuditLogPathForTests } from "./audit-log.js";
+
+process.env.ATLAS_SKIP_AUDIT_LOG = "1";
 
 const PROJECT_A = "11111111-1111-4111-8111-111111111111";
 const PROJECT_B = "22222222-2222-4222-8222-222222222222";
@@ -334,13 +342,27 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(statements).not.toContain("judge-only note");
   });
 
-  it("includes an agent-scoped memory when the requesting agent is in allowedAgents", async () => {
+  it("includes an agent-scoped memory when an unprofiled requesting agent is in allowedAgents", async () => {
+    osStore.addMemory(
+      memory(null, "plugin-only note", OWNER_A, ["legacy-plugin"]),
+    );
+    const { items } = await retrieveMemories({
+      budget: 20,
+      requestingAgentId: "legacy-plugin",
+    });
+    const statements = items.map((row) => row.statement);
+    expect(statements).toContain("plugin-only note");
+    expect(statements).not.toContain("judge-only note");
+  });
+
+  it("denies a professional Control agent personal memory even when it is listed in allowedAgents", async () => {
     const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentId: "JUDGE",
     });
     const statements = items.map((row) => row.statement);
-    expect(statements).toContain("judge-only note");
+    expect(statements).not.toContain("judge-only note");
+    expect(statements).not.toContain("open note, no allowedAgents");
   });
 
   it("includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)", async () => {
@@ -349,21 +371,31 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(statements).toContain("judge-only note");
   });
 
-  it("a memory with no allowedAgents set is visible to any agent (default-open)", async () => {
+  it("a memory with no allowedAgents stays open for an unprofiled agent and closed for a professional Control agent", async () => {
+    const asLegacy = await retrieveMemories({
+      budget: 20,
+      requestingAgentId: "legacy-plugin",
+    });
     const asOrchestrator = await retrieveMemories({
       budget: 20,
       requestingAgentId: "ORCHESTRATOR",
     });
-    const asJudge = await retrieveMemories({ budget: 20, requestingAgentId: "JUDGE" });
-    expect(
-      asOrchestrator.items.map((row) => row.statement),
-    ).toContain("open note, no allowedAgents");
-    expect(asJudge.items.map((row) => row.statement)).toContain(
+    const asPsa = await retrieveMemories({
+      budget: 20,
+      requestingAgentId: `psa:${OWNER_A}`,
+    });
+    expect(asLegacy.items.map((row) => row.statement)).toContain(
+      "open note, no allowedAgents",
+    );
+    expect(asOrchestrator.items.map((row) => row.statement)).not.toContain(
+      "open note, no allowedAgents",
+    );
+    expect(asPsa.items.map((row) => row.statement)).toContain(
       "open note, no allowedAgents",
     );
   });
 
-  it("locks the allowedAgents contract: empty is default-open, omit-requester stays human-visible", () => {
+  it("locks the allowedAgents contract: empty is default-open for unprofiled ids, omit-requester stays human-visible", () => {
     expect(MEMORY_AGENT_VISIBILITY_CONTRACT.emptyAllowedAgents).toBe(
       "default-open",
     );
@@ -372,9 +404,13 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     );
     const open = memory(null, "open", OWNER_A, []);
     const restricted = memory(null, "restricted", OWNER_A, ["JUDGE"]);
-    expect(memoryIsVisibleToAgent(open, "ORCHESTRATOR")).toBe(true);
+    const pluginOnly = memory(null, "plugin", OWNER_A, ["legacy-plugin"]);
+    expect(memoryIsVisibleToAgent(open, "legacy-plugin")).toBe(true);
+    expect(memoryIsVisibleToAgent(open, "ORCHESTRATOR")).toBe(false);
     expect(memoryIsVisibleToAgent(restricted, "ORCHESTRATOR")).toBe(false);
-    expect(memoryIsVisibleToAgent(restricted, "JUDGE")).toBe(true);
+    expect(memoryIsVisibleToAgent(restricted, "JUDGE")).toBe(false);
+    expect(memoryIsVisibleToAgent(pluginOnly, "legacy-plugin")).toBe(true);
+    expect(memoryIsVisibleToAgent(pluginOnly, "other-plugin")).toBe(false);
     expect(memoryIsVisibleToAgent(restricted)).toBe(true);
   });
 
@@ -425,12 +461,16 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     );
   });
 
-  it("includes an agent-scoped memory when any requestingAgentIds candidate is allowed", async () => {
+  it("includes an agent-scoped memory when any unprofiled requestingAgentIds candidate is allowed", async () => {
+    osStore.addMemory(
+      memory(null, "plugin-only note", OWNER_A, ["legacy-plugin"]),
+    );
     const { items } = await retrieveMemories({
       budget: 20,
-      requestingAgentIds: ["ORCHESTRATOR", "JUDGE"],
+      requestingAgentIds: ["ORCHESTRATOR", "legacy-plugin"],
     });
-    expect(items.map((row) => row.statement)).toContain("judge-only note");
+    expect(items.map((row) => row.statement)).toContain("plugin-only note");
+    expect(items.map((row) => row.statement)).not.toContain("judge-only note");
   });
 
   it("excludes an agent-scoped memory when no requestingAgentIds candidate is allowed", async () => {
@@ -441,13 +481,102 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(items.map((row) => row.statement)).not.toContain("judge-only note");
   });
 
-  it("unions requestingAgentId with requestingAgentIds (OR)", async () => {
+  it("unions requestingAgentId with requestingAgentIds (OR) for unprofiled ids", async () => {
+    osStore.addMemory(
+      memory(null, "plugin-only note", OWNER_A, ["legacy-plugin"]),
+    );
     const { items } = await retrieveMemories({
       budget: 20,
       requestingAgentId: "ORCHESTRATOR",
-      requestingAgentIds: ["JUDGE"],
+      requestingAgentIds: ["legacy-plugin"],
     });
-    expect(items.map((row) => row.statement)).toContain("judge-only note");
+    expect(items.map((row) => row.statement)).toContain("plugin-only note");
+    expect(items.map((row) => row.statement)).not.toContain("judge-only note");
+  });
+});
+
+describe("control profile memory enforcement", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    osStore.resetInMemoryForTests();
+    osStore.addMemory(memory(null, "owner A personal", OWNER_A));
+    osStore.addMemory(memory(null, "owner B personal", OWNER_B));
+  });
+
+  afterEach(() => {
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
+  it("denies professional-only read, write, and persist", async () => {
+    const { items } = await retrieveMemories({
+      ownerId: OWNER_A,
+      budget: 20,
+      requestingAgentId: "CODE_ENGINEER",
+    });
+    expect(items.map((row) => row.statement)).not.toContain("owner A personal");
+    const row = memory(null, "engineer write", OWNER_A);
+    const result = await commitMemory({ memory: row, controlAgentId: "CODE_ENGINEER" });
+    expect(result.persisted).toBe(false);
+    expect(osStore.getMemories("global", OWNER_A).some((item) => item.id === row.id)).toBe(
+      false,
+    );
+  });
+
+  it("lets a PSA identity read the owner's personal memory and blocks write and persist", async () => {
+    const { items } = await retrieveMemories({
+      ownerId: OWNER_A,
+      budget: 20,
+      requestingAgentId: `psa:${OWNER_A}`,
+    });
+    expect(items.map((row) => row.statement)).toContain("owner A personal");
+    const row = memory(null, "psa write", OWNER_A);
+    const result = await commitMemory({
+      memory: row,
+      controlAgentId: `psa:${OWNER_A}`,
+    });
+    expect(result.persisted).toBe(false);
+    expect(osStore.getMemories("global", OWNER_A).some((item) => item.id === row.id)).toBe(
+      false,
+    );
+  });
+
+  it("keeps owner isolation ahead of a personal-scoped agent", async () => {
+    const { items } = await retrieveMemories({
+      ownerId: OWNER_B,
+      budget: 20,
+      requestingAgentId: `psa:${OWNER_A}`,
+    });
+    expect(items.map((row) => row.statement)).toContain("owner B personal");
+    expect(items.map((row) => row.statement)).not.toContain("owner A personal");
+  });
+
+  it("denies NOT_PROVEN application identity personal memory", async () => {
+    const { items } = await retrieveMemories({
+      ownerId: OWNER_A,
+      budget: 20,
+      requestingAgentId: "agent.cio",
+    });
+    expect(items).toEqual([]);
+  });
+
+  it("still persists a human write that does not name a Control agent", async () => {
+    const row = memory(null, "human write", OWNER_A);
+    const result = await commitMemory({ memory: row });
+    expect(result.persisted).toBe(true);
+    expect(osStore.getMemories("global", OWNER_A).some((item) => item.id === row.id)).toBe(
+      true,
+    );
+  });
+
+  it("admits one both-scope test fixture through the shared read gate", () => {
+    const profile = controlProfileTestFixture();
+    const row = memory(null, "owner A personal", OWNER_A);
+    expect(memoryVisibleForControlProfile(row, profile)).toBe(true);
+    expect(profile.agentId).toBe("test.personal-professional");
+    expect(profile.personalScope && profile.professionalScope).toBe(true);
   });
 });
 
@@ -493,7 +622,7 @@ describe("retrieveMemories semantic ranking (B2)", () => {
     const { items } = await retrieveMemories({
       budget: 20,
       query: "user login is broken",
-      requestingAgentId: "ORCHESTRATOR",
+      requestingAgentId: "legacy-plugin",
       embeddingProvider: concept,
     });
     const statements = items.map((row) => row.statement);
@@ -703,5 +832,69 @@ describe("R10 expire / erase", () => {
     });
     expect(updated.ok).toBe(true);
     if (updated.ok) expect(updated.memory.validUntil).toBe(until);
+  });
+});
+
+describe("governed memory attribution", () => {
+  const prevSkip = process.env.ATLAS_SKIP_STORE_PERSIST;
+  const auditDir = mkdtempSync(join(tmpdir(), "atlas-memory-attr-"));
+
+  beforeEach(() => {
+    process.env.ATLAS_SKIP_STORE_PERSIST = "1";
+    delete process.env.ATLAS_SKIP_AUDIT_LOG;
+    setAuditLogPathForTests(join(auditDir, `audit-${Date.now()}-${Math.random()}.ndjson`));
+    osStore.resetInMemoryForTests();
+    osStore.addMemory(memory(null, "owner A personal", OWNER_A));
+  });
+
+  afterEach(() => {
+    process.env.ATLAS_SKIP_AUDIT_LOG = "1";
+    setAuditLogPathForTests(null);
+    if (prevSkip === undefined) delete process.env.ATLAS_SKIP_STORE_PERSIST;
+    else process.env.ATLAS_SKIP_STORE_PERSIST = prevSkip;
+  });
+
+  it("attributes a governed read and a denied persist without substituting owner or supervisor", async () => {
+    await retrieveMemories({
+      ownerId: OWNER_A,
+      budget: 5,
+      requestingAgentId: "CODE_ENGINEER",
+    });
+    await retrieveMemories({
+      ownerId: OWNER_A,
+      budget: 5,
+      requestingAgentId: `psa:${OWNER_A}`,
+    });
+    const row = memory(null, "denied persist", OWNER_A);
+    const denied = await commitMemory({ memory: row, controlAgentId: "CODE_ENGINEER" });
+    expect(denied.persisted).toBe(false);
+    await retrieveMemories({
+      ownerId: OWNER_A,
+      budget: 5,
+      requestingAgentId: "legacy-plugin",
+    });
+
+    const entries = listUnifiedAuditEntries().filter((entry) => entry.type === "memory.governance");
+    const engineer = entries.find((entry) => entry.agentId === "CODE_ENGINEER" && entry.action === "READ");
+    const psa = entries.find((entry) => entry.agentId === "PERSONAL_SUPERVISING_AGENT");
+    const persist = entries.find(
+      (entry) => entry.agentId === "CODE_ENGINEER" && entry.input.operation === "persist",
+    );
+    expect(engineer?.ownerId).toBe(OWNER_A);
+    expect(engineer?.agentId).not.toBe(engineer?.ownerId);
+    expect(engineer?.input.applicationId).toBe("def-000");
+    expect(engineer?.input.applicationId).not.toBe(engineer?.agentId);
+    expect(engineer?.input.supervisorAgentId).toBeNull();
+    expect(engineer?.decision).toBe("DENY");
+    expect(engineer?.approval).toBe("NOT_REQUIRED");
+    expect(engineer?.verificationVerdict).toBe("NOT_APPLICABLE");
+    expect(engineer?.model).toBeNull();
+    expect(psa?.agentId).not.toBe(engineer?.agentId);
+    expect(psa?.decision).toBe("ALLOW");
+    expect(psa?.input.supervisorType).toBe("HUMAN");
+    expect(psa?.input.supervisorAgentId).toBeNull();
+    expect(persist?.decision).toBe("DENY");
+    expect(persist?.ownerId).toBe(OWNER_A);
+    expect(entries.some((entry) => entry.agentId === "legacy-plugin")).toBe(false);
   });
 });
