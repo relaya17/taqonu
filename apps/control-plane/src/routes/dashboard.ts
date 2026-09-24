@@ -448,7 +448,7 @@ export function getDashboardHtml(): string {
         <h2 data-i18n="registeredAgents">Registered Agents</h2>
         <span class="count" id="agent-count"></span>
       </div>
-      <p class="muted" style="margin-bottom:12px;color:var(--text-muted);font-size:13px;">Oversight list only. Profiles at /api/v1/agent-profiles govern personal memory and professional knowledge separately and do not grant execution. A professional-only agent is denied personal memory. Owner isolation stays first.</p>
+      <p class="muted" style="margin-bottom:12px;color:var(--text-muted);font-size:13px;">Oversight list only. Profiles at /api/v1/agent-profiles govern personal memory and professional knowledge separately and do not grant execution. A professional-only agent is denied personal memory. Owner isolation stays first. Marketplace listings at /api/v1/marketplace/listings are not agents. A listing references an agent and a release. Provider, publisher, evidence tier, eligibility, entitlement, and access status stay separate. Access evaluation does not dispatch. Provider claims are not verified evidence. Rental, purchase, and licensing are not offered here.</p>
       <div id="agents-message" class="kill-switch-message" role="status" aria-live="polite"></div>
       <div class="table-wrapper">
         <table>

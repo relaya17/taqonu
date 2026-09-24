@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { Router, json, readJsonBody, readRawBody } from "./router.js";
 import {
   listRegisteredAgents,
@@ -17,6 +17,28 @@ import {
   listControlAgentProfiles,
   unprovenCaseflowAgent,
 } from "../services/agent-identity-profile.js";
+import {
+  createDraftRelease,
+  draftReleaseInputSchema,
+  entitlementInputSchema,
+  evaluateEntitlementAccess,
+  getMarketplaceListing,
+  getMarketplaceRelease,
+  inspectMarketplaceEligibility,
+  issueEntitlement,
+  listMarketplaceEntitlements,
+  listMarketplaceListings,
+  listMarketplaceReleases,
+  marketplaceEvidenceForListing,
+  mutatePublishedRelease,
+  publicationInputSchema,
+  publishRelease,
+  registerProvider,
+  registerPublisher,
+  requestListingPublication,
+  revokeEntitlement,
+  unpublishListing,
+} from "../services/professional-agent-marketplace.js";
 import { isControlAgentIdentitySource } from "@atlas/shared";
 import { getControlPlanePortfolioView } from "../services/portfolio-governance-view.js";
 import {
@@ -140,6 +162,18 @@ import {
  *   POST /api/v1/connectors/civio/events — HMAC Civio ingress
  */
 
+async function readMarketplaceBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<unknown | undefined> {
+  try {
+    return await readJsonBody(req);
+  } catch (error) {
+    json(res, { error: error instanceof Error ? error.message : "invalid json" }, 400);
+    return undefined;
+  }
+}
+
 export function createApiRouter(): Router {
   const router = new Router();
 
@@ -201,6 +235,194 @@ export function createApiRouter(): Router {
       return;
     }
     json(res, profile);
+  });
+
+  router.get("/api/v1/marketplace/eligibility", (req, res) => {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const source = url.searchParams.get("source");
+    const agentId = url.searchParams.get("agentId");
+    if (!source || !agentId || !isControlAgentIdentitySource(source)) {
+      json(res, { error: "source and agentId required" }, 400);
+      return;
+    }
+    json(res, inspectMarketplaceEligibility({
+      agentId,
+      identitySource: source,
+      releaseId: url.searchParams.get("releaseId"),
+      publisherId: url.searchParams.get("publisherId"),
+    }));
+  });
+
+  router.get("/api/v1/marketplace/releases", (_req, res) => {
+    json(res, listMarketplaceReleases());
+  });
+
+  router.get("/api/v1/marketplace/releases/:id", (_req, res, params) => {
+    const release = params["id"] ? getMarketplaceRelease(params["id"]) : null;
+    if (!release) {
+      json(res, { error: "release not found" }, 404);
+      return;
+    }
+    json(res, release);
+  });
+
+  router.post("/api/v1/marketplace/publishers", (_req, res) => {
+    json(res, registerPublisher(), 201);
+  });
+
+  router.post("/api/v1/marketplace/providers", (_req, res) => {
+    json(res, registerProvider(), 201);
+  });
+
+  router.post("/api/v1/marketplace/releases", async (req, res) => {
+    const body = await readMarketplaceBody(req, res);
+    if (body === undefined) return;
+    const parsed = draftReleaseInputSchema.safeParse(body);
+    if (!parsed.success) {
+      json(res, { error: "invalid release" }, 400);
+      return;
+    }
+    const created = createDraftRelease(parsed.data);
+    json(res, created, created.ok ? 201 : 400);
+  });
+
+  router.post("/api/v1/marketplace/releases/:id/publish", (_req, res, params) => {
+    const id = params["id"];
+    if (!id) {
+      json(res, { error: "release id required" }, 400);
+      return;
+    }
+    const published = publishRelease(id);
+    json(res, published, published.ok ? 200 : 400);
+  });
+
+  router.post("/api/v1/marketplace/releases/:id/mutate", async (req, res, params) => {
+    const id = params["id"];
+    const body = await readMarketplaceBody(req, res);
+    if (!id || body === undefined) return;
+    if (typeof body !== "object" || body === null || !("versionLabel" in body) || typeof body.versionLabel !== "string") {
+      json(res, { error: "versionLabel required" }, 400);
+      return;
+    }
+    const mutated = mutatePublishedRelease(id, body.versionLabel);
+    json(res, mutated, mutated.ok ? 200 : 409);
+  });
+
+  router.get("/api/v1/marketplace/listings", (_req, res) => {
+    json(res, listMarketplaceListings());
+  });
+
+  router.get("/api/v1/marketplace/listings/:id", (_req, res, params) => {
+    const listing = params["id"] ? getMarketplaceListing(params["id"]) : null;
+    if (!listing) {
+      json(res, { error: "listing not found" }, 404);
+      return;
+    }
+    json(res, listing);
+  });
+
+  router.get("/api/v1/marketplace/listings/:id/evidence", (_req, res, params) => {
+    const evidence = params["id"] ? marketplaceEvidenceForListing(params["id"]) : null;
+    if (!evidence) {
+      json(res, { error: "listing not found" }, 404);
+      return;
+    }
+    json(res, evidence);
+  });
+
+  router.post("/api/v1/marketplace/listings/publish", async (req, res) => {
+    const body = await readMarketplaceBody(req, res);
+    if (body === undefined) return;
+    const parsed = publicationInputSchema.safeParse(body);
+    if (!parsed.success) {
+      json(res, { error: "invalid publication" }, 400);
+      return;
+    }
+    const published = requestListingPublication(parsed.data);
+    json(res, published, published.ok ? 201 : 403);
+  });
+
+  router.post("/api/v1/marketplace/listings/:id/unpublish", async (req, res, params) => {
+    const id = params["id"];
+    const body = await readMarketplaceBody(req, res);
+    if (!id || body === undefined) return;
+    if (typeof body !== "object" || body === null || !("actorId" in body) || typeof body.actorId !== "string") {
+      json(res, { error: "actorId required" }, 400);
+      return;
+    }
+    const updated = unpublishListing({ listingId: id, actorId: body.actorId });
+    json(res, updated, updated.ok ? 200 : 403);
+  });
+
+  router.get("/api/v1/marketplace/entitlements", (_req, res) => {
+    json(res, listMarketplaceEntitlements());
+  });
+
+  router.post("/api/v1/marketplace/entitlements", async (req, res) => {
+    const body = await readMarketplaceBody(req, res);
+    if (body === undefined) return;
+    const parsed = entitlementInputSchema.safeParse(body);
+    if (!parsed.success) {
+      json(res, { error: "invalid entitlement" }, 400);
+      return;
+    }
+    const issued = issueEntitlement(parsed.data);
+    json(res, issued, issued.ok ? 201 : 400);
+  });
+
+  router.post("/api/v1/marketplace/entitlements/:id/revoke", async (req, res, params) => {
+    const id = params["id"];
+    const body = await readMarketplaceBody(req, res);
+    if (!id || body === undefined) return;
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("actorId" in body) ||
+      typeof body.actorId !== "string" ||
+      !("actorRole" in body) ||
+      (body.actorRole !== "ISSUER" && body.actorRole !== "HOLDER" && body.actorRole !== "CONTROL" && body.actorRole !== "PUBLISHER")
+    ) {
+      json(res, { error: "actorId and actorRole required" }, 400);
+      return;
+    }
+    const revoked = revokeEntitlement({
+      entitlementId: id,
+      actorId: body.actorId,
+      actorRole: body.actorRole,
+    });
+    json(res, revoked, revoked.ok ? 200 : 403);
+  });
+
+  router.post("/api/v1/marketplace/access-evaluation", async (req, res) => {
+    const body = await readMarketplaceBody(req, res);
+    if (body === undefined) return;
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("entitlementId" in body) ||
+      typeof body.entitlementId !== "string" ||
+      !("policyAllows" in body) ||
+      typeof body.policyAllows !== "boolean" ||
+      !("riskAllows" in body) ||
+      typeof body.riskAllows !== "boolean" ||
+      !("approvalSatisfied" in body) ||
+      typeof body.approvalSatisfied !== "boolean" ||
+      !("preflightCleared" in body) ||
+      typeof body.preflightCleared !== "boolean" ||
+      !("killSwitchActive" in body) ||
+      typeof body.killSwitchActive !== "boolean"
+    ) {
+      json(res, { error: "invalid access evaluation" }, 400);
+      return;
+    }
+    json(res, evaluateEntitlementAccess({
+      entitlementId: body.entitlementId,
+      policyAllows: body.policyAllows,
+      riskAllows: body.riskAllows,
+      approvalSatisfied: body.approvalSatisfied,
+      preflightCleared: body.preflightCleared,
+      killSwitchActive: body.killSwitchActive,
+    }));
   });
 
   // ── Audit Trail ─────────────────────────────────────────────────────
