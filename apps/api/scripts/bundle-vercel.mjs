@@ -27,7 +27,7 @@ await esbuild.build({
   define: {
     "process.env.VERCEL": '"1"',
   },
-  external: ["sharp", "pg-native", "@biomejs/biome", "fsevents"],
+  external: ["sharp", "pg-native", "@biomejs/biome", "fsevents", "node-pty", "ws"],
   logLevel: "info",
 });
 
