@@ -1,0 +1,69 @@
+# Production service health sweep — RUN-2026-09-24-PROD-01
+captured_utc: 2026-09-24T08:08:02Z
+method: read-only HTTPS GET via curl, no credentials supplied
+
+----- https://taqonu-web.vercel.app/ -----
+HTTP/1.1 307 Temporary Redirect
+Content-Type: text/plain
+Date: Thu, 24 Sep 2026 08:08:02 GMT
+Location: /he/welcome
+X-Vercel-Id: fra1::jbxhs-1790237282637-69ccb88f22dc
+  body(first 300B):
+    Redirecting...
+
+
+----- https://taqonu-web.vercel.app/en/projects -----
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Date: Thu, 24 Sep 2026 08:08:03 GMT
+X-Vercel-Id: fra1::iad1::8nhsd-1790237283237-c1f327e1aa22
+  body(first 300B):
+    <!DOCTYPE html><html lang="en" dir="ltr"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/webpack-9f2280d633fe996d.js"/><script src="/_next/static/chunks/cc145aff-eb1582b78
+
+----- https://taqonu-api.vercel.app/health -----
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 08:08:05 GMT
+X-Vercel-Id: fra1::iad1::jbxhs-1790237284435-0d55f7a80db0
+  body(first 300B):
+    {"error":{"code":"CONFIG_ERROR","message":"Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":
+
+----- https://taqonu-control-plane.vercel.app/api/v1/status -----
+HTTP/1.1 200 OK
+Content-Type: application/json
+Date: Thu, 24 Sep 2026 08:08:06 GMT
+X-Vercel-Id: fra1::iad1::xfpmg-1790237286289-5f5af0327358
+  body(first 300B):
+    {
+      "service": "atlas-control-plane",
+      "status": "ok",
+      "version": "0.1.0",
+      "timestamp": "2026-09-24T08:08:06.495Z"
+    }
+
+----- https://taqonu-control-plane.vercel.app/api/v1/health -----
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+Date: Thu, 24 Sep 2026 08:08:07 GMT
+X-Vercel-Id: fra1::iad1::wv2mf-1790237286931-ec1e250306e8
+  body(first 300B):
+    {
+      "error": "Control Plane authentication required"
+    }
+
+----- https://taqonu-admin.vercel.app/ -----
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Date: Thu, 24 Sep 2026 08:08:08 GMT
+X-Vercel-Id: fra1::iad1::8rz8m-1790237287483-a7d7079d2022
+  body(first 300B):
+    <!doctype html>
+    <html lang="en" dir="ltr">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <meta name="robots" content="noindex,nofollow">
+      <title>Atlas Admin</title>
+      <style>
+        :root { --bg:#0b0d10; --card:#14171c; --line:#30343b; --text:#
+

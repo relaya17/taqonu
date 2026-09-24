@@ -1,0 +1,51 @@
+=== BUILD / DEPLOYMENT IDENTITY ===
+
+Run: RUN-2026-09-24-PROD-02
+Captured (UTC): 2026-09-24T08:58:55Z
+
+
+-------------------------------------------------------------------------------
+SOURCE IDENTITY (local — established)
+-------------------------------------------------------------------------------
+
+source commit SHA        : 261c360d8fd7dc7e88e4fc8f9143d8225661a46c
+branch                   : main
+origin/main              : 261c360d8fd7dc7e88e4fc8f9143d8225661a46c (identical)
+working tree at build    : the above commit PLUS one uncommitted modification
+                           apps/api/scripts/bundle-vercel.mjs (1 insertion, 1 deletion)
+local build timestamp    : 2026-09-24T08:53:57Z
+local build artifact     : apps/api/vercel-bundle.cjs, 7500876 bytes
+                           apps/api/.vercel-bundle-ok -> "bundled 2026-09-24T08:53:57.790Z (7324 KB)"
+
+The tested artifact therefore corresponds to NO commit. It corresponds to
+261c360 plus an uncommitted working-tree change. This is stated rather than
+rounded to "261c360", because the fix under test is precisely the part that is
+not in 261c360.
+
+
+-------------------------------------------------------------------------------
+PRODUCTION IDENTITY (not established)
+-------------------------------------------------------------------------------
+
+deployment identifier              : NOT ESTABLISHED — no deployment was created
+production build/version identifier: NOT ESTABLISHABLE
+deployment timestamp               : NOT APPLICABLE — no deployment occurred
+
+The corrected artifact was not deployed (see 03-deployment/deployment-result.txt).
+The Production surface https://taqonu-api.vercel.app continues to serve the
+PREVIOUS, defective build.
+
+Independently of this run, no deployment-to-commit binding is exposed by any
+Production surface. Re-checked at 2026-09-24T08:58:55Z on the /health response:
+
+  headers returned : Age, Date, Server: Vercel, and per-request X-Vercel-* trace
+                     values only
+  not present      : any commit header
+  not present      : any deployment-id header usable as build identity
+  not present      : any /version or build-info endpoint on the API host
+  note             : the Control Plane's version "0.1.0" is a hard-coded literal
+                     in apps/control-plane/src/routes/api.ts:288-295 and
+                     identifies the service, not the build
+
+Per task section 6 ("Do not claim attribution if it cannot actually be
+established"), no attribution is claimed.

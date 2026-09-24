@@ -1,0 +1,6 @@
+# Execution timestamps for RUN-2026-09-24-PROD-01
+run_id: RUN-2026-09-24-PROD-01
+started_utc: 2026-09-24T07:57:21Z   # first production probe (Date header, web)
+baseline_captured_utc: 2026-09-24T08:07:44Z
+local_timezone_offset: +03:00
+operator_host: windows-10-pro-19045

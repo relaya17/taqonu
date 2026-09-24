@@ -1,0 +1,30 @@
+=== PRODUCTION /health RAW CAPTURE (post-push) ===
+Captured (UTC): 2026-09-24T10:19:22Z
+URL: https://taqonu-api.vercel.app/health
+Commit pushed: b5a49e67f91be028c32571ed306100d0c4066fd7
+
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 336
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 10:19:22 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::lxkjv-1790245162526-a768b826cf6c
+
+{"error":{"code":"CONFIG_ERROR","message":"Cannot find module 'ws'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}
+----- GET https://taqonu-api.vercel.app/api/v1/status -----
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 336
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 10:19:23 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::797rn-1790245163004-2a5716e89b72
+
+{"error":{"code":"CONFIG_ERROR","message":"Cannot find module 'ws'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}

@@ -1,0 +1,112 @@
+=== node-pty POST-FIX BEHAVIOUR ===
+
+Run: RUN-2026-09-24-PROD-02
+Captured (UTC): 2026-09-24T08:57Z
+Scope: LOCAL. This file is NOT production evidence. It records what the corrected
+       bundle does on this machine; it does not establish Production behaviour.
+
+
+-------------------------------------------------------------------------------
+1. ISOLATED MODULE-LOAD TEST
+-------------------------------------------------------------------------------
+
+This reproduces the exact phase that fails in Production. In Production the error
+is raised while `apps/api/api/index.js:34` executes
+`require(join(apiRoot, "vercel-bundle.cjs"))`, i.e. during module load, before
+any request routing.
+
+Command (run from apps/api):
+  node -e 'require("./vercel-bundle.cjs")' + export and resolution checks
+
+Result:
+  BUNDLE_REQUIRE: OK
+  EXPORT_createRequestHandler: function
+  NODE_PTY_EXTERNAL_RESOLVE: OK  spawn=function
+  node-pty package dir present: true
+  node-pty resolved from:
+    C:\Users\User\project\github\taqonu-main\node_modules\.pnpm\node-pty@1.1.0\node_modules\node-pty\lib\index.js
+
+The pre-fix Production error string
+  "Failed to load native module: pty.node, checked: build/Release, build/Debug,
+   prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'"
+did not occur. The bundle loaded and exported createRequestHandler.
+
+
+-------------------------------------------------------------------------------
+2. STATIC BUNDLE CONTENT CHECK
+-------------------------------------------------------------------------------
+
+  grep -c 'Failed to load native module' apps/api/vercel-bundle.cjs  -> 0
+  grep -c 'prebuilds/'                   apps/api/vercel-bundle.cjs  -> 0
+  grep -c 'require("node-pty")'          apps/api/vercel-bundle.cjs  -> 1
+
+The node-pty prebuild loader is no longer inlined. The bundle defers to the
+installed node-pty package, whose own loader resolves the native binding relative
+to its own directory rather than relative to apps/api/.
+
+Control build with the PRE-FIX external list, same dist/, same esbuild options:
+  'Failed to load native module' -> 1
+  'prebuilds/'                   -> 1
+  'require("node-pty")'          -> 0
+
+The difference is attributable to the one-line change and to nothing else.
+
+
+-------------------------------------------------------------------------------
+3. FULL BOOT SMOKE — SECOND, UNRELATED, PRE-EXISTING DEFECT OBSERVED
+-------------------------------------------------------------------------------
+
+`node scripts/vercel-bundle-smoke.mjs` loads the bundle the way api/index.js does,
+then calls createRequestHandler() and issues a real request. It did NOT reach a
+response. Raw capture: 04-evidence/node-pty-post-fix-local-smoke.txt
+
+  TypeError: Dtr.Server is not a constructor
+      at fZe (apps/api/vercel-bundle.cjs:1586:51748)
+      at GV.exec (apps/api/vercel-bundle.cjs:59:1306)
+      at dg._loadPlugin (apps/api/vercel-bundle.cjs:59:9225)
+      at process.processTicksAndRejections
+  SMOKE_EXIT=1
+
+This is a `ws` WebSocket Server interop failure during Fastify plugin load. It is
+NOT node-pty.
+
+A/B control: the PRE-FIX bundle was rebuilt and booted identically. It failed with
+the same error, differing only in the minified identifier:
+
+  PRE-FIX  : TypeError: trr.Server is not a constructor
+  POST-FIX : TypeError: Dtr.Server is not a constructor
+
+Therefore:
+  - This defect is PRE-EXISTING. It was not introduced by the node-pty change.
+  - It occurs LATER than the node-pty failure. node-pty fails at module load;
+    this fails at plugin load, which module load must succeed first to reach.
+  - Production has never reached this point, because module load currently throws
+    first. Once the node-pty artifact defect is corrected in Production, this is
+    the next boot defect Production is expected to encounter.
+
+Per task section 9 ("Do NOT make speculative additional fixes") this second defect
+was observed and recorded ONLY. No change was made to address it. It is reported,
+not repaired.
+
+
+-------------------------------------------------------------------------------
+4. WHAT THIS DOES AND DOES NOT ESTABLISH
+-------------------------------------------------------------------------------
+
+Established:
+  - The corrected bundler configuration produces a bundle that no longer inlines
+    the node-pty native loader.
+  - That bundle loads successfully in the phase where Production currently throws.
+  - The one-line change introduced no new build error and no new boot error.
+
+NOT established:
+  - That the corrected bundle boots in Production. It has not been deployed.
+  - That node-pty resolves on linux-x64 inside a Vercel function. Locally it
+    resolves through the pnpm store at the repository root
+    (node_modules/.pnpm/node-pty@1.1.0/...), not through apps/api/node_modules
+    directly. Whether @vercel/nft includes that package in the deployed function
+    is UNKNOWN and can only be determined by an actual Production deployment.
+    Relevant risk: apps/api/api/index.js:34 loads the bundle through a computed
+    path, which static dependency tracing may not follow.
+
+No inference of Production success is drawn from any of the above.

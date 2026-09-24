@@ -1,0 +1,28 @@
+----- GET https://taqonu-web.vercel.app/en/state -----
+HTTP/1.1 307 Temporary Redirect
+Location: /en/projects
+X-Vercel-Id: fra1::4675x-1790237002505-6ff77c778fd5
+  -> final:
+    http_code=200 url=https://taqonu-web.vercel.app/en/projects
+
+----- GET https://taqonu-web.vercel.app/en/chat -----
+HTTP/1.1 307 Temporary Redirect
+Location: /en/workbench
+X-Vercel-Id: fra1::g4tt2-1790237005749-91ed8e8e6872
+  -> final:
+    http_code=200 url=https://taqonu-web.vercel.app/en/workbench
+
+----- GET https://taqonu-web.vercel.app/en/agent -----
+HTTP/1.1 307 Temporary Redirect
+Location: /en/agents
+X-Vercel-Id: fra1::w6g75-1790237007011-c12672808b64
+  -> final:
+    http_code=200 url=https://taqonu-web.vercel.app/en/agents
+
+----- GET https://taqonu-web.vercel.app/en/proof -----
+HTTP/1.1 307 Temporary Redirect
+Location: /en/readiness
+X-Vercel-Id: fra1::nc2z8-1790237008123-46361bb3907d
+  -> final:
+    http_code=200 url=https://taqonu-web.vercel.app/en/readiness
+

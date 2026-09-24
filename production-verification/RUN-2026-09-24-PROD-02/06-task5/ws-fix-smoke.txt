@@ -1,0 +1,7 @@
+BUNDLE_REQUIRE: OK
+EXPORT_createRequestHandler: function
+{"level":"info","message":"dev_local_portfolio_bootstrap","timestamp":"2026-09-24T09:55:12.368Z","service":"atlas-api","connected":true,"reposRoot":"C:\\Users\\User\\project\\github\\taqonu-main\\apps","scanned":5,"linked":0,"goldenLinked":false,"note":"local already connected; scanned 5, linked 0"}
+{"level":"info","message":"dev_local_user_ready","timestamp":"2026-09-24T09:55:12.452Z","service":"atlas-api","email":"dev@atlas.local","created":false,"note":"Development login identity is available for the local owner account"}
+CREATE_REQUEST_HANDLER: OK type=function
+SMOKE_DONE
+NODE_EXIT=0

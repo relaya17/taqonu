@@ -1,0 +1,48 @@
+Scope: 23 of 31 workspace projects
+packages/shared build$ tsc -p tsconfig.json
+packages/integrations/mongodb build$ tsc -p tsconfig.json
+packages/integrations/local build$ tsc -p tsconfig.json
+packages/integrations/supabase build$ tsc -p tsconfig.json
+packages/integrations/mongodb build: Done
+packages/observability build$ tsc -p tsconfig.json
+packages/integrations/local build: Done
+packages/shared build: Done
+packages/integrations/supabase build: Done
+packages/observability build: Done
+packages/knowledge build$ tsc -p tsconfig.json
+packages/code-intelligence build$ tsc -p tsconfig.json
+packages/config build$ tsc -p tsconfig.json
+packages/database build$ tsc -p tsconfig.json
+packages/config build: Done
+packages/experts build$ tsc -p tsconfig.json
+packages/knowledge build: Done
+packages/integrations/cloudflare build$ tsc -p tsconfig.json
+packages/code-intelligence build: Done
+packages/integrations/github build$ tsc -p tsconfig.json
+packages/database build: Done
+packages/integrations/render build$ tsc -p tsconfig.json
+packages/experts build: Done
+packages/integrations/vercel build$ tsc -p tsconfig.json
+packages/integrations/cloudflare build: Done
+packages/qa-core build$ tsc -p tsconfig.json
+packages/integrations/render build: Done
+packages/state build$ tsc -p tsconfig.json
+packages/integrations/github build: Done
+packages/system-model build$ tsc -p tsconfig.json
+packages/integrations/vercel build: Done
+packages/system-model build: Done
+packages/qa-core build: Done
+packages/state build: Done
+packages/agent-core build$ tsc -p tsconfig.json
+packages/observer build$ tsc -p tsconfig.json
+packages/engineering-loop build$ tsc -p tsconfig.json
+packages/engineering-loop build: Done
+packages/agent-core build: Done
+packages/observer build: Done
+packages/embeddings build$ tsc -p tsconfig.json
+packages/synthetic-universe build$ tsc -p tsconfig.json
+packages/embeddings build: Done
+packages/synthetic-universe build: Done
+apps/api build$ tsc -p tsconfig.build.json
+apps/api build: Done
+API_BUILD_EXIT=0

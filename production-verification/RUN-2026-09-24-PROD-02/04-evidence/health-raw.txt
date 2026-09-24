@@ -1,0 +1,19 @@
+=== PRODUCTION /health RAW CAPTURE ===
+Run: RUN-2026-09-24-PROD-02
+Captured (UTC): 2026-09-24T08:58:53Z
+URL: https://taqonu-api.vercel.app/health
+Credentials supplied: none
+
+--- response (headers + body, unedited) ---
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 470
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 08:58:55 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::f98xh-1790240334183-32e5c5a296e6
+
+{"error":{"code":"CONFIG_ERROR","message":"Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}

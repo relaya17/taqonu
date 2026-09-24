@@ -1,0 +1,75 @@
+----- GET https://taqonu-control-plane.vercel.app/api/v1/health -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/status -----
+{
+  "service": "atlas-control-plane",
+  "status": "ok",
+  "version": "0.1.0",
+  "timestamp": "2026-09-24T08:02:57.932Z"
+}
+[http_code=200]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/supervision -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/policies -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/agents -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/agents/stats -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/audit/count -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/audit/verify -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/kill-switches -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/approvals -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/self-audit -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+
+----- GET https://taqonu-control-plane.vercel.app/api/v1/operational-foundation -----
+{
+  "error": "Control Plane authentication required"
+}
+[http_code=401]
+

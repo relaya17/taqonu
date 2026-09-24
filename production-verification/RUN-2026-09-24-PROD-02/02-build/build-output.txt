@@ -1,0 +1,128 @@
+=== ATLAS R-001 REMEDIATION BUILD ===
+Run: RUN-2026-09-24-PROD-02
+Build start (UTC): 2026-09-24T08:45:52Z
+Commit: 261c360d8fd7dc7e88e4fc8f9143d8225661a46c (+ uncommitted fix to apps/api/scripts/bundle-vercel.mjs)
+Command (from apps/api/vercel.json buildCommand):
+  ./node_modules/.bin/turbo run build --filter=@atlas/api... && pnpm --filter @atlas/api run bundle:vercel
+Pre-build vercel-bundle.cjs size: 7522521 bytes
+
+=== STEP 1: turbo run build --filter=@atlas/api... ===
+• turbo 2.10.9
+
+   • Packages in scope: @atlas/agent-core, @atlas/api, @atlas/code-intelligence, @atlas/config, @atlas/database, @atlas/embeddings, @atlas/engineering-loop, @atlas/experts, @atlas/integrations-cloudflare, @atlas/integrations-github, @atlas/integrations-local, @atlas/integrations-mongodb, @atlas/integrations-render, @atlas/integrations-supabase, @atlas/integrations-vercel, @atlas/knowledge, @atlas/observability, @atlas/observer, @atlas/qa-core, @atlas/shared, @atlas/state, @atlas/synthetic-universe, @atlas/system-model
+   • Running build in 23 packages
+   • Remote caching disabled
+
+  x Unable to find package manager binary: cannot find binary path
+  `-> cannot find binary path
+
+TURBO_EXIT=1
+
+NOTE: turbo could not locate the pnpm binary in this shell (Windows/bash path).
+      This is a local toolchain issue, not an Atlas build defect.
+      Falling back to the equivalent pnpm workspace build with the same filter semantics.
+
+=== STEP 1b: pnpm --filter "@atlas/api..." run build ===
+Start (UTC): 2026-09-24T08:47:01Z
+Scope: 23 of 31 workspace projects
+packages/integrations/local build$ tsc -p tsconfig.json
+packages/shared build$ tsc -p tsconfig.json
+packages/integrations/mongodb build$ tsc -p tsconfig.json
+packages/integrations/supabase build$ tsc -p tsconfig.json
+packages/integrations/local build: Done
+packages/observability build$ tsc -p tsconfig.json
+packages/integrations/supabase build: Done
+packages/integrations/mongodb build: Done
+packages/shared build: Done
+packages/observability build: Done
+packages/knowledge build$ tsc -p tsconfig.json
+packages/config build$ tsc -p tsconfig.json
+packages/code-intelligence build$ tsc -p tsconfig.json
+packages/database build$ tsc -p tsconfig.json
+packages/config build: Done
+packages/experts build$ tsc -p tsconfig.json
+packages/knowledge build: Done
+packages/integrations/cloudflare build$ tsc -p tsconfig.json
+packages/code-intelligence build: Done
+packages/integrations/github build$ tsc -p tsconfig.json
+packages/database build: Done
+packages/integrations/render build$ tsc -p tsconfig.json
+packages/experts build: Done
+packages/integrations/vercel build$ tsc -p tsconfig.json
+packages/integrations/cloudflare build: Done
+packages/qa-core build$ tsc -p tsconfig.json
+packages/integrations/github build: Done
+packages/state build$ tsc -p tsconfig.json
+packages/integrations/render build: Done
+packages/system-model build$ tsc -p tsconfig.json
+packages/integrations/vercel build: Done
+packages/qa-core build: Done
+packages/state build: Done
+packages/system-model build: Done
+packages/agent-core build$ tsc -p tsconfig.json
+packages/engineering-loop build$ tsc -p tsconfig.json
+packages/observer build$ tsc -p tsconfig.json
+packages/engineering-loop build: Done
+packages/observer build: Done
+packages/agent-core build: Done
+packages/embeddings build$ tsc -p tsconfig.json
+packages/synthetic-universe build$ tsc -p tsconfig.json
+packages/embeddings build: Done
+packages/synthetic-universe build: Done
+apps/api build$ tsc -p tsconfig.build.json
+apps/api build: Done
+PNPM_BUILD_EXIT=0
+
+=== STEP 2: pnpm --filter @atlas/api run bundle:vercel ===
+Start (UTC): 2026-09-24T08:53:49Z
+
+> @atlas/api@0.1.0 bundle:vercel C:\Users\User\project\github\taqonu-main\apps\api
+> node scripts/bundle-vercel.mjs
+
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    dist/services/repo-root.js:18:45:
+      18 │ ...n resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+         ╵                                    ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+1 warning
+
+  vercel-bundle.cjs  7.2mb
+
+Done in 2883ms
+Wrote C:\Users\User\project\github\taqonu-main\apps\api\vercel-bundle.cjs (7324 KB)
+BUNDLE_EXIT=0
+Bundle end (UTC): 2026-09-24T08:53:57Z
+
+=== POST-BUILD ARTIFACT ===
+-rw-r--r-- 1 User 197121      43 Sep 24 11:53 apps/api/.vercel-bundle-ok
+-rw-r--r-- 1 User 197121 7500876 Sep 24 11:53 apps/api/vercel-bundle.cjs
+
+bundled 2026-09-24T08:53:57.790Z (7324 KB)
+
+=== A/B CONTROL COMPARISON (isolate the effect of the fix) ===
+Captured (UTC): 2026-09-24T08:54Z
+Method: the identical esbuild invocation was run twice from the same dist/,
+differing ONLY in the external list. The control output was written outside the
+repository tree and then to a temporary file inside apps/api which was deleted.
+
+Measurement                                  | PRE-FIX (old externals)  | POST-FIX (node-pty ext) 
+---------------------------------------------+--------------------------+-------------------------
+esbuild exit                                 | 0                        | 0                       
+bundle size (bytes)                          | 7522799                  | 7500876                 
+occurrences of 'Failed to load native module' | 1                        | 0                       
+occurrences of 'prebuilds/'                  | 1                        | 0                       
+occurrences of 'require("node-pty")'         | 0                        | 1                       
+esbuild warnings                             | 1 (import.meta)          | 1 (import.meta)         
+
+Interpretation:
+  The node-pty prebuild loader and its 'prebuilds/<platform>-<arch>' path strings are
+  no longer inlined into the bundle. The bundle now emits a literal require("node-pty")
+  which resolves at runtime from node_modules, restoring correct __dirname-relative
+  native binding resolution inside the node-pty package.
+
+  The single esbuild warning (import.meta under cjs, dist/services/repo-root.js:18) is
+  identical in both builds. It is PRE-EXISTING and was NOT introduced by this change.
+  No new TypeScript or build error appeared.

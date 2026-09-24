@@ -1,0 +1,9 @@
+# Working tree state at verification start
+captured_utc: 2026-09-24T08:07:43Z
+
+## git status --short
+?? production-verification/
+[end of git status --short output]
+
+## git status --short -- . ':(exclude)production-verification'
+[end]

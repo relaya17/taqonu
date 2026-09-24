@@ -1,0 +1,34 @@
+=== PRODUCTION DEPLOYMENT ATTEMPT ===
+Run: RUN-2026-09-24-PROD-02
+Attempted (UTC): 2026-09-24T09:01:59Z
+Working dir: apps/api
+
+--- Mechanism identification ---
+The production deployment mechanism for this repository is Vercel Git auto-deploy.
+Source: .github/workflows/ci.yml:3-4 states verbatim:
+    "Repository quality gate. This workflow does not control Vercel Git"
+    "auto-deploy. A Vercel READY status is not proof this job passed."
+There is no deploy job in .github/workflows/ and no deploy script in package.json.
+Therefore a Production deploy is triggered by a commit pushed to origin/main.
+
+--- Path A: Vercel Git auto-deploy (push to origin/main) ---
+NOT ATTEMPTED. Task section 13 states verbatim: "Do not commit. Do not push."
+No commit was created and no push was performed.
+
+--- Path B: Vercel CLI direct production deploy ---
+Command: vercel deploy --prod --yes  (no token supplied, no token invented)
+Output:
+Vercel CLI 39.2.6
+Error: No existing credentials found. Please run `vercel login` or pass "--token"
+Learn More: https://err.sh/vercel/no-credentials-found
+VERCEL_CLI_EXIT=1
+
+--- Preconditions checked ---
+vercel CLI version: 39.2.6 (present on PATH)
+vercel whoami: Error: No existing credentials found
+.vercel project linkage anywhere in repo: none found
+VERCEL_TOKEN set: false
+VERCEL_ORG_ID set: false
+VERCEL_PROJECT_ID set: false
+
+No development credential was substituted. No token was invented.

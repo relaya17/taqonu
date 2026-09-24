@@ -1,0 +1,16 @@
+# Local repository commit identity (NOT proof of deployed production version)
+captured_utc: 2026-09-24T08:04:15Z
+
+## git rev-parse HEAD
+261c360d8fd7dc7e88e4fc8f9143d8225661a46c
+
+## git branch --show-current
+main
+
+## git rev-parse origin/main
+261c360d8fd7dc7e88e4fc8f9143d8225661a46c
+
+## git log -3 --oneline
+261c360 docs: reconcile current Control and investor evidence
+4689e5f test: make governed command kill fixture deterministic
+a6efa00 test: report governed-command lifecycle when kill is not observed

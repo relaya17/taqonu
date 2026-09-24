@@ -1,0 +1,19 @@
+
+> @atlas/api@0.1.0 bundle:vercel C:\Users\User\project\github\taqonu-main\apps\api
+> node scripts/bundle-vercel.mjs
+
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    dist/services/repo-root.js:18:45:
+      18 │ ...n resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+         ╵                                    ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+1 warning
+
+  vercel-bundle.cjs  7.1mb
+
+Done in 1157ms
+Wrote C:\Users\User\project\github\taqonu-main\apps\api\vercel-bundle.cjs (7276 KB)
+BUNDLE_EXIT=0

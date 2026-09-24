@@ -1,0 +1,63 @@
+=== PRODUCTION API BASELINE (RAW) ===
+Run: RUN-2026-09-24-PROD-02
+Captured (UTC): 2026-09-24T09:03:41Z
+Host: https://taqonu-api.vercel.app
+Credentials supplied: none
+State: PRE-deployment of the corrected artifact (the corrected build was not deployed)
+
+----- GET https://taqonu-api.vercel.app/health -----
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 470
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 09:03:43 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::t92lr-1790240622453-197790b31d5c
+
+{"error":{"code":"CONFIG_ERROR","message":"Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}
+
+----- GET https://taqonu-api.vercel.app/api/v1/status -----
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 470
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 09:03:44 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::9fnn5-1790240624033-a23ed0ef785f
+
+{"error":{"code":"CONFIG_ERROR","message":"Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}
+
+----- GET https://taqonu-api.vercel.app/ -----
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 470
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 09:03:44 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::jmnpm-1790240624624-aa11c60b3219
+
+{"error":{"code":"CONFIG_ERROR","message":"Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}
+
+----- GET https://taqonu-api.vercel.app/api/v1/agents -----
+HTTP/1.1 503 Service Unavailable
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 470
+Content-Type: application/json; charset=utf-8
+Date: Thu, 24 Sep 2026 09:03:45 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: fra1::iad1::xkgmx-1790240625211-4f20597f976c
+
+{"error":{"code":"CONFIG_ERROR","message":"Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64: Error: Cannot find module './prebuilds/linux-x64//pty.node'\nRequire stack:\n- /var/task/apps/api/vercel-bundle.cjs\n- /var/task/apps/api/api/index.js","hint":"Set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY (≥32), COOKIE_SECRET (≥32), and WEB_ORIGIN in the Vercel project env."}}
+

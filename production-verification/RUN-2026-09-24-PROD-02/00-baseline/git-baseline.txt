@@ -1,0 +1,21 @@
+RUN ID: RUN-2026-09-24-PROD-02
+Purpose: R-001 remediation - node-pty deployment artifact
+Captured (UTC): 2026-09-24T08:45:35Z
+Local offset: +0300
+
+=== git rev-parse HEAD ===
+261c360d8fd7dc7e88e4fc8f9143d8225661a46c
+
+=== git branch / upstream ===
+main
+261c360d8fd7dc7e88e4fc8f9143d8225661a46c
+
+=== git status --short (before build) ===
+ M apps/api/scripts/bundle-vercel.mjs
+?? production-verification/
+
+=== git log -1 ===
+261c360d8fd7dc7e88e4fc8f9143d8225661a46c
+relaya17
+2026-09-24T00:03:05+03:00
+docs: reconcile current Control and investor evidence

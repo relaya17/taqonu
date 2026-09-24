@@ -1,0 +1,13 @@
+diff --git a/apps/api/scripts/bundle-vercel.mjs b/apps/api/scripts/bundle-vercel.mjs
+index c88f4c0..74c4523 100644
+--- a/apps/api/scripts/bundle-vercel.mjs
++++ b/apps/api/scripts/bundle-vercel.mjs
+@@ -27,7 +27,7 @@ await esbuild.build({
+   define: {
+     "process.env.VERCEL": '"1"',
+   },
+-  external: ["sharp", "pg-native", "@biomejs/biome", "fsevents"],
++  external: ["sharp", "pg-native", "@biomejs/biome", "fsevents", "node-pty"],
+   logLevel: "info",
+ });
+ 

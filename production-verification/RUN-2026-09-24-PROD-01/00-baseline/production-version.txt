@@ -1,0 +1,49 @@
+# Production deployment / version identity — RUN-2026-09-24-PROD-01
+captured_utc: 2026-09-24T08:08:10Z
+method: read-only HTTPS GET, no credentials supplied
+
+## What production self-reports
+
+taqonu-control-plane.vercel.app
+  GET /api/v1/status  -> 200
+  service: atlas-control-plane
+  status:  ok
+  version: "0.1.0"
+  source of value: HARD-CODED literal in apps/control-plane/src/routes/api.ts:288-295
+  therefore: this string identifies the SERVICE, not the deployed build.
+
+taqonu-web.vercel.app
+  no version/health endpoint exposed
+  Next.js buildId not present in served HTML (App Router payload does not emit it)
+  only deployment correlation available: X-Vercel-Id per-request trace id
+    e.g. fra1::iad1::8nhsd-1790237283237-c1f327e1aa22
+
+taqonu-api.vercel.app
+  version endpoint unreachable: every route returns 503 before routing
+  (see 04-evidence/api-503-config-error-raw.json)
+
+taqonu-admin.vercel.app
+  no version endpoint exposed; serves static Atlas Admin shell
+
+## Deployment -> commit binding
+
+NOT ESTABLISHABLE from outside.
+
+Checked and not found:
+  - no /version, /api/version, or build-info endpoint on any of the four hosts
+  - no NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA (or equivalent) surfaced in any response
+    (repo grep for VERCEL_GIT_COMMIT_SHA / GIT_COMMIT_SHA returned only data-model
+     `commitSha` fields in deploy-feeds / provider-adapters / os-store — these are
+     payload schema fields for ingesting third-party deploy events, not a build stamp)
+  - no X-Vercel-Deployment-Url / commit header returned
+
+## Consequence for this verification pass
+
+The local repository is at 261c360d8fd7dc7e88e4fc8f9143d8225661a46c (origin/main == HEAD).
+There is NO observable evidence that the deployed production build corresponds to that
+commit. Any later R-item therefore cannot be attributed to commit 261c360 on the basis of
+production evidence alone.
+
+Per the plan's evidence standard, "the code exists" is not verification. The inverse also
+holds: a healthy production surface cannot be credited to an audited commit without a
+deployment-to-commit binding. This gap is recorded, not worked around.
