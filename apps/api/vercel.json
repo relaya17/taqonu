@@ -12,6 +12,11 @@
     "ATLAS_SESSIONS_PATH": "/tmp/atlas-demo-sessions.json"
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "../../node_modules/.pnpm/ws@8.21.3/node_modules/ws/**"
+    }
+  },
   "crons": [
     {
       "path": "/api/v1/knowledge/refresh",
