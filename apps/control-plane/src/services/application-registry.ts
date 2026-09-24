@@ -47,11 +47,107 @@ const ATLAS_SELF: RegisteredApplication = {
   decisionReason: "Seeded Atlas-self (DEF-000) is the Control Plane identity.",
 };
 
+const CASEFLOW_SIBLING: RegisteredApplication = {
+  applicationId: "caseflow",
+  name: "CaseFlow",
+  environment: "sibling-runtime",
+  version: "unknown",
+  health: "unknown",
+  agentIds: [],
+  capabilities: [
+    "portfolio-observability",
+    "application-preflight",
+    "hmac-connector",
+    "governance-evidence",
+  ],
+  findingCount: 0,
+  lastAuditAt: null,
+  lastEventAt: null,
+  lastEventType: null,
+  tenantId: null,
+  projectId: null,
+  trustStatus: "APPROVED",
+  decidedBy: "system",
+  decidedAt: null,
+  decisionReason:
+    "Known managed sibling application; Atlas governs via the application preflight / governance boundary without fabricating a native agent identity.",
+};
+
+/**
+ * HotelOS and BrokerOS share CaseFlow's exact Control-registration shape
+ * (connected-applications.ts): local sibling runtime, HMAC application
+ * preflight as the sole governed boundary, execute NONE, no native agent.
+ * LexStudy and Vantera are deliberately NOT seeded — their runtimes are
+ * not accessible and no preflight implementation is claimed, so a seeded
+ * APPROVED trust status would fabricate a relationship that does not exist.
+ * Civio is not seeded either: it registers dynamically via its connector.
+ */
+const HOTELOS_SIBLING: RegisteredApplication = {
+  applicationId: "hotelos",
+  name: "HotelOS",
+  environment: "sibling-runtime",
+  version: "unknown",
+  health: "unknown",
+  agentIds: [],
+  capabilities: [
+    "portfolio-observability",
+    "application-preflight",
+    "hmac-connector",
+    "governance-evidence",
+  ],
+  findingCount: 0,
+  lastAuditAt: null,
+  lastEventAt: null,
+  lastEventType: null,
+  tenantId: null,
+  projectId: null,
+  trustStatus: "APPROVED",
+  decidedBy: "system",
+  decidedAt: null,
+  decisionReason:
+    "Known managed sibling application; Atlas governs via the application preflight / governance boundary without fabricating a native agent identity.",
+};
+
+const BROKEROS_SIBLING: RegisteredApplication = {
+  applicationId: "brokeros",
+  name: "BrokerOS",
+  environment: "sibling-runtime",
+  version: "unknown",
+  health: "unknown",
+  agentIds: [],
+  capabilities: [
+    "portfolio-observability",
+    "application-preflight",
+    "hmac-connector",
+    "governance-evidence",
+  ],
+  findingCount: 0,
+  lastAuditAt: null,
+  lastEventAt: null,
+  lastEventType: null,
+  tenantId: null,
+  projectId: null,
+  trustStatus: "APPROVED",
+  decidedBy: "system",
+  decidedAt: null,
+  decisionReason:
+    "Known managed sibling application; Atlas governs via the application preflight / governance boundary without fabricating a native agent identity.",
+};
+
 const applications = new Map<string, RegisteredApplication>();
 
 function ensureSeed(): void {
   if (!applications.has(ATLAS_SELF.applicationId)) {
     applications.set(ATLAS_SELF.applicationId, ATLAS_SELF);
+  }
+  if (!applications.has(CASEFLOW_SIBLING.applicationId)) {
+    applications.set(CASEFLOW_SIBLING.applicationId, CASEFLOW_SIBLING);
+  }
+  if (!applications.has(HOTELOS_SIBLING.applicationId)) {
+    applications.set(HOTELOS_SIBLING.applicationId, HOTELOS_SIBLING);
+  }
+  if (!applications.has(BROKEROS_SIBLING.applicationId)) {
+    applications.set(BROKEROS_SIBLING.applicationId, BROKEROS_SIBLING);
   }
 }
 

@@ -9,6 +9,10 @@ import { listRegisteredAgents } from "../services/agent-registry.js";
 import { getFabricProjection } from "../services/fabric-projection.js";
 import { getControlPlanePortfolioView } from "../services/portfolio-governance-view.js";
 import { resetAgentRuntimeForTests } from "../services/agent-registry.js";
+import {
+  getRegisteredApplication,
+  listRegisteredApplications,
+} from "../services/application-registry.js";
 
 /**
  * Phase 11.10 — Control Plane Alignment Verification
@@ -40,6 +44,37 @@ describe("Control Plane alignment (Phase 11.10)", () => {
       for (const agent of view.snapshot.sourceAgents) {
         expect(agent.atlasPromotionBlocked).toBe(true);
         expect(FABRIC_AGENT_IDS.includes(agent.sourceKey as never)).toBe(false);
+      }
+    });
+
+    it("2a. CaseFlow is a managed sibling application without a fabricated native agent", () => {
+      const apps = listRegisteredApplications();
+      const caseflow = getRegisteredApplication("caseflow");
+      expect(apps.some((app) => app.applicationId === "caseflow")).toBe(true);
+      expect(caseflow).toBeDefined();
+      expect(caseflow?.name).toMatch(/CaseFlow/i);
+      expect(caseflow?.agentIds).toEqual([]);
+      expect(caseflow?.trustStatus).toBe("APPROVED");
+      expect(caseflow?.capabilities).toEqual(expect.arrayContaining(["portfolio-observability"]));
+    });
+
+    it("2b. HotelOS and BrokerOS mirror the CaseFlow sibling pattern; inaccessible siblings are not seeded", () => {
+      const apps = listRegisteredApplications();
+      for (const applicationId of ["hotelos", "brokeros"] as const) {
+        const sibling = getRegisteredApplication(applicationId);
+        expect(sibling).toBeDefined();
+        expect(sibling?.environment).toBe("sibling-runtime");
+        expect(sibling?.agentIds).toEqual([]);
+        expect(sibling?.trustStatus).toBe("APPROVED");
+        expect(sibling?.capabilities).toEqual(
+          expect.arrayContaining(["application-preflight", "hmac-connector"]),
+        );
+      }
+      // LexStudy / Vantera runtimes are NOT ACCESSIBLE and claim no preflight
+      // implementation — seeding them would fabricate trust. Civio registers
+      // dynamically through its connector, never via static seed.
+      for (const applicationId of ["lexstudy", "vantera", "civio"]) {
+        expect(apps.some((app) => app.applicationId === applicationId)).toBe(false);
       }
     });
 

@@ -158,7 +158,7 @@ describe("Control Plane — API Routes", () => {
       expect(body.civioConnector.atlasIngress).toBe("IMPLEMENTED");
       expect(body.lifecycle[0]).toBe("APPLICATION");
       expect(body.lifecycle).toContain("AUDIT");
-      expect(body.registeredApplicationIds).toEqual(["def-000"]);
+      expect(body.registeredApplicationIds).toEqual(["def-000", "caseflow", "hotelos", "brokeros"]);
       expect(body.domains.find((d) => d.domain === "processes")?.status).toBe(
         "PARTIAL",
       );
@@ -195,7 +195,7 @@ describe("Control Plane — API Routes", () => {
       expect(body.surface).toBe("CONTROL");
       expect(body.parentSurface).toBe("ADMIN");
       expect(body.role).toBe("operational_supervision");
-      expect(body.metrics["registeredApplications"]).toBe(1);
+      expect(body.metrics["registeredApplications"]).toBe(4);
       expect(body.metrics["oversightAgents"]).toBe(9);
       expect(body.metrics["fabricProjectionAgents"]).toBe(16);
       expect(body.notes.some((note) => note.includes("Not Atlas Admin"))).toBe(
@@ -306,7 +306,10 @@ describe("Control Plane — API Routes", () => {
       const appsRes = createMockRes();
       await router.handle(createMockReq("GET", "/api/v1/applications"), appsRes);
       const apps = JSON.parse(appsRes._mock.body) as { items: unknown[] };
-      expect(apps.items).toHaveLength(1);
+      expect(apps.items).toHaveLength(4);
+      expect(apps.items.some((app) => (app as { applicationId: string }).applicationId === "caseflow")).toBe(true);
+      expect(apps.items.some((app) => (app as { applicationId: string }).applicationId === "hotelos")).toBe(true);
+      expect(apps.items.some((app) => (app as { applicationId: string }).applicationId === "brokeros")).toBe(true);
     });
   });
 
