@@ -13,7 +13,11 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
+import {
+  apiGet,
+  apiPost,
+  ApprovalRequiredError,
+} from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { patchGovernedPath } from "@/lib/studio-patch-workflow";
@@ -54,14 +58,14 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
     Record<string, string>
   >({});
 
-  const projects = useQuery({
+  const projects = useQuery<{ items: ProjectItem[] }>({
     queryKey: ["projects"],
     queryFn: () => apiGet<{ items: ProjectItem[] }>("/api/v1/projects"),
     staleTime: 60_000,
   });
 
   const selected =
-    projects.data?.items.find((p) => p.id === projectId) ?? null;
+    projects.data?.items.find((p: ProjectItem) => p.id === projectId) ?? null;
 
   useEffect(() => {
     if (selected) {
@@ -69,7 +73,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
     }
   }, [selected]);
 
-  const patches = useQuery({
+  const patches = useQuery<{ items: PatchItem[] }>({
     queryKey: ["patches", projectId],
     enabled: Boolean(projectId),
     queryFn: () =>
@@ -98,11 +102,12 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
             ...(root.trim() ? { workspaceRoot: root.trim() } : {}),
           },
         );
-      } catch (error) {
-        if (isApprovalRequiredError(error)) {
+      } catch (error: unknown) {
+        if (error instanceof ApprovalRequiredError) {
+          const { approvalId } = error;
           setPendingApplyById((current) => ({
             ...current,
-            [id]: error.approvalId,
+            [id]: approvalId,
           }));
         }
         throw error;
@@ -127,11 +132,12 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
             workspaceRoot: root,
           },
         );
-      } catch (error) {
-        if (isApprovalRequiredError(error)) {
+      } catch (error: unknown) {
+        if (error instanceof ApprovalRequiredError) {
+          const { approvalId } = error;
           setPendingRollbackById((current) => ({
             ...current,
-            [id]: error.approvalId,
+            [id]: approvalId,
           }));
         }
         throw error;
@@ -190,7 +196,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
         fullWidth
       >
         <MenuItem value="">—</MenuItem>
-        {(projects.data?.items ?? []).map((p) => (
+        {(projects.data?.items ?? []).map((p: ProjectItem) => (
           <MenuItem key={p.id} value={p.id}>
             {p.name}
             {p.workspaceRoot ? "" : ` (${t("unlinked")})`}
@@ -235,7 +241,7 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
         {(patches.data?.items ?? []).length === 0 ? (
           <Typography color="text.secondary">{t("empty")}</Typography>
         ) : null}
-        {(patches.data?.items ?? []).map((patch) => (
+        {(patches.data?.items ?? []).map((patch: PatchItem) => (
           <Box
             key={patch.id}
             sx={{
