@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildStudioPtyEnv,
   closeStudioPty,
@@ -19,6 +20,19 @@ import {
   writeStudioPty,
   type StudioPtySpawner,
 } from "./studio-pty.js";
+
+const studioPtySource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "studio-pty.ts"),
+  "utf8",
+);
+
+describe("Studio PTY native module loading", () => {
+  it("does not statically import node-pty (Vercel boot must not require pty.node)", () => {
+    expect(studioPtySource).not.toMatch(/from\s+["']node-pty["']/);
+    expect(studioPtySource).toMatch(/createRequire\(/);
+    expect(studioPtySource).not.toMatch(/import\.meta\.url/);
+  });
+});
 
 const dirs: string[] = [];
 

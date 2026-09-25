@@ -108,5 +108,8 @@ describe("checked-in vercel.json files", () => {
     expect(vercelTrustPlaneContractOk(api)).toBe(true);
     expect(vercelTrustPlaneContractOk(admin)).toBe(true);
     expect(vercelTrustPlaneContractOk(control)).toBe(true);
+    expect(readVercelEnv("apps/api/vercel.json").WEB_ORIGIN).toBe(
+      "https://taqonu-web.vercel.app",
+    );
   });
 });

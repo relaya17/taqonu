@@ -38,4 +38,19 @@ describe("isAllowedWebOrigin", () => {
   it("allows missing origin (non-browser)", () => {
     expect(isAllowedWebOrigin(undefined, "http://localhost:3000")).toBe(true);
   });
+
+  it("allows the Production Studio origin only when WEB_ORIGIN is that origin", () => {
+    expect(
+      isAllowedWebOrigin(
+        "https://taqonu-web.vercel.app",
+        "https://taqonu-web.vercel.app",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedWebOrigin("https://taqonu-web.vercel.app", "http://localhost:3000"),
+    ).toBe(false);
+    expect(
+      isAllowedWebOrigin("https://evil.example", "https://taqonu-web.vercel.app"),
+    ).toBe(false);
+  });
 });

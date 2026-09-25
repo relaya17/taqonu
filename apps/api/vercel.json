@@ -9,7 +9,8 @@
     "TURBO_REMOTE_ONLY": "true",
     "ATLAS_DEMO_LOGIN_ENABLED": "0",
     "ATLAS_AUTH_PATH": "/tmp/atlas-demo-users.json",
-    "ATLAS_SESSIONS_PATH": "/tmp/atlas-demo-sessions.json"
+    "ATLAS_SESSIONS_PATH": "/tmp/atlas-demo-sessions.json",
+    "WEB_ORIGIN": "https://taqonu-web.vercel.app"
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "functions": {

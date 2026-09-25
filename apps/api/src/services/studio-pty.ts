@@ -15,7 +15,7 @@
  * - Explicit Close, idle timeout, and lifetime timeout kill the process.
  * - start-cwd is the linked workspaceRoot, not a filesystem jail.
  */
-import { spawn as nodePtySpawn, type IPty } from "node-pty";
+import { createRequire } from "node:module";
 import { existsSync, realpathSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -286,6 +286,57 @@ function clampSize(value: number | undefined, fallback: number, min: number, max
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+/**
+ * Native PTY process shape used by node-pty. Loaded only when a session is
+ * spawned so API bootstrap (including Vercel) does not require pty.node.
+ */
+interface NativePtyProcess {
+  readonly pid: number;
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(): void;
+  onData(listener: (data: string) => void): void;
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): void;
+}
+
+type NativePtySpawn = (
+  file: string,
+  args: string[],
+  options: {
+    readonly name: string;
+    readonly cols: number;
+    readonly rows: number;
+    readonly cwd: string;
+    readonly env: Record<string, string>;
+    readonly useConpty: boolean;
+    readonly useConptyDll: boolean;
+  },
+) => NativePtyProcess;
+
+let loadedNativePtySpawn: NativePtySpawn | undefined;
+
+function loadNativePtySpawn(): NativePtySpawn {
+  if (loadedNativePtySpawn) return loadedNativePtySpawn;
+  try {
+    const require = createRequire(join(process.cwd(), "package.json"));
+    const nativeId = "node-pty";
+    const loaded = require(nativeId) as { spawn?: NativePtySpawn };
+    if (typeof loaded.spawn !== "function") {
+      throw new Error("node-pty spawn export is missing");
+    }
+    loadedNativePtySpawn = loaded.spawn;
+    return loadedNativePtySpawn;
+  } catch (error) {
+    if (error instanceof AtlasError) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new AtlasError(
+      "CONFIG_ERROR",
+      `Interactive Studio terminal is unavailable on this host (native PTY module failed to load): ${detail}`,
+      { statusCode: 503 },
+    );
+  }
+}
+
 function spawnNodePty(input: {
   readonly file: string;
   readonly args: readonly string[];
@@ -294,7 +345,8 @@ function spawnNodePty(input: {
   readonly rows: number;
   readonly env: Record<string, string>;
 }): StudioPtyProcess {
-  const proc: IPty = nodePtySpawn(input.file, [...input.args], {
+  const nativeSpawn = loadNativePtySpawn();
+  const proc = nativeSpawn(input.file, [...input.args], {
     name: "xterm-256color",
     cols: input.cols,
     rows: input.rows,
