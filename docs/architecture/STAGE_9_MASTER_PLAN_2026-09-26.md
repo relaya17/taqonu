@@ -120,11 +120,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-01 |
 | Current implementation | `apps/web/app/[locale]/auth/login/page.tsx` → `apiPost /auth/login` → hard navigation to `/${locale}/studio`. API: `apps/api/src/routes/auth.ts` + `createLocalUser` / password verify in `apps/api/src/services/auth-store.ts`. |
 | Existing evidence | Unauthenticated Playwright: login form a11y (`e2e/a11y.spec.ts`). API unit/route tests for login. Production unauthenticated login POST returns 401 for invalid password (CORS remediation evidence, not Stage 9 auth success). |
-| Missing evidence | Authenticated browser login with a **local test-only** identity. Production authenticated login. |
+| Missing evidence | Production authenticated login. |
 | Required action | Local Playwright fixture + login test. Do not invent Production credentials. |
 | Verification method | Browser: fill login, land on Studio. |
-| Status | **IMPLEMENTED** — browser acceptance **VERIFICATION INFRASTRUCTURE BLOCKED**. Production authenticated **ENVIRONMENT BLOCKED**. |
-| Commit | Pre-existing (not a Stage 9 commit). |
+| Status | **LOCALLY VERIFIED** (9.3). Production authenticated **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing login path; Stage 9 proof in 9.2/9.3 commits. |
 
 #### S9-02 Authenticated session
 
@@ -133,11 +133,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-02 |
 | Current implementation | Cookie session; `GET /api/v1/auth/session`. Web providers/session used by Studio. |
 | Existing evidence | Production unauthenticated `GET /api/v1/auth/session` 200 after `08e0c40` (anonymous session document, **not** authenticated Stage 9). Local API tests. |
-| Missing evidence | Browser proof that a logged-in cookie yields an authenticated Studio session. |
+| Missing evidence | Production authenticated session. |
 | Required action | Playwright after login. |
 | Verification method | Browser + session cookie. |
-| Status | **IMPLEMENTED** — authenticated browser **VERIFICATION INFRASTRUCTURE BLOCKED**. Production authenticated **ENVIRONMENT BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.3). Production authenticated **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing session path; Stage 9 proof in 9.2/9.3 commits. |
 
 #### S9-03 Logout
 
@@ -146,11 +146,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-03 |
 | Current implementation | Web logout → API logout / cookie clear. |
 | Existing evidence | API/route tests. |
-| Missing evidence | Browser logout then denied Studio. |
+| Missing evidence | Production logout. |
 | Required action | Playwright logout. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.3). Production **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing logout path; Stage 9 proof in 9.3 commit. |
 
 ### B. Studio entry and context
 
@@ -161,11 +161,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-04 |
 | Current implementation | `apps/web/app/[locale]/studio/page.tsx`. |
 | Existing evidence | Historical Studio screenshots in `docs/architecture/studio-evidence-refresh-2026-09-20.md` (HEAD then `0f7b92f`) — **HISTORICALLY VERIFIED** appearance, not Stage 9 acceptance. Unauthenticated Playwright smoke exists and is **not** Stage 9. |
-| Missing evidence | Login → Studio as REQUESTER. |
+| Missing evidence | Production authenticated Studio. |
 | Required action | Fixture + Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — authenticated browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.3). Production **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing Studio; Stage 9 proof in 9.3 commit. |
 
 #### S9-05 Project/workspace context
 
@@ -174,11 +174,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-05 |
 | Current implementation | Studio `project=` query + selected project TextField; API `GET /api/v1/projects`; `osStore` workspace root. |
 | Existing evidence | API tests (`apps/api/src/routes/projects.test.ts`, `project-access.test.ts`). |
-| Missing evidence | Authenticated browser context matching selected project. |
+| Missing evidence | Switching/isolation (9.4); Production. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** for selection (9.3). Switch/isolation still 9.4. |
+| Commit | Pre-existing; Stage 9 selection proof in 9.3 commit. |
 
 #### S9-06 Project picker
 
@@ -187,11 +187,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-06 |
 | Current implementation | Studio project `<TextField select>`. |
 | Existing evidence | Source + historical screenshots. |
-| Missing evidence | Authenticated browser picker interaction. |
+| Missing evidence | Production picker. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.3). |
+| Commit | Pre-existing picker; Stage 9 proof in 9.3 commit. |
 
 #### S9-07 Project selection
 
@@ -200,11 +200,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-07 |
 | Current implementation | Selecting a project updates `project=` and Studio queries. |
 | Existing evidence | Source. |
-| Missing evidence | Browser select Project A. |
+| Missing evidence | Production selection. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.3). |
+| Commit | Pre-existing; Stage 9 proof in 9.3 commit. |
 
 #### S9-08 Project switching
 
@@ -544,10 +544,22 @@ Do not skip a substage. Update this document after each.
 | Tests executed | `pnpm test:e2e:stage9` — 4 passed (setup + 3 probes) in 15.7s |
 | Runtime evidence | Register/login via real `/api/v1/auth/register` and `/en/auth/login` UI. REQUESTER `stage9-requester@atlas.test` storageState; DECIDER `stage9-decider@atlas.test` separate context. Probe `/auth/me` 200 for both; ids distinct; Production URL rejected. Authenticated `/en/studio` heading "Project Studio" as requester. |
 | Result | Local two-identity fixture **LOCALLY VERIFIED**. Production auth unchanged. Demo login not enabled in Production. |
-| Commit | *(filled after 9.2 commit)* |
+| Commit | **`e5a29bc`** |
 | Remaining blockers | B3–B10 remain. B5 still requires API process `ATLAS_OPERATOR_EMAILS` for 9.6/9.7 (set in Playwright webServer env and e2e CI job only; existing local `pnpm dev` reuse may lack it). |
 
-### 7.3 Substage 9.3 — *(pending)*
+### 7.3 Substage 9.3 — Auth + Studio entry + project context
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.3 |
+| Requirement IDs | S9-01, S9-02, S9-03, S9-04, S9-05 (selection), S9-06, S9-07 |
+| Files changed | `e2e/stage9/auth-studio.spec.ts`, `e2e/stage9/projects.ts`, `e2e/stage9/auth.setup.ts`, `e2e/stage9/accounts.ts`, `playwright.config.ts`, this document |
+| Tests executed | Operator-run `pnpm test:e2e:stage9` — **9 passed (19.3s)** |
+| Runtime evidence | UI login → Studio; `/auth/session` authenticated; Sign out → `/en/auth/login` and `/auth/me` 401; project picker select updates `?project=`; decider cookie jar ≠ requester. Setup uses real `/auth/register` + `/auth/login` cookies on a browser context (UI form still covered by the login test). |
+| Result | S9-01–S9-07 **LOCALLY VERIFIED**. Production authenticated still **ENVIRONMENT BLOCKED**. |
+| Commit | *(filled after 9.3 commit)* |
+| Remaining blockers | B3–B10; S9-08–S9-14 are 9.4. |
 
 ### 7.4 Substage 9.4 — *(pending)*
 
@@ -571,6 +583,7 @@ Do not skip a substage. Update this document after each.
 |---|---|
 | **`08e0c40`** | **Production API boot + CORS remediation.** Lazy `node-pty`, `WEB_ORIGIN` on Vercel API, CORS on serverless fallback. **Not a Stage 9 implementation commit.** Do not treat it as Studio/Auth/SoD closure. |
 | **`b148d9c`** | Stage 9.1 master plan (this document created). |
+| **`e5a29bc`** | Stage 9.2 local two-identity Playwright fixtures. |
 | `14522e9` | Stage 8 genius demotion tests (out of Stage 9 scope). |
 | Historical Studio evidence file | `docs/architecture/studio-evidence-refresh-2026-09-20.md` — **HISTORICALLY VERIFIED** screenshots / incomplete Playwright; not Stage 9 acceptance. |
 | remaining-work.md F Path 1 | Historical API apply/verify — **HISTORICALLY VERIFIED** at API layer; not Stage 9 browser AVR. |
@@ -579,17 +592,18 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 
 ---
 
-## 9. Remaining gaps (after 9.2)
+## 9. Remaining gaps (after 9.3)
 
 1. ~~No local Playwright authenticated fixture.~~ Closed locally in 9.2.
 2. ~~No second local identity for SoD in the browser.~~ Fixture exists; SoD **path** still 9.6.
-3. Stage 9 Playwright specs for Studio/AVR/i18n/a11y still incomplete (9.3–9.9).
-4. Apply → Verify → Rollback not browser-proven.
-5. Authenticated EN/HE/AR/RTL not proven.
-6. Authenticated a11y not proven; hamburger still `fixme`.
-7. `/en/projects` `ERR_ABORTED` unclassified.
-8. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
-9. Dual-session Studio decide UX missing (B4) — resolve in 9.6/9.7 without redesigning Studio.
+3. ~~Authenticated login/session/logout/Studio/picker.~~ Closed locally in 9.3.
+4. Switch / isolation / persistence / deep links not proven (9.4).
+5. Apply → Verify → Rollback not browser-proven.
+6. Authenticated EN/HE/AR/RTL not proven.
+7. Authenticated a11y not proven; hamburger still `fixme`.
+8. `/en/projects` `ERR_ABORTED` unclassified.
+9. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
+10. Dual-session Studio decide UX missing (B4) — resolve in 9.6/9.7 without redesigning Studio.
 
 ---
 
@@ -597,10 +611,10 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 
 Mark **STAGE 9 VERIFIED** only when all of the following are true:
 
-- [ ] Authenticated browser fixture works (local/test-only).
-- [ ] Two-identity SoD fixture works (`requester != approver`).
-- [ ] Authenticated Studio entry works.
-- [ ] Project selection works.
+- [x] Authenticated browser fixture works (local/test-only).
+- [x] Two-identity SoD fixture works (`requester != approver`).
+- [x] Authenticated Studio entry works.
+- [x] Project selection works.
 - [ ] Project switching works.
 - [ ] Isolation is proven.
 - [ ] Refresh persistence is proven.

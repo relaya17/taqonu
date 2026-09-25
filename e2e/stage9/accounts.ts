@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
-import { API_BASE } from "../helpers";
-import { assertLocalTestApiUrl, stage9ApiBase } from "./local-api";
+import { stage9ApiBase } from "./local-api";
 import {
   STAGE9_AUTH_DIR,
   STAGE9_DECIDER,
@@ -22,7 +21,7 @@ export async function ensureStage9Account(
   request: APIRequestContext,
   identity: Stage9Identity,
 ): Promise<Stage9IdentityRecord> {
-  const api = assertLocalTestApiUrl(API_BASE).toString().replace(/\/$/, "");
+  const api = stage9ApiBase();
   const register = await request.post(`${api}/api/v1/auth/register`, {
     data: {
       email: identity.email,
@@ -75,7 +74,13 @@ export async function loginViaUi(page: Page, identity: Stage9Identity): Promise<
   await expect(password).toHaveValue(identity.password);
   await expect(submit).toBeEnabled({ timeout: 20_000 });
   await submit.click();
-  await page.waitForURL(/\/(en|he|ar)\/studio/, { timeout: 120_000 });
+  await page.waitForURL(/\/(en|he|ar)\/studio(?:[/?#]|$)/, {
+    timeout: 120_000,
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Project Studio" }),
+  ).toBeVisible({ timeout: 45_000 });
 }
 
 export async function sessionFromPage(page: Page): Promise<Stage9IdentityRecord> {
