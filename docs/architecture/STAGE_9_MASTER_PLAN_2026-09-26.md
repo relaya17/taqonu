@@ -311,7 +311,7 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Authenticated browser Ask Agent against a real local workspace. |
 | Required action | Fixture workspace + Playwright. |
 | Verification method | Browser (real HTTP). |
-| Status | **LOCALLY VERIFIED** (9.5, operator run 19/19). Production Ask Agent **ENVIRONMENT BLOCKED**. |
+| Status | **LOCALLY VERIFIED** for the Studio **CODE_ENGINEER** path: button `Ask agent`, `POST /api/v1/studio/ask-agent`, patch id + status `PROPOSED\|EVALUATED\|AWAITING_APPROVAL\|DRAFT`, and the paragraph `Propose → review → approve → apply → verify`. The Personal Supervising Agent is a different panel and is **NOT PROVEN**. Production Ask Agent **ENVIRONMENT BLOCKED**. |
 | Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-16 Patch proposal
@@ -337,7 +337,7 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Two **real** local identities, real session cookies, requester cannot self-redeem, second identity can decide-and-execute. Studio UI currently stores `approvalId` in requester React state and retries `/apply?approvalId=` — that retry is the **requester** and must remain denied. Second identity has **no dedicated Studio decide panel**; Stage 9 must either add a **minimal** live-human control (not a redesign) or document browser cookie + real HTTP decide-and-execute as the acceptance layer for the SoD transition. |
 | Required action | Two-identity Playwright fixture. Do not bypass SoD. Do not change production authz to make the test pass. |
 | Verification method | Two Playwright storage states; browser + real API. |
-| Status | **LOCALLY VERIFIED** (9.6). Requester self-decide 403; distinct decider apply. Production SoD unchanged. GitHub Actions still sets `replace-me`, so this path is **ENVIRONMENT BLOCKED** on that job. |
+| Status | **LOCALLY VERIFIED** for two storage states: requester `POST .../apply/decide-and-execute` is **403**; decider `/auth/me` email is `stage9-decider@atlas.test`; decider decide returns `APPLIED`. The requester **can** sign the patch artifact with Approve. That click is not the SoD denial. There is still no Studio decide panel. Production SoD unchanged. GitHub Actions still sets `replace-me`, so this path is **ENVIRONMENT BLOCKED** on that job. |
 | Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-18 Apply
@@ -465,7 +465,7 @@ Required local proofs (substages 9.2–9.10):
 2. Login, session, logout.
 3. Authenticated Studio; picker; select; switch A→B; isolation; refresh; deep link.
 4. Ask Agent + visible proposal.
-5. Requester cannot self-approve / self-redeem Apply approval.
+5. Requester cannot self-redeem the live Apply approval (`decide-and-execute` 403). Patch-artifact Approve by the requester is allowed and is not this proof.
 6. Second identity performs authorized live-human decide-and-execute.
 7. Actual Apply writes files; Verify; Rollback restores.
 8. EN / HE / AR / RTL in authenticated Studio.
@@ -485,7 +485,7 @@ Production:
 |---|---|---|
 | B1 | Playwright storageState / login fixture. | **CLOSED locally** — `e2e/stage9` register+UI login. CI job now runs `pnpm test:e2e:stage9`. |
 | B2 | No second identity in Playwright. Do not invent `approver@atlas.local`. | **CLOSED locally** — `stage9-requester@atlas.test` + `stage9-decider@atlas.test`. |
-| B3 | Apply/Verify/Rollback not proven in browser in this program. | NOT STARTED (acceptance) |
+| B3 | Apply/Verify/Rollback not proven in browser in this program. | **CLOSED locally** — `avr.spec.ts` reads `hello.ts` before apply, after apply, after verify, and after rollback. |
 | B4 | Studio UI has no second-session live-human decide panel; SoD execute may need a **minimal** control or documented cookie+HTTP acceptance layer. | VERIFICATION INFRASTRUCTURE (product gap for dual-session UX, not SoD absence) |
 | B5 | `assertPatchWrite` on project-scoped patches: owner, or admin/operator. Fixture must assign DECIDER a role that may write the requester’s project **without** making requester == decider and **without** changing SoD. Planned local-only: `ATLAS_OPERATOR_EMAILS=stage9-decider@atlas.test` on Playwright/API **test process env**, never Production `vercel.json`. | DESIGN CONSTRAINT |
 | B6 | Ask-agent requires a filesystem `workspaceRoot` on the API host. Local e2e can satisfy this; Production cannot without a Production workspace. | ENVIRONMENT (Production AVR) |
@@ -584,7 +584,7 @@ Do not skip a substage. Update this document after each.
 | Requirement IDs | S9-15, S9-16 |
 | Files changed | `e2e/stage9/ask-agent.spec.ts` |
 | Tests executed | Operator-run `pnpm test:e2e:stage9` — **19 passed (1.7m)**, including Ask Agent. |
-| Runtime evidence | Authenticated Studio Ask Agent against a temp workspace returned a patch and showed the proposal. |
+| Runtime evidence | Authenticated Studio button `Ask agent` posted `/api/v1/studio/ask-agent` (CODE_ENGINEER heuristic, not the Personal Supervising Agent). The response contained a patch id and a proposal-class status, and Studio showed that status plus `Propose → review → approve → apply → verify`. |
 | Result | **LOCALLY VERIFIED**. Production Ask Agent **ENVIRONMENT BLOCKED**. |
 
 ### 7.6 Substage 9.6 — Two-identity SoD
@@ -639,7 +639,7 @@ Do not skip a substage. Update this document after each.
 
 GitHub Actions `NODE_ENV=production` issues `SameSite=None; Secure` session cookies. Chromium will not send Secure cookies on `http://127.0.0.1`. Production `sessionCookie()` is unchanged. Stage 9 rewrites **loopback-only** cookies to `Secure=false; SameSite=Lax`.
 
-`SUPABASE_SERVICE_ROLE_KEY=replace-me` makes `isLiveSupabase` false. Apply then returns **503** `Live approval store is not configured`. The local Stage 9 API keeps the developer's live Supabase so Apply can mint a real approval. CI still sets `replace-me` for the e2e job.
+`SUPABASE_SERVICE_ROLE_KEY=replace-me` makes `isLiveSupabase` false. Apply then returns **503** `Live approval store is not configured`. The local Stage 9 API keeps the developer's live Supabase so Apply can mint a real approval. If the parent shell exports that sentinel, the local Playwright API process drops only that value so `apps/api/.env` can supply the live local store. The GitHub Actions job env is unchanged and still sets `replace-me`.
 
 ### 7.10 Substage 9.10 — Local regression
 
@@ -700,9 +700,9 @@ Mark **STAGE 9 VERIFIED** only when all of the following are true:
 - [x] Isolation is proven.
 - [x] Refresh persistence is proven.
 - [x] Deep links are proven.
-- [x] Ask Agent is proven.
-- [x] Patch proposal is proven.
-- [x] Self-approval / self-redeem is denied.
+- [x] Ask Agent is proven for the CODE_ENGINEER `POST /api/v1/studio/ask-agent` path. Personal Supervising Agent is **NOT PROVEN**.
+- [x] Patch proposal is proven (real patch id and status on that response, then visible in Studio).
+- [x] Self-redeem of live Apply is denied (`decide-and-execute` 403). Requester patch Approve is allowed and is not this item.
 - [x] Legitimate second identity approval / decide-and-execute is proven.
 - [x] Actual Apply is proven (disk).
 - [x] Actual Verify is proven.
@@ -719,7 +719,7 @@ Mark **STAGE 9 VERIFIED** only when all of the following are true:
 - [x] Working tree is understood; `cookies.txt` and unrelated design docs unstaged.
 - [x] Stage 10 not started.
 
-Local executive status is **STAGE 9 LOCALLY VERIFIED**. Production authenticated Stage 9 remains **ENVIRONMENT BLOCKED**. CI SoD/AVR remains **ENVIRONMENT BLOCKED** under `replace-me`. This is not a Production verification.
+Local executive status is **STAGE 9 LOCALLY VERIFIED** for the assertions in `e2e/stage9` (operator run recorded at `51714f8`, re-run **19 passed (2.0m)** after the local fixture stopped inheriting `SUPABASE_SERVICE_ROLE_KEY=replace-me`). That status does not include the Personal Supervising Agent, a Studio decide panel, Production authenticated Studio, or CI Apply/SoD/AVR. Production authenticated Stage 9 remains **ENVIRONMENT BLOCKED**. CI SoD/AVR remains **ENVIRONMENT BLOCKED** under `replace-me`. This is not a Production verification.
 
 ---
 
@@ -735,7 +735,7 @@ Local/test-only only. Must not affect Production authentication.
 Invariants the fixture must not weaken:
 
 - `requester != approver`
-- requester cannot self-approve / self-redeem
+- requester cannot self-redeem the live approval (`decide-and-execute`); patch-artifact Approve by the requester is a different control
 - approver cannot impersonate requester (separate cookies)
 - approval requires the correct authorization context
 - fail closed unless API base URL is localhost / loopback
@@ -754,7 +754,8 @@ Requester login
   → Ask Agent
   → Patch proposal
   → AWAITING_APPROVAL / approve-for-apply
-  → Requester self-approval / self-redeem DENIED
+  → Requester may Approve the patch artifact
+  → Requester self decide-and-execute DENIED (403)
   → Approver authenticates separately
   → Authorized decide-and-execute
   → Apply (disk write)

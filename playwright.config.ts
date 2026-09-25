@@ -24,6 +24,13 @@ function envWith(extra: Record<string, string>): Record<string, string> {
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) out[key] = value;
   }
+  // A parent or CI shell may export the non-live sentinel. The Stage 9 API
+  // must keep the local approval store from apps/api/.env. Dropping only this
+  // sentinel lets loadServerDotEnv fill the live local key. Production env
+  // and the GitHub Actions job env are not changed here.
+  if (out.SUPABASE_SERVICE_ROLE_KEY === "replace-me") {
+    delete out.SUPABASE_SERVICE_ROLE_KEY;
+  }
   return { ...out, ...extra };
 }
 
