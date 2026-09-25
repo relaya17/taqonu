@@ -575,15 +575,69 @@ Do not skip a substage. Update this document after each.
 | Commit | *(filled after 9.4 commit)* |
 | Remaining blockers | B3–B4, B5–B10; Ask Agent is 9.5. |
 
-### 7.5 Substage 9.5 — *(pending)*
+### 7.5 Substage 9.5 — Ask Agent spec (browser proof pending)
 
-### 7.6 Substage 9.6 — *(pending)*
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.5 |
+| Requirement IDs | S9-15, S9-16 |
+| Files changed | `e2e/stage9/ask-agent.spec.ts` |
+| Tests executed | Not claimed in this pass. Operator must run `pnpm test:e2e:stage9`. |
+| Runtime evidence | Spec exists: authenticated Ask Agent → visible proposal. **NOT FULLY VERIFIED**. |
+| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. Production Ask Agent **ENVIRONMENT BLOCKED**. |
 
-### 7.7 Substage 9.7 — *(pending)*
+### 7.6 Substage 9.6 — SoD spec (browser proof pending)
 
-### 7.8 Substage 9.8 — *(pending)*
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.6 |
+| Requirement IDs | S9-17 |
+| Files changed | `e2e/stage9/sod.spec.ts`, `e2e/stage9/patch-flow.ts` |
+| Tests executed | Not claimed in this pass. |
+| Runtime evidence | Requester self `decide-and-execute` expected 403; distinct decider expected APPLIED. SoD code unchanged. **NOT FULLY VERIFIED**. |
+| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. |
 
-### 7.9 Substage 9.9 — *(pending)*
+### 7.7 Substage 9.7 — AVR spec (browser proof pending)
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.7 |
+| Requirement IDs | S9-18, S9-19, S9-20 |
+| Files changed | `e2e/stage9/avr.spec.ts` |
+| Tests executed | Not claimed in this pass. |
+| Runtime evidence | Spec asserts disk write after decider apply, Studio Verify, rollback restore. **NOT FULLY VERIFIED**. |
+| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. Production AVR **ENVIRONMENT BLOCKED**. |
+
+### 7.8 Substage 9.8 — Locale spec (browser proof pending)
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.8 |
+| Requirement IDs | S9-21, S9-22, S9-23, S9-24 |
+| Files changed | `e2e/stage9/locale.spec.ts` |
+| Tests executed | Not claimed in this pass. |
+| Runtime evidence | Spec covers authenticated `/en|/he|/ar/studio` headings, `lang`, `dir`. **NOT FULLY VERIFIED**. |
+| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. |
+
+### 7.9 Substage 9.9 — A11y + `/en/projects` spec (browser proof pending)
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.9 |
+| Requirement IDs | S9-25, B8 |
+| Files changed | `e2e/stage9/a11y-studio.spec.ts` |
+| Tests executed | Not claimed in this pass. Unauthenticated `e2e/a11y.spec.ts` hamburger `fixme` **preserved**. |
+| Runtime evidence | Spec: authenticated Studio axe, authenticated hamburger, `/en/projects` document navigation without `ERR_ABORTED` (`domcontentloaded`, not `networkidle`). Historical aborts classified as Playwright in-flight abort under concurrent compile / `networkidle`, pending this spec's run. **NOT FULLY VERIFIED**. |
+| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. |
+
+### 7.5a Fixture CI cookie rewrite (2026-09-26)
+
+GitHub Actions `NODE_ENV=production` issues `SameSite=None; Secure` session cookies. Chromium will not send Secure cookies on `http://127.0.0.1`, so setup `/auth/me` returned **401**. Production `sessionCookie()` is unchanged. Stage 9 parses `Set-Cookie` and rewrites **loopback-only** cookies to `Secure=false; SameSite=Lax`. Non-loopback cookie hosts fail closed. Cookie-authenticated CI writes also send `Origin` because production CSRF requires it.
 
 ### 7.10 Substage 9.10 — *(pending)*
 
@@ -612,11 +666,11 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 2. ~~No second local identity for SoD in the browser.~~ Fixture exists; SoD **path** still 9.6.
 3. ~~Authenticated login/session/logout/Studio/picker.~~ Closed locally in 9.3.
 4. ~~Switch / isolation / persistence / deep links.~~ Closed locally in 9.4.
-5. Ask Agent + patch proposal not browser-proven (9.5).
-6. Apply → Verify → Rollback not browser-proven.
-7. Authenticated EN/HE/AR/RTL not proven.
-8. Authenticated a11y not proven; hamburger still `fixme`.
-9. `/en/projects` `ERR_ABORTED` unclassified.
+5. Ask Agent + patch proposal spec exists; browser run **NOT FULLY VERIFIED** (9.5).
+6. Apply → Verify → Rollback spec exists; browser run **NOT FULLY VERIFIED** (9.7).
+7. Authenticated EN/HE/AR/RTL spec exists; browser run **NOT FULLY VERIFIED** (9.8).
+8. Authenticated a11y spec exists; unauthenticated hamburger `fixme` preserved (9.9).
+9. `/en/projects` document `ERR_ABORTED` spec exists; classification pending run (9.9). Historical observation: Playwright abort under `networkidle` / concurrent compile, not a deleted assertion.
 10. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
 11. Dual-session Studio decide UX missing (B4) — resolve in 9.6/9.7 without redesigning Studio.
 

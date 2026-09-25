@@ -22,7 +22,7 @@ test.describe("Stage 9.3 auth + Studio entry + project context", () => {
       await expect(
         page.getByRole("heading", { level: 1, name: "Project Studio" }),
       ).toBeVisible({ timeout: 45_000 });
-      const me = await page.request.get(`${stage9ApiBase(page.url())}/api/v1/auth/me`);
+      const me = await page.context().request.get(`${stage9ApiBase(page.url())}/api/v1/auth/me`);
       expect(me.status()).toBe(200);
       const body = (await me.json()) as { user: { email: string } };
       expect(body.user.email.toLowerCase()).toBe(STAGE9_REQUESTER_EMAIL);

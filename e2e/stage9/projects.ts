@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { stage9ApiBase } from "./local-api";
+import { stage9ApiBase, stage9MutationHeaders } from "./local-api";
 
 export interface Stage9Project {
   readonly id: string;
@@ -19,7 +19,7 @@ export async function createStage9Project(
   const slug = `s9-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const res = await request.post(`${api}/api/v1/projects`, {
     data: { slug, name, description: "Stage 9 local test project" },
-    headers: { "content-type": "application/json" },
+    headers: stage9MutationHeaders(),
   });
   if (!res.ok()) {
     throw new Error(`Stage 9 create project failed: ${res.status()} ${await res.text()}`);
@@ -43,7 +43,7 @@ export async function linkWorkspaceRoot(
   const api = stage9ApiBase();
   const res = await request.put(`${api}/api/v1/projects/${projectId}/workspace-root`, {
     data: { workspaceRoot },
-    headers: { "content-type": "application/json" },
+    headers: stage9MutationHeaders(),
   });
   if (!res.ok()) {
     throw new Error(

@@ -8,7 +8,7 @@ import {
   STAGE9_REQUESTER,
   STAGE9_REQUESTER_STATE,
 } from "./identities";
-import { stage9ApiBase } from "./local-api";
+import { stage9ApiBase, softenLoopbackSessionCookies } from "./local-api";
 
 setup("local two-identity Stage 9 sessions", async ({ browser }) => {
   setup.setTimeout(180_000);
@@ -19,11 +19,11 @@ setup("local two-identity Stage 9 sessions", async ({ browser }) => {
   const deciderContext = await browser.newContext();
   try {
     const requesterAccount = await ensureStage9Account(
-      requesterContext.request,
+      requesterContext,
       STAGE9_REQUESTER,
     );
     const deciderAccount = await ensureStage9Account(
-      deciderContext.request,
+      deciderContext,
       STAGE9_DECIDER,
     );
     expect(requesterAccount.id).not.toBe(deciderAccount.id);
@@ -33,6 +33,7 @@ setup("local two-identity Stage 9 sessions", async ({ browser }) => {
     await expect(
       requesterPage.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 60_000 });
+    await softenLoopbackSessionCookies(requesterContext);
     const requesterSession = await sessionFromPage(requesterPage);
     expect(requesterSession.id).toBe(requesterAccount.id);
     await requesterContext.storageState({ path: STAGE9_REQUESTER_STATE });
@@ -42,9 +43,15 @@ setup("local two-identity Stage 9 sessions", async ({ browser }) => {
     await expect(
       deciderPage.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 60_000 });
+    await softenLoopbackSessionCookies(deciderContext);
     const deciderSession = await sessionFromPage(deciderPage);
     expect(deciderSession.id).toBe(deciderAccount.id);
     expect(deciderSession.id).not.toBe(requesterSession.id);
+    if (!["operator", "admin", "owner"].includes(deciderSession.role)) {
+      throw new Error(
+        `Stage 9 decider role is "${deciderSession.role}", not operator/admin/owner. CI/local API must set ATLAS_OPERATOR_EMAILS=${STAGE9_DECIDER.email} before these users are created. Do not change production SoD.`,
+      );
+    }
     await deciderContext.storageState({ path: STAGE9_DECIDER_STATE });
     await writeStage9IdentityFile({
       requester: requesterSession,

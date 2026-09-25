@@ -35,7 +35,12 @@ const localWebServers = [
     url: "http://127.0.0.1:4000/api/v1/health",
     reuseExistingServer: true,
     timeout: 180_000,
-    env: envWith({ ATLAS_OPERATOR_EMAILS: STAGE9_OPERATOR_EMAILS_ENV }),
+    env: envWith({
+      ATLAS_OPERATOR_EMAILS: STAGE9_OPERATOR_EMAILS_ENV,
+      // Fresh in-memory users so bootstrapRole sees ATLAS_OPERATOR_EMAILS.
+      // Persisted local users keep the role they were created with.
+      ATLAS_SKIP_STORE_PERSIST: "1",
+    }),
   },
   {
     command: "pnpm --filter @atlas/web dev",

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 import { STAGE9_DECIDER_EMAIL, STAGE9_DECIDER_STATE, STAGE9_IDENTITY_RECORD, STAGE9_REQUESTER_EMAIL } from "./identities";
-import { assertLocalTestApiUrl, stage9ApiBase } from "./local-api";
+import { assertLocalTestApiUrl, assertLoopbackCookieHost, stage9ApiBase } from "./local-api";
 import type { Stage9IdentityFile } from "./identities";
 
 test.describe("Stage 9.2 authenticated fixtures", () => {
@@ -19,6 +19,11 @@ test.describe("Stage 9.2 authenticated fixtures", () => {
     expect(assertLocalTestApiUrl("http://localhost:4000").hostname).toBe(
       "localhost",
     );
+    expect(() => assertLoopbackCookieHost("taqonu-api.vercel.app")).toThrow(
+      /refuses to rewrite cookies/,
+    );
+    expect(() => assertLoopbackCookieHost("127.0.0.1")).not.toThrow();
+    expect(() => assertLoopbackCookieHost(".localhost")).not.toThrow();
   });
 
   test("requester storageState is a real authenticated session", async ({

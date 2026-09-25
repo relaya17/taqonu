@@ -1,11 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
-import { stage9ApiBase } from "./local-api";
+import { expect, type APIResponse, type BrowserContext, type Page } from "@playwright/test";
+import {
+  assertLoopbackCookieHost,
+  softenLoopbackSessionCookies,
+  stage9ApiBase,
+  stage9MutationHeaders,
+} from "./local-api";
 import {
   STAGE9_AUTH_DIR,
-  STAGE9_DECIDER,
   STAGE9_IDENTITY_RECORD,
-  STAGE9_REQUESTER,
   type Stage9Identity,
   type Stage9IdentityFile,
   type Stage9IdentityRecord,
@@ -18,21 +21,22 @@ interface SessionPayload {
 }
 
 export async function ensureStage9Account(
-  request: APIRequestContext,
+  context: BrowserContext,
   identity: Stage9Identity,
 ): Promise<Stage9IdentityRecord> {
   const api = stage9ApiBase();
-  const register = await request.post(`${api}/api/v1/auth/register`, {
+  const register = await context.request.post(`${api}/api/v1/auth/register`, {
     data: {
       email: identity.email,
       password: identity.password,
       displayName: identity.displayName,
       locale: "en",
     },
-    headers: { "content-type": "application/json" },
+    headers: stage9MutationHeaders(),
   });
 
   if (register.status() === 201) {
+    await installLoopbackAuthCookies(context, register);
     return recordFromSession(identity, (await register.json()) as SessionPayload);
   }
 
@@ -43,9 +47,9 @@ export async function ensureStage9Account(
     );
   }
 
-  const login = await request.post(`${api}/api/v1/auth/login`, {
+  const login = await context.request.post(`${api}/api/v1/auth/login`, {
     data: { email: identity.email, password: identity.password },
-    headers: { "content-type": "application/json" },
+    headers: stage9MutationHeaders(),
   });
   if (!login.ok()) {
     const body = await login.text();
@@ -53,7 +57,50 @@ export async function ensureStage9Account(
       `Stage 9 login for existing ${identity.email} failed: ${login.status()} ${body}`,
     );
   }
+  await installLoopbackAuthCookies(context, login);
   return recordFromSession(identity, (await login.json()) as SessionPayload);
+}
+
+async function installLoopbackAuthCookies(
+  context: BrowserContext,
+  response: APIResponse,
+): Promise<void> {
+  const api = stage9ApiBase();
+  const setCookies = response
+    .headersArray()
+    .filter((header) => header.name.toLowerCase() === "set-cookie");
+  if (setCookies.length === 0) {
+    await softenLoopbackSessionCookies(context);
+    return;
+  }
+  const cookies = setCookies.map(({ value }) => {
+    const attrs = value.split(";");
+    const pair = attrs[0] ?? "";
+    const eq = pair.indexOf("=");
+    const domainAttr = attrs.find((part) => /^\s*domain=/i.test(part));
+    if (domainAttr) {
+      assertLoopbackCookieHost(domainAttr.replace(/^\s*domain=/i, "").trim());
+    }
+    const pathAttr = attrs.find((part) => /^\s*path=/i.test(part));
+    const rawValue = pair.slice(eq + 1).trim();
+    let decoded = rawValue;
+    try {
+      decoded = decodeURIComponent(rawValue);
+    } catch {
+      decoded = rawValue;
+    }
+    return {
+      name: pair.slice(0, eq).trim(),
+      value: decoded,
+      url: api,
+      path: pathAttr?.replace(/^\s*path=/i, "").trim() || "/",
+      httpOnly: /httponly/i.test(value),
+      secure: false,
+      sameSite: "Lax" as const,
+    };
+  });
+  await context.clearCookies();
+  await context.addCookies(cookies);
 }
 
 export async function loginViaUi(page: Page, identity: Stage9Identity): Promise<void> {
@@ -81,13 +128,14 @@ export async function loginViaUi(page: Page, identity: Stage9Identity): Promise<
   await expect(
     page.getByRole("heading", { level: 1, name: "Project Studio" }),
   ).toBeVisible({ timeout: 45_000 });
+  await softenLoopbackSessionCookies(page.context());
 }
 
 export async function sessionFromPage(page: Page): Promise<Stage9IdentityRecord> {
   const api = stage9ApiBase(page.url());
-  const res = await page.request.get(`${api}/api/v1/auth/me`);
+  const res = await page.context().request.get(`${api}/api/v1/auth/me`);
   if (!res.ok()) {
-    throw new Error(`Stage 9 /auth/me failed after UI login: ${res.status()}`);
+    throw new Error(`Stage 9 /auth/me failed after local session setup: ${res.status()}`);
   }
   return recordFromSession(
     { email: "unknown", password: "", displayName: "", key: "requester" },

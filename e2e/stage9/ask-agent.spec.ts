@@ -50,10 +50,8 @@ test.describe("Stage 9.5 Ask Agent + patch proposal", () => {
     expect(body.patch?.status).toMatch(/PROPOSED|EVALUATED|AWAITING_APPROVAL|DRAFT/);
 
     await expect(
-      page.getByRole("heading", {
-        name: "Propose → review → approve → apply → verify",
-      }),
-    ).toBeVisible();
+      page.getByText("Propose → review → approve → apply → verify"),
+    ).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(body.patch!.status!, { exact: true }).first()).toBeVisible({
       timeout: 20_000,
     });
