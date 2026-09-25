@@ -23,6 +23,7 @@ supabase/.branches/
 supabase/.temp/
 playwright-report
 test-results
+e2e/.auth/*.json
 e2e-results.json
 atlas-evals/results
 *.pem

@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import {
+  STAGE9_OPERATOR_EMAILS_ENV,
+  STAGE9_REQUESTER_STATE,
+} from "./e2e/stage9/identities";
 
 /**
  * Minimal Playwright config.
@@ -13,12 +17,25 @@ import { defineConfig, devices } from "@playwright/test";
  * the suite runnable at all, mirroring what e2e-critical-path.yml assumes
  * already exists.
  */
+function envWith(extra: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return { ...out, ...extra };
+}
+
+const chromiumLaunch = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+  ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } }
+  : {};
+
 const localWebServers = [
   {
     command: "pnpm --filter @atlas/api dev",
     url: "http://127.0.0.1:4000/api/v1/health",
     reuseExistingServer: true,
     timeout: 180_000,
+    env: envWith({ ATLAS_OPERATOR_EMAILS: STAGE9_OPERATOR_EMAILS_ENV }),
   },
   {
     command: "pnpm --filter @atlas/web dev",
@@ -46,18 +63,25 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: /[/\\]stage9[/\\]/,
       use: {
         ...devices["Desktop Chrome"],
-        // CI (Linux image) may set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a
-        // pre-baked binary. Local Windows/macOS must use Playwright's own
-        // browser install — do not default to a Linux path.
-        ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
-          ? {
-              launchOptions: {
-                executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
-              },
-            }
-          : {}),
+        ...chromiumLaunch,
+      },
+    },
+    {
+      name: "stage9-setup",
+      testMatch: /[/\\]stage9[/\\]auth\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"], ...chromiumLaunch },
+    },
+    {
+      name: "stage9",
+      testMatch: /[/\\]stage9[/\\].*\.spec\.ts/,
+      dependencies: ["stage9-setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        ...chromiumLaunch,
+        storageState: STAGE9_REQUESTER_STATE,
       },
     },
   ],

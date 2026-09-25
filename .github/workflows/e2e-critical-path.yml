@@ -44,6 +44,8 @@ env:
   ATLAS_SKIP_AUDIT_LOG: "1"
   ATLAS_SKIP_METRICS_LOG: "1"
   ATLAS_SKIP_STORE_PERSIST: "1"
+  # Local/CI Stage 9 SoD fixture only. Never set on Production Vercel.
+  ATLAS_OPERATOR_EMAILS: stage9-decider@atlas.test
 
 jobs:
   playwright:
@@ -101,6 +103,13 @@ jobs:
 
       - name: Product surfaces + security + a11y suites
         run: pnpm test:e2e:product && pnpm test:e2e:security && pnpm test:e2e:a11y
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_API_URL: http://127.0.0.1:4000
+          CI: true
+
+      - name: Stage 9 authenticated fixtures
+        run: pnpm test:e2e:stage9
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_API_URL: http://127.0.0.1:4000

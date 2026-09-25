@@ -483,8 +483,8 @@ Production:
 
 | ID | Blocker | Class |
 |---|---|---|
-| B1 | No Playwright `storageState` / login fixture; CI `e2e-critical-path.yml` uses `NODE_ENV=production` so `ensureDevLocalUser` / demo login **does not run**. Register path is the legitimate local/CI fixture. | VERIFICATION INFRASTRUCTURE |
-| B2 | No second identity in Playwright. Do not invent `approver@atlas.local`. Use test emails such as `stage9-requester@atlas.test` and `stage9-decider@atlas.test`. | VERIFICATION INFRASTRUCTURE |
+| B1 | Playwright storageState / login fixture. | **CLOSED locally** — `e2e/stage9` register+UI login. CI job now runs `pnpm test:e2e:stage9`. |
+| B2 | No second identity in Playwright. Do not invent `approver@atlas.local`. | **CLOSED locally** — `stage9-requester@atlas.test` + `stage9-decider@atlas.test`. |
 | B3 | Apply/Verify/Rollback not proven in browser in this program. | NOT STARTED (acceptance) |
 | B4 | Studio UI has no second-session live-human decide panel; SoD execute may need a **minimal** control or documented cookie+HTTP acceptance layer. | VERIFICATION INFRASTRUCTURE (product gap for dual-session UX, not SoD absence) |
 | B5 | `assertPatchWrite` on project-scoped patches: owner, or admin/operator. Fixture must assign DECIDER a role that may write the requester’s project **without** making requester == decider and **without** changing SoD. Planned local-only: `ATLAS_OPERATOR_EMAILS=stage9-decider@atlas.test` on Playwright/API **test process env**, never Production `vercel.json`. | DESIGN CONSTRAINT |
@@ -530,10 +530,22 @@ Do not skip a substage. Update this document after each.
 | Tests executed | None (documentation reconciliation). |
 | Runtime evidence | Repository inspection of auth, Studio, `code.ts`, `project-access.ts`, Playwright config, `e2e/*.spec.ts`, `08e0c40` CORS commit. |
 | Result | Authoritative Stage 9 document created. Existing product paths recorded as IMPLEMENTED; Stage 9 browser acceptance recorded as blocked or not started. |
-| Commit | *(filled after 9.1 commit)* |
+| Commit | **`b148d9c`** |
 | Remaining blockers | B1–B10 unchanged. |
 
-### 7.2 Substage 9.2 — *(pending)*
+### 7.2 Substage 9.2 — Authenticated Playwright fixtures
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.2 |
+| Requirement IDs | Infrastructure for S9-01–S9-25. Does **not** close S9-01–S9-07 (that is 9.3). Closes B1 and B2 locally. |
+| Files changed | `e2e/stage9/local-api.ts`, `e2e/stage9/identities.ts`, `e2e/stage9/accounts.ts`, `e2e/stage9/auth.setup.ts`, `e2e/stage9/fixture-probe.spec.ts`, `e2e/.auth/.gitkeep`, `playwright.config.ts`, `package.json`, `.gitignore`, `.github/workflows/e2e-critical-path.yml`, this document |
+| Tests executed | `pnpm test:e2e:stage9` — 4 passed (setup + 3 probes) in 15.7s |
+| Runtime evidence | Register/login via real `/api/v1/auth/register` and `/en/auth/login` UI. REQUESTER `stage9-requester@atlas.test` storageState; DECIDER `stage9-decider@atlas.test` separate context. Probe `/auth/me` 200 for both; ids distinct; Production URL rejected. Authenticated `/en/studio` heading "Project Studio" as requester. |
+| Result | Local two-identity fixture **LOCALLY VERIFIED**. Production auth unchanged. Demo login not enabled in Production. |
+| Commit | *(filled after 9.2 commit)* |
+| Remaining blockers | B3–B10 remain. B5 still requires API process `ATLAS_OPERATOR_EMAILS` for 9.6/9.7 (set in Playwright webServer env and e2e CI job only; existing local `pnpm dev` reuse may lack it). |
 
 ### 7.3 Substage 9.3 — *(pending)*
 
@@ -558,6 +570,7 @@ Do not skip a substage. Update this document after each.
 | Commit | Role |
 |---|---|
 | **`08e0c40`** | **Production API boot + CORS remediation.** Lazy `node-pty`, `WEB_ORIGIN` on Vercel API, CORS on serverless fallback. **Not a Stage 9 implementation commit.** Do not treat it as Studio/Auth/SoD closure. |
+| **`b148d9c`** | Stage 9.1 master plan (this document created). |
 | `14522e9` | Stage 8 genius demotion tests (out of Stage 9 scope). |
 | Historical Studio evidence file | `docs/architecture/studio-evidence-refresh-2026-09-20.md` — **HISTORICALLY VERIFIED** screenshots / incomplete Playwright; not Stage 9 acceptance. |
 | remaining-work.md F Path 1 | Historical API apply/verify — **HISTORICALLY VERIFIED** at API layer; not Stage 9 browser AVR. |
@@ -566,11 +579,11 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 
 ---
 
-## 9. Remaining gaps (after 9.1)
+## 9. Remaining gaps (after 9.2)
 
-1. No local Playwright authenticated fixture.
-2. No second local identity for SoD in the browser.
-3. No Stage 9 Playwright specs (must not relabel unauthenticated smoke).
+1. ~~No local Playwright authenticated fixture.~~ Closed locally in 9.2.
+2. ~~No second local identity for SoD in the browser.~~ Fixture exists; SoD **path** still 9.6.
+3. Stage 9 Playwright specs for Studio/AVR/i18n/a11y still incomplete (9.3–9.9).
 4. Apply → Verify → Rollback not browser-proven.
 5. Authenticated EN/HE/AR/RTL not proven.
 6. Authenticated a11y not proven; hamburger still `fixme`.
