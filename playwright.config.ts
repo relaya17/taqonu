@@ -47,6 +47,11 @@ const localWebServers = [
       // file lets this process create the decider while the operator list is set.
       ATLAS_AUTH_PATH: join(stage9AuthDir, "users.json"),
       ATLAS_SESSIONS_PATH: join(stage9AuthDir, "sessions.json"),
+      // apps/api/.env points at a live local Supabase. Register then returns
+      // the new local id, while /auth/me prefers the existing Supabase user
+      // for the same email (the old .atlas id). Stage 9 identity is the
+      // local session. CI already uses this sentinel.
+      SUPABASE_SERVICE_ROLE_KEY: "replace-me",
       ATLAS_SKIP_STORE_PERSIST: "1",
     }),
   },
