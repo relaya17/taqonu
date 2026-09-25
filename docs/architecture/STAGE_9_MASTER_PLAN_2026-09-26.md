@@ -213,11 +213,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-08 |
 | Current implementation | Same picker; switch A → B. |
 | Existing evidence | Source. |
-| Missing evidence | Browser A → B. |
+| Missing evidence | Production. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.4). |
+| Commit | Pre-existing; Stage 9 proof in 9.4 commit. |
 
 #### S9-09 Workspace root
 
@@ -226,11 +226,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-09 |
 | Current implementation | `PUT /api/v1/projects/:id/workspace-root`; `assertSafeWorkspaceRoot`; ask-agent requires local root on API host. |
 | Existing evidence | API tests. Ask-agent fails closed without a host-local root. |
-| Missing evidence | Stage 9 browser/API fixture that links two temp workspace roots. |
+| Missing evidence | Production workspace. |
 | Required action | Local fixture dirs + PUT workspace-root (test-only paths). |
 | Verification method | Local API + browser Ask Agent. |
-| Status | **IMPLEMENTED** — local AVR **VERIFICATION INFRASTRUCTURE BLOCKED** (no Stage 9 workspace fixture). |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** for linking two roots (9.4). Ask Agent still 9.5. |
+| Commit | Pre-existing; Stage 9 workspace fixture in 9.4 commit. |
 
 #### S9-10 Project/workspace relationship
 
@@ -239,11 +239,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-10 |
 | Current implementation | `osStore.setWorkspaceRoot(projectId, root)`; owner bind on create. |
 | Existing evidence | API tests. |
-| Missing evidence | Two projects, two roots, no cross-read in browser. |
+| Missing evidence | Production. |
 | Required action | Playwright isolation. |
 | Verification method | Browser + disk. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.4). |
+| Commit | Pre-existing; Stage 9 proof in 9.4 commit. |
 
 #### S9-11 Context after switching
 
@@ -252,11 +252,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-11 |
 | Current implementation | Studio queries keyed by `projectId`. |
 | Existing evidence | Source. |
-| Missing evidence | After A→B, UI shows B not A. |
+| Missing evidence | Production. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.4). |
+| Commit | Pre-existing; Stage 9 proof in 9.4 commit. |
 
 ### C. Isolation and persistence
 
@@ -267,11 +267,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-12 |
 | Current implementation | `assertProjectWriteAccess` / `assertProjectReadAccess` in `apps/api/src/services/project-access.ts`. Non-owner `user` denied. `admin` and Control Plane roles bypass ownership (existing product rule — do not change for the fixture). |
 | Existing evidence | `project-access.test.ts`, isolation audit. |
-| Missing evidence | Browser: two projects, no A data after switch to B. Cross-user isolation remains API-tested; browser proves picker isolation. |
+| Missing evidence | Cross-user isolation remains API-tested. Production. |
 | Required action | Playwright two-project fixture. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** (API) — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** for picker/workspace isolation (9.4). |
+| Commit | Pre-existing; Stage 9 proof in 9.4 commit. |
 
 #### S9-13 Refresh persistence
 
@@ -280,11 +280,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-13 |
 | Current implementation | `project=` query string on Studio. |
 | Existing evidence | Source. |
-| Missing evidence | Browser reload keeps selected project. |
+| Missing evidence | Production. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.4). |
+| Commit | Pre-existing; Stage 9 proof in 9.4 commit. |
 
 #### S9-14 Deep links
 
@@ -293,11 +293,11 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Requirement ID | S9-14 |
 | Current implementation | `/[locale]/studio?project=<uuid>`. |
 | Existing evidence | Source. |
-| Missing evidence | Direct navigation as authenticated user. |
+| Missing evidence | Production. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.4). |
+| Commit | Pre-existing; Stage 9 proof in 9.4 commit. |
 
 ### D. Agent and patch workflow
 
@@ -558,10 +558,22 @@ Do not skip a substage. Update this document after each.
 | Tests executed | Operator-run `pnpm test:e2e:stage9` — **9 passed (19.3s)** |
 | Runtime evidence | UI login → Studio; `/auth/session` authenticated; Sign out → `/en/auth/login` and `/auth/me` 401; project picker select updates `?project=`; decider cookie jar ≠ requester. Setup uses real `/auth/register` + `/auth/login` cookies on a browser context (UI form still covered by the login test). |
 | Result | S9-01–S9-07 **LOCALLY VERIFIED**. Production authenticated still **ENVIRONMENT BLOCKED**. |
-| Commit | *(filled after 9.3 commit)* |
+| Commit | **`9bf9c30`** |
 | Remaining blockers | B3–B10; S9-08–S9-14 are 9.4. |
 
-### 7.4 Substage 9.4 — *(pending)*
+### 7.4 Substage 9.4 — Switch, isolation, persistence, deep links
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.4 |
+| Requirement IDs | S9-08, S9-09, S9-10, S9-11, S9-12, S9-13, S9-14 |
+| Files changed | `e2e/stage9/isolation.spec.ts`, `e2e/stage9/projects.ts`, this document |
+| Tests executed | Operator-run `pnpm test:e2e:stage9` — **10 passed (1.6m)** including isolation/refresh/deep-link |
+| Runtime evidence | Two temp workspaces with distinct marker files. Project A tree/editor shows only A; switch to B shows only B; reload keeps B; deep link `?project=` restores A without B leak. |
+| Result | S9-08–S9-14 **LOCALLY VERIFIED**. Production workspace **ENVIRONMENT BLOCKED**. |
+| Commit | *(filled after 9.4 commit)* |
+| Remaining blockers | B3–B4, B5–B10; Ask Agent is 9.5. |
 
 ### 7.5 Substage 9.5 — *(pending)*
 
@@ -584,6 +596,8 @@ Do not skip a substage. Update this document after each.
 | **`08e0c40`** | **Production API boot + CORS remediation.** Lazy `node-pty`, `WEB_ORIGIN` on Vercel API, CORS on serverless fallback. **Not a Stage 9 implementation commit.** Do not treat it as Studio/Auth/SoD closure. |
 | **`b148d9c`** | Stage 9.1 master plan (this document created). |
 | **`e5a29bc`** | Stage 9.2 local two-identity Playwright fixtures. |
+| **`9bf9c30`** | Stage 9.3 authenticated Studio entry and project picker. |
+| **`ad366c2`** | Control Plane `zod` dependency (Vercel TS2307). **Not a Stage 9 implementation commit.** |
 | `14522e9` | Stage 8 genius demotion tests (out of Stage 9 scope). |
 | Historical Studio evidence file | `docs/architecture/studio-evidence-refresh-2026-09-20.md` — **HISTORICALLY VERIFIED** screenshots / incomplete Playwright; not Stage 9 acceptance. |
 | remaining-work.md F Path 1 | Historical API apply/verify — **HISTORICALLY VERIFIED** at API layer; not Stage 9 browser AVR. |
@@ -592,18 +606,19 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 
 ---
 
-## 9. Remaining gaps (after 9.3)
+## 9. Remaining gaps (after 9.4)
 
 1. ~~No local Playwright authenticated fixture.~~ Closed locally in 9.2.
 2. ~~No second local identity for SoD in the browser.~~ Fixture exists; SoD **path** still 9.6.
 3. ~~Authenticated login/session/logout/Studio/picker.~~ Closed locally in 9.3.
-4. Switch / isolation / persistence / deep links not proven (9.4).
-5. Apply → Verify → Rollback not browser-proven.
-6. Authenticated EN/HE/AR/RTL not proven.
-7. Authenticated a11y not proven; hamburger still `fixme`.
-8. `/en/projects` `ERR_ABORTED` unclassified.
-9. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
-10. Dual-session Studio decide UX missing (B4) — resolve in 9.6/9.7 without redesigning Studio.
+4. ~~Switch / isolation / persistence / deep links.~~ Closed locally in 9.4.
+5. Ask Agent + patch proposal not browser-proven (9.5).
+6. Apply → Verify → Rollback not browser-proven.
+7. Authenticated EN/HE/AR/RTL not proven.
+8. Authenticated a11y not proven; hamburger still `fixme`.
+9. `/en/projects` `ERR_ABORTED` unclassified.
+10. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
+11. Dual-session Studio decide UX missing (B4) — resolve in 9.6/9.7 without redesigning Studio.
 
 ---
 
@@ -615,10 +630,10 @@ Mark **STAGE 9 VERIFIED** only when all of the following are true:
 - [x] Two-identity SoD fixture works (`requester != approver`).
 - [x] Authenticated Studio entry works.
 - [x] Project selection works.
-- [ ] Project switching works.
-- [ ] Isolation is proven.
-- [ ] Refresh persistence is proven.
-- [ ] Deep links are proven.
+- [x] Project switching works.
+- [x] Isolation is proven.
+- [x] Refresh persistence is proven.
+- [x] Deep links are proven.
 - [ ] Ask Agent is proven.
 - [ ] Patch proposal is proven.
 - [ ] Self-approval / self-redeem is denied.
