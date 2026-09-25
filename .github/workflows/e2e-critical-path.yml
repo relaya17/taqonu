@@ -45,7 +45,11 @@ env:
   ATLAS_SKIP_METRICS_LOG: "1"
   ATLAS_SKIP_STORE_PERSIST: "1"
   # Local/CI Stage 9 SoD fixture only. Never set on Production Vercel.
+  # bootstrapRole reads this only when the user is created. A fresh auth
+  # file keeps a previous role=user record from being reused.
   ATLAS_OPERATOR_EMAILS: stage9-decider@atlas.test
+  ATLAS_AUTH_PATH: /tmp/atlas-stage9-users.json
+  ATLAS_SESSIONS_PATH: /tmp/atlas-stage9-sessions.json
 
 jobs:
   playwright:

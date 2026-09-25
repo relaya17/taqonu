@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 import {
   STAGE9_OPERATOR_EMAILS_ENV,
@@ -29,6 +31,8 @@ const chromiumLaunch = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
   ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } }
   : {};
 
+const stage9AuthDir = join(tmpdir(), `atlas-stage9-${Date.now()}`);
+
 const localWebServers = [
   {
     command: "pnpm --filter @atlas/api dev",
@@ -37,8 +41,12 @@ const localWebServers = [
     timeout: 180_000,
     env: envWith({
       ATLAS_OPERATOR_EMAILS: STAGE9_OPERATOR_EMAILS_ENV,
-      // Fresh in-memory users so bootstrapRole sees ATLAS_OPERATOR_EMAILS.
-      // Persisted local users keep the role they were created with.
+      // bootstrapRole runs only in createLocalUser. .atlas/users.json already
+      // has stage9-decider@atlas.test as role "user" from an earlier create.
+      // ATLAS_SKIP_STORE_PERSIST does not touch that auth file. A fresh auth
+      // file lets this process create the decider while the operator list is set.
+      ATLAS_AUTH_PATH: join(stage9AuthDir, "users.json"),
+      ATLAS_SESSIONS_PATH: join(stage9AuthDir, "sessions.json"),
       ATLAS_SKIP_STORE_PERSIST: "1",
     }),
   },
