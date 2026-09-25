@@ -91,18 +91,14 @@ export async function softenLoopbackSessionCookies(
       name: string;
       value: string;
       url: string;
-      path: string;
       httpOnly: boolean;
-      secure: boolean;
       sameSite: "Lax";
       expires?: number;
     } = {
       name: cookie.name,
       value: cookie.value,
       url: api,
-      path: cookie.path || "/",
       httpOnly: cookie.httpOnly,
-      secure: false,
       sameSite: "Lax",
     };
     if (cookie.expires > 0) {

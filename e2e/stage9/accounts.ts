@@ -73,15 +73,17 @@ async function installLoopbackAuthCookies(
     await softenLoopbackSessionCookies(context);
     return;
   }
-  const cookies = setCookies.map(({ value }) => {
+  const cookies = setCookies.flatMap(({ value }) => {
     const attrs = value.split(";");
     const pair = attrs[0] ?? "";
     const eq = pair.indexOf("=");
+    if (eq <= 0) {
+      return [];
+    }
     const domainAttr = attrs.find((part) => /^\s*domain=/i.test(part));
     if (domainAttr) {
       assertLoopbackCookieHost(domainAttr.replace(/^\s*domain=/i, "").trim());
     }
-    const pathAttr = attrs.find((part) => /^\s*path=/i.test(part));
     const rawValue = pair.slice(eq + 1).trim();
     let decoded = rawValue;
     try {
@@ -89,16 +91,21 @@ async function installLoopbackAuthCookies(
     } catch {
       decoded = rawValue;
     }
-    return {
-      name: pair.slice(0, eq).trim(),
-      value: decoded,
-      url: api,
-      path: pathAttr?.replace(/^\s*path=/i, "").trim() || "/",
-      httpOnly: /httponly/i.test(value),
-      secure: false,
-      sameSite: "Lax" as const,
-    };
+    // Playwright 1.51 rewriteCookies: url XOR path. Passing both throws
+    // "Cookie should have either url or path".
+    return [
+      {
+        name: pair.slice(0, eq).trim(),
+        value: decoded,
+        url: api,
+        httpOnly: /httponly/i.test(value),
+        sameSite: "Lax" as const,
+      },
+    ];
   });
+  if (cookies.length === 0) {
+    throw new Error("Stage 9 fixture: Set-Cookie headers were not parseable");
+  }
   await context.clearCookies();
   await context.addCookies(cookies);
 }
