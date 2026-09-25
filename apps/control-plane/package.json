@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@atlas/shared": "workspace:*",
-    "@atlas/integrations-civio": "workspace:*"
+    "@atlas/integrations-civio": "workspace:*",
+    "zod": "^3.24.2"
   }
 }
