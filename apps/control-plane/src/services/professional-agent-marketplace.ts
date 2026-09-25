@@ -4,6 +4,7 @@ import {
   CONTROL_AGENT_IDENTITY_SOURCES,
   FABRIC_AGENT_IDS,
   cappedEvidenceTier,
+  classifyMarketplaceAgentToken,
   evaluateMarketplaceAccess,
   evaluateMarketplaceEligibility,
   evidenceTierCeiling,
@@ -23,6 +24,7 @@ import {
 import { appendAuditEntry } from "./governance-state.js";
 import {
   getControlAgentProfile,
+  listControlAgentProfiles,
 } from "./agent-identity-profile.js";
 import type { ControlAgentIdentitySource } from "@atlas/shared";
 
@@ -30,6 +32,12 @@ const releases = new Map<string, MarketplaceRelease>();
 const listings = new Map<string, MarketplaceListing>();
 const entitlements = new Map<string, MarketplaceEntitlement>();
 const publishers = new Set<string>();
+const providerIds = new Set<string>();
+const professionalAgents = new Map<string, {
+  readonly agentId: string;
+  readonly identitySource: ControlAgentIdentitySource;
+  readonly applicationId: string | null;
+}>();
 
 const identitySourceSchema = z.enum(CONTROL_AGENT_IDENTITY_SOURCES);
 
@@ -130,6 +138,60 @@ export function resetProfessionalMarketplaceForTests(): void {
   listings.clear();
   entitlements.clear();
   publishers.clear();
+  providerIds.clear();
+  professionalAgents.clear();
+}
+
+export type MarketplaceProfessionalAgent = {
+  readonly agentId: string;
+  readonly identitySource: ControlAgentIdentitySource;
+  readonly applicationId: string | null;
+  readonly executionAuthorityGranted: false;
+  readonly personalMemoryAccessGranted: false;
+};
+
+export function admitMarketplaceProfessionalAgent(input: {
+  readonly agentId: string;
+  readonly identitySource: ControlAgentIdentitySource;
+}): MarketplaceSuccess<MarketplaceProfessionalAgent> | MarketplaceFailure {
+  const token = classifyMarketplaceAgentToken(input.agentId);
+  if (token) return { ok: false, reason: token, auditSeq: null };
+  const profile = getControlAgentProfile(input.identitySource, input.agentId);
+  if (!profile) return { ok: false, reason: "UNKNOWN_IDENTITY", auditSeq: null };
+  if (!profile.professionalScope || profile.scopeEvidence !== "DECLARED") {
+    return { ok: false, reason: "NOT_PROFESSIONAL_AGENT", auditSeq: null };
+  }
+  const admitted: MarketplaceProfessionalAgent = {
+    agentId: profile.agentId,
+    identitySource: profile.identitySource,
+    applicationId: profile.applicationId,
+    executionAuthorityGranted: false,
+    personalMemoryAccessGranted: false,
+  };
+  professionalAgents.set(profile.agentId, admitted);
+  return { ok: true, value: admitted, auditSeq: null };
+}
+
+export function resolveMarketplaceProfessionalAgent(
+  agentId: string,
+): MarketplaceSuccess<MarketplaceProfessionalAgent> | MarketplaceFailure {
+  const token = classifyMarketplaceAgentToken(agentId);
+  if (token) return { ok: false, reason: token, auditSeq: null };
+  if (providerIds.has(agentId)) return { ok: false, reason: "PROVIDER_IDENTIFIER", auditSeq: null };
+  if (publishers.has(agentId)) return { ok: false, reason: "PUBLISHER_IDENTIFIER", auditSeq: null };
+  if (releases.has(agentId)) return { ok: false, reason: "RELEASE_IDENTIFIER", auditSeq: null };
+  if (listings.has(agentId)) return { ok: false, reason: "LISTING_IDENTIFIER", auditSeq: null };
+  if (entitlements.has(agentId)) return { ok: false, reason: "ENTITLEMENT_IDENTIFIER", auditSeq: null };
+  const admitted = professionalAgents.get(agentId);
+  if (!admitted) {
+    const known = listControlAgentProfiles().some((profile) => profile.agentId === agentId);
+    return {
+      ok: false,
+      reason: known ? "NOT_MARKETPLACE_PROFESSIONAL_AGENT" : "UNKNOWN_IDENTITY",
+      auditSeq: null,
+    };
+  }
+  return { ok: true, value: { ...admitted, executionAuthorityGranted: false, personalMemoryAccessGranted: false }, auditSeq: null };
 }
 
 export function personalMemoryOwnerRemainsUser(): "USER" {
@@ -163,7 +225,9 @@ export function registerPublisher(): { readonly publisherId: string } {
 }
 
 export function registerProvider(): { readonly providerId: string } {
-  return { providerId: id("prv") };
+  const providerId = id("prv");
+  providerIds.add(providerId);
+  return { providerId };
 }
 
 export function createDraftRelease(
@@ -171,6 +235,8 @@ export function createDraftRelease(
 ): MarketplaceSuccess<MarketplaceRelease> | MarketplaceFailure {
   const parsed = draftReleaseInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "INVALID_RELEASE", auditSeq: null };
+  const agent = resolveMarketplaceProfessionalAgent(parsed.data.agentId);
+  if (!agent.ok) return agent;
   if (parsed.data.agentProviderId === parsed.data.agentId) {
     return { ok: false, reason: "PROVIDER_COLLIDES_WITH_AGENT", auditSeq: null };
   }
@@ -204,6 +270,8 @@ export function publishRelease(
 ): MarketplaceSuccess<MarketplaceRelease> | MarketplaceFailure {
   const current = releases.get(releaseId);
   if (!current) return { ok: false, reason: "RELEASE_NOT_FOUND", auditSeq: null };
+  const agent = resolveMarketplaceProfessionalAgent(current.agentId);
+  if (!agent.ok) return agent;
   if (current.status === "PUBLISHED") {
     return { ok: true, value: current, auditSeq: null };
   }
@@ -281,9 +349,11 @@ export function inspectMarketplaceEligibility(input: {
   readonly publisherId: string | null;
 }): { readonly eligible: boolean; readonly reasons: readonly string[]; readonly executionAuthorityGranted: false } {
   const profile = getControlAgentProfile(input.identitySource, input.agentId);
+  const admitted = resolveMarketplaceProfessionalAgent(input.agentId);
   const release = input.releaseId ? releases.get(input.releaseId) ?? null : null;
   return evaluateMarketplaceEligibility({
     agentId: input.agentId,
+    explicitMarketplaceProfessionalAgent: admitted.ok,
     professionalScope: profile?.professionalScope === true,
     scopeDeclared: profile?.scopeEvidence === "DECLARED",
     provenance: profile?.provenance ?? "",
@@ -342,6 +412,8 @@ export function requestListingPublication(
   if (!publishers.has(body.publisherId) || body.publisherId === body.agentId) {
     return deny("PUBLISHER_REQUIRED");
   }
+  const resolved = resolveMarketplaceProfessionalAgent(body.agentId);
+  if (!resolved.ok) return deny(resolved.reason);
   const profile = getControlAgentProfile(body.identitySource, body.agentId);
   if (!profile) return deny("AGENT_IDENTITY_REQUIRED");
   const release = releases.get(body.releaseId);
@@ -361,6 +433,7 @@ export function requestListingPublication(
     professionalScope: profile.professionalScope,
     scopeDeclared: profile.scopeEvidence === "DECLARED",
     provenance: profile.provenance,
+    explicitMarketplaceProfessionalAgent: true,
     inFabricCatalog: inFabricCatalog(body.agentId),
     releaseId: release.releaseId,
     releaseAgentId: release.agentId,
@@ -490,6 +563,8 @@ export function issueEntitlement(
   if (!listing || listing.status !== "PUBLISHED") {
     return { ok: false, reason: "LISTING_UNAVAILABLE", auditSeq: null };
   }
+  const agent = resolveMarketplaceProfessionalAgent(listing.agentId);
+  if (!agent.ok) return agent;
   if (parsed.data.subjectId === listing.agentId) {
     return { ok: false, reason: "SUBJECT_COLLIDES_WITH_AGENT", auditSeq: null };
   }

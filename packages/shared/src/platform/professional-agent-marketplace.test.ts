@@ -16,6 +16,7 @@ describe("marketplace pure decisions", () => {
       scopeDeclared: true,
       provenance: "catalog",
       inFabricCatalog: true,
+      explicitMarketplaceProfessionalAgent: false,
       releaseId: null,
       releaseAgentId: null,
       releasePublished: false,

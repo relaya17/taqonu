@@ -9,6 +9,7 @@ import {
   unprovenCaseflowAgent,
 } from "../services/agent-identity-profile.js";
 import {
+  admitMarketplaceProfessionalAgent,
   createDraftRelease,
   entitlementCanApprove,
   evaluateEntitlementAccess,
@@ -47,6 +48,14 @@ function gates(open: boolean): {
   return { policyAllows: open, riskAllows: open, approvalSatisfied: open };
 }
 
+function admitAgent(agentId: string = AGENT): void {
+  const admitted = admitMarketplaceProfessionalAgent({
+    agentId,
+    identitySource: "FABRIC",
+  });
+  if (!admitted.ok) throw new Error(admitted.reason);
+}
+
 function publishReadyAgent(): {
   publisherId: string;
   agentProviderId: string;
@@ -58,6 +67,7 @@ function publishReadyAgent(): {
   const agentProviderId = registerProvider().providerId;
   const releaseProviderId = registerProvider().providerId;
   const listingProviderId = registerProvider().providerId;
+  admitAgent();
   const draft = createDraftRelease({
     agentId: AGENT,
     versionLabel: "1.0.0",
@@ -236,6 +246,7 @@ describe("professional agent marketplace", () => {
     const mutated = mutatePublishedRelease(ready.releaseId, "9.9.9");
     expect(mutated.ok).toBe(false);
     expect(getMarketplaceRelease(ready.releaseId)?.versionLabel).toBe(before?.versionLabel);
+    admitAgent();
     const next = createDraftRelease({
       agentId: AGENT,
       versionLabel: "2.0.0",
@@ -338,6 +349,7 @@ describe("professional agent marketplace", () => {
   });
 
   it("keeps provider claims out of verified and observed evidence", () => {
+    admitAgent();
     const draft = createDraftRelease({
       agentId: AGENT,
       versionLabel: "claim-only",
@@ -381,6 +393,7 @@ describe("professional agent marketplace", () => {
   });
 
   it("caps evidence at the tier supported by existing evidence references", () => {
+    admitAgent();
     const draft = createDraftRelease({
       agentId: AGENT,
       versionLabel: "identity-only",
@@ -610,6 +623,107 @@ describe("professional agent marketplace", () => {
       "utf8",
     );
     expect(source).not.toMatch(/checkout|payout|subscription|rentalDuration|purchaseAgent/);
+  });
+
+  it("rejects non-professional identities before a release exists", () => {
+    const providerId = registerProvider().providerId;
+    const base = {
+      versionLabel: "0",
+      agentProviderId: providerId,
+      releaseProviderId: providerId,
+      capabilityRef: null,
+      claimText: null,
+      identityVerified: false,
+      governanceVerified: false,
+      operationalEvidenceRef: null,
+    };
+    expect(createDraftRelease({ ...base, agentId: "not-an-agent" }).ok).toBe(false);
+    expect(createDraftRelease({ ...base, agentId: "gpt-4o" })).toMatchObject({ ok: false, reason: "MODEL_IDENTIFIER" });
+    expect(createDraftRelease({ ...base, agentId: "fix" })).toMatchObject({ ok: false, reason: "ACTION_IDENTIFIER" });
+    expect(createDraftRelease({ ...base, agentId: providerId })).toMatchObject({ ok: false, reason: "PROVIDER_IDENTIFIER" });
+    expect(createDraftRelease({ ...base, agentId: "CODE_ENGINEER" })).toMatchObject({
+      ok: false,
+      reason: "NOT_MARKETPLACE_PROFESSIONAL_AGENT",
+    });
+    expect(createDraftRelease({ ...base, agentId: "QA_ENGINEER" })).toMatchObject({
+      ok: false,
+      reason: "NOT_MARKETPLACE_PROFESSIONAL_AGENT",
+    });
+    const fabricOnly = inspectMarketplaceEligibility({
+      agentId: "CODE_ENGINEER",
+      identitySource: "FABRIC",
+      releaseId: null,
+      publisherId: null,
+    });
+    expect(fabricOnly.eligible).toBe(false);
+    expect(fabricOnly.reasons).toContain("EXPLICIT_MARKETPLACE_PROFESSIONAL_AGENT_REQUIRED");
+    const oversightOnly = inspectMarketplaceEligibility({
+      agentId: "QA_ENGINEER",
+      identitySource: "CONTROL_OVERSIGHT",
+      releaseId: null,
+      publisherId: null,
+    });
+    expect(oversightOnly.eligible).toBe(false);
+    expect(getControlAgentProfile("FABRIC", "CODE_ENGINEER")?.professionalScope).toBe(true);
+    admitAgent();
+    const release = createDraftRelease({ ...base, agentId: AGENT, versionLabel: "1" });
+    expect(release.ok).toBe(true);
+    if (!release.ok) return;
+    expect(createDraftRelease({ ...base, agentId: release.value.releaseId })).toMatchObject({
+      ok: false,
+      reason: "RELEASE_IDENTIFIER",
+    });
+    const published = publishRelease(release.value.releaseId);
+    expect(published.ok).toBe(true);
+    const listing = requestListingPublication({
+      agentId: AGENT,
+      identitySource: "FABRIC",
+      releaseId: release.value.releaseId,
+      publisherId: registerPublisher().publisherId,
+      listingProviderId: registerProvider().providerId,
+      requestingSubjectType: "PUBLISHER",
+      requestingSubjectId: "publisher",
+      controlAuthorized: true,
+      controlAuthorizerId: "ATLAS_CONTROL",
+      description: "explicit professional agent",
+      claimText: null,
+      ...gates(true),
+    });
+    expect(listing.ok).toBe(true);
+    if (!listing.ok) return;
+    expect(createDraftRelease({ ...base, agentId: listing.value.listingId })).toMatchObject({
+      ok: false,
+      reason: "LISTING_IDENTIFIER",
+    });
+    const entitlement = issueEntitlement({
+      listingId: listing.value.listingId,
+      subjectType: "USER",
+      subjectId: "user-subject",
+      issuerId: "issuer-1",
+      holderId: "user-subject",
+    });
+    expect(entitlement.ok).toBe(true);
+    if (!entitlement.ok) return;
+    expect(createDraftRelease({ ...base, agentId: entitlement.value.entitlementId })).toMatchObject({
+      ok: false,
+      reason: "ENTITLEMENT_IDENTIFIER",
+    });
+    const access = evaluateEntitlementAccess({
+      entitlementId: entitlement.value.entitlementId,
+      policyAllows: true,
+      riskAllows: true,
+      approvalSatisfied: true,
+      preflightCleared: true,
+      killSwitchActive: false,
+    });
+    expect(access.nextGate).toBe("EXISTING_CONTROL_CHAIN");
+    expect(access.dispatchGranted).toBe(false);
+    expect(access.executionAuthorityGranted).toBe(false);
+    expect(entitlement.value.personalMemoryAccessGranted).toBe(false);
+    expect(publisherCanExecuteAgent()).toBe(false);
+    expect(entitlementCanApprove()).toBe(false);
+    expect(getRegisteredAgent(release.value.releaseId)).toBeUndefined();
+    expect(getRegisteredAgent(listing.value.listingId)).toBeUndefined();
   });
 
   it("exposes publication through the control API", async () => {

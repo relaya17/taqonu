@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AI_PROVIDER_IDS } from "../constants/ai-providers.js";
 
 /**
  * Professional Agent Marketplace is a distribution and access layer.
@@ -7,6 +8,50 @@ import { z } from "zod";
  */
 
 export const MARKETPLACE_EXECUTION_AUTHORITY_GRANTED = false as const;
+
+const MARKETPLACE_ACTION_IDENTIFIERS = [
+  "analyze",
+  "plan",
+  "generate",
+  "fix",
+  "refactor",
+  "test",
+  "secure",
+  "optimize",
+  "implement",
+  "EXECUTE",
+  "DISPATCH",
+] as const;
+
+export type MarketplaceAgentTokenDenial =
+  | "MODEL_IDENTIFIER"
+  | "ACTION_IDENTIFIER"
+  | "RELEASE_IDENTIFIER"
+  | "LISTING_IDENTIFIER"
+  | "ENTITLEMENT_IDENTIFIER"
+  | "PROVIDER_IDENTIFIER"
+  | "PUBLISHER_IDENTIFIER";
+
+function listed(agentId: string, values: readonly string[]): boolean {
+  for (const value of values) {
+    if (value === agentId) return true;
+  }
+  return false;
+}
+
+/** Rejects tokens that are not Agent identities. Profile admission is separate. */
+export function classifyMarketplaceAgentToken(
+  agentId: string,
+): MarketplaceAgentTokenDenial | null {
+  if (listed(agentId, AI_PROVIDER_IDS)) return "MODEL_IDENTIFIER";
+  if (listed(agentId, MARKETPLACE_ACTION_IDENTIFIERS)) return "ACTION_IDENTIFIER";
+  if (agentId.startsWith("rel_")) return "RELEASE_IDENTIFIER";
+  if (agentId.startsWith("lst_")) return "LISTING_IDENTIFIER";
+  if (agentId.startsWith("ent_")) return "ENTITLEMENT_IDENTIFIER";
+  if (agentId.startsWith("prv_")) return "PROVIDER_IDENTIFIER";
+  if (agentId.startsWith("pub_")) return "PUBLISHER_IDENTIFIER";
+  return null;
+}
 export const MARKETPLACE_PERSONAL_MEMORY_OWNER = "USER" as const;
 
 export const marketplaceEvidenceTierSchema = z.union([
@@ -162,6 +207,7 @@ export interface MarketplaceEligibilityInput {
   readonly scopeDeclared: boolean;
   readonly provenance: string;
   readonly inFabricCatalog: boolean;
+  readonly explicitMarketplaceProfessionalAgent: boolean;
   readonly releaseId: string | null;
   readonly releaseAgentId: string | null;
   readonly releasePublished: boolean;
@@ -175,6 +221,9 @@ export function evaluateMarketplaceEligibility(
   input: MarketplaceEligibilityInput,
 ): { readonly eligible: boolean; readonly reasons: readonly string[]; readonly executionAuthorityGranted: false } {
   const reasons: string[] = [];
+  if (!input.explicitMarketplaceProfessionalAgent) {
+    reasons.push("EXPLICIT_MARKETPLACE_PROFESSIONAL_AGENT_REQUIRED");
+  }
   if (!input.professionalScope) reasons.push("PROFESSIONAL_SCOPE_REQUIRED");
   if (!input.scopeDeclared) reasons.push("SCOPE_NOT_DECLARED");
   if (input.provenance.trim().length === 0) reasons.push("PROVENANCE_REQUIRED");
