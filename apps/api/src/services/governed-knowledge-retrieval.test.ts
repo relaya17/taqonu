@@ -6,6 +6,7 @@ import {
   ATLAS_SELF_APPLICATION_ID,
   ATLAS_SELF_PROJECT_ID,
   ATLAS_SELF_TENANT_ID,
+  governanceProfileForAgentId,
 } from "@atlas/shared";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-gov-knowledge-"));
@@ -101,6 +102,34 @@ describe("governed knowledge retrieval", () => {
     expect(entry).toBeDefined();
     expect(entry?.tenantId == null || entry.tenantId === "").toBe(true);
     expect(entry?.projectId == null || entry.projectId === "").toBe(true);
+  });
+
+  it("denies governed professional-knowledge retrieval for a personal-only Control identity", async () => {
+    const requestingAgentId = `psa:${OWNER}`;
+    const profile = governanceProfileForAgentId(requestingAgentId);
+    expect(profile?.personalScope).toBe(true);
+    expect(profile?.professionalScope).toBe(false);
+    expect(profile?.memory.canReadProfessionalKnowledge).toBe(false);
+
+    const result = await retrieveGovernedKnowledge({
+      env,
+      sessionOwnerId: OWNER,
+      scope: {
+        ownerId: OWNER,
+        tenantId: "tenant-test",
+        projectId: PROJECT,
+        applicationId: "app-test",
+        requestingAgentId,
+      },
+      query: "webhook idempotency",
+      requestId: "req-psa-knowledge-deny",
+      routeLabel: "knowledge.search",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("CONTROL_PROFILE_DENIES_PROFESSIONAL_KNOWLEDGE");
+      expect(result.stage).toBe("AUTHORIZATION");
+    }
   });
 });
 
