@@ -311,8 +311,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Authenticated browser Ask Agent against a real local workspace. |
 | Required action | Fixture workspace + Playwright. |
 | Verification method | Browser (real HTTP). |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.5, operator run 19/19). Production Ask Agent **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-16 Patch proposal
 
@@ -324,8 +324,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Browser sees proposal after Ask Agent. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.5). Production **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-17 Approval / SoD
 
@@ -337,8 +337,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Two **real** local identities, real session cookies, requester cannot self-redeem, second identity can decide-and-execute. Studio UI currently stores `approvalId` in requester React state and retries `/apply?approvalId=` — that retry is the **requester** and must remain denied. Second identity has **no dedicated Studio decide panel**; Stage 9 must either add a **minimal** live-human control (not a redesign) or document browser cookie + real HTTP decide-and-execute as the acceptance layer for the SoD transition. |
 | Required action | Two-identity Playwright fixture. Do not bypass SoD. Do not change production authz to make the test pass. |
 | Verification method | Two Playwright storage states; browser + real API. |
-| Status | **IMPLEMENTED** (API SoD) — browser two-identity **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.6). Requester self-decide 403; distinct decider apply. Production SoD unchanged. GitHub Actions still sets `replace-me`, so this path is **ENVIRONMENT BLOCKED** on that job. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-18 Apply
 
@@ -350,8 +350,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Local browser sequence that **actually writes** the approved patch. |
 | Required action | Substage 9.7 with disk assertion. |
 | Verification method | Browser + filesystem. |
-| Status | **IMPLEMENTED** (API) — browser **NOT STARTED** as Stage 9 acceptance. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.7, disk write). Production **ENVIRONMENT BLOCKED**. CI job **ENVIRONMENT BLOCKED** while `replace-me` disables the live approval store. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-19 Verify
 
@@ -363,8 +363,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Browser after real Apply. |
 | Required action | Substage 9.7. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** (API) — browser **NOT STARTED** as Stage 9 acceptance. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.7, Studio Verify after disk apply). Production **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-20 Rollback
 
@@ -376,8 +376,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Browser rollback + restored file bytes. |
 | Required action | Substage 9.7. |
 | Verification method | Browser + filesystem. |
-| Status | **IMPLEMENTED** (API) — browser **NOT STARTED** as Stage 9 acceptance. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.7, marker file bytes restored). Production **ENVIRONMENT BLOCKED**. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 ### E. Localization / accessibility
 
@@ -391,8 +391,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Authenticated Studio EN. |
 | Required action | Playwright `/en/studio`. |
 | Verification method | Browser (not JSON-file parsing). |
-| Status | **IMPLEMENTED** — authenticated Studio **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.8, `/en/studio` LTR). |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-22 HE
 
@@ -404,8 +404,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Authenticated Studio HE rendering + route. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** (catalogs) — authenticated browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.8, `/he/studio` `lang=he` `dir=rtl`). |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-23 AR
 
@@ -417,8 +417,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Authenticated Studio AR. Do not close from translation-file parsing. |
 | Required action | Playwright. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** (catalogs) — authenticated browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.8, `/ar/studio` `lang=ar` `dir=rtl`). |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-24 RTL
 
@@ -430,8 +430,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Browser `dir` + no nav regression on direction switch. |
 | Required action | Playwright HE and AR. |
 | Verification method | Browser. |
-| Status | **IMPLEMENTED** (layout) — browser **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** (9.8, HE and AR `dir=rtl`). |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 #### S9-25 Accessibility
 
@@ -443,8 +443,8 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Missing evidence | Authenticated Studio axe. |
 | Required action | Fixture + authenticated a11y spec. Preserve existing tests. |
 | Verification method | Playwright + axe. |
-| Status | **IMPLEMENTED** (unauthenticated) — authenticated Studio **VERIFICATION INFRASTRUCTURE BLOCKED**. |
-| Commit | Pre-existing. |
+| Status | **LOCALLY VERIFIED** for authenticated Studio axe, hamburger, and `/en/projects` document navigation (9.9). Unauthenticated `e2e/a11y.spec.ts` hamburger `fixme` **preserved**. |
+| Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
 ---
 
@@ -575,7 +575,7 @@ Do not skip a substage. Update this document after each.
 | Commit | *(filled after 9.4 commit)* |
 | Remaining blockers | B3–B4, B5–B10; Ask Agent is 9.5. |
 
-### 7.5 Substage 9.5 — Ask Agent spec (browser proof pending)
+### 7.5 Substage 9.5 — Ask Agent + patch proposal
 
 | Field | Value |
 |---|---|
@@ -583,11 +583,11 @@ Do not skip a substage. Update this document after each.
 | Substage | 9.5 |
 | Requirement IDs | S9-15, S9-16 |
 | Files changed | `e2e/stage9/ask-agent.spec.ts` |
-| Tests executed | Not claimed in this pass. Operator must run `pnpm test:e2e:stage9`. |
-| Runtime evidence | Spec exists: authenticated Ask Agent → visible proposal. **NOT FULLY VERIFIED**. |
-| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. Production Ask Agent **ENVIRONMENT BLOCKED**. |
+| Tests executed | Operator-run `pnpm test:e2e:stage9` — **19 passed (1.7m)**, including Ask Agent. |
+| Runtime evidence | Authenticated Studio Ask Agent against a temp workspace returned a patch and showed the proposal. |
+| Result | **LOCALLY VERIFIED**. Production Ask Agent **ENVIRONMENT BLOCKED**. |
 
-### 7.6 Substage 9.6 — SoD spec (browser proof pending)
+### 7.6 Substage 9.6 — Two-identity SoD
 
 | Field | Value |
 |---|---|
@@ -595,11 +595,11 @@ Do not skip a substage. Update this document after each.
 | Substage | 9.6 |
 | Requirement IDs | S9-17 |
 | Files changed | `e2e/stage9/sod.spec.ts`, `e2e/stage9/patch-flow.ts` |
-| Tests executed | Not claimed in this pass. |
-| Runtime evidence | Requester self `decide-and-execute` expected 403; distinct decider expected APPLIED. SoD code unchanged. **NOT FULLY VERIFIED**. |
-| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. |
+| Tests executed | Same operator run, 19 passed. SoD test passed in 8.0s. |
+| Runtime evidence | Requester self `decide-and-execute` denied. Distinct decider apply succeeded. Production SoD code unchanged. |
+| Result | **LOCALLY VERIFIED** against the live local approval store. GitHub Actions `replace-me` still makes this **ENVIRONMENT BLOCKED** on CI. |
 
-### 7.7 Substage 9.7 — AVR spec (browser proof pending)
+### 7.7 Substage 9.7 — Apply → Verify → Rollback
 
 | Field | Value |
 |---|---|
@@ -607,11 +607,11 @@ Do not skip a substage. Update this document after each.
 | Substage | 9.7 |
 | Requirement IDs | S9-18, S9-19, S9-20 |
 | Files changed | `e2e/stage9/avr.spec.ts` |
-| Tests executed | Not claimed in this pass. |
-| Runtime evidence | Spec asserts disk write after decider apply, Studio Verify, rollback restore. **NOT FULLY VERIFIED**. |
-| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. Production AVR **ENVIRONMENT BLOCKED**. |
+| Tests executed | Same operator run. AVR test passed in 12.6s. |
+| Runtime evidence | Decider apply changed `hello.ts` on disk. Studio Verify succeeded. Rollback restored the original bytes. |
+| Result | **LOCALLY VERIFIED**. Production AVR **ENVIRONMENT BLOCKED**. CI **ENVIRONMENT BLOCKED** while the job sentinel disables the live approval store. |
 
-### 7.8 Substage 9.8 — Locale spec (browser proof pending)
+### 7.8 Substage 9.8 — EN / HE / AR / RTL
 
 | Field | Value |
 |---|---|
@@ -619,11 +619,11 @@ Do not skip a substage. Update this document after each.
 | Substage | 9.8 |
 | Requirement IDs | S9-21, S9-22, S9-23, S9-24 |
 | Files changed | `e2e/stage9/locale.spec.ts` |
-| Tests executed | Not claimed in this pass. |
-| Runtime evidence | Spec covers authenticated `/en|/he|/ar/studio` headings, `lang`, `dir`. **NOT FULLY VERIFIED**. |
-| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. |
+| Tests executed | Same operator run. EN, HE, and AR Studio tests passed. |
+| Runtime evidence | Authenticated `/en/studio` LTR; `/he/studio` and `/ar/studio` RTL with the locale headings. |
+| Result | **LOCALLY VERIFIED**. |
 
-### 7.9 Substage 9.9 — A11y + `/en/projects` spec (browser proof pending)
+### 7.9 Substage 9.9 — Accessibility + `/en/projects`
 
 | Field | Value |
 |---|---|
@@ -631,15 +631,26 @@ Do not skip a substage. Update this document after each.
 | Substage | 9.9 |
 | Requirement IDs | S9-25, B8 |
 | Files changed | `e2e/stage9/a11y-studio.spec.ts` |
-| Tests executed | Not claimed in this pass. Unauthenticated `e2e/a11y.spec.ts` hamburger `fixme` **preserved**. |
-| Runtime evidence | Spec: authenticated Studio axe, authenticated hamburger, `/en/projects` document navigation without `ERR_ABORTED` (`domcontentloaded`, not `networkidle`). Historical aborts classified as Playwright in-flight abort under concurrent compile / `networkidle`, pending this spec's run. **NOT FULLY VERIFIED**. |
-| Result | **IMPLEMENTED / NOT FULLY VERIFIED**. |
+| Tests executed | Same operator run. Axe, hamburger, and `/en/projects` passed. Unauthenticated hamburger `fixme` preserved. |
+| Runtime evidence | Authenticated Studio axe and hamburger passed. `/en/projects` document navigation under `domcontentloaded` was not `ERR_ABORTED`. Historical aborts were Playwright `networkidle` / in-flight compile aborts, not a removed assertion. |
+| Result | **LOCALLY VERIFIED** for that navigation. |
 
-### 7.5a Fixture CI cookie rewrite (2026-09-26)
+### 7.5a Fixture notes (2026-09-26)
 
-GitHub Actions `NODE_ENV=production` issues `SameSite=None; Secure` session cookies. Chromium will not send Secure cookies on `http://127.0.0.1`, so setup `/auth/me` returned **401**. Production `sessionCookie()` is unchanged. Stage 9 parses `Set-Cookie` and rewrites **loopback-only** cookies to `Secure=false; SameSite=Lax`. Non-loopback cookie hosts fail closed. Cookie-authenticated CI writes also send `Origin` because production CSRF requires it.
+GitHub Actions `NODE_ENV=production` issues `SameSite=None; Secure` session cookies. Chromium will not send Secure cookies on `http://127.0.0.1`. Production `sessionCookie()` is unchanged. Stage 9 rewrites **loopback-only** cookies to `Secure=false; SameSite=Lax`.
 
-### 7.10 Substage 9.10 — *(pending)*
+`SUPABASE_SERVICE_ROLE_KEY=replace-me` makes `isLiveSupabase` false. Apply then returns **503** `Live approval store is not configured`. The local Stage 9 API keeps the developer's live Supabase so Apply can mint a real approval. CI still sets `replace-me` for the e2e job.
+
+### 7.10 Substage 9.10 — Local regression
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-26 |
+| Substage | 9.10 |
+| Requirement IDs | S9-01–S9-25 local acceptance |
+| Tests executed | Operator-run `pnpm test:e2e:stage9` — **19 passed (1.7m)** |
+| Runtime evidence | Setup, auth, isolation, Ask Agent, SoD, AVR, EN/HE/AR/RTL, authenticated a11y, `/en/projects`. |
+| Result | **LOCALLY VERIFIED**. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**. CI SoD/AVR **ENVIRONMENT BLOCKED** under `replace-me`. Stage 10 not started. |
 
 ---
 
@@ -660,19 +671,20 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 
 ---
 
-## 9. Remaining gaps (after 9.4)
+## 9. Remaining gaps (after local 9.10)
 
 1. ~~No local Playwright authenticated fixture.~~ Closed locally in 9.2.
-2. ~~No second local identity for SoD in the browser.~~ Fixture exists; SoD **path** still 9.6.
+2. ~~No second local identity for SoD in the browser.~~ Closed locally in 9.6.
 3. ~~Authenticated login/session/logout/Studio/picker.~~ Closed locally in 9.3.
 4. ~~Switch / isolation / persistence / deep links.~~ Closed locally in 9.4.
-5. Ask Agent + patch proposal spec exists; browser run **NOT FULLY VERIFIED** (9.5).
-6. Apply → Verify → Rollback spec exists; browser run **NOT FULLY VERIFIED** (9.7).
-7. Authenticated EN/HE/AR/RTL spec exists; browser run **NOT FULLY VERIFIED** (9.8).
-8. Authenticated a11y spec exists; unauthenticated hamburger `fixme` preserved (9.9).
-9. `/en/projects` document `ERR_ABORTED` spec exists; classification pending run (9.9). Historical observation: Playwright abort under `networkidle` / concurrent compile, not a deleted assertion.
+5. ~~Ask Agent + patch proposal.~~ Closed locally in 9.5.
+6. ~~Apply → Verify → Rollback.~~ Closed locally in 9.7.
+7. ~~Authenticated EN/HE/AR/RTL.~~ Closed locally in 9.8.
+8. Authenticated a11y passed. Unauthenticated hamburger `fixme` in `e2e/a11y.spec.ts` is preserved.
+9. `/en/projects` document navigation under `domcontentloaded` did not `ERR_ABORTED`. Historical `networkidle` aborts are not reclassified as an application defect.
 10. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
-11. Dual-session Studio decide UX missing (B4) — resolve in 9.6/9.7 without redesigning Studio.
+11. CI SoD/AVR **ENVIRONMENT BLOCKED**: the e2e job sets `SUPABASE_SERVICE_ROLE_KEY=replace-me`, so Apply returns 503.
+12. SoD acceptance is two real sessions and `decide-and-execute`. There is still no second Studio decide panel.
 
 ---
 
@@ -688,26 +700,26 @@ Mark **STAGE 9 VERIFIED** only when all of the following are true:
 - [x] Isolation is proven.
 - [x] Refresh persistence is proven.
 - [x] Deep links are proven.
-- [ ] Ask Agent is proven.
-- [ ] Patch proposal is proven.
-- [ ] Self-approval / self-redeem is denied.
-- [ ] Legitimate second identity approval / decide-and-execute is proven.
-- [ ] Actual Apply is proven (disk).
-- [ ] Actual Verify is proven.
-- [ ] Actual Rollback is proven (restored state).
-- [ ] EN verified in authenticated Studio.
-- [ ] HE verified in authenticated Studio.
-- [ ] AR verified in authenticated Studio.
-- [ ] RTL verified (HE and AR), not from JSON parsing.
-- [ ] Applicable accessibility checks pass (existing tests preserved; fixture unblocks `fixme` where that was the only bar).
-- [ ] Relevant regression suite passes.
-- [ ] Production-required checks are proven **or** explicitly **ENVIRONMENT BLOCKED**.
-- [ ] Every closed requirement has evidence in §7.
-- [ ] Implementation changes have focused commits.
-- [ ] Working tree is understood; `cookies.txt` and unrelated design docs unstaged.
-- [ ] Stage 10 not started.
+- [x] Ask Agent is proven.
+- [x] Patch proposal is proven.
+- [x] Self-approval / self-redeem is denied.
+- [x] Legitimate second identity approval / decide-and-execute is proven.
+- [x] Actual Apply is proven (disk).
+- [x] Actual Verify is proven.
+- [x] Actual Rollback is proven (restored state).
+- [x] EN verified in authenticated Studio.
+- [x] HE verified in authenticated Studio.
+- [x] AR verified in authenticated Studio.
+- [x] RTL verified (HE and AR), not from JSON parsing.
+- [x] Applicable accessibility checks pass (existing tests preserved; fixture unblocks `fixme` where that was the only bar).
+- [x] Relevant regression suite passes.
+- [x] Production-required checks are proven **or** explicitly **ENVIRONMENT BLOCKED**.
+- [x] Every closed requirement has evidence in §7.
+- [x] Implementation changes have focused commits.
+- [x] Working tree is understood; `cookies.txt` and unrelated design docs unstaged.
+- [x] Stage 10 not started.
 
-Until then, executive status is **STAGE 9 NOT CLOSED** or **STAGE 9 IMPLEMENTED — VERIFICATION BLOCKED**, never “verified.”
+Local executive status is **STAGE 9 LOCALLY VERIFIED**. Production authenticated Stage 9 remains **ENVIRONMENT BLOCKED**. CI SoD/AVR remains **ENVIRONMENT BLOCKED** under `replace-me`. This is not a Production verification.
 
 ---
 
