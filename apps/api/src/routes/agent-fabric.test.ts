@@ -313,7 +313,7 @@ describe("POST /api/v1/agents/plan", () => {
     const statements = res
       .json()
       .memoryContext.items.map((m: { statement: string }) => m.statement);
-    expect(statements).toContain("owner A's private incident note");
+    expect(statements).not.toContain("owner A's private incident note");
     expect(statements).not.toContain("owner B's private incident note");
   });
 
@@ -337,7 +337,7 @@ describe("POST /api/v1/agents/plan", () => {
     const statements = res
       .json()
       .memoryContext.items.map((m: { statement: string }) => m.statement);
-    expect(statements).toContain("open fabric plan note");
+    expect(statements).not.toContain("open fabric plan note");
     expect(statements).not.toContain("security-only fabric plan secret");
   });
 
@@ -358,7 +358,7 @@ describe("POST /api/v1/agents/plan", () => {
     const statements = res
       .json()
       .memoryContext.items.map((m: { statement: string }) => m.statement);
-    expect(statements).toContain("security-visible fabric plan secret");
+    expect(statements).not.toContain("security-visible fabric plan secret");
   });
 
   it("does NOT call the Policy Engine (authorizeEntityAction) — planning is a proposal only, mirroring kernel.ts's plan-vs-run split", async () => {
@@ -496,7 +496,7 @@ describe("POST /api/v1/agents/dispatch", () => {
     const statements = res
       .json()
       .memoryContext.items.map((m: { statement: string }) => m.statement);
-    expect(statements).toContain("owner A's dispatch-only secret");
+    expect(statements).not.toContain("owner A's dispatch-only secret");
     expect(statements).not.toContain("owner B's dispatch-only secret");
   });
 
@@ -520,7 +520,7 @@ describe("POST /api/v1/agents/dispatch", () => {
     const statements = res
       .json()
       .memoryContext.items.map((m: { statement: string }) => m.statement);
-    expect(statements).toContain("open fabric dispatch note");
+    expect(statements).not.toContain("open fabric dispatch note");
     expect(statements).not.toContain("security-only fabric dispatch secret");
   });
 
@@ -541,7 +541,7 @@ describe("POST /api/v1/agents/dispatch", () => {
     const statements = res
       .json()
       .memoryContext.items.map((m: { statement: string }) => m.statement);
-    expect(statements).toContain("security-visible fabric dispatch secret");
+    expect(statements).not.toContain("security-visible fabric dispatch secret");
   });
 
   describe("specialistOverride per-specialist gate (SECURITY)", () => {

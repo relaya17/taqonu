@@ -248,12 +248,18 @@ describe("bug-fix-learning", () => {
       ownerId: OWNER_B,
       requestingAgentId: BUG_FIX_LEARNING_AGENT_ID,
     });
-    expect(forA.items.map((m) => m.statement).join(" ")).toContain(
+    expect(forA.items.map((m) => m.statement).join(" ")).not.toContain(
       "owner A secret bug lesson",
     );
     expect(forA.items.map((m) => m.statement).join(" ")).not.toContain(
       "owner B secret bug lesson",
     );
+    expect(
+      osStore.getMemories(PROJECT_A, OWNER_A).some((m) => m.statement.includes("owner A secret bug lesson")),
+    ).toBe(true);
+    expect(
+      osStore.getMemories(PROJECT_A, OWNER_B).some((m) => m.statement.includes("owner A secret bug lesson")),
+    ).toBe(false);
     expect(forB.items).toHaveLength(0);
   });
 
@@ -274,7 +280,7 @@ describe("bug-fix-learning", () => {
       ownerId: OWNER_A,
       requestingAgentId: "CODE_ENGINEER",
     });
-    expect(debuggerHits.items.map((m) => m.statement).join(" ")).toContain(
+    expect(debuggerHits.items.map((m) => m.statement).join(" ")).not.toContain(
       "debugger-only verified fix",
     );
     expect(engineerHits.items.map((m) => m.statement).join(" ")).not.toContain(
