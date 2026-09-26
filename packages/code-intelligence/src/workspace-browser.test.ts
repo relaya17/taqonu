@@ -15,6 +15,7 @@ import {
   resolveUnderWorkspace,
   searchWorkspaceFiles,
   writeWorkspaceFile,
+  moveWorkspaceFile,
 } from "./workspace-browser.js";
 
 describe("workspace-browser", () => {
@@ -70,6 +71,19 @@ describe("workspace-browser", () => {
     expect(() => writeWorkspaceFile(root, "../outside.ts", "nope")).toThrow(
       /escapes/,
     );
+  });
+
+  it("moves a file inside the workspace and refuses an escape", () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-studio-move-"));
+    writeWorkspaceFile(root, "src/hello.ts", "export const n = 1;\n");
+    const moved = moveWorkspaceFile(root, "src/hello.ts", "src/renamed.ts");
+    expect(moved).toEqual({ from: "src/hello.ts", to: "src/renamed.ts" });
+    expect(existsSync(join(root, "src", "hello.ts"))).toBe(false);
+    expect(readWorkspaceFile(root, "src/renamed.ts").content).toContain("export const n = 1");
+    expect(() => moveWorkspaceFile(root, "src/renamed.ts", "../outside.ts")).toThrow(
+      /escapes/,
+    );
+    expect(existsSync(join(root, "src", "renamed.ts"))).toBe(true);
   });
 
   it("refuses a write through a symlink/junction that points outside the workspace", () => {

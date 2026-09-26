@@ -5,6 +5,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -469,4 +470,32 @@ export function writeWorkspaceFile(
     bytes: Buffer.byteLength(content, "utf8"),
     readOnly: false,
   };
+}
+
+/** Rename or move a file inside the workspace. Never escapes the root. */
+export function moveWorkspaceFile(
+  workspaceRoot: string,
+  fromRelativePath: string,
+  toRelativePath: string,
+): { readonly from: string; readonly to: string } {
+  const from = toPosix(fromRelativePath);
+  const to = toPosix(toRelativePath);
+  if (from === to) {
+    throw new Error("Source and destination are the same");
+  }
+  const source = resolveUnderWorkspace(workspaceRoot, from);
+  const destination = resolveUnderWorkspace(workspaceRoot, to);
+  if (!existsSync(source)) {
+    throw new Error(`File not found: ${from}`);
+  }
+  const info = statSync(source);
+  if (!info.isFile()) {
+    throw new Error(`Not a file: ${from}`);
+  }
+  if (existsSync(destination)) {
+    throw new Error(`Destination already exists: ${to}`);
+  }
+  mkdirSync(dirname(destination), { recursive: true });
+  renameSync(source, destination);
+  return { from, to };
 }

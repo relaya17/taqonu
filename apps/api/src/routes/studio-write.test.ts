@@ -900,4 +900,49 @@ describe("PUT /api/v1/studio/file", () => {
     expect(body.guardianEvaluation.modelInvoked).toBe(false);
     expect(body.guardianEvaluation.verdict).toBe("UNKNOWN");
   });
+
+  it("moves a workspace file and refuses an escape or an agent actor", async () => {
+    const actor = testUser();
+    getRequestUser.mockResolvedValue(actor);
+    const projectId = seedOwnedProject(actor, workspaceRoot);
+    const moved = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/file/move",
+      payload: { projectId, from: "readme.md", to: "docs/readme.md" },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect(existsSync(join(workspaceRoot, "readme.md"))).toBe(false);
+    expect(readFileSync(join(workspaceRoot, "docs", "readme.md"), "utf8")).toBe("# original\n");
+
+    const escape = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/file/move",
+      payload: { projectId, from: "docs/readme.md", to: "../outside.md" },
+    });
+    expect(escape.statusCode).toBe(400);
+    expect(existsSync(join(workspaceRoot, "docs", "readme.md"))).toBe(true);
+
+    const agent = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/file/move",
+      headers: { "x-atlas-actor-kind": "AGENT" },
+      payload: { projectId, from: "docs/readme.md", to: "docs/agent.md" },
+    });
+    expect(agent.statusCode).toBe(403);
+    expect(existsSync(join(workspaceRoot, "docs", "readme.md"))).toBe(true);
+  });
+
+  it("does not move an Atlas-self file until a second identity approves", async () => {
+    const actor = testUser();
+    getRequestUser.mockResolvedValue(actor);
+    const projectId = seedAtlasSelfProject(actor, workspaceRoot);
+    const moved = await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/file/move",
+      payload: { projectId, from: "readme.md", to: "docs/readme.md" },
+    });
+    expect(moved.statusCode).toBe(202);
+    expect(existsSync(join(workspaceRoot, "readme.md"))).toBe(true);
+    expect(existsSync(join(workspaceRoot, "docs", "readme.md"))).toBe(false);
+  });
 });

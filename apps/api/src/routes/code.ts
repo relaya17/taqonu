@@ -26,6 +26,7 @@ import {
   rollbackPatchFiles,
   searchWorkspaceFiles,
   writeWorkspaceFile,
+  moveWorkspaceFile,
 } from "@atlas/code-intelligence";
 import {
   authorizeEntityAction,
@@ -36,6 +37,7 @@ import {
   type EntityAuthorizationDecision,
 } from "@atlas/agent-core";
 import { z } from "zod";
+import { isAgentPtyRequest } from "../services/studio-pty.js";
 import { osStore } from "../store/os-store.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -733,6 +735,126 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       throw new AtlasError(
         "VALIDATION_ERROR",
         error instanceof Error ? error.message : "Failed to save file",
+        { statusCode: 400 },
+      );
+    }
+  });
+
+  app.post("/api/v1/studio/file/move", async (request, reply) => {
+    if (isAgentPtyRequest(request.headers as Record<string, unknown>)) {
+      throw new AtlasError("FORBIDDEN", "Studio file move is human-only.", {
+        statusCode: 403,
+      });
+    }
+    const body = z
+      .object({
+        projectId: z.string().uuid(),
+        from: z.string().trim().min(1).max(500),
+        to: z.string().trim().min(1).max(500),
+        approvalId: z.string().uuid().optional(),
+        decisionReason: z.string().trim().min(1).max(2000).optional(),
+      })
+      .parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    const root = osStore.getWorkspaceRoot(body.projectId);
+    if (!root || !existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot before moving a file in Studio.",
+        { statusCode: 400 },
+      );
+    }
+
+    const persistMove = () => {
+      const moved = moveWorkspaceFile(root, body.from, body.to);
+      osStore.appendAudit({
+        type: "studio.file.moved",
+        projectId: body.projectId,
+        from: moved.from,
+        to: moved.to,
+        by: user.id,
+        at: new Date().toISOString(),
+      });
+      return moved;
+    };
+
+    if (isAtlasSelfStudioProject(body.projectId)) {
+      const denied =
+        atlasSelfStudioWriteDeniedReason(body.from) ??
+        atlasSelfStudioWriteDeniedReason(body.to);
+      if (denied) {
+        throw new AtlasError(
+          "FORBIDDEN",
+          "Atlas-self Studio move blocked by self-modification boundary",
+          { statusCode: 403 },
+        );
+      }
+      const artifactHash = hashAtlasSelfFileArtifact({
+        projectId: body.projectId,
+        path: body.to,
+        content: body.from,
+      });
+      if (body.approvalId) {
+        if (!body.decisionReason) {
+          throw new AtlasError(
+            "VALIDATION_ERROR",
+            "decisionReason is required for an Atlas-self live-human decision",
+          );
+        }
+        const helper = await executeAtlasSelfLiveHuman({
+          approvalId: body.approvalId,
+          deciderId: user.id,
+          decisionReason: body.decisionReason,
+          entityType: "CONFIGURATION",
+          action: "UPDATE",
+          artifactHash,
+          requestId: request.id,
+          routeLabel: "studio.file.move",
+          projectId: body.projectId,
+          dispatchInput: {
+            applicationId: ATLAS_SELF_APPLICATION_ID,
+            projectId: body.projectId,
+            from: body.from,
+            to: body.to,
+          },
+          executeOnce: async () => {
+            try {
+              const moved = persistMove();
+              return atlasSelfExecutedEvidence(moved, moved);
+            } catch (error) {
+              return {
+                kind: "FAILURE" as const,
+                reason: error instanceof Error ? error.message : "Failed to move file",
+              };
+            }
+          },
+        });
+        return respondAtlasSelfHelper(reply, helper);
+      }
+      const approval = await mintAtlasSelfApproval({
+        entityType: "CONFIGURATION",
+        action: "UPDATE",
+        requestedBy: user.id,
+        reason: `Studio move ${body.from} to ${body.to} on Atlas-self project`,
+        route: "studio.file.move",
+        artifactHash,
+        extraContext: { from: body.from, to: body.to, projectId: body.projectId },
+      });
+      return reply.status(202).send({
+        status: "APPROVAL_REQUIRED" as const,
+        approvalId: approval.id,
+        executed: false,
+        message:
+          "Atlas-self workspace move requires an independent live-human decision.",
+      });
+    }
+
+    try {
+      return persistMove();
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to move file",
         { statusCode: 400 },
       );
     }
