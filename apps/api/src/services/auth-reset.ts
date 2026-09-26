@@ -72,6 +72,23 @@ export function createPasswordResetToken(email: string): {
   return { token, expiresAt };
 }
 
+/** Read a still-valid reset token without consuming it. */
+export function peekPasswordResetToken(token: string): { email: string } | null {
+  if (!token || token.length < 20) return null;
+  const file = load();
+  const hash = hashToken(token);
+  const now = Date.now();
+  for (const row of file.tokens) {
+    if (row.usedAt) continue;
+    if (Date.parse(row.expiresAt) < now) continue;
+    const a = Buffer.from(row.tokenHash, "hex");
+    const b = Buffer.from(hash, "hex");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) continue;
+    return { email: row.email };
+  }
+  return null;
+}
+
 export function consumePasswordResetToken(
   token: string,
 ): { email: string } | null {

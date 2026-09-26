@@ -176,9 +176,13 @@ export async function syncSupabaseAuthRole(
         ...(input.avatarUrl ? { avatar_url: input.avatarUrl } : {}),
       },
     });
+    const profileRole =
+      input.role === "user" || input.role === "admin" ? input.role : null;
     await admin.from("profiles").upsert({
       id: input.id,
-      role: input.role,
+      // profiles.role allows only user|admin. operator/owner stay in
+      // app_metadata.atlas_role, which is the authorization source.
+      ...(profileRole ? { role: profileRole } : {}),
       ...(input.email ? { email: input.email } : {}),
       ...(input.displayName !== undefined
         ? { display_name: input.displayName }
@@ -193,22 +197,171 @@ export async function syncSupabaseAuthRole(
   }
 }
 
+export type DurableAuthFailure = "duplicate" | "invalid" | "unavailable";
+
+export type DurableProvisionResult =
+  | { readonly ok: true; readonly id: string; readonly email: string }
+  | { readonly ok: false; readonly reason: DurableAuthFailure };
+
+export type DurableSignInResult =
+  | { readonly ok: true; readonly session: SupabaseUserSession }
+  | { readonly ok: false; readonly reason: "invalid" | "unavailable" };
+
+function classifyAuthAdminError(error: {
+  readonly message?: string | undefined;
+  readonly status?: number | undefined;
+}): DurableAuthFailure {
+  const message = error.message ?? "";
+  if (/already registered|already exists|duplicate|already been registered/i.test(message)) {
+    return "duplicate";
+  }
+  if (typeof error.status === "number" && error.status >= 500) return "unavailable";
+  if (typeof error.status === "number" && error.status >= 400) return "invalid";
+  if (/password|email|invalid|validation/i.test(message)) return "invalid";
+  return "unavailable";
+}
+
+/**
+ * Create the user in Supabase Auth. This is the authoritative write when
+ * Auth is live. Callers must fail the request when this is not `ok`.
+ * They must not record a successful registration anywhere else.
+ */
+export async function provisionDurableAuthUser(
+  env: SupabaseSessionEnv,
+  input: {
+    readonly email: string;
+    readonly password: string;
+    readonly role?: UserRole;
+    readonly displayName?: string | null;
+    readonly locale?: "he" | "en" | "ar";
+    readonly id?: string;
+  },
+): Promise<DurableProvisionResult> {
+  if (!isLiveSupabase(env)) return { ok: false, reason: "unavailable" };
+  const email = input.email.trim().toLowerCase();
+  const role: UserRole = input.role ?? "user";
+  const id = input.id ?? crypto.randomUUID();
+  try {
+    const admin = adminClient(env);
+    const { data, error } = await admin.auth.admin.createUser({
+      id,
+      email,
+      password: input.password,
+      email_confirm: true,
+      app_metadata: { atlas_role: role, provider: "email" },
+      user_metadata: {
+        ...(input.displayName ? { full_name: input.displayName } : {}),
+        ...(input.locale ? { locale: input.locale } : {}),
+      },
+    });
+    if (error) return { ok: false, reason: classifyAuthAdminError(error) };
+    const createdId = data.user?.id;
+    if (!createdId) return { ok: false, reason: "unavailable" };
+    await syncSupabaseAuthRole(env, {
+      id: createdId,
+      role,
+      email,
+      displayName: input.displayName ?? null,
+      ...(input.locale ? { locale: input.locale } : {}),
+      provider: "email",
+    });
+    return { ok: true, id: createdId, email };
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+/**
+ * Password check against Supabase Auth.
+ * `invalid` is a credential rejection. `unavailable` means Auth did not
+ * answer. Callers must not treat `unavailable` as a wrong password and
+ * must not try another user store.
+ */
+export async function signInSupabaseUserResult(
+  env: SupabaseSessionEnv,
+  input: { readonly email: string; readonly password: string },
+): Promise<DurableSignInResult> {
+  if (!isLiveSupabase(env)) return { ok: false, reason: "unavailable" };
+  try {
+    const client = anonClient(env);
+    const { data, error } = await client.auth.signInWithPassword({
+      email: input.email.trim().toLowerCase(),
+      password: input.password,
+    });
+    if (error) {
+      return {
+        ok: false,
+        reason: classifyAuthAdminError(error) === "unavailable" ? "unavailable" : "invalid",
+      };
+    }
+    if (!data.session) return { ok: false, reason: "unavailable" };
+    return { ok: true, session: toSession(data.session) };
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
 /** Sign in to Supabase Auth as the user, returning a real access token usable for RLS-scoped writes. */
 export async function signInSupabaseUser(
   env: SupabaseSessionEnv,
   input: { readonly email: string; readonly password: string },
 ): Promise<SupabaseUserSession | null> {
-  if (!isLiveSupabase(env)) return null;
+  const result = await signInSupabaseUserResult(env, input);
+  return result.ok ? result.session : null;
+}
+
+/**
+ * Replace the password on the existing Auth user. Does not create a user.
+ */
+export async function updateDurableUserPassword(
+  env: SupabaseSessionEnv,
+  userId: string,
+  password: string,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: "invalid" | "unavailable" }> {
+  if (!isLiveSupabase(env)) return { ok: false, reason: "unavailable" };
   try {
-    const client = anonClient(env);
-    const { data, error } = await client.auth.signInWithPassword({
-      email: input.email,
-      password: input.password,
-    });
-    if (error || !data.session) return null;
-    return toSession(data.session);
+    const admin = adminClient(env);
+    const { error } = await admin.auth.admin.updateUserById(userId, { password });
+    if (error) {
+      const reason = classifyAuthAdminError(error);
+      return { ok: false, reason: reason === "duplicate" ? "invalid" : reason };
+    }
+    return { ok: true };
   } catch {
-    return null;
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+/**
+ * Exact email lookup in auth.users. Used only to decide whether a failed
+ * sign-in is a wrong password (user exists) or a one-time migration
+ * (user does not exist). A failed lookup is unavailable, not "absent".
+ */
+export async function findDurableAuthUserId(
+  env: SupabaseSessionEnv,
+  email: string,
+): Promise<{ readonly ok: true; readonly id: string | null } | { readonly ok: false; readonly reason: "unavailable" }> {
+  if (!isLiveSupabase(env)) return { ok: false, reason: "unavailable" };
+  const normalized = email.trim().toLowerCase();
+  try {
+    const url = new URL("/auth/v1/admin/users", env.SUPABASE_URL);
+    url.searchParams.set("filter", normalized);
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      },
+    });
+    if (!response.ok) return { ok: false, reason: "unavailable" };
+    const body = (await response.json()) as {
+      users?: ReadonlyArray<{ id?: string; email?: string | null }>;
+    };
+    const match = (body.users ?? []).find(
+      (user) => user.email?.trim().toLowerCase() === normalized && typeof user.id === "string",
+    );
+    return { ok: true, id: match?.id ?? null };
+  } catch {
+    return { ok: false, reason: "unavailable" };
   }
 }
 

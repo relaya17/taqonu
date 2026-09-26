@@ -11,6 +11,7 @@ import {
   deleteAccountSchema,
   forgotPasswordSchema,
   loginSchema,
+  parseAtlasRole,
   mfaCodeSchema,
   mfaRequiredResponseSchema,
   mfaSetupResponseSchema,
@@ -29,13 +30,17 @@ import {
   consumeMfaLoginChallenge,
   createLocalUser,
   createMfaLoginChallenge,
+  recordMfaLoginChallengeAttempt,
   deleteLocalUser,
   disableMfa,
   findUserByEmail,
+  findUserById,
   listUsers,
+  mirrorAuthUserBestEffort,
   peekMfaLoginChallenge,
   peekSession,
   rekeyLocalUserId,
+  roleForRegisteredEmail,
   setLocalPasswordByEmail,
   setLocalUserRole,
   setUserDisabled,
@@ -49,6 +54,7 @@ import { assertAuthRateLimit } from "../services/auth-rate-limit.js";
 import {
   consumePasswordResetToken,
   createPasswordResetToken,
+  peekPasswordResetToken,
 } from "../services/auth-reset.js";
 import {
   listAuthSessionsForUser,
@@ -70,10 +76,16 @@ import {
 import {
   clearSupabaseSessionCookie,
   ensureSupabaseAuthUser,
+  findDurableAuthUserId,
+  provisionDurableAuthUser,
   serializeSupabaseSessionCookie,
   signInSupabaseUser,
+  signInSupabaseUserResult,
   syncSupabaseAuthRole,
+  updateDurableUserPassword,
   verifySupabaseAccessToken,
+  type SupabaseUserSession,
+  type VerifiedSupabaseUser,
 } from "../services/supabase-session.js";
 
 export { getRequestUser };
@@ -148,53 +160,34 @@ async function completeLoginSession(
   request: FastifyRequest,
   reply: FastifyReply,
   initialUser: AuthUser,
-  password: string,
+  password: string | null,
+  existingSupabaseSession?: SupabaseUserSession | null,
 ): Promise<ReturnType<typeof authSessionDetailSchema.parse>> {
   let user = initialUser;
-  let sbSession = await signInSupabaseUser(app.atlasEnv, {
-    email: user.email,
-    password,
-  });
-  if (!sbSession) {
-    // Likely a user created before Supabase went live — lazily backfill.
-    await ensureSupabaseAuthUser(app.atlasEnv, {
-      id: user.id,
-      email: user.email,
-      password,
-      role: user.role,
-      displayName: user.displayName,
-      locale: user.locale,
-      provider: user.provider,
-    });
+  let sbSession = existingSupabaseSession ?? null;
+  if (!sbSession && password) {
     sbSession = await signInSupabaseUser(app.atlasEnv, {
       email: user.email,
       password,
     });
-  } else {
-    // Keep Auth metadata + profiles.role aligned with the known local role
-    // when the JWT still lacks atlas_role (pre-migration users).
+  }
+  // Live Auth with no Supabase session is a failure. Do not issue a local session.
+  if (isLiveSupabase(app.atlasEnv) && !sbSession) {
+    throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+      statusCode: 503,
+    });
+  }
+  if (sbSession) {
     const claims = readAccessTokenClaims(sbSession.accessToken);
     const roleFromAuth = claims?.atlasRole;
-    if (!roleFromAuth) {
-      await syncSupabaseAuthRole(app.atlasEnv, {
-        id: user.id,
-        role: user.role,
-        email: user.email,
-        displayName: user.displayName,
-        locale: user.locale,
-        provider: user.provider,
-        avatarUrl: user.avatarUrl ?? null,
-      });
-      // Re-sign so subsequent requests see atlas_role in the JWT.
-      sbSession =
-        (await signInSupabaseUser(app.atlasEnv, {
-          email: user.email,
-          password,
-        })) ?? sbSession;
-    } else if (roleFromAuth !== user.role) {
-      // Auth wins when live — mirror onto local offline store.
-      const mirrored = setLocalUserRole(user.id, roleFromAuth);
-      if (mirrored) user = mirrored;
+    if (roleFromAuth && roleFromAuth !== user.role) {
+      user = { ...user, role: roleFromAuth };
+      try {
+        const mirrored = setLocalUserRole(user.id, roleFromAuth);
+        if (mirrored) user = mirrored;
+      } catch {
+        // Local mirror must not change the role Auth already asserted.
+      }
     }
   }
   // If Supabase Auth's uid drifted from the local id (e.g. prior OAuth
@@ -208,7 +201,7 @@ async function completeLoginSession(
           env: app.atlasEnv,
           fromId: user.id,
           toId: sbSub,
-          password,
+          ...(password ? { password } : {}),
         });
         user = rekeyed;
         await syncSupabaseAuthRole(app.atlasEnv, {
@@ -240,6 +233,61 @@ async function completeLoginSession(
     expiresAt,
     sessionId,
   });
+}
+
+function userFromVerifiedAuth(verified: VerifiedSupabaseUser): AuthUser {
+  const email = (verified.email ?? "").trim().toLowerCase();
+  const role = parseAtlasRole(verified.appMetadata.atlas_role) ?? "user";
+  const fullName = verified.userMetadata.full_name;
+  const localeRaw = verified.userMetadata.locale;
+  const locale = localeRaw === "en" || localeRaw === "ar" || localeRaw === "he" ? localeRaw : "he";
+  return mirrorAuthUserBestEffort({
+    id: verified.id,
+    email,
+    displayName: typeof fullName === "string" && fullName.trim() ? fullName.trim() : null,
+    role,
+    locale,
+    provider: "local",
+  });
+}
+
+/**
+ * One-time migration. Runs only when Supabase Auth is live, sign-in was
+ * rejected, and auth.users has no row for this email. The local password
+ * check authorizes creating that Auth user. It does not authenticate.
+ * The caller must sign in to Supabase afterwards and must fail if that
+ * sign-in fails.
+ */
+async function migrateAbsentLocalUser(
+  app: FastifyInstance,
+  email: string,
+  password: string,
+): Promise<"absent" | "created" | "rejected"> {
+  const found = await findDurableAuthUserId(app.atlasEnv, email);
+  if (!found.ok) {
+    throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+      statusCode: 503,
+    });
+  }
+  if (found.id) return "rejected";
+  const local = verifyLocalPassword(email, password);
+  if (!local) return "absent";
+  const provisioned = await provisionDurableAuthUser(app.atlasEnv, {
+    id: local.id,
+    email,
+    password,
+    role: local.role,
+    displayName: local.displayName,
+    locale: local.locale,
+  });
+  if (!provisioned.ok) {
+    if (provisioned.reason === "duplicate") return "rejected";
+    if (provisioned.reason === "invalid") return "rejected";
+    throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+      statusCode: 503,
+    });
+  }
+  return "created";
 }
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -302,6 +350,69 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     rateOrThrow(`register:${request.ip}`, 8, 60_000);
     const body = registerSchema.parse(request.body);
     try {
+      if (isLiveSupabase(app.atlasEnv)) {
+        const email = body.email.trim().toLowerCase();
+        const role = roleForRegisteredEmail({
+          email,
+          ...(app.atlasEnv.ATLAS_ADMIN_EMAIL
+            ? { adminEmail: app.atlasEnv.ATLAS_ADMIN_EMAIL }
+            : {}),
+          ...(app.atlasEnv.ATLAS_OWNER_EMAIL
+            ? { ownerEmail: app.atlasEnv.ATLAS_OWNER_EMAIL }
+            : {}),
+          ...(app.atlasEnv.ATLAS_OPERATOR_EMAILS
+            ? { operatorEmails: app.atlasEnv.ATLAS_OPERATOR_EMAILS }
+            : {}),
+        });
+        const provisioned = await provisionDurableAuthUser(app.atlasEnv, {
+          email,
+          password: body.password,
+          role,
+          ...(body.displayName !== undefined ? { displayName: body.displayName } : {}),
+          ...(body.locale !== undefined ? { locale: body.locale } : {}),
+        });
+        if (!provisioned.ok) {
+          if (provisioned.reason === "duplicate") {
+            throw new AtlasError("CONFLICT", "Email already registered", { statusCode: 409 });
+          }
+          if (provisioned.reason === "invalid") {
+            throw new AtlasError("VALIDATION_ERROR", "Registration was rejected", {
+              statusCode: 400,
+            });
+          }
+          throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+            statusCode: 503,
+          });
+        }
+        const signed = await signInSupabaseUserResult(app.atlasEnv, {
+          email,
+          password: body.password,
+        });
+        if (!signed.ok) {
+          throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+            statusCode: 503,
+          });
+        }
+        const verified = await verifySupabaseAccessToken(
+          app.atlasEnv,
+          signed.session.accessToken,
+        );
+        if (!verified?.id || !verified.email) {
+          throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+            statusCode: 503,
+          });
+        }
+        const user = userFromVerifiedAuth(verified);
+        const session = await completeLoginSession(
+          app,
+          request,
+          reply,
+          user,
+          body.password,
+          signed.session,
+        );
+        return reply.status(201).send(session);
+      }
       const user = createLocalUser({
         email: body.email,
         password: body.password,
@@ -364,6 +475,64 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/v1/auth/login", async (request, reply) => {
     rateOrThrow(`login:${request.ip}`, 20, 60_000);
     const body = loginSchema.parse(request.body);
+    if (isLiveSupabase(app.atlasEnv)) {
+      const email = body.email.trim().toLowerCase();
+      const signed = await signInSupabaseUserResult(app.atlasEnv, {
+        email,
+        password: body.password,
+      });
+      let pending = signed.ok ? signed.session : null;
+      if (!signed.ok) {
+        if (signed.reason === "unavailable") {
+          throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+            statusCode: 503,
+          });
+        }
+        const migration = await migrateAbsentLocalUser(app, email, body.password);
+        if (migration !== "created") {
+          throw new AtlasError("UNAUTHORIZED", "Invalid email or password", {
+            statusCode: 401,
+          });
+        }
+        const confirmed = await signInSupabaseUserResult(app.atlasEnv, {
+          email,
+          password: body.password,
+        });
+        if (!confirmed.ok) {
+          throw new AtlasError(
+            confirmed.reason === "unavailable" ? "INTEGRATION_ERROR" : "UNAUTHORIZED",
+            confirmed.reason === "unavailable"
+              ? "User store unavailable"
+              : "Invalid email or password",
+            { statusCode: confirmed.reason === "unavailable" ? 503 : 401 },
+          );
+        }
+        pending = confirmed.session;
+      }
+      if (!pending) {
+        throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+          statusCode: 503,
+        });
+      }
+      const verified = await verifySupabaseAccessToken(app.atlasEnv, pending.accessToken);
+      if (!verified?.id || !verified.email) {
+        throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+          statusCode: 503,
+        });
+      }
+      const local = findUserById(verified.id) ?? findUserByEmail(verified.email);
+      if (local?.disabledAt) {
+        throw new AtlasError("FORBIDDEN", "Account disabled", { statusCode: 403 });
+      }
+      if (local?.mfaEnabled) {
+        const { mfaToken } = createMfaLoginChallenge(verified.id, pending);
+        return reply
+          .status(200)
+          .send(mfaRequiredResponseSchema.parse({ mfaRequired: true, mfaToken }));
+      }
+      const user = userFromVerifiedAuth(verified);
+      return completeLoginSession(app, request, reply, user, null, pending);
+    }
     const user = verifyLocalPassword(body.email, body.password);
     if (!user) {
       const existing = findUserByEmail(body.email);
@@ -375,11 +544,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     if (user.mfaEnabled) {
-      // Password is correct, but a second factor is still required — do NOT
-      // issue a session or a Supabase-authenticated cookie yet. Hand back an
-      // opaque, short-lived mfaToken that /auth/mfa/verify must present with
-      // a valid TOTP/backup code before completeLoginSession runs.
-      const { mfaToken } = createMfaLoginChallenge(user.id, body.password);
+      const { mfaToken } = createMfaLoginChallenge(user.id, null);
       return reply
         .status(200)
         .send(mfaRequiredResponseSchema.parse({ mfaRequired: true, mfaToken }));
@@ -398,20 +563,42 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
     const verifiedUser = await verifyMfaLoginCode(pending.userId, body.code);
     if (!verifiedUser) {
+      recordMfaLoginChallengeAttempt(body.mfaToken);
       throw new AtlasError("UNAUTHORIZED", "Invalid authentication code", {
         statusCode: 401,
       });
     }
-    // Only consume (single-use) the challenge once the code has actually
-    // checked out, so a wrong code doesn't burn the user's one shot at it —
-    // they can retry up to the mfa-verify rate limit above.
     const consumed = consumeMfaLoginChallenge(body.mfaToken);
     if (!consumed) {
       throw new AtlasError("UNAUTHORIZED", "MFA challenge expired or invalid", {
         statusCode: 401,
       });
     }
-    return completeLoginSession(app, request, reply, verifiedUser, consumed.password);
+    if (isLiveSupabase(app.atlasEnv)) {
+      if (!consumed.pendingSession) {
+        throw new AtlasError("UNAUTHORIZED", "MFA challenge expired or invalid", {
+          statusCode: 401,
+        });
+      }
+      const verified = await verifySupabaseAccessToken(
+        app.atlasEnv,
+        consumed.pendingSession.accessToken,
+      );
+      if (!verified?.id || !verified.email) {
+        throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+          statusCode: 503,
+        });
+      }
+      return completeLoginSession(
+        app,
+        request,
+        reply,
+        userFromVerifiedAuth(verified),
+        null,
+        consumed.pendingSession,
+      );
+    }
+    return completeLoginSession(app, request, reply, verifiedUser, null);
   });
 
   app.post("/api/v1/auth/mfa/setup", async (request) => {
@@ -624,6 +811,33 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     const user = await requireUser(app, request);
     rateOrThrow(`pwchange:${user.id}`, 8, 60_000);
     const body = changePasswordSchema.parse(request.body);
+    if (isLiveSupabase(app.atlasEnv)) {
+      const signed = await signInSupabaseUserResult(app.atlasEnv, {
+        email: user.email,
+        password: body.currentPassword,
+      });
+      if (!signed.ok) {
+        throw new AtlasError(
+          signed.reason === "unavailable" ? "INTEGRATION_ERROR" : "UNAUTHORIZED",
+          signed.reason === "unavailable" ? "User store unavailable" : "Current password incorrect",
+          { statusCode: signed.reason === "unavailable" ? 503 : 401 },
+        );
+      }
+      const changed = await updateDurableUserPassword(app.atlasEnv, user.id, body.newPassword);
+      if (!changed.ok) {
+        throw new AtlasError(
+          changed.reason === "invalid" ? "VALIDATION_ERROR" : "INTEGRATION_ERROR",
+          changed.reason === "invalid" ? "Password was rejected" : "User store unavailable",
+          { statusCode: changed.reason === "invalid" ? 400 : 503 },
+        );
+      }
+      try {
+        setLocalPasswordByEmail(user.email, body.newPassword);
+      } catch {
+        // The Auth password is already updated. A local mirror must not undo that.
+      }
+      return { ok: true, user };
+    }
     const updated = changeLocalPassword(
       user.id,
       body.currentPassword,
@@ -668,6 +882,85 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/v1/auth/password/reset", async (request, reply) => {
     rateOrThrow(`reset:${request.ip}`, 10, 60_000);
     const body = resetPasswordSchema.parse(request.body);
+    if (isLiveSupabase(app.atlasEnv)) {
+      const peeked = peekPasswordResetToken(body.token);
+      if (!peeked) {
+        throw new AtlasError("UNAUTHORIZED", "Invalid or expired reset token", {
+          statusCode: 401,
+        });
+      }
+      const found = await findDurableAuthUserId(app.atlasEnv, peeked.email);
+      if (!found.ok) {
+        throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+          statusCode: 503,
+        });
+      }
+      if (!found.id) {
+        consumePasswordResetToken(body.token);
+        throw new AtlasError("UNAUTHORIZED", "Invalid or expired reset token", {
+          statusCode: 401,
+        });
+      }
+      const changed = await updateDurableUserPassword(
+        app.atlasEnv,
+        found.id,
+        body.newPassword,
+      );
+      if (!changed.ok) {
+        throw new AtlasError(
+          changed.reason === "unavailable" ? "INTEGRATION_ERROR" : "UNAUTHORIZED",
+          changed.reason === "unavailable"
+            ? "User store unavailable"
+            : "Invalid or expired reset token",
+          { statusCode: changed.reason === "unavailable" ? 503 : 401 },
+        );
+      }
+      const signed = await signInSupabaseUserResult(app.atlasEnv, {
+        email: peeked.email,
+        password: body.newPassword,
+      });
+      if (!signed.ok) {
+        throw new AtlasError(
+          signed.reason === "unavailable" ? "INTEGRATION_ERROR" : "UNAUTHORIZED",
+          signed.reason === "unavailable"
+            ? "User store unavailable"
+            : "Invalid or expired reset token",
+          { statusCode: signed.reason === "unavailable" ? 503 : 401 },
+        );
+      }
+      const verified = await verifySupabaseAccessToken(
+        app.atlasEnv,
+        signed.session.accessToken,
+      );
+      if (!verified?.id || !verified.email) {
+        throw new AtlasError("INTEGRATION_ERROR", "User store unavailable", {
+          statusCode: 503,
+        });
+      }
+      if (!consumePasswordResetToken(body.token)) {
+        throw new AtlasError("UNAUTHORIZED", "Invalid or expired reset token", {
+          statusCode: 401,
+        });
+      }
+      try {
+        setLocalPasswordByEmail(verified.email, body.newPassword);
+      } catch {
+        // Mirror only. Auth already holds the new password.
+      }
+      try {
+        revokeAllAuthSessionsForUser(verified.id);
+      } catch {
+        // Revocation list is a sidecar.
+      }
+      return completeLoginSession(
+        app,
+        request,
+        reply,
+        userFromVerifiedAuth(verified),
+        null,
+        signed.session,
+      );
+    }
     const consumed = consumePasswordResetToken(body.token);
     if (!consumed) {
       throw new AtlasError("UNAUTHORIZED", "Invalid or expired reset token", {

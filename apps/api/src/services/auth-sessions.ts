@@ -75,7 +75,13 @@ export function recordAuthSession(input: {
     revokedAt: null,
   };
   file.sessions.push(row);
-  save(file);
+  try {
+    save(file);
+  } catch {
+    // The session file is a revocation sidecar. A failed write must not
+    // reject an identity Supabase Auth has already accepted. A sid that
+    // was not stored fails closed on the local cookie path.
+  }
   return row;
 }
 

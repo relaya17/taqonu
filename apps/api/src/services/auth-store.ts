@@ -9,6 +9,7 @@ import {
   verify as verifyTotpToken,
 } from "otplib";
 import { findRepoRoot } from "./repo-root.js";
+import type { SupabaseUserSession } from "./supabase-session.js";
 import {
   isAuthSessionActive,
   recordAuthSession,
@@ -232,6 +233,16 @@ function parseOperatorEmails(raw?: string): string[] {
     .filter(Boolean);
 }
 
+/** Role for a newly registered account. Never treats an empty local file as "first user". */
+export function roleForRegisteredEmail(input: {
+  email: string;
+  ownerEmail?: string;
+  adminEmail?: string;
+  operatorEmails?: string;
+}): UserRole {
+  return bootstrapRole({ ...input, isFirstUser: false });
+}
+
 function bootstrapRole(input: {
   email: string;
   ownerEmail?: string;
@@ -397,24 +408,20 @@ export async function verifyMfaLoginCode(userId: string, code: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Pending MFA login challenges: issued by `/auth/login` when the password was
-// correct but a second factor is still required. In-memory only (never
-// written to the users.json file, never logged) and single-use.
+// Pending MFA login challenges. In-memory, single-use, never written to the
+// user store and never logged.
 //
-// Deliberate tradeoff: the challenge holds the already-verified plaintext
-// password for its short TTL. This lets `/auth/mfa/verify` drive the exact
-// same session-issuing path as a normal login (including the Supabase
-// password-grant sign-in in `routes/auth.ts`'s `completeLoginSession`)
-// instead of duplicating/forking that logic for the MFA branch. The password
-// already sits in process memory for the duration of a normal login request
-// anyway; this only extends that to a few minutes, scoped to one random
-// unguessable token, and it is deleted on first use or expiry.
+// The password is not stored. Supabase has already accepted it. When Auth is
+// live, the challenge holds only the short-lived Auth session that sign-in
+// already returned, so completion does not replay the password. When Auth is
+// not live, the challenge holds no session and no password.
 // ---------------------------------------------------------------------------
 
 interface PendingMfaLogin {
   readonly userId: string;
-  readonly password: string;
   readonly expiresAt: number;
+  attempts: number;
+  readonly pendingSession: SupabaseUserSession | null;
 }
 
 const MFA_LOGIN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -427,19 +434,30 @@ function pruneExpiredMfaLoginChallenges(): void {
   }
 }
 
-/** Issue a short-lived opaque token identifying a password-verified, MFA-pending login. */
+/** Issue a short-lived opaque token for a password-verified, MFA-pending login. */
 export function createMfaLoginChallenge(
   userId: string,
-  password: string,
+  pendingSession: SupabaseUserSession | null,
 ): { mfaToken: string; expiresAt: string } {
   pruneExpiredMfaLoginChallenges();
   const mfaToken = randomBytes(32).toString("base64url");
   const expiresAtMs = Date.now() + MFA_LOGIN_CHALLENGE_TTL_MS;
-  pendingMfaLogins.set(mfaToken, { userId, password, expiresAt: expiresAtMs });
+  pendingMfaLogins.set(mfaToken, {
+    userId,
+    expiresAt: expiresAtMs,
+    attempts: 0,
+    pendingSession,
+  });
   return { mfaToken, expiresAt: new Date(expiresAtMs).toISOString() };
 }
 
-/** Non-destructive read — used to resolve which user a code should be checked against. */
+export function recordMfaLoginChallengeAttempt(mfaToken: string): void {
+  const entry = pendingMfaLogins.get(mfaToken);
+  if (!entry || Date.now() > entry.expiresAt) return;
+  entry.attempts += 1;
+}
+
+/** Non-destructive read — which user a code should be checked against. */
 export function peekMfaLoginChallenge(mfaToken: string): { userId: string } | null {
   const entry = pendingMfaLogins.get(mfaToken);
   if (!entry) return null;
@@ -450,14 +468,39 @@ export function peekMfaLoginChallenge(mfaToken: string): { userId: string } | nu
   return { userId: entry.userId };
 }
 
-/** Single-use: deletes the challenge and returns its password for session issuance. */
+/** Single-use. Returns the held Auth session, never a password. */
 export function consumeMfaLoginChallenge(
   mfaToken: string,
-): { userId: string; password: string } | null {
+): { userId: string; pendingSession: SupabaseUserSession | null } | null {
   const entry = pendingMfaLogins.get(mfaToken);
   pendingMfaLogins.delete(mfaToken);
   if (!entry || Date.now() > entry.expiresAt) return null;
-  return { userId: entry.userId, password: entry.password };
+  return { userId: entry.userId, pendingSession: entry.pendingSession };
+}
+
+/** True when the stored challenge record contains the given secret. */
+export function mfaChallengeContainsSecret(mfaToken: string, secret: string): boolean {
+  const entry = pendingMfaLogins.get(mfaToken);
+  if (!entry || secret.length === 0) return false;
+  return JSON.stringify(entry).includes(secret);
+}
+
+export function describeMfaLoginChallenge(mfaToken: string): {
+  userId: string;
+  expiresAt: number;
+  attempts: number;
+  hasPendingSession: boolean;
+  keys: string[];
+} | null {
+  const entry = pendingMfaLogins.get(mfaToken);
+  if (!entry) return null;
+  return {
+    userId: entry.userId,
+    expiresAt: entry.expiresAt,
+    attempts: entry.attempts,
+    hasPendingSession: entry.pendingSession !== null,
+    keys: Object.keys(entry),
+  };
 }
 
 export interface OAuthUpsertResult {
@@ -845,4 +888,41 @@ export function mirrorAuthUserLocally(input: {
   file.users.push(user);
   save(file);
   return toPublicUser(user);
+}
+
+/**
+ * Mirror a durable Auth user into the local file when that file is writable.
+ * A failed mirror does not change the Auth user. The returned record is the
+ * identity Auth already committed.
+ */
+export function mirrorAuthUserBestEffort(input: {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  role: UserRole;
+  locale?: "he" | "en" | "ar";
+  provider?: "email" | "google" | "github" | "apple" | "local";
+  avatarUrl?: string | null;
+}): AuthUser {
+  try {
+    return mirrorAuthUserLocally(input);
+  } catch {
+    const now = new Date().toISOString();
+    const email = input.email.trim().toLowerCase();
+    return authUserSchema.parse({
+      id: input.id,
+      email,
+      displayName: input.displayName?.trim() || email.split("@")[0] || "user",
+      role: input.role,
+      locale: input.locale ?? "he",
+      provider: input.provider ?? "email",
+      avatarUrl: input.avatarUrl ?? null,
+      createdAt: now,
+      updatedAt: now,
+      emailVerified: true,
+      disabled: false,
+      hasPassword: true,
+      mfaEnabled: false,
+    });
+  }
 }

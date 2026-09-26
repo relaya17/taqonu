@@ -152,9 +152,15 @@ export async function resolveUserFromSupabaseAccessToken(
 
   const local = findUserById(claims.sub);
   if (local?.disabledAt) return null;
-  const role: UserRole = claims.atlasRole ?? local?.role ?? "user";
+  // Authorization role is the verified Auth claim only. A local mirror role
+  // must not fill in or override it. A missing claim is the schema default.
+  const role: UserRole = claims.atlasRole ?? "user";
   if (claims.atlasRole && local && local.role !== claims.atlasRole) {
-    setLocalUserRole(claims.sub, claims.atlasRole);
+    try {
+      setLocalUserRole(claims.sub, claims.atlasRole);
+    } catch {
+      // A local mirror write must not reject an identity Supabase already verified.
+    }
   }
   try {
     const user = buildUserFromAuthClaims(claims, role);

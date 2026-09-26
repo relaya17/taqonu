@@ -198,12 +198,11 @@ describe("resolveUserFromSupabaseAccessToken", () => {
     expect(findUserById(sub)?.role).toBe("admin");
   });
 
-  it("falls back to local mirror role when the verified user lacks atlas_role", async () => {
+  it("does not take a role from the local mirror when the verified user lacks atlas_role", async () => {
     const local = createLocalUser({
       email: "user@example.com",
       password: "correct-horse-battery",
     });
-    // First user is admin in empty store
     expect(local.role).toBe("admin");
     const token = fakeJwt({
       sub: local.id,
@@ -214,7 +213,7 @@ describe("resolveUserFromSupabaseAccessToken", () => {
     mockGenuineToken({ sub: local.id, email: local.email, app_metadata: {} });
 
     const resolved = await resolveUserFromSupabaseAccessToken(liveEnv(), token);
-    expect(resolved?.user.role).toBe("admin");
+    expect(resolved?.user.role).toBe("user");
   });
 
   it("returns null for locally-expired tokens without ever calling Supabase", async () => {
