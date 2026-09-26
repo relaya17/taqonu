@@ -22,9 +22,12 @@ env:
   # long (its "local Supabase is live if not placeholder key" branch). A
   # longer placeholder like the old "e2e-service-role-replace-me" trips that
   # branch, so checkDatabase() in health-check.ts tries a real network call
-  # to 127.0.0.1:54321 (nothing is listening there in this job), and
-  # /api/v1/health never turns HEALTHY — the "Start stack" step's readiness
-  # loop above spins until its 90-iteration timeout and the job fails.
+  # to 127.0.0.1:54321 (nothing is listening there during the earlier
+  # suites), and /api/v1/health never turns HEALTHY — the "Start stack"
+  # step's readiness loop spins until its timeout and the job fails.
+  # Stage 9 replaces this sentinel after `supabase start`. It reads the
+  # disposable instance's own key from `supabase status` and does not
+  # invent a longer placeholder.
   SUPABASE_SERVICE_ROLE_KEY: replace-me
   # Must be 32+ chars (schema: z.string().min(32)) but must NOT equal the
   # literal "12345678901234567890123456789012" documented in env.ts as
@@ -85,6 +88,7 @@ jobs:
         run: |
           set -e
           pnpm --filter @atlas/api start > /tmp/atlas-api.log 2>&1 &
+          echo $! > /tmp/atlas-api.pid
           pnpm --filter @atlas/web exec next start --port 3000 > /tmp/atlas-web.log 2>&1 &
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:4000/api/v1/health >/dev/null \
@@ -115,8 +119,63 @@ jobs:
           PLAYWRIGHT_API_URL: http://127.0.0.1:4000
           CI: true
 
+      - name: Start disposable approval store
+        run: |
+          set -euo pipefail
+          npx --yes supabase start
+          npx --yes supabase status -o env > /tmp/supabase-status.env
+          chmod 600 /tmp/supabase-status.env
+          set -a
+          # shellcheck disable=SC1091
+          . /tmp/supabase-status.env
+          set +a
+          if [ -z "${API_URL:-}" ] || [ -z "${ANON_KEY:-}" ] || [ -z "${SERVICE_ROLE_KEY:-}" ] || [ -z "${DB_URL:-}" ]; then
+            echo "supabase status did not provide the local API URL and keys"
+            exit 1
+          fi
+          echo "::add-mask::${SERVICE_ROLE_KEY}"
+          echo "::add-mask::${ANON_KEY}"
+          echo "::add-mask::${DB_URL}"
+          {
+            echo "SUPABASE_URL=${API_URL}"
+            echo "SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "DATABASE_URL=${DB_URL}"
+          } >> "$GITHUB_ENV"
+          rm -f /tmp/supabase-status.env
+          curl -sf "${API_URL}/rest/v1/" -H "apikey: ${ANON_KEY}" -o /dev/null
+
       - name: Stage 9 authenticated fixtures
-        run: pnpm test:e2e:stage9
+        run: |
+          set -euo pipefail
+          if [ "${SUPABASE_SERVICE_ROLE_KEY}" = "replace-me" ]; then
+            echo "disposable approval store was not provisioned"
+            exit 1
+          fi
+          if [ -f /tmp/atlas-api.pid ]; then
+            kill "$(cat /tmp/atlas-api.pid)" 2>/dev/null || true
+          fi
+          sleep 1
+          pids="$(ss -lptnH 'sport = :4000' | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)"
+          if [ -n "${pids}" ]; then
+            kill ${pids} 2>/dev/null || true
+            sleep 1
+          fi
+          pnpm --filter @atlas/api start > /tmp/atlas-api-stage9.log 2>&1 &
+          echo $! > /tmp/atlas-api.pid
+          for i in $(seq 1 60); do
+            code="$(curl -s -o /tmp/atlas-health.json -w "%{http_code}" http://127.0.0.1:4000/api/v1/health || true)"
+            if [ "${code}" = "200" ]; then
+              echo "api ready with the disposable approval store"
+              break
+            fi
+            if [ "${i}" = "60" ]; then
+              echo "api health stayed HTTP ${code}"
+              exit 1
+            fi
+            sleep 2
+          done
+          pnpm test:e2e:stage9
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_API_URL: http://127.0.0.1:4000
