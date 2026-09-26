@@ -557,6 +557,15 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         decisionReason: z.string().trim().min(1).max(2000).optional(),
       })
       .parse(request.body);
+    // Stage 4 (approved 2026-09-26): direct Studio file write is human-only,
+    // at parity with POST /api/v1/studio/file/move. An agent must go through
+    // the governed proposal/patch path. The agent header is a deny signal
+    // only; it never grants authority.
+    if (isAgentActorRequest(request.headers as Record<string, unknown>)) {
+      throw new AtlasError("FORBIDDEN", "Studio file write is human-only.", {
+        statusCode: 403,
+      });
+    }
     const user = await assertProjectWriteAccess(app, request, body.projectId);
     const root = osStore.getWorkspaceRoot(body.projectId);
     if (!root || !existsSync(root)) {
@@ -572,6 +581,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       const now = new Date().toISOString();
       osStore.appendAudit({
         type: "studio.file.written",
+        actorKind: "USER",
+        actorId: user.id,
         projectId: body.projectId,
         path: written.path,
         bytes: written.bytes,
@@ -1075,6 +1086,12 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     osStore.upsertPatch(patch);
     osStore.appendAudit({
       type: "code.patch.proposed",
+      // Stage 4 attribution: the CODE_ENGINEER heuristic proposes on behalf
+      // of the requesting human (server-set identity, never client input).
+      actorKind: "AGENT",
+      actorId: "CODE_ENGINEER",
+      agentId: "CODE_ENGINEER",
+      onBehalfOfUserId: user.id,
       patchId: patch.id,
       mode: patch.mode,
       risk: patch.risk,
@@ -1735,6 +1752,17 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       authorityHint: "DEVELOPER_STATEMENT",
     });
     osStore.upsertPatch(patch);
+    // Stage 4 attribution: a directly submitted patch is a human action.
+    osStore.appendAudit({
+      type: "code.patch.submitted",
+      actorKind: "USER",
+      actorId: user.id,
+      agentId: null,
+      onBehalfOfUserId: user.id,
+      patchId: patch.id,
+      projectId: patch.projectId ?? null,
+      at: new Date().toISOString(),
+    });
     return reply.status(201).send({ patch });
   });
 }

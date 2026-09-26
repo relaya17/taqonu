@@ -19,14 +19,22 @@ describe("Phase 1 architecture contracts", () => {
     );
   });
 
-  it("keeps empty allowedAgents default-open (intentional, not fail-closed)", () => {
-    expect(MEMORY_OWNERSHIP_CONTRACT.emptyAllowedAgents).toBe("default-open");
+  it("Stage 4: memory agent visibility is fail-closed (approved 2026-09-26)", () => {
+    expect(MEMORY_OWNERSHIP_CONTRACT.emptyAllowedAgents).toBe(
+      "open-to-admitted-identities-only",
+    );
     expect(MEMORY_AGENT_VISIBILITY_CONTRACT.emptyAllowedAgents).toBe(
-      "default-open",
+      "open-to-admitted-identities-only",
     );
     expect(MEMORY_OWNERSHIP_CONTRACT.omitRequesterId).toBe(
-      "human-surface-visible",
+      "human-surface-declared-only",
     );
+    expect(MEMORY_AGENT_VISIBILITY_CONTRACT.omitRequesterId).toBe(
+      "human-surface-declared-only",
+    );
+    expect(MEMORY_AGENT_VISIBILITY_CONTRACT.unknownOrUnprofiledId).toBe("denied");
+    expect(MEMORY_AGENT_VISIBILITY_CONTRACT.psaIdentity).toBe("bound-to-memory-owner");
+    expect(MEMORY_AGENT_VISIBILITY_CONTRACT.mixedIds).toBe("all-must-be-admitted");
   });
 
   it("keeps Agent identity distinct from model identity; proposePatch is heuristic; model output is not Truth", () => {

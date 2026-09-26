@@ -79,7 +79,12 @@ function cloudIdentityFor(user: AuthUser) {
   };
 }
 
-function seedMemory(ownerId: string, statement: string, projectId: string | null = null) {
+function seedMemory(
+  ownerId: string,
+  statement: string,
+  projectId: string | null = null,
+  allowedAgents: string[] | null = null,
+) {
   osStore.ensureLoaded();
   const now = new Date().toISOString();
   osStore.addMemory({
@@ -107,6 +112,7 @@ function seedMemory(ownerId: string, statement: string, projectId: string | null
     createdBy: "seed",
     scope: projectId ? "PROJECT" : "GLOBAL",
     priority: "MEDIUM",
+    allowedAgents,
   });
 }
 
@@ -172,6 +178,59 @@ describe("GET /api/v1/memory", () => {
     const statements = body.items.map((m: { statement: string }) => m.statement);
     expect(statements).toContain("owner A private note");
     expect(statements).toContain("owner B private note");
+  });
+});
+
+describe("GET /api/v1/memory — Stage 4 agentId is a requested target, never an actor", () => {
+  it("narrows to what the target identity may read; cannot widen across owners", async () => {
+    seedMemory(ownerA.id, "stage4 target open note");
+    seedMemory(ownerA.id, "stage4 target judge-only note", null, ["JUDGE"]);
+    seedMemory(ownerB.id, "stage4 target owner B note");
+    getRequestUser.mockReturnValue(ownerA);
+
+    const asOwnPsa = await app.inject({
+      method: "GET",
+      url: `/api/v1/memory?mode=retrieve&budget=40&agentId=${encodeURIComponent(`psa:${ownerA.id}`)}`,
+    });
+    expect(asOwnPsa.statusCode).toBe(200);
+    const psaStatements = (asOwnPsa.json().items as Array<{ statement: string }>).map(
+      (m) => m.statement,
+    );
+    expect(psaStatements).toContain("stage4 target open note");
+    expect(psaStatements).not.toContain("stage4 target judge-only note");
+    expect(psaStatements).not.toContain("stage4 target owner B note");
+
+    // Naming another owner's PSA as the target never grants owner B's rows
+    // and does not reveal owner A's rows either (PSA bound to memory owner).
+    const asOtherPsa = await app.inject({
+      method: "GET",
+      url: `/api/v1/memory?mode=retrieve&budget=40&agentId=${encodeURIComponent(`psa:${ownerB.id}`)}`,
+    });
+    const otherStatements = (asOtherPsa.json().items as Array<{ statement: string }>).map(
+      (m) => m.statement,
+    );
+    expect(otherStatements).not.toContain("stage4 target owner B note");
+    expect(otherStatements).not.toContain("stage4 target open note");
+  });
+
+  it("an unknown or unprofiled target sees nothing (fail closed)", async () => {
+    getRequestUser.mockReturnValue(ownerA);
+    for (const target of ["not-a-registered-agent", "CODE_ENGINEER", "psa:"]) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/memory?mode=retrieve&budget=40&agentId=${encodeURIComponent(target)}`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().items).toEqual([]);
+    }
+  });
+
+  it("without a target the human surface keeps its own-owner view", async () => {
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({ method: "GET", url: "/api/v1/memory?mode=retrieve&budget=40" });
+    const statements = (res.json().items as Array<{ statement: string }>).map((m) => m.statement);
+    expect(statements).toContain("stage4 target judge-only note");
+    expect(statements).not.toContain("stage4 target owner B note");
   });
 });
 

@@ -216,6 +216,28 @@ describe("POST /api/v1/qa/runs", () => {
     expect(statements).not.toContain("distinctivephrase owner-A qa lesson");
   });
 
+  it("Stage 4: an admin caller's QA memory context stays scoped to the admin's own memories (no cross-owner widening)", async () => {
+    const adminUser = signedInUser({
+      id: "44444444-4444-4444-8444-444444444444",
+      email: "admin-qa@example.com",
+      role: "admin",
+    });
+    seedGlobalMemory(adminUser.id, "distinctivephrase admin own qa lesson");
+    getRequestUser.mockReturnValue(adminUser);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/qa/runs",
+      payload: { scope: "ENTIRE_PORTFOLIO", userRequest: "distinctivephrase" },
+    });
+    expect(res.statusCode).toBe(201);
+    const statements = res
+      .json()
+      .memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("distinctivephrase admin own qa lesson");
+    expect(statements).not.toContain("distinctivephrase owner-A qa lesson");
+    expect(statements).not.toContain("distinctivephrase owner-B qa lesson");
+  });
+
   it("ENTIRE_PORTFOLIO only analyzes the caller's projects — never another tenant's bound project", async () => {
     const projectA = crypto.randomUUID();
     const projectB = crypto.randomUUID();

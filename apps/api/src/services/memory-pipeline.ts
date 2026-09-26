@@ -4,7 +4,11 @@ import {
   memoryEpistemicAfterAction,
   controlGovernedMemoryAllows,
   controlMemoryDecisionForProfile,
+  isPersonalSupervisingAgentId,
   memorySchema,
+  PERSONAL_SUPERVISING_AGENT_CLASS,
+  PSA_STABLE_ID_PREFIX,
+  personalSupervisingAgentId,
   type ControlAgentProfile,
   type DomainEvent,
   type DomainEventType,
@@ -116,6 +120,13 @@ export type MemoryRetrieveInput = {
    * equivalent to passing that id via `requestingAgentId`).
    */
   requestingAgentIds?: readonly string[];
+  /**
+   * Stage 4 fail-closed identity: a caller that names NO agent must declare
+   * that the result is returned to a human-facing surface (a human reads it;
+   * it is never injected into an agent or LLM context). Without this flag and
+   * without a registered agent identity, retrieval returns nothing.
+   */
+  humanSurface?: true;
   /** Injected provider (tests / explicit wiring). Wins over `embeddingEnv`. */
   embeddingProvider?: EmbeddingProvider;
   /** Used to resolve HTTP vs hash fallback when `embeddingProvider` is omitted. */
@@ -851,27 +862,28 @@ export function approveMemory(input: {
 }
 
 /**
- * Per-agent scoping (P1 fix): true when `memory` may be returned to the
- * requesting agent(s). A memory with no `allowedAgents` set (null/undefined/
- * empty array) is unchanged/default-open — visible to any agent within the
- * existing `ownerId` tenant boundary. A memory that *does* set a non-empty
- * `allowedAgents` list is only visible when at least one identified
- * requester (`requestingAgentId` and/or `requestingAgentIds`) is in that
- * list. When both requester fields are omitted, the memory stays visible:
- * this is the backward-compat guarantee for human-facing callers
- * (conversation, generic agent run, memory list) that never identify an
- * agent. An id that is not a Control profile stays on that rule.
- * A known Control profile is checked first: personal read is denied when
- * the profile does not grant it, including when allowedAgents is empty.
- * A listed allowedAgents entry does not override that deny.
+ * Per-agent scoping, Stage 4 fail-closed contract (approved 2026-09-26):
  *
- * INTENTIONAL CONTRACT — do not flip empty allowedAgents to fail-closed
- * without an explicit product decision. Tenant/owner isolation is a
- * different axis and is already fail-closed.
+ * - No agent id at all: visible ONLY when the caller explicitly declares a
+ *   human-facing surface (`humanSurface: true`). Agent/LLM paths must name a
+ *   server-derived identity; omission is never an implicit grant.
+ * - Empty / whitespace id: invalid identity, denied.
+ * - Unknown or unprofiled id: not in the governed registry, denied.
+ * - Registered profile that does not grant the read (Fabric, oversight,
+ *   NOT_PROVEN application): denied.
+ * - `psa:<ownerId>`: admitted only for memories owned by that same owner.
+ *   The PSA class id (not bound to an owner) is denied.
+ * - Mixed ids: every candidate must be admitted, otherwise denied.
+ * - Non-empty `allowedAgents`: every admitted candidate must be listed.
+ *
+ * Tenant/owner isolation is a separate axis and runs first (data layer).
  */
 export const MEMORY_AGENT_VISIBILITY_CONTRACT = {
-  emptyAllowedAgents: "default-open",
-  omitRequesterId: "human-surface-visible",
+  emptyAllowedAgents: "open-to-admitted-identities-only",
+  omitRequesterId: "human-surface-declared-only",
+  unknownOrUnprofiledId: "denied",
+  psaIdentity: "bound-to-memory-owner",
+  mixedIds: "all-must-be-admitted",
   nonEmptyAllowedAgents: "restricted-to-listed-agents",
   tenantOwnerIsolation: "fail-closed",
 } as const;
@@ -1020,24 +1032,51 @@ export async function commitMemory(input: {
   return { cloudSynced: Boolean(row), persisted: true };
 }
 
+export type MemoryVisibilityOptions = {
+  /** Caller explicitly returns the result to a human-facing surface. */
+  readonly humanSurface?: boolean;
+};
+
+function admitsMemoryRead(memory: Memory, agentId: string): boolean {
+  const decision = controlGovernedMemoryAllows(agentId, "read");
+  // Unknown / unprofiled ids are not governed identities: fail closed.
+  if (!decision.governed || !decision.allowed) return false;
+  // Anything that resolves to the PSA policy class (the class id, a bare
+  // "psa:" prefix, or any "psa:<x>") is admitted only as the exact
+  // owner-bound identity of this memory's owner.
+  if (
+    agentId === PERSONAL_SUPERVISING_AGENT_CLASS ||
+    agentId.startsWith(PSA_STABLE_ID_PREFIX)
+  ) {
+    return (
+      isPersonalSupervisingAgentId(agentId) &&
+      agentId === personalSupervisingAgentId(memory.ownerId)
+    );
+  }
+  return true;
+}
+
 export function memoryIsVisibleToAgent(
   memory: Memory,
-  requestingAgentId?: string,
-  requestingAgentIds?: readonly string[],
+  requestingAgentId?: string | null,
+  requestingAgentIds?: readonly (string | null | undefined)[],
+  options: MemoryVisibilityOptions = {},
 ): boolean {
-  const candidates = [
-    ...(requestingAgentId ? [requestingAgentId] : []),
+  const raw: Array<string | null | undefined> = [
+    ...(requestingAgentId === undefined ? [] : [requestingAgentId]),
     ...(requestingAgentIds ?? []),
   ];
-  if (candidates.length === 0) return true;
-  const admitted = candidates.filter((id) => {
-    const decision = controlGovernedMemoryAllows(id, "read");
-    return !decision.governed || decision.allowed;
-  });
-  if (admitted.length === 0) return false;
+  if (raw.length === 0) return options.humanSurface === true;
+  const candidates: string[] = [];
+  for (const value of raw) {
+    // null / empty / whitespace is an invalid identity, never a grant.
+    if (typeof value !== "string" || value.trim().length === 0) return false;
+    candidates.push(value.trim());
+  }
+  if (!candidates.every((id) => admitsMemoryRead(memory, id))) return false;
   const allowed = memory.allowedAgents;
   if (!allowed || allowed.length === 0) return true;
-  return admitted.some((id) => allowed.includes(id));
+  return candidates.every((id) => allowed.includes(id));
 }
 
 /** Same read gate as catalog identities, for a profile that is not catalogued. */
@@ -1052,17 +1091,7 @@ export function memoryVisibleForControlProfile(
   return allowed.includes(profile.agentId);
 }
 
-function isVisibleToAgent(
-  memory: Memory,
-  requestingAgentId?: string,
-  requestingAgentIds?: readonly string[],
-): boolean {
-  return memoryIsVisibleToAgent(
-    memory,
-    requestingAgentId,
-    requestingAgentIds,
-  );
-}
+
 
 function heuristicMemoryScore(memory: Memory, queryLower: string): number {
   let score = memory.confidence;
@@ -1138,7 +1167,9 @@ export async function retrieveMemories(input: MemoryRetrieveInput): Promise<{
   const active = pools
     .filter((m) => m.status === "ACTIVE")
     .filter((m) =>
-      isVisibleToAgent(m, input.requestingAgentId, input.requestingAgentIds),
+      memoryIsVisibleToAgent(m, input.requestingAgentId, input.requestingAgentIds, {
+        humanSurface: input.humanSurface === true,
+      }),
     );
 
   let embeddingKind: MemoryRetrievalEmbeddingKind = "none";

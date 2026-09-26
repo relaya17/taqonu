@@ -186,6 +186,44 @@ describe("PUT /api/v1/studio/file", () => {
     ).toBe(true);
   });
 
+  it("Stage 4: denies an agent actor on direct Studio file write (parity with move) and writes nothing", async () => {
+    const actor = testUser();
+    getRequestUser.mockResolvedValue(actor);
+    const projectId = seedOwnedProject(actor, workspaceRoot);
+    for (const headers of [
+      { "x-atlas-actor-kind": "AGENT" },
+      { "x-atlas-agent-id": "CODE_ENGINEER" },
+    ]) {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/studio/file",
+        headers,
+        payload: { projectId, path: "src/agent-write.ts", content: "export const x = 1;\n" },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.message).toMatch(/human-only/);
+    }
+    expect(existsSync(join(workspaceRoot, "src", "agent-write.ts"))).toBe(false);
+  });
+
+  it("Stage 4: a human Studio write is allowed and audited with the real actor kind", async () => {
+    const actor = testUser();
+    getRequestUser.mockResolvedValue(actor);
+    const projectId = seedOwnedProject(actor, workspaceRoot);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/studio/file",
+      payload: { projectId, path: "src/human.ts", content: "export const h = 1;\n" },
+    });
+    expect(res.statusCode).toBe(200);
+    const written = osStore
+      .listAudit()
+      .filter((row) => row.type === "studio.file.written" && row.projectId === projectId)
+      .at(-1);
+    expect(written?.actorKind).toBe("USER");
+    expect(written?.actorId).toBe(actor.id);
+  });
+
   it("400s on path escape and does not write outside the workspace", async () => {
     const actor = testUser();
     getRequestUser.mockResolvedValue(actor);

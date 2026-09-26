@@ -22,6 +22,10 @@ import {
   type AgentMode,
   type MvpAgentMode,
 } from "@atlas/shared";
+import {
+  assistantRunIdentity,
+  authorizeSnapshotForAgentContext,
+} from "../services/agent-context-authorization.js";
 import { osStore } from "../store/os-store.js";
 import {
   chargeCredits,
@@ -191,9 +195,13 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     const projects = osStore
       .listProjects()
       .filter((project) => canReadProjectScoped(user, project.id));
-    const snapshot = authorizedProjectId
-      ? osStore.getSnapshot(authorizedProjectId) ?? null
-      : null;
+    // Stage 4: the run acts as the session user's PSA (server-derived), and a
+    // snapshot enters the LLM context only after memory authorization.
+    const runIdentity = assistantRunIdentity(identity.ownerId);
+    const snapshot = authorizeSnapshotForAgentContext(
+      authorizedProjectId ? osStore.getSnapshot(authorizedProjectId) ?? null : null,
+      runIdentity.agentId,
+    );
     const globalDecisions = osStore
       .getDecisions("global")
       .filter((decision) => canReadDecision(user, decision));
@@ -203,13 +211,14 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
           ...globalDecisions,
         ]
       : globalDecisions;
-    const callerOwnerId = user.role === "admin" ? undefined : identity.ownerId;
+    // Stage 4: tenant-admin role never widens LLM memory to other owners.
     const memoryContextResult = await buildMemoryContext({
       projectId: authorizedProjectId,
       query: body.userRequest,
       budget: AGENT_MEMORY_BUDGET,
       embeddingEnv: app.atlasEnv,
-      ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
+      ownerId: runIdentity.ownerId,
+      requestingAgentId: runIdentity.agentId,
     });
     const { memories, ...memoryContext } = memoryContextResult;
     const evidence = authorizedProjectId
@@ -337,7 +346,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
           cacheHit: llm.cacheHit,
           projectId: authorizedProjectId,
           userId: identity.ownerId,
-          agentId: selectedId,
+          agentId: runIdentity.agentId,
         });
         answer = redactSecrets(
           `${llm.text}\n\n— provider: ${llm.provider} · catalog: ${catalog.titleEn} (${catalog.billing === "included" ? "included" : `${catalog.creditCost} credits`})`,
@@ -500,6 +509,9 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     });
     osStore.appendAudit({
       type: "agent.run.completed",
+      actorKind: runIdentity.actorKind,
+      actorId: runIdentity.agentId,
+      onBehalfOfUserId: runIdentity.onBehalfOfUserId,
       runId: run.id,
       mode: run.mode,
       provider: selectedId,

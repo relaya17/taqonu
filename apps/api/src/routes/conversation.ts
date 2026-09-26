@@ -20,6 +20,10 @@ import {
   conversationThreadParamsSchema,
   type EpistemicState,
 } from "@atlas/shared";
+import {
+  assistantRunIdentity,
+  authorizeSnapshotForAgentContext,
+} from "../services/agent-context-authorization.js";
 import { osStore } from "../store/os-store.js";
 import {
   chargeCredits,
@@ -204,9 +208,14 @@ export async function registerConversationRoutes(
     const projects = osStore
       .listProjects()
       .filter((project) => canReadProjectScoped(user, project.id));
-    const snapshot = authorizedProjectId
-      ? osStore.getSnapshot(authorizedProjectId) ?? null
-      : null;
+    // Stage 4: the conversation acts as the session user's PSA
+    // (server-derived); a snapshot enters the LLM context only after memory
+    // authorization.
+    const runIdentity = assistantRunIdentity(user.id);
+    const snapshot = authorizeSnapshotForAgentContext(
+      authorizedProjectId ? osStore.getSnapshot(authorizedProjectId) ?? null : null,
+      runIdentity.agentId,
+    );
     const globalDecisions = osStore
       .getDecisions("global")
       .filter((decision) => canReadDecision(user, decision));
@@ -216,13 +225,14 @@ export async function registerConversationRoutes(
     // Tenant boundary: memory uses the same authorized project as snapshot/
     // decisions/evidence. A client-supplied projectId the caller cannot read
     // degrades to no-project retrieval (owner-scoped), never a foreign key.
-    const callerOwnerId = user.role === "admin" ? undefined : user.id;
+    // Stage 4: tenant-admin role never widens LLM memory to other owners.
     const memoryContextResult = await buildMemoryContext({
       projectId: authorizedProjectId,
       query: body.message,
       budget: AGENT_MEMORY_BUDGET,
       embeddingEnv: app.atlasEnv,
-      ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
+      ownerId: runIdentity.ownerId,
+      requestingAgentId: runIdentity.agentId,
     });
     const { memories, ...memoryContext } = memoryContextResult;
     const evidenceRecords = authorizedProjectId ? osStore.getEvidence(authorizedProjectId) : [];
@@ -343,7 +353,7 @@ export async function registerConversationRoutes(
           cacheHit: completion.cacheHit,
           projectId,
           userId: user.id,
-          agentId: "conversation",
+          agentId: runIdentity.agentId,
         });
         llm = { provider: completion.provider, text: completion.text };
         if (paidRun) {
@@ -389,6 +399,9 @@ export async function registerConversationRoutes(
       });
       osStore.appendAudit({
         type: "conversation.message",
+        actorKind: runIdentity.actorKind,
+        actorId: runIdentity.agentId,
+        onBehalfOfUserId: runIdentity.onBehalfOfUserId,
         messageId,
         threadId,
         runId,
@@ -402,6 +415,9 @@ export async function registerConversationRoutes(
     if (epistemicLabel === "INSUFFICIENT_EVIDENCE") {
       osStore.appendAudit({
         type: "conversation.message",
+        actorKind: runIdentity.actorKind,
+        actorId: runIdentity.agentId,
+        onBehalfOfUserId: runIdentity.onBehalfOfUserId,
         messageId,
         threadId,
         epistemicLabel,

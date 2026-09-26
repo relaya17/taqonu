@@ -273,6 +273,29 @@ describe("POST /api/v1/agents/plan", () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it("Stage 4 D-C: the agents.plan audit records the human requester as USER and planned specialists only as targets", async () => {
+    getRequestUser.mockReturnValue(OWNER_A);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/plan",
+      headers: { "x-atlas-agent-id": "spoofed-agent" },
+      payload: { request: "stage4 plan attribution check" },
+    });
+    expect(res.statusCode).toBe(200);
+    const planId = res.json().planId ?? res.json().id;
+    const rows = osStore
+      .listAudit()
+      .filter((r) => r.type === "agents.plan" && (planId === undefined || r.planId === planId));
+    const row = rows[rows.length - 1];
+    expect(row?.actorKind).toBe("USER");
+    expect(row?.actorId).toBe(OWNER_A.id);
+    expect(row?.agentId).toBeNull();
+    expect(row?.onBehalfOfUserId).toBe(OWNER_A.id);
+    expect(Array.isArray(row?.targetAgentIds)).toBe(true);
+    expect(row?.targetAgentIds as string[]).not.toContain(OWNER_A.id);
+    expect(row?.targetAgentIds as string[]).not.toContain("spoofed-agent");
+  });
+
   it("400s when request is missing (signed in)", async () => {
     const res = await app.inject({ method: "POST", url: "/api/v1/agents/plan", payload: {} });
     expect(res.statusCode).toBe(400);

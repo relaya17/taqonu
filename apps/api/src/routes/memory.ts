@@ -24,6 +24,7 @@ import {
   expireDueMemories,
   findOwnedMemory,
   measureOwnedMemoryStorage,
+  memoryIsVisibleToAgent,
   retrieveMemories,
   setOwnedMemoryTtl,
   supersedeMatchingMemories,
@@ -54,10 +55,10 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         query: z.string().max(200).optional(),
         budget: z.coerce.number().int().positive().max(40).optional(),
         mode: z.enum(["list", "retrieve"]).optional(),
-        // Per-agent scoping (P1 fix) — optional filter narrowing results to
-        // what `agentId` (the requesting kernel/plugin agent) is allowed to
-        // see; a fabricated value can only ever narrow results, never widen
-        // them, so no extra trust is required to accept it from the caller.
+        // Stage 4: `agentId` is a REQUESTED TARGET ("show what this agent may
+        // see"), never the authenticated actor. The caller is the human
+        // session; the value can only narrow results, never widen them, and
+        // it is never recorded as an agent read.
         agentId: z.string().max(120).optional(),
       })
       .parse(request.query ?? {});
@@ -65,23 +66,38 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     const callerOwnerId = user.role === "admin" ? undefined : user.id;
 
     if (q.mode === "retrieve" || q.query || q.budget) {
+      const budget = q.budget ?? 12;
       const retrieveInput: {
         projectId?: string | null;
         query?: string;
         budget?: number;
         ownerId?: string;
-        requestingAgentId?: string;
       } = {
         projectId: q.projectId ?? null,
-        budget: q.budget ?? 12,
+        // A target view filters after retrieval, so fetch the maximum pool.
+        budget: q.agentId !== undefined ? 40 : budget,
         ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
-        ...(q.agentId !== undefined ? { requestingAgentId: q.agentId } : {}),
       };
       if (q.query !== undefined) retrieveInput.query = q.query;
-      const result = await retrieveMemories({
+      const retrieved = await retrieveMemories({
         ...retrieveInput,
+        humanSurface: true,
         embeddingEnv: app.atlasEnv,
       });
+      const targetAgentId = q.agentId;
+      const targetItems =
+        targetAgentId === undefined
+          ? retrieved.items
+          : retrieved.items
+              .filter((memory) => memoryIsVisibleToAgent(memory, targetAgentId))
+              .slice(0, budget);
+      const result = {
+        ...retrieved,
+        items: targetItems,
+        budget,
+        truncated:
+          targetAgentId === undefined ? retrieved.truncated : targetItems.length >= budget,
+      };
       atlasMetrics.record(
         "retrieval_hit_rate",
         result.items.length > 0 ? 1 : 0,
@@ -493,6 +509,7 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     const retrieve = await retrieveMemories({
       projectId: q.projectId ?? null,
       budget: q.budget ?? 8,
+      humanSurface: true,
       embeddingEnv: app.atlasEnv,
       ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
     });

@@ -17,8 +17,10 @@ export const ATLAS_OWNERSHIP_CONTRACT = {
 export const MEMORY_OWNERSHIP_CONTRACT = {
   userOwnedMemory: "tenant-owner-scoped fail-closed",
   agentScopedMemory: "allowedAgents non-empty restricts to listed agent ids",
-  emptyAllowedAgents: "default-open",
-  omitRequesterId: "human-surface-visible",
+  // Stage 4 (approved 2026-09-26): fail-closed identity. See
+  // MEMORY_AGENT_VISIBILITY_CONTRACT in memory-pipeline.ts.
+  emptyAllowedAgents: "open-to-admitted-identities-only",
+  omitRequesterId: "human-surface-declared-only",
   projectOperationalMemory: "retrieve by projectId + ownerId",
   durableSoR:
     "osStore.persist JSON + optional Supabase dual-write; RAM is cache not SoR",

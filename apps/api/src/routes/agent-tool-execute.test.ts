@@ -6,17 +6,19 @@ import type { FastifyInstance } from "fastify";
 import type { AuthUser } from "@atlas/shared";
 
 /**
- * P0.7 — HTTP-level proof that `POST /api/v1/agents/tool-execute` is the
- * governed execution gate wearing a route, and not a second, looser one.
+ * Stage 4 (approved 2026-09-26, contract D-B) — `POST /api/v1/agents/tool-execute`
+ * is reachable only by a signed-in human session. A caller-selected
+ * `fabricAgentId` is a REQUESTED TARGET, never an authenticated actor, and no
+ * trusted runtime agent identity exists on this route. The route therefore
+ * fails closed: no AuthenticatedAgentIdentity is built from caller input and
+ * no tool runs. The denial is audited with the real actor (USER) and the
+ * requested target.
  *
- * `governed-execution.test.ts` already proves the gate itself refuses every
- * attack in the chain. What could not be proven until this route existed is
- * that a network caller reaches THAT function with a session-derived
- * identity — that the body cannot name its own owner, cannot name its own
- * sandbox root, and that each refusal stage lands on the status code a
- * client can act on. These tests exercise the real gate end to end: no
- * mocked policy engine, no mocked dispatch guard, real Tool Runtime, real
- * audit chain against a tmpdir.
+ * History: before Stage 4 this suite proved (P0.7) that the route reached
+ * `executeGovernedAction` with a session-derived owner. That gate is still
+ * covered end to end by `governed-execution.test.ts` and, for trusted runtime
+ * callers (operator session / Control Plane service), by
+ * `gateway-fulfill.test.ts`.
  */
 
 const tmpDir = mkdtempSync(join(tmpdir(), "atlas-agent-tool-execute-test-"));
@@ -57,11 +59,6 @@ const { setAuditLogPathForTests, listUnifiedAuditEntries, verifyAuditChain } =
 const { registerFilesystemTools, resetToolRegistryForTests } = await import(
   "@atlas/agent-core"
 );
-const { computeGovernedBindingHash } = await import("../services/governed-execution.js");
-const { osStore } = await import("../store/os-store.js");
-const { bindProjectOwner, getProjectOwnerId } = await import(
-  "../services/project-access.js"
-);
 
 let app: FastifyInstance;
 
@@ -74,29 +71,6 @@ const OWNER_A: AuthUser = {
   provider: "local",
   createdAt: "2026-01-01T00:00:00.000Z",
 };
-
-const OWNER_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-
-/** Creates a real project in the store, optionally pre-bound to an owner. */
-function makeProject(ownerId: string | null): string {
-  osStore.ensureLoaded();
-  const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-  osStore.upsertProject({
-    id,
-    slug: `proj-${id.slice(0, 8)}`,
-    name: "Test Project",
-    description: null,
-    status: "ACTIVE",
-    techStack: [],
-    createdAt: now,
-    updatedAt: now,
-  });
-  if (ownerId) {
-    bindProjectOwner(id, ownerId, "bound_on_create");
-  }
-  return id;
-}
 
 /**
  * DOCUMENT.READ is the entity/action pair the gate's own suite uses for its
@@ -139,7 +113,13 @@ beforeEach(() => {
   getRequestUser.mockReturnValue(OWNER_A);
 });
 
-describe("POST /api/v1/agents/tool-execute", () => {
+const OPERATOR: AuthUser = { ...OWNER_A, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", role: "operator" };
+
+function toolExecuteEntries() {
+  return listUnifiedAuditEntries().filter((e) => e.type === "agents.tool-execute");
+}
+
+describe("POST /api/v1/agents/tool-execute (Stage 4 fail-closed identity)", () => {
   it("401s for an unauthenticated caller — no session, no agent identity", async () => {
     getRequestUser.mockReturnValue(null);
     const res = await app.inject({
@@ -150,308 +130,73 @@ describe("POST /api/v1/agents/tool-execute", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("200s for a RESEARCHER fs.read_file the catalog grants, returning the file content and its artifact hash", async () => {
+  it("403s a caller-selected catalog agent: the id is a requested target, not an actor, and no tool runs", async () => {
+    const before = toolExecuteEntries().length;
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/agents/tool-execute",
       payload: body(),
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(403);
     const json = res.json();
-    expect(json.status).toBe("EXECUTED");
-    expect(json.agentId).toBe("RESEARCHER");
-    expect(json.output).toContain("export const answer = 42;");
-    expect(json.artifactHash).toBe(
-      computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, FIXTURE),
-    );
-    expect(json.artifactHash).toHaveLength(64);
+    expect(json.stage).toBe("IDENTITY");
+    expect(json.status).toBe("DENIED");
+    expect(json.error.message).toMatch(/requested target, not an authenticated actor/);
+    expect(JSON.stringify(json)).not.toContain("export const answer = 42;");
 
-    // The gate audits on the way out, and the chain must still verify.
-    const entries = listUnifiedAuditEntries().filter(
-      (e) => e.type === "agents.tool-execute",
-    );
-    expect(entries.length).toBeGreaterThan(0);
-    expect(entries.at(-1)?.result).toBe("SUCCESS");
+    const entries = toolExecuteEntries();
+    expect(entries.length).toBe(before + 1);
+    const denial = entries.at(-1);
+    expect(denial?.decision).toBe("DENY");
+    expect(denial?.result).toBe("FAILURE");
+    expect(denial?.actorKind).toBe("USER");
+    expect(denial?.actorId).toBe(OWNER_A.id);
+    expect(denial?.agentId).toBeNull();
+    expect(denial?.input.requestedTargetAgentId).toBe("RESEARCHER");
+    expect(entries.some((e) => e.result === "SUCCESS")).toBe(false);
     expect(verifyAuditChain().intact).toBe(true);
   });
 
-  it("403s for a tool that is not in the agent's allowedTools", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      // `propose_patch` belongs to CODE_ENGINEER, not RESEARCHER.
-      payload: body({ toolName: "propose_patch" }),
-    });
-    expect(res.statusCode).toBe(403);
-    const json = res.json();
-    expect(json.stage).toBe("AUTHORIZATION");
-    expect(json.status).toBe("DENIED");
-    expect(json.error.message).toMatch(/allowedTools/);
-  });
-
-  it("403s when the payload names a different owner — the identity came from the session, the payload cannot widen it", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ payload: { targetOwnerId: OWNER_B_ID } }),
-    });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().stage).toBe("AUTHORIZATION");
-    expect(res.json().error.message).toMatch(/cross-tenant/);
-  });
-
-  it("400s when the body tries to supply its own owner — ownerId is not an accepted field, it is rejected rather than ignored", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ ownerId: OWNER_B_ID }),
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it("403s for an agent id outside the closed catalog", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ fabricAgentId: "NOT_A_REAL_AGENT" }),
-    });
-    expect(res.statusCode).toBe(403);
-  });
-
-  it("422s for a path escaping the server-derived project root — authorized agent, authorized tool, refused invocation", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ toolArgs: { path: "../../../etc/passwd" } }),
-    });
-    expect(res.statusCode).toBe(422);
-    const json = res.json();
-    expect(json.stage).toBe("EXECUTION");
-    expect(json.status).toBe("FAILED");
-    expect(json.error.message).toMatch(/escapes the project root/);
-  });
-
-  it("uses a different binding hash when the path differs and the artifact string is unchanged", async () => {
-    const sameArtifactOtherPath = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ toolArgs: { path: "src/other.ts" } }),
-    });
-    expect(sameArtifactOtherPath.statusCode).toBe(200);
-    const otherHash = sameArtifactOtherPath.json().artifactHash;
-    expect(otherHash).toBe(
-      computeGovernedBindingHash({ kind: "path", value: "src/other.ts" }, FIXTURE),
-    );
-    expect(otherHash).not.toBe(
-      computeGovernedBindingHash({ kind: "path", value: "src/index.ts" }, FIXTURE),
-    );
-  });
-
-  it("never leaks an absolute server path in a refusal message", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      // A path inside the root that does not exist: the underlying ENOENT
-      // carries the absolute filesystem path of the fixture repo.
-      payload: body({ toolArgs: { path: "src/does-not-exist.ts" } }),
-    });
-    expect(res.statusCode).toBe(422);
-    const message: string = res.json().error.message;
-    expect(message).not.toContain(tmpDir);
-    expect(message).not.toContain("/");
-  });
-
-  it("uses ToolPolicy DOCUMENT.READ for fs.read_file even when the client omits entityType/action", async () => {
-    const { entityType: _e, action: _a, ...withoutPair } = body();
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: withoutPair,
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe("EXECUTED");
-    expect(res.json().output).toContain("export const answer = 42;");
-  });
-
-  it("accepts a client assertion that matches the ToolPolicy canonical pair", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ entityType: "DOCUMENT", action: "READ" }),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe("EXECUTED");
-  });
-
-  it("403s when the client asserts a different valid entity-policy cell than the tool's canonical pair", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({
-        entityType: "FINANCIAL_TRANSACTION",
-        action: "EXECUTE",
-      }),
-    });
-    expect(res.statusCode).toBe(403);
-    const json = res.json();
-    expect(json.stage).toBe("AUTHORIZATION");
-    expect(json.status).toBe("DENIED");
-    expect(json.error.message).toMatch(/DOCUMENT\.READ/);
-    expect(json.error.message).toMatch(/FINANCIAL_TRANSACTION\.EXECUTE/);
-  });
-
-  it("403s a catalog-forbidden tool even when that tool has a valid ToolPolicy pair", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({
-        toolName: "github.create_pr",
-        entityType: "RECORD",
-        action: "UPDATE",
-      }),
-    });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().stage).toBe("AUTHORIZATION");
-    expect(res.json().error.message).toMatch(/allowedTools/);
-  });
-
-  it("403s when the tool has no ToolPolicy", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({
-        fabricAgentId: "CODE_ENGINEER",
-        toolName: "impact",
-        entityType: "DOCUMENT",
-        action: "READ",
-      }),
-    });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error.message).toMatch(/No ToolPolicy/);
-  });
-
-  it("does not switch tools when applying the canonical pair — fs.read_file still reads the file", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ entityType: "DOCUMENT", action: "READ" }),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().agentId).toBe("RESEARCHER");
-    expect(res.json().output).toBe(FIXTURE);
-  });
-});
-
-/**
- * F-04 remediation (P3 least-privilege / effective-scope audit): before this
- * fix, `resolveGovernedAgentIdentity` only verified the named `projectId`
- * EXISTS (`assertGovernedProjectExists`), never that the authenticated
- * caller owns it -- any signed-in "user"-role caller (this route uses
- * `requireSignedInForWrite`, not an operator gate) could name any existing
- * project and have every downstream governance decision / audit entry
- * attributed to it. The fix reuses `assertProjectWriteAccess` (the same
- * ownership write-gate every other project-scoped write route already
- * uses) BEFORE an identity is ever built.
- */
-describe("F-04 least-privilege project scope on POST /api/v1/agents/tool-execute", () => {
-  it("authorized actor: 200s when the caller owns the named project", async () => {
-    const projectId = makeProject(OWNER_A.id);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ projectId }),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe("EXECUTED");
-  });
-
-  it("claims an unowned named project for the caller on first touch, then executes (existing valid behavior preserved)", async () => {
-    const projectId = makeProject(null);
-    expect(getProjectOwnerId(projectId)).toBeNull();
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ projectId }),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(getProjectOwnerId(projectId)).toBe(OWNER_A.id);
-  });
-
-  it("unauthorized actor: 403s against a project owned by someone else, before any tool executes (cross-project isolation)", async () => {
-    const projectId = makeProject(OWNER_B_ID);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ projectId }),
-    });
-    expect(res.statusCode).toBe(403);
-    const json = res.json();
-    expect(json.error.code).toBe("FORBIDDEN");
-    expect(json.error.message).toMatch(/do not own this project/);
-    // Denial happened before identity/execution -- no EXECUTED-shaped body.
-    expect(json.status).toBeUndefined();
-  });
-
-  it("a nonexistent project remains correctly rejected (404), not silently treated as ownable", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ projectId: crypto.randomUUID() }),
-    });
-    expect(res.statusCode).toBe(404);
-    expect(res.json().error.code).toBe("NOT_FOUND");
-  });
-
-  it("F-01: forbidden-tool denial still fires even against a project the caller legitimately owns", async () => {
-    const projectId = makeProject(OWNER_A.id);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ projectId, toolName: "propose_patch" }),
-    });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error.message).toMatch(/allowedTools/);
-  });
-
-  it("F-02: cross-tenant payload impersonation is still refused even when the named project is owned by the caller", async () => {
-    const projectId = makeProject(OWNER_A.id);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agents/tool-execute",
-      payload: body({ projectId, payload: { targetOwnerId: OWNER_B_ID } }),
-    });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error.message).toMatch(/cross-tenant/);
-  });
-
-  it("F-03: the agentDispatch kill switch still blocks tool-execute for an owned project (real runtime check, not inferred)", async () => {
-    const projectId = makeProject(OWNER_A.id);
-    const ORIGINAL_ENV = process.env.ATLAS_KILL_SWITCHES;
-    process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
-    try {
+  it("403s every requested agent id the same way (known, unknown, PSA-shaped, empty)", async () => {
+    for (const fabricAgentId of ["CODE_ENGINEER", "NOT_A_REAL_AGENT", `psa:${OWNER_A.id}`, ""]) {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/agents/tool-execute",
-        payload: body({ projectId }),
+        payload: body({ fabricAgentId }),
       });
       expect(res.statusCode).toBe(403);
-      expect(res.json().error.message).toMatch(/Kill switch "agentDispatch" is active/);
-    } finally {
-      if (ORIGINAL_ENV === undefined) {
-        delete process.env.ATLAS_KILL_SWITCHES;
-      } else {
-        process.env.ATLAS_KILL_SWITCHES = ORIGINAL_ENV;
-      }
+      expect(res.json().stage).toBe("IDENTITY");
     }
   });
 
-  it("a null/omitted projectId (system/tenant-scoped agent work) is unaffected by the ownership gate", async () => {
+  it("a self-asserted agent header does not grant authority", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      headers: { "x-atlas-actor-kind": "AGENT", "x-atlas-agent-id": "RESEARCHER" },
+      payload: body(),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().stage).toBe("IDENTITY");
+  });
+
+  it("an operator session is still a human, not an agent: denied", async () => {
+    getRequestUser.mockReturnValue(OPERATOR);
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/agents/tool-execute",
       payload: body(),
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe("EXECUTED");
+    expect(res.statusCode).toBe(403);
+    expect(toolExecuteEntries().at(-1)?.actorId).toBe(OPERATOR.id);
+  });
+
+  it("400s when the body tries to supply its own owner — ownerId is not an accepted field", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/tool-execute",
+      payload: body({ ownerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
+    });
+    expect(res.statusCode).toBe(400);
   });
 });

@@ -66,6 +66,10 @@ P0 remains CLOSED. Arlet Studio is not Control. Production remains NOT PROVEN.
 Empty `allowedAgents` stays default-open (INTENTIONAL). Extensions host is a
 deliberate **NON-GOAL** (`STUDIO_EXTENSION_CONTRACT.productGoal: false`).
 
+> **Superseded 2026-09-26 (Stage 4, ADR-024):** memory reads are fail-closed. Empty `allowedAgents` is
+> open only to admitted, governed identities; an omitted requester id is visible
+> only on a declared human surface. Record: `ARLETOS_MASTER_PROBLEM_REGISTER.md` §7.7.
+
 This is the closing pass after FINAL COMPLETION EXECUTION. Not another audit.
 
 | Track | Status | Evidence |
@@ -90,6 +94,7 @@ Phase 1 contracts are locked in code:
 
 - `apps/api/src/services/atlas-architecture-contracts.ts`
 - `MEMORY_AGENT_VISIBILITY_CONTRACT` — empty `allowedAgents` is **default-open** (INTENTIONAL). Omit requester id stays human-surface-visible. Tenant/owner isolation is fail-closed.
+  - **Superseded 2026-09-26 (Stage 4, ADR-024):** the contract is now `emptyAllowedAgents: "open-to-admitted-identities-only"`, `omitRequesterId: "human-surface-declared-only"`, unknown ids denied, PSA bound to the memory owner, mixed ids AND-ed.
 - Agent id ≠ model id. Studio `proposePatch` is CODE_ENGINEER **heuristic** (`intelligenceKind: "heuristic"`, `modelInvoked: false`). Model output is not Truth.
 - Governed Studio run: `POST /api/v1/projects/:id/studio/terminal` and `/tests` are RECORD.EXECUTE + live-human `decide-and-execute`. Callers send `commandId` only. Spawn is `shell: false` inside the linked workspace. No unrestricted shell. Extensions are a fail-closed manifest registry — no marketplace, no user JS, no host API.
 
@@ -636,6 +641,10 @@ the filter without that decision.
 - **Live tool hop:** `POST /api/v1/agents/tool-execute` derives identity from
   the session and calls `executeGovernedAction`. The body cannot name owner
   or sandbox root.
+  - **Superseded 2026-09-26 (Stage 4, ADR-024):** `tool-execute` no longer executes. A caller-selected
+    `fabricAgentId` is a requested target, not an actor, and no trusted runtime
+    agent identity exists on that route, so it returns 403 (`blockedAt: IDENTITY`).
+    Governed tool execution remains on `/gateway/fulfill`.
 - **Proposal-first specialists:** CODE_ENGINEER and RESEARCHER dispatch
   await an LLM proposal (`run*SpecialistViaLlm` → `submitAgentProposal`).
   That path proposes; it does not execute tools. Other specialists still
@@ -652,6 +661,8 @@ table. `governed-execution.test.ts` uses catalog-granted `knowledge_search` +
 `fs.read_directory`, `fs.search_repo` (enforced by
 `enforceAgentToolAuthorization`). Live execution of those tools is the
 `tool-execute` hop, not specialist dispatch (dispatch remains propose-only).
+> **Superseded 2026-09-26 (Stage 4, ADR-024):** the `tool-execute` hop is closed (403); live
+> execution of these tools is only through `/gateway/fulfill`.
 API startup (`create-app.ts`) registers `knowledge_search`,
 `registerFilesystemTools()`, and `registerAnalyzeRepoTool()`. `analyze_repo`
 is a bounded read-only workspace walk (no network, no code execution).

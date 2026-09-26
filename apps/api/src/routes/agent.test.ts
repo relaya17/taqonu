@@ -513,3 +513,105 @@ describe("POST /api/v1/agent/runs — C1 tenant isolation for project-scoped con
     );
   });
 });
+
+// Stage 4 (approved 2026-09-26): agent runs act as the session user's PSA
+// (`psa:<owner>`, server-derived); tenant-admin role never widens LLM memory
+// to other owners; snapshots are authorized before entering the context.
+describe("POST /api/v1/agent/runs -- Stage 4 identity and memory boundary", () => {
+  function stage4Memory(input: {
+    ownerId: string;
+    projectId: string | null;
+    statement: string;
+    type?: "LESSON" | "TASK";
+    allowedAgents?: string[] | null;
+  }) {
+    const now = new Date().toISOString();
+    osStore.addMemory(
+      memorySchema.parse({
+        id: crypto.randomUUID(),
+        ownerId: input.ownerId,
+        type: input.type ?? "LESSON",
+        projectId: input.projectId,
+        statement: input.statement,
+        reason: ["test"],
+        status: "ACTIVE",
+        confidence: 0.7,
+        category: "GENERATED_REASONING",
+        epistemicState: "OBSERVED",
+        observationMode: "OBSERVED",
+        source: "test",
+        sourceType: "SYSTEM",
+        sourceId: null,
+        evidence: [],
+        supersededBy: null,
+        validFrom: now,
+        validUntil: null,
+        observedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: "test",
+        scope: input.projectId ? "PROJECT" : "GLOBAL",
+        priority: "MEDIUM",
+        allowedAgents: input.allowedAgents ?? null,
+      }),
+    );
+  }
+
+  it("tenant-admin role does not pull another owner's memory into the agent run context", async () => {
+    stage4Memory({ ownerId: ownerB.id, projectId: null, statement: "stage4-agent-admin owner-B memory" });
+    stage4Memory({ ownerId: ownerA.id, projectId: null, statement: "stage4-agent-admin owner-A memory" });
+    signInAs(signedInUser({ role: "admin" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/runs",
+      payload: { userRequest: "stage4-agent-admin" },
+    });
+    expect(res.statusCode).toBe(201);
+    const statements = res.json().memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("stage4-agent-admin owner-A memory");
+    expect(statements).not.toContain("stage4-agent-admin owner-B memory");
+  });
+
+  it("withholds memory-derived snapshot text the PSA may not read and records the run under the PSA", async () => {
+    const projectA = makeProject(ownerA, "Stage4 Agent Snapshot");
+    stage4Memory({
+      ownerId: ownerA.id,
+      projectId: projectA,
+      statement: "stage4-agent-restricted-task",
+      type: "TASK",
+      allowedAgents: ["JUDGE"],
+    });
+    const snap = seedSnapshot(projectA, "unused");
+    osStore.setSnapshot({
+      ...snap,
+      slices: [
+        {
+          ...snap.slices[0]!,
+          key: "TASKS",
+          summary: "stage4-agent-connector-task · stage4-agent-restricted-task",
+        },
+      ],
+    });
+    signInAs(ownerA);
+    const before = osStore.listAudit().length;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/runs",
+      payload: { userRequest: "list open tasks", projectId: projectA },
+    });
+    expect(res.statusCode).toBe(201);
+    // The free provider echoes a truncated system prompt, so only the
+    // negative is observable here; the filter itself is unit-tested in
+    // agent-context-authorization.test.ts.
+    const answer = JSON.stringify(res.json());
+    expect(answer).not.toContain("stage4-agent-restricted-task");
+    const completed = osStore
+      .listAudit()
+      .slice(before)
+      .filter((row) => row.type === "agent.run.completed");
+    expect(completed.length).toBe(1);
+    expect(completed[0]?.actorKind).toBe("AGENT");
+    expect(completed[0]?.actorId).toBe(`psa:${ownerA.id}`);
+    expect(completed[0]?.onBehalfOfUserId).toBe(ownerA.id);
+  });
+});

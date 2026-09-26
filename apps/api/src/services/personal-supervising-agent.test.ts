@@ -478,12 +478,49 @@ describe("Personal Supervising Agent", () => {
     const psaActor = personalSupervisingAgentId(OWNER_A);
     const coordinate = listUnifiedAuditEntries().find((entry) => entry.type === "psa.coordinate");
     const request = listUnifiedAuditEntries().find(
-      (entry) => entry.type === "psa.request" && entry.actorId === psaActor,
+      (entry) =>
+        entry.type === "psa.request" &&
+        entry.actorId === psaActor &&
+        entry.policy === "psa.supervise",
     );
     expect(coordinate?.tenantId).toBe("tenant-alpha");
     expect(coordinate?.projectId).toBe(PROJECT_UUID);
     expect(request?.tenantId).toBe("tenant-alpha");
     expect(request?.projectId).toBe(PROJECT_UUID);
+  });
+
+  it("Stage 4 D-C: attributes USER request + PSA actor + TARGET specialist with one correlation id", async () => {
+    await initA();
+    const submitted = proposal(OWNER_A);
+    await requestGovernedAction(OWNER_A, submitted);
+    const psaActor = personalSupervisingAgentId(OWNER_A);
+    const entries = listUnifiedAuditEntries().filter((entry) => entry.type === "psa.request");
+    const supervise = entries.find((entry) => entry.policy === "psa.supervise");
+    const dispatch = entries.find((entry) => entry.policy !== "psa.supervise");
+    expect(supervise).toBeDefined();
+    expect(dispatch).toBeDefined();
+    // Requesting human.
+    expect(supervise?.ownerId).toBe(OWNER_A);
+    expect(dispatch?.ownerId).toBe(OWNER_A);
+    // Acting agent is the PSA, never the specialist and never the human id.
+    expect(supervise?.actorId).toBe(psaActor);
+    expect(supervise?.agentId).toBe(psaActor);
+    expect(dispatch?.actorId).toBe(psaActor);
+    expect(dispatch?.actorKind).toBe("AGENT");
+    expect(dispatch?.agentId).toBe(psaActor);
+    expect(dispatch?.agentId).not.toBe(OWNER_A);
+    // Target specialist is recorded as a target.
+    expect(dispatch?.input.targetAgentId).toBe(submitted.agentId);
+    expect(supervise?.input.targetAgentId).toBe(submitted.agentId);
+    // One correlation id links the two records.
+    expect(supervise?.correlationId).toBeDefined();
+    expect(dispatch?.correlationId).toBe(supervise?.correlationId);
+    // Causation: the dispatch record names the psa.request record that caused it.
+    expect(supervise?.id).toBeDefined();
+    expect(dispatch?.causationId).toBe(supervise?.id);
+    expect(supervise?.causationId ?? null).toBeNull();
+    // One PSA hop from the human request to the specialist dispatch.
+    expect(dispatch?.delegationHopCount).toBe(1);
   });
 
   it("omits projectId on coordinate when no single project is supplied", async () => {

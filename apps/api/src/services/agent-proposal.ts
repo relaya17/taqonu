@@ -83,6 +83,16 @@ export interface SubmitAgentProposalOptions {
   readonly delegationHopCount?: number;
   readonly trustLevel?: "FULL" | "DELEGATED" | "LAB";
   readonly requestId?: string;
+  /** Stage 4 (D-C): audit id of the record that caused this proposal. */
+  readonly causationId?: string;
+  /**
+   * Stage 4 attribution (D-C, approved 2026-09-26): the server-derived agent
+   * that actually submits this proposal (e.g. `psa:<owner>`). When set, the
+   * dispatch actor is this agent and the proposal's `agentId` is recorded as
+   * the TARGET specialist (`input.targetAgentId`), never as the actor. The
+   * caller must derive it from the authenticated session, never from input.
+   */
+  readonly actingAgentId?: string;
 }
 
 /** Proposal metadata carried alongside the raw dispatch decision, for audit-trail-provable rationale/claims. */
@@ -167,7 +177,7 @@ export async function submitAgentProposal(
   const dispatchResult = await dispatchAgentAction({
     actor: {
       kind: options.actorKind,
-      agentId: parsed.agentId,
+      agentId: options.actingAgentId ?? parsed.agentId,
       onBehalfOfUserId: options.onBehalfOfUserId,
     },
     // `agentProposalSchema.action.{entityType,action}` are kept as plain
@@ -182,6 +192,9 @@ export async function submitAgentProposal(
     sourceContext: options.sourceContext,
     projectId: parsed.projectId,
     input: {
+      ...(options.actingAgentId !== undefined
+        ? { targetAgentId: parsed.agentId }
+        : {}),
       taskId: parsed.taskId,
       inputs: parsed.inputs,
       claims: parsed.claims,
@@ -208,6 +221,7 @@ export async function submitAgentProposal(
       trustLevel: options.trustLevel ?? "FULL",
     }),
     ...(options.requestId !== undefined ? { requestId: options.requestId } : {}),
+    ...(options.causationId !== undefined ? { causationId: options.causationId } : {}),
   });
 
   return {

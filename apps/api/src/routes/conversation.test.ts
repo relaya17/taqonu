@@ -547,3 +547,183 @@ describe("D1 conversation persistence: create → reload → retrieve → contin
     expect(hijack.statusCode).toBe(403);
   });
 });
+
+// Stage 4 (approved 2026-09-26): the conversation acts as the session user's
+// PSA (`psa:<user.id>`, server-derived), tenant-admin role never widens LLM
+// memory to other owners, and a snapshot enters the LLM context only after
+// memory authorization.
+function seedTaskMemory(input: {
+  ownerId: string;
+  projectId: string;
+  statement: string;
+  allowedAgents?: string[] | null;
+}) {
+  osStore.ensureLoaded();
+  const now = new Date().toISOString();
+  osStore.addMemory({
+    id: crypto.randomUUID(),
+    ownerId: input.ownerId,
+    type: "TASK",
+    projectId: input.projectId,
+    statement: input.statement,
+    reason: ["seed"],
+    status: "ACTIVE",
+    confidence: 0.9,
+    category: "GENERATED_REASONING",
+    epistemicState: "OBSERVED",
+    observationMode: "OBSERVED",
+    source: "seed",
+    sourceType: "SYSTEM",
+    sourceId: null,
+    evidence: [],
+    supersededBy: null,
+    validFrom: now,
+    validUntil: null,
+    observedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: "seed",
+    scope: "PROJECT",
+    priority: "MEDIUM",
+    allowedAgents: input.allowedAgents ?? null,
+  });
+}
+
+function seedTasksSnapshot(projectId: string, summary: string) {
+  const now = new Date().toISOString();
+  osStore.setSnapshot({
+    id: crypto.randomUUID(),
+    projectId,
+    asOf: now,
+    reconciledAt: now,
+    slices: [
+      {
+        key: "TASKS",
+        summary,
+        epistemicState: "INFERRED",
+        confidence: 0.55,
+        evidenceIds: [],
+        claimIds: [],
+        asOf: now,
+        validUntil: null,
+        stale: false,
+      },
+    ],
+    conflicts: [],
+    overallEpistemicState: "INFERRED",
+    sourceConnectors: ["github"],
+  });
+}
+
+describe("POST /api/v1/conversation/message -- Stage 4 identity and memory boundary", () => {
+  it("tenant-admin role does not pull another owner's memory into the conversation context", async () => {
+    seedGlobalMemory(ownerB.id, "stage4-admin-boundary owner-B private memory");
+    seedGlobalMemory(ownerA.id, "stage4-admin-boundary owner-A own memory");
+    const adminA = signedInUser({ role: "admin" });
+    getRequestUser.mockReturnValue(adminA);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: { message: "stage4-admin-boundary" },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    const statements = body.memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("stage4-admin-boundary owner-A own memory");
+    expect(statements).not.toContain("stage4-admin-boundary owner-B private memory");
+    expect(body.answer).not.toContain("stage4-admin-boundary owner-B private memory");
+  });
+
+  it("a memory restricted to another agent does not reach the conversation (PSA identity is applied)", async () => {
+    seedGlobalMemory(ownerA.id, "stage4-psa-open visible note");
+    osStore.addMemory({
+      ...osStore.getMemories("global", ownerA.id).find((m) => m.statement === "stage4-psa-open visible note")!,
+      id: crypto.randomUUID(),
+      statement: "stage4-psa-restricted judge-only note",
+      allowedAgents: ["JUDGE"],
+    });
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: { message: "stage4-psa" },
+    });
+    expect(res.statusCode).toBe(201);
+    const statements = res.json().memoryContext.items.map((m: { statement: string }) => m.statement);
+    expect(statements).toContain("stage4-psa-open visible note");
+    expect(statements).not.toContain("stage4-psa-restricted judge-only note");
+  });
+
+  it("withholds memory-derived snapshot statements the PSA may not read, keeps the rest", async () => {
+    const projectA = makeProject(ownerA, "Stage4 Snapshot Project");
+    seedTaskMemory({
+      ownerId: ownerA.id,
+      projectId: projectA,
+      statement: "stage4-snapshot-allowed-task",
+    });
+    seedTaskMemory({
+      ownerId: ownerA.id,
+      projectId: projectA,
+      statement: "stage4-snapshot-restricted-task",
+      allowedAgents: ["JUDGE"],
+    });
+    seedTasksSnapshot(
+      projectA,
+      "stage4-open-task-from-connector · stage4-snapshot-allowed-task · stage4-snapshot-restricted-task",
+    );
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: { message: "what are the open tasks?", projectId: projectA },
+    });
+    expect(res.statusCode).toBe(201);
+    const answer: string = res.json().answer;
+    expect(answer).toContain("stage4-open-task-from-connector");
+    expect(answer).toContain("stage4-snapshot-allowed-task");
+    expect(answer).not.toContain("stage4-snapshot-restricted-task");
+    // The stored snapshot itself is not modified.
+    expect(osStore.getSnapshot(projectA)?.slices[0]?.summary).toContain(
+      "stage4-snapshot-restricted-task",
+    );
+  });
+
+  it("an admin reading another owner's project gets that owner's memory-derived snapshot text withheld", async () => {
+    const projectB = makeProject(ownerB, "Stage4 Owner B Project");
+    seedTaskMemory({
+      ownerId: ownerB.id,
+      projectId: projectB,
+      statement: "stage4-owner-b-task-memory",
+    });
+    seedTasksSnapshot(projectB, "stage4-owner-b-task-memory");
+    getRequestUser.mockReturnValue(signedInUser({ role: "admin" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      payload: { message: "project tasks", projectId: projectB },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().answer).not.toContain("stage4-owner-b-task-memory");
+  });
+
+  it("records the conversation under the server-derived PSA identity, never a client value", async () => {
+    getRequestUser.mockReturnValue(ownerA);
+    const before = osStore.listAudit().length;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/conversation/message",
+      headers: { "x-atlas-agent-id": "CODE_ENGINEER" },
+      payload: { message: "stage4 attribution check" },
+    });
+    expect(res.statusCode).toBe(201);
+    const rows = osStore
+      .listAudit()
+      .slice(before)
+      .filter((row) => row.type === "conversation.message" || row.type === "llm.invocation");
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const agent = row.type === "llm.invocation" ? row.agentId : row.actorId;
+      expect(agent).toBe(`psa:${ownerA.id}`);
+    }
+  });
+});

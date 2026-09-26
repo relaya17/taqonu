@@ -360,16 +360,16 @@ export async function registerQaRoutes(app: FastifyInstance): Promise<void> {
     const seededMemories = seedPortfolioPatternMemories(newlyCrossProject);
 
     const primaryProjectId = resolvedProjectIds[0] ?? null;
-    // Tenant boundary (P0 fix): scope memory retrieval to the caller so one
-    // tenant's QA run never surfaces another tenant's memories. Admins
-    // bypass, same convention as memory.ts.
-    const callerOwnerId = user.role === "admin" ? undefined : user.id;
+    // Tenant boundary (P0 fix) + Stage 4: QA returns memory context to the
+    // requesting human only, scoped to that human's own memories. The
+    // tenant-admin role no longer widens it to every owner.
     const memoryContextResult = await buildMemoryContext({
       projectId: primaryProjectId,
       query: body.userRequest ?? report.emittedPatternKeys.join(" "),
       budget: QA_MEMORY_BUDGET,
       embeddingEnv: app.atlasEnv,
-      ...(callerOwnerId !== undefined ? { ownerId: callerOwnerId } : {}),
+      ownerId: user.id,
+      humanSurface: true,
     });
     const { memories: _memories, ...memoryContext } = memoryContextResult;
     void _memories;

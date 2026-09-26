@@ -145,7 +145,7 @@ export async function sessionFromPage(page: Page): Promise<Stage9IdentityRecord>
     throw new Error(`Stage 9 /auth/me failed after local session setup: ${res.status()}`);
   }
   return recordFromSession(
-    { email: "unknown", password: "", displayName: "", key: "requester" },
+    { email: "unknown" },
     (await res.json()) as SessionPayload,
   );
 }

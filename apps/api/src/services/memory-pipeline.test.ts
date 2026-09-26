@@ -105,7 +105,7 @@ describe("retrieveMemories isolation", () => {
   });
 
   it("does not leak another project's memories when scoped", async () => {
-    const { items } = await retrieveMemories({ projectId: PROJECT_A, budget: 20 });
+    const { items } = await retrieveMemories({ projectId: PROJECT_A, budget: 20, humanSurface: true });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("secret from tenant A");
     expect(statements).not.toContain("secret from tenant B");
@@ -113,7 +113,7 @@ describe("retrieveMemories isolation", () => {
   });
 
   it("does not dump every project when unscoped", async () => {
-    const { items } = await retrieveMemories({ budget: 20 });
+    const { items } = await retrieveMemories({ budget: 20, humanSurface: true });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("platform-only global note");
     expect(statements).not.toContain("secret from tenant A");
@@ -137,14 +137,14 @@ describe("retrieveMemories ownerId scoping (P0 tenant-isolation fix)", () => {
   });
 
   it("only returns the caller's own memories when ownerId is provided", async () => {
-    const { items } = await retrieveMemories({ budget: 20, ownerId: OWNER_A });
+    const { items } = await retrieveMemories({ budget: 20, ownerId: OWNER_A, humanSurface: true });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("owner A's global note");
     expect(statements).not.toContain("owner B's global note");
   });
 
-  it("returns every owner's memories when ownerId is omitted (trusted internal caller)", async () => {
-    const { items } = await retrieveMemories({ budget: 20 });
+  it("returns every owner's memories when ownerId is omitted (trusted internal human-surface caller)", async () => {
+    const { items } = await retrieveMemories({ budget: 20, humanSurface: true });
     const statements = items.map((row) => row.statement);
     expect(statements).toContain("owner A's global note");
     expect(statements).toContain("owner B's global note");
@@ -342,7 +342,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(statements).not.toContain("judge-only note");
   });
 
-  it("includes an agent-scoped memory when an unprofiled requesting agent is in allowedAgents", async () => {
+  it("Stage 4: denies an unprofiled agent even when it is listed in allowedAgents", async () => {
     osStore.addMemory(
       memory(null, "plugin-only note", OWNER_A, ["legacy-plugin"]),
     );
@@ -350,9 +350,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
       budget: 20,
       requestingAgentId: "legacy-plugin",
     });
-    const statements = items.map((row) => row.statement);
-    expect(statements).toContain("plugin-only note");
-    expect(statements).not.toContain("judge-only note");
+    expect(items).toHaveLength(0);
   });
 
   it("denies a professional Control agent personal memory even when it is listed in allowedAgents", async () => {
@@ -365,13 +363,19 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(statements).not.toContain("open note, no allowedAgents");
   });
 
-  it("includes an agent-scoped memory when no requestingAgentId is passed (backward-compat)", async () => {
+  it("Stage 4: returns nothing when no identity is named and no human surface is declared", async () => {
     const { items } = await retrieveMemories({ budget: 20 });
-    const statements = items.map((row) => row.statement);
-    expect(statements).toContain("judge-only note");
+    expect(items).toHaveLength(0);
   });
 
-  it("a memory with no allowedAgents stays open for an unprofiled agent and closed for a professional Control agent", async () => {
+  it("Stage 4: an explicitly declared human surface still sees the owner's memories", async () => {
+    const { items } = await retrieveMemories({ budget: 20, ownerId: OWNER_A, humanSurface: true });
+    const statements = items.map((row) => row.statement);
+    expect(statements).toContain("judge-only note");
+    expect(statements).toContain("open note, no allowedAgents");
+  });
+
+  it("Stage 4: a memory with no allowedAgents is closed to unprofiled and professional agents and open to the owner's PSA", async () => {
     const asLegacy = await retrieveMemories({
       budget: 20,
       requestingAgentId: "legacy-plugin",
@@ -384,9 +388,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
       budget: 20,
       requestingAgentId: `psa:${OWNER_A}`,
     });
-    expect(asLegacy.items.map((row) => row.statement)).toContain(
-      "open note, no allowedAgents",
-    );
+    expect(asLegacy.items).toHaveLength(0);
     expect(asOrchestrator.items.map((row) => row.statement)).not.toContain(
       "open note, no allowedAgents",
     );
@@ -395,23 +397,48 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     );
   });
 
-  it("locks the allowedAgents contract: empty is default-open for unprofiled ids, omit-requester stays human-visible", () => {
+  it("Stage 4: locks the fail-closed visibility contract for every identity state", () => {
     expect(MEMORY_AGENT_VISIBILITY_CONTRACT.emptyAllowedAgents).toBe(
-      "default-open",
+      "open-to-admitted-identities-only",
     );
     expect(MEMORY_AGENT_VISIBILITY_CONTRACT.omitRequesterId).toBe(
-      "human-surface-visible",
+      "human-surface-declared-only",
     );
     const open = memory(null, "open", OWNER_A, []);
     const restricted = memory(null, "restricted", OWNER_A, ["JUDGE"]);
     const pluginOnly = memory(null, "plugin", OWNER_A, ["legacy-plugin"]);
-    expect(memoryIsVisibleToAgent(open, "legacy-plugin")).toBe(true);
+    const psaA = `psa:${OWNER_A}`;
+    const psaB = `psa:${OWNER_B}`;
+    // missing identity
+    expect(memoryIsVisibleToAgent(open)).toBe(false);
+    expect(memoryIsVisibleToAgent(open, undefined, [])).toBe(false);
+    expect(memoryIsVisibleToAgent(open, undefined, undefined, { humanSurface: true })).toBe(true);
+    // null / empty / whitespace identity
+    expect(memoryIsVisibleToAgent(open, null)).toBe(false);
+    expect(memoryIsVisibleToAgent(open, "")).toBe(false);
+    expect(memoryIsVisibleToAgent(open, "   ")).toBe(false);
+    expect(memoryIsVisibleToAgent(open, undefined, [null])).toBe(false);
+    expect(memoryIsVisibleToAgent(open, "", undefined, { humanSurface: true })).toBe(false);
+    // unknown / unregistered / unprofiled identity
+    expect(memoryIsVisibleToAgent(open, "legacy-plugin")).toBe(false);
+    expect(memoryIsVisibleToAgent(pluginOnly, "legacy-plugin")).toBe(false);
+    expect(memoryIsVisibleToAgent(pluginOnly, "other-plugin")).toBe(false);
+    // registered profile without the read grant
     expect(memoryIsVisibleToAgent(open, "ORCHESTRATOR")).toBe(false);
     expect(memoryIsVisibleToAgent(restricted, "ORCHESTRATOR")).toBe(false);
     expect(memoryIsVisibleToAgent(restricted, "JUDGE")).toBe(false);
-    expect(memoryIsVisibleToAgent(pluginOnly, "legacy-plugin")).toBe(true);
-    expect(memoryIsVisibleToAgent(pluginOnly, "other-plugin")).toBe(false);
-    expect(memoryIsVisibleToAgent(restricted)).toBe(true);
+    expect(memoryIsVisibleToAgent(open, "agent.cio")).toBe(false);
+    // PSA: owner-bound; class id and mismatched owner denied
+    expect(memoryIsVisibleToAgent(open, psaA)).toBe(true);
+    expect(memoryIsVisibleToAgent(open, psaB)).toBe(false);
+    expect(memoryIsVisibleToAgent(open, "psa:")).toBe(false);
+    expect(memoryIsVisibleToAgent(open, "PERSONAL_SUPERVISING_AGENT")).toBe(false);
+    expect(memoryIsVisibleToAgent(restricted, psaA)).toBe(false);
+    // mixed identities: every candidate must be admitted
+    expect(memoryIsVisibleToAgent(open, psaA, ["legacy-plugin"])).toBe(false);
+    expect(memoryIsVisibleToAgent(open, psaA, ["ORCHESTRATOR"])).toBe(false);
+    expect(memoryIsVisibleToAgent(open, undefined, [psaA, psaB])).toBe(false);
+    expect(memoryIsVisibleToAgent(open, undefined, [psaA])).toBe(true);
   });
 
   it("locks durable memory SoR: RAM is cache; persist file is local SoR; cloud is dual-write", () => {
@@ -461,7 +488,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     );
   });
 
-  it("includes an agent-scoped memory when any unprofiled requestingAgentIds candidate is allowed", async () => {
+  it("Stage 4: mixed requestingAgentIds with an unprofiled candidate are denied", async () => {
     osStore.addMemory(
       memory(null, "plugin-only note", OWNER_A, ["legacy-plugin"]),
     );
@@ -469,8 +496,7 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
       budget: 20,
       requestingAgentIds: ["ORCHESTRATOR", "legacy-plugin"],
     });
-    expect(items.map((row) => row.statement)).toContain("plugin-only note");
-    expect(items.map((row) => row.statement)).not.toContain("judge-only note");
+    expect(items).toHaveLength(0);
   });
 
   it("excludes an agent-scoped memory when no requestingAgentIds candidate is allowed", async () => {
@@ -481,17 +507,24 @@ describe("retrieveMemories per-agent scoping (P1 fix)", () => {
     expect(items.map((row) => row.statement)).not.toContain("judge-only note");
   });
 
-  it("unions requestingAgentId with requestingAgentIds (OR) for unprofiled ids", async () => {
+  it("Stage 4: requestingAgentId and requestingAgentIds are combined with AND (every candidate admitted)", async () => {
     osStore.addMemory(
       memory(null, "plugin-only note", OWNER_A, ["legacy-plugin"]),
     );
-    const { items } = await retrieveMemories({
+    const mixed = await retrieveMemories({
       budget: 20,
-      requestingAgentId: "ORCHESTRATOR",
+      requestingAgentId: `psa:${OWNER_A}`,
       requestingAgentIds: ["legacy-plugin"],
     });
-    expect(items.map((row) => row.statement)).toContain("plugin-only note");
-    expect(items.map((row) => row.statement)).not.toContain("judge-only note");
+    expect(mixed.items).toHaveLength(0);
+    const psaOnly = await retrieveMemories({
+      budget: 20,
+      requestingAgentId: `psa:${OWNER_A}`,
+      requestingAgentIds: [`psa:${OWNER_A}`],
+    });
+    expect(psaOnly.items.map((row) => row.statement)).toContain(
+      "open note, no allowedAgents",
+    );
   });
 });
 
@@ -543,14 +576,22 @@ describe("control profile memory enforcement", () => {
     );
   });
 
-  it("keeps owner isolation ahead of a personal-scoped agent", async () => {
+  it("keeps owner isolation ahead of a personal-scoped agent, and denies a mismatched PSA (Stage 4)", async () => {
     const { items } = await retrieveMemories({
       ownerId: OWNER_B,
       budget: 20,
       requestingAgentId: `psa:${OWNER_A}`,
     });
-    expect(items.map((row) => row.statement)).toContain("owner B personal");
+    // Owner filter keeps A's memory out; the PSA binding keeps B's memory
+    // away from A's PSA.
     expect(items.map((row) => row.statement)).not.toContain("owner A personal");
+    expect(items.map((row) => row.statement)).not.toContain("owner B personal");
+    const own = await retrieveMemories({
+      ownerId: OWNER_B,
+      budget: 20,
+      requestingAgentId: `psa:${OWNER_B}`,
+    });
+    expect(own.items.map((row) => row.statement)).toContain("owner B personal");
   });
 
   it("denies NOT_PROVEN application identity personal memory", async () => {
@@ -602,6 +643,7 @@ describe("retrieveMemories semantic ranking (B2)", () => {
       budget: 20,
       query: "user login is broken",
       embeddingProvider: concept,
+      humanSurface: true,
     });
 
     expect(embeddingKind).toBe("semantic");
@@ -622,7 +664,7 @@ describe("retrieveMemories semantic ranking (B2)", () => {
     const { items } = await retrieveMemories({
       budget: 20,
       query: "user login is broken",
-      requestingAgentId: "legacy-plugin",
+      requestingAgentId: `psa:${OWNER_A}`,
       embeddingProvider: concept,
     });
     const statements = items.map((row) => row.statement);
@@ -636,6 +678,7 @@ describe("retrieveMemories semantic ranking (B2)", () => {
       budget: 20,
       query: "webhook idempotency",
       embeddingEnv: {},
+      humanSurface: true,
     });
     expect(embeddingKind).toBe("lexical-hash");
   });

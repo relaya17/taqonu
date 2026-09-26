@@ -24,16 +24,8 @@ import {
   evaluateJudge,
   listFabricAgents,
   planAgentWork,
-  resolveCanonicalToolOperationForRequest,
 } from "@atlas/agent-core";
-import { executeGovernedAction } from "../services/governed-execution.js";
-import {
-  resolveGovernedAgentIdentity,
-  enforceAgentToolAuthorization,
-  type ToolExecutionPayload,
-} from "../services/agent-runtime-authz.js";
-import { findRepoRoot } from "../services/repo-root.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import { appendUnifiedAuditEntry } from "../services/audit-log.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
 import { lookupControlPlaneAgentRuntimeStatus } from "../services/control-plane-bridge.js";
 import { getDurableAgentRuntimeStatus } from "../services/agent-runtime-controls.js";
@@ -172,6 +164,13 @@ export async function registerAgentFabricRoutes(
     const at = new Date().toISOString();
     osStore.appendAudit({
       type: "agents.plan",
+      // Stage 4 attribution: the human requests; planned specialists are
+      // targets selected by the server planner, not the requester's claim.
+      actorKind: "USER",
+      actorId: user.id,
+      agentId: null,
+      onBehalfOfUserId: user.id,
+      targetAgentIds: uniquePlanAgentIds(plan),
       planId: plan.id,
       projectId: body.projectId ?? null,
       steps: plan.steps.length,
@@ -489,6 +488,13 @@ export async function registerAgentFabricRoutes(
     }));
     osStore.appendAudit({
       type: "agents.dispatch",
+      // Stage 4 attribution: requested by the human; each run's specialist
+      // is recorded as a target (see runCosts[].agentId).
+      actorKind: "USER",
+      actorId: user.id,
+      agentId: null,
+      onBehalfOfUserId: user.id,
+      targetAgentIds: [...new Set(result.runs.map((r) => r.agentId))],
       id: result.id,
       traceId: result.traceId,
       projectId: body.projectId ?? null,
@@ -564,140 +570,41 @@ export async function registerAgentFabricRoutes(
     const user = await requireSignedInForWrite(app, request);
     const body = toolExecuteBodySchema.parse(request.body);
 
-    // F-04 (least privilege / effective scope): an agent must not be able
-    // to operate against a project merely because the project exists --
-    // the effective authorization scope must correspond to a project the
-    // authenticated caller actually owns (or may claim/administer). Reuses
-    // the exact ownership write-gate every other project-scoped write route
-    // already uses: signed-in + ownership match, first-touch claim on an
-    // unowned project, admin/control-plane bypass. Runs BEFORE identity
-    // resolution below, so a non-owned target project never reaches
-    // `resolveGovernedAgentIdentity` and is never attributed an
-    // AuthenticatedAgentIdentity/authorityScope at all.
-    if (body.projectId) {
-      await assertProjectWriteAccess(app, request, body.projectId);
-    }
-
-    // Resolve identity from the session, not the body. The body names the
-    // fabricAgentId but must not be able to override the ownerId.
-    const identity = await resolveGovernedAgentIdentity({
-      fabricAgentId: body.fabricAgentId,
-      sessionOwnerId: user.id,
-      projectId: body.projectId ?? null,
-      trustLevel: "FULL",
-    });
-
-    // Project root comes from the server, never from the request.
-    const projectRoot = findRepoRoot();
-
-    const payload: ToolExecutionPayload | undefined = body.payload
-      ? {
-          ...(body.payload.targetOwnerId !== undefined
-            ? { targetOwnerId: body.payload.targetOwnerId }
-            : {}),
-          ...(body.payload.targetProjectId !== undefined
-            ? { targetProjectId: body.payload.targetProjectId }
-            : {}),
-          ...(body.payload.targetAgentId !== undefined
-            ? { targetAgentId: body.payload.targetAgentId }
-            : {}),
-        }
-      : undefined;
-
-    // Catalog first: may this agent invoke this tool?
-    // executeGovernedAction repeats this check.
-    try {
-      enforceAgentToolAuthorization({
-        identity,
-        requestedTool: body.toolName,
-        ...(payload !== undefined ? { payload } : {}),
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return reply.status(403).send({
-        stage: "AUTHORIZATION",
-        status: "DENIED",
-        error: { message },
-      });
-    }
-
-    // toolName is authoritative for operation identity. Client entityType/action
-    // are assertions only — match or omit; never rewrite; never govern under
-    // a different valid table cell.
-    if (
-      (body.entityType === undefined) !== (body.action === undefined)
-    ) {
-      return reply.status(403).send({
-        stage: "AUTHORIZATION",
-        status: "DENIED",
-        error: {
-          message:
-            "entityType and action must both be omitted or both be supplied as a matching assertion of the tool's canonical operation",
-        },
-      });
-    }
-    const assertedPair =
-      body.entityType !== undefined && body.action !== undefined
-        ? { entityType: body.entityType, action: body.action }
-        : undefined;
-    const canonical = resolveCanonicalToolOperationForRequest(
-      body.toolName,
-      assertedPair,
-    );
-    if (!canonical.ok) {
-      return reply.status(403).send({
-        stage: "AUTHORIZATION",
-        status: "DENIED",
-        error: { message: canonical.reason },
-      });
-    }
-
-    const outcome = await executeGovernedAction({
-      identity,
+    // Stage 4 (approved 2026-09-26, contract D-B): a caller-supplied agent
+    // id is never an authoritative actor. This route is reached only by a
+    // signed-in human session, and no trusted runtime agent identity exists
+    // on it, so `fabricAgentId` can only ever be a REQUESTED TARGET. The
+    // route fails closed instead of building an AuthenticatedAgentIdentity
+    // from caller input. Governed tool execution for trusted runtime callers
+    // stays on POST /api/v1/gateway/fulfill (operator session or Control
+    // Plane service), which runs the same executeGovernedAction gate.
+    const reason =
+      "tool-execute requires a trusted runtime agent identity; a caller-selected fabricAgentId is a requested target, not an authenticated actor";
+    appendUnifiedAuditEntry({
+      type: "agents.tool-execute",
       toolName: body.toolName,
-      toolArgs: body.toolArgs,
-      artifact: body.artifact,
-      entityType: canonical.entityType,
-      action: canonical.action,
-      ...(payload !== undefined ? { payload } : {}),
-      ...(body.approvalRequestId !== undefined
-        ? { approvalRequestId: body.approvalRequestId }
-        : {}),
-      projectRoot,
-      routeLabel: "agents.tool-execute",
-      requestId: request.id,
-      sourceContext: {
-        origin: "user_message",
-        trustLevel: "trusted",
+      actorId: user.id,
+      actorKind: "USER",
+      agentId: null,
+      ownerId: user.id,
+      projectId: body.projectId ?? null,
+      reason,
+      policy: "agent.identity.trusted-runtime-only",
+      risk: "HIGH",
+      approval: "NOT_REQUIRED",
+      decision: "DENY",
+      input: {
+        requestedTargetAgentId: body.fabricAgentId,
+        toolName: body.toolName,
       },
-      ...(identity.runtimeStatus !== undefined
-        ? { agentRuntimeStatus: identity.runtimeStatus }
-        : {}),
+      output: {},
+      result: "FAILURE",
+      blockedAt: "IDENTITY",
     });
-
-    // Map outcome to HTTP status and response shape.
-    if (outcome.status === "EXECUTED") {
-      return reply.status(200).send({
-        stage: outcome.stage,
-        status: outcome.status,
-        agentId: identity.agentId,
-        artifactHash: outcome.artifactHash,
-        output: outcome.output,
-      });
-    }
-
-    // All non-EXECUTED outcomes are refusals.
-    const httpStatus =
-      outcome.stage === "EXECUTION"
-        ? 422 // Execution-level failure (path escaping, file not found, etc.)
-        : 403; // Authorization, Approval, or Policy refusal
-
-    return reply.status(httpStatus).send({
-      stage: outcome.stage,
-      status: outcome.status,
-      error: {
-        message: outcome.reason,
-      },
+    return reply.status(403).send({
+      stage: "IDENTITY",
+      status: "DENIED",
+      error: { message: reason },
     });
   });
 

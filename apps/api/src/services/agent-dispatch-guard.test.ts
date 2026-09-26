@@ -105,6 +105,66 @@ describe("dispatchAgentAction", () => {
     expect(result.auditId).toBe(entry?.id);
   });
 
+  it("Stage 4 D-C: a human-proxy request (gate agentId === requesting user) is audited as USER with a null agentId, never a human id as agentId", async () => {
+    await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: USER_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.stage4.human-proxy",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+    });
+    const [entry] = listUnifiedAuditEntries();
+    expect(entry?.actorKind).toBe("USER");
+    expect(entry?.agentId).toBeNull();
+    expect(entry?.actorId).toBe(USER_ID);
+    expect(entry?.ownerId).toBe(USER_ID);
+  });
+
+  it("Stage 4 D-C: records a valid causationId and ignores a non-uuid one", async () => {
+    const cause = "11111111-2222-4333-8444-555555555555";
+    await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.stage4.causation",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      causationId: cause,
+    });
+    const [first] = listUnifiedAuditEntries();
+    expect(first?.causationId).toBe(cause);
+  });
+
+  it("Stage 4 D-C: a non-uuid causationId is not recorded", async () => {
+    await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.stage4.causation-invalid",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+      causationId: "not-a-uuid",
+    });
+    const [first] = listUnifiedAuditEntries();
+    expect(first?.causationId ?? null).toBeNull();
+  });
+
+  it("Stage 4 D-C: a real agent actor stays AGENT with its own agentId", async () => {
+    await dispatchAgentAction({
+      actor: { kind: "AGENT", agentId: AGENT_ID, onBehalfOfUserId: USER_ID },
+      entityType: "RECORD",
+      action: "READ",
+      routeLabel: "test.stage4.agent",
+      sourceContext: { origin: "user_message", trustLevel: "trusted" },
+      projectId: PROJECT,
+    });
+    const [entry] = listUnifiedAuditEntries();
+    expect(entry?.actorKind).toBe("AGENT");
+    expect(entry?.agentId).toBe(AGENT_ID);
+    expect(entry?.agentId).not.toBe(USER_ID);
+  });
+
   it("a genuinely DENIED decision (real, unmocked authorizeEntityAction — unknown entity/action fail-safe) returns DENIED without throwing and logs a REJECTED/FAILURE entry", async () => {
     // `DEFAULT_ENTITY_POLICIES` covers every valid BusinessEntityType x
     // EntityAction pair, so the only way `authorizeEntityAction` genuinely

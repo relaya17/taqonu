@@ -1234,6 +1234,15 @@ describe("POST /api/v1/code/patches create is authorized and project-scoped", ()
     expect(res.json().patch.projectId).toBe(projectId);
     expect(res.json().patch.evidenceIds).toEqual([evidenceId]);
     expect(res.json().patch.createdBy).toBe(owner.id);
+    // Stage 4 D-C: a directly submitted patch is attributed to the human USER.
+    const submitted = osStore
+      .listAudit()
+      .filter((r) => r.type === "code.patch.submitted" && r.patchId === res.json().patch.id);
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.actorKind).toBe("USER");
+    expect(submitted[0]?.actorId).toBe(owner.id);
+    expect(submitted[0]?.agentId).toBeNull();
+    expect(submitted[0]?.onBehalfOfUserId).toBe(owner.id);
   });
 
   it("rejects a traversal path at create", async () => {
@@ -1328,6 +1337,35 @@ describe("POST /api/v1/code/patch proposal binds workspace and requires identity
       );
     }
     rmSync(foreign, { recursive: true, force: true });
+  });
+
+  it("Stage 4 D-C: a CODE_ENGINEER proposal is audited as AGENT acting on behalf of the requesting user", async () => {
+    const owner = testUser();
+    const projectId = makeOwnedProject(owner);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/patch",
+      headers: { "x-atlas-agent-id": "spoofed-agent" },
+      payload: {
+        projectId,
+        workspaceRoot,
+        userRequest: "update test.txt with a safe comment",
+        mode: "fix",
+        focusPath: "test.txt",
+      },
+    });
+    expect([200, 201], res.body).toContain(res.statusCode);
+    const patchId = (res.json() as { patch?: { id?: string } }).patch?.id;
+    expect(patchId).toBeTruthy();
+    const proposed = osStore
+      .listAudit()
+      .filter((r) => r.type === "code.patch.proposed" && r.patchId === patchId);
+    expect(proposed).toHaveLength(1);
+    expect(proposed[0]?.actorKind).toBe("AGENT");
+    expect(proposed[0]?.agentId).toBe("CODE_ENGINEER");
+    expect(proposed[0]?.onBehalfOfUserId).toBe(owner.id);
+    expect(proposed[0]?.agentId).not.toBe(owner.id);
+    expect(proposed[0]?.agentId).not.toBe("spoofed-agent");
   });
 
   it("401s unauthenticated /code/review of a raw workspaceRoot", async () => {

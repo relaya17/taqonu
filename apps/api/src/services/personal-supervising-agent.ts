@@ -213,14 +213,17 @@ function audit(input: {
   readonly extra?: Record<string, unknown>;
   readonly tenantId?: string | null;
   readonly projectId?: string | null;
-}): void {
+  readonly correlationId?: string;
+}): string {
   const tenantId = optionalAuditScope(input.tenantId);
   const projectId = optionalAuditScope(input.projectId);
-  appendUnifiedAuditEntry({
+  return appendUnifiedAuditEntry({
     type: input.type,
     actorId: personalSupervisingAgentId(input.ownerId),
     actorKind: "AGENT",
+    agentId: personalSupervisingAgentId(input.ownerId),
     ownerId: input.ownerId,
+    ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
     reason: input.reason,
     input: {
       agentClass: PERSONAL_SUPERVISING_AGENT_CLASS,
@@ -234,7 +237,7 @@ function audit(input: {
     result: "SUCCESS",
     ...(tenantId !== undefined ? { tenantId } : {}),
     ...(projectId !== undefined ? { projectId } : {}),
-  });
+  }).id;
 }
 
 function requireOwnerMatch(record: PersonalSupervisingAgentRecord, ownerId: string): void {
@@ -743,26 +746,36 @@ export async function requestGovernedAction(
     );
   }
   assertProjectInScope(agent.scope, proposal.projectId);
-  const result = await submitAgentProposal(proposal, {
-    actorKind: "AGENT",
-    onBehalfOfUserId: ownerId,
-    sourceContext: { origin: "user_message", trustLevel: "trusted" },
-    routeLabel: "psa.request",
-    agentRuntimeStatus: agent.status,
-    delegationHopCount: 1,
-  });
-  await touch(agent);
-  audit({
+  // Stage 4 attribution (D-C): USER request + PSA actor + TARGET specialist.
+  // The psa.request record is written first; its dispatch record shares the
+  // correlation id and names it as `causationId`. The governance decision is
+  // recorded on the dispatch record it caused.
+  const correlationId = crypto.randomUUID();
+  const requestAuditId = audit({
     type: "psa.request",
     ownerId,
     reason: "User request entered existing governance via specialist proposal",
     tenantId: agent.scope.tenantId,
     projectId: proposal.projectId,
+    correlationId,
     extra: {
+      onBehalfOfUserId: ownerId,
       specialistId: proposal.agentId,
-      decision: result.decision,
+      targetAgentId: proposal.agentId,
     },
   });
+  const result = await submitAgentProposal(proposal, {
+    actorKind: "AGENT",
+    onBehalfOfUserId: ownerId,
+    actingAgentId: personalSupervisingAgentId(ownerId),
+    sourceContext: { origin: "user_message", trustLevel: "trusted" },
+    routeLabel: "psa.request",
+    agentRuntimeStatus: agent.status,
+    delegationHopCount: 1,
+    requestId: correlationId,
+    causationId: requestAuditId,
+  });
+  await touch(agent);
   return result;
 }
 

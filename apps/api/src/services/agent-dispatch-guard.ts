@@ -87,6 +87,31 @@ export interface DispatchActor {
 }
 
 /**
+ * Stage 4 attribution (approved 2026-09-26): the unified audit must never
+ * record a human user id as an `agentId`. Human-initiated governed requests
+ * keep their conservative gate classification (`kind: "AGENT"`, never the
+ * privileged live-human `HUMAN` carve-out), but when the gate "agent" id is
+ * the requesting human's own id, the audit attributes the action to that
+ * USER and leaves `agentId` empty. Gate semantics and approval context are
+ * unchanged.
+ */
+function isHumanProxyActor(actor: DispatchActor): boolean {
+  return (
+    actor.kind === "HUMAN" ||
+    (actor.onBehalfOfUserId !== null && actor.agentId === actor.onBehalfOfUserId)
+  );
+}
+
+export function auditActorKind(actor: DispatchActor): "USER" | "AGENT" {
+  return isHumanProxyActor(actor) ? "USER" : "AGENT";
+}
+
+export function auditAgentId(actor: DispatchActor): string | null {
+  return isHumanProxyActor(actor) ? null : actor.agentId;
+}
+
+
+/**
  * Whether the content driving this action decision (a user message, an
  * ingested document/webhook, etc.) can be trusted at face value. This is the
  * hook prompt-injection-style attacks live behind: content from
@@ -154,6 +179,11 @@ export interface DispatchAgentActionOptions {
    * so an operator can join CP → API without a second telemetry stack.
    */
   readonly requestId?: string;
+  /**
+   * Stage 4 (D-C): id of the audit record that caused this dispatch (e.g.
+   * the `psa.request` entry). Recorded as `causationId`; never an actor.
+   */
+  readonly causationId?: string;
   /**
    * Claimed Stage-3 `ApprovalRequest` record. Re-derived here — not a boolean.
    * Absent → current behavior. Present but mismatched → DENIED (fail closed).
@@ -422,6 +452,7 @@ const UUID_RE =
 function auditRequestBinding(options: DispatchAgentActionOptions): {
   readonly input: Record<string, unknown>;
   readonly correlationId?: string;
+  readonly causationId?: string;
 } {
   const input = {
     ...(options.input ?? {}),
@@ -431,7 +462,15 @@ function auditRequestBinding(options: DispatchAgentActionOptions): {
     typeof options.requestId === "string" && UUID_RE.test(options.requestId)
       ? options.requestId
       : undefined;
-  return correlationId !== undefined ? { input, correlationId } : { input };
+  const causationId =
+    typeof options.causationId === "string" && UUID_RE.test(options.causationId)
+      ? options.causationId
+      : undefined;
+  return {
+    input,
+    ...(correlationId !== undefined ? { correlationId } : {}),
+    ...(causationId !== undefined ? { causationId } : {}),
+  };
 }
 
 export async function dispatchAgentAction(
@@ -439,7 +478,7 @@ export async function dispatchAgentAction(
 ): Promise<DispatchAgentActionResult> {
   const { actor, entityType, action, routeLabel, sourceContext } = options;
   const policyLabel = `${entityType}.${action}`;
-  const { input: auditInput, correlationId } = auditRequestBinding(options);
+  const { input: auditInput, correlationId, causationId } = auditRequestBinding(options);
 
   // Kill switch: checked before anything else, including policy/risk. This
   // is an operator emergency stop, not an ordinary governance decision --
@@ -454,8 +493,8 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-      agentId: actor.agentId,
+      actorKind: auditActorKind(actor),
+      agentId: auditAgentId(actor),
       reason,
       input: auditInput,
       output: { killSwitchCategory: killSwitch.category },
@@ -469,6 +508,7 @@ export async function dispatchAgentAction(
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(causationId !== undefined ? { causationId } : {}),
       blockedAt: "KILL_SWITCH",
     });
     return {
@@ -492,8 +532,8 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-      agentId: actor.agentId,
+      actorKind: auditActorKind(actor),
+      agentId: auditAgentId(actor),
       reason: `Excessive delegation depth hops=${hops} exceeds ${MAX_DELEGATION_HOP_COUNT}`,
       input: auditInput,
       output: { hops },
@@ -505,6 +545,7 @@ export async function dispatchAgentAction(
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(causationId !== undefined ? { causationId } : {}),
       delegationHopCount: MAX_DELEGATION_HOP_COUNT,
       blockedAt: "AUTHORIZATION",
     });
@@ -542,8 +583,8 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-      agentId: actor.agentId,
+      actorKind: auditActorKind(actor),
+      agentId: auditAgentId(actor),
       reason: `Agent runtime control ${options.agentRuntimeStatus} blocks execution`,
       input: auditInput,
       output: {},
@@ -555,6 +596,7 @@ export async function dispatchAgentAction(
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(causationId !== undefined ? { causationId } : {}),
       delegationHopCount: hops,
       blockedAt: "AUTHORIZATION",
     });
@@ -587,8 +629,8 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-      agentId: actor.agentId,
+      actorKind: auditActorKind(actor),
+      agentId: auditAgentId(actor),
       reason,
       input: auditInput,
       output: {},
@@ -602,6 +644,7 @@ export async function dispatchAgentAction(
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(causationId !== undefined ? { causationId } : {}),
       delegationHopCount: hops,
       blockedAt: "APPROVAL",
     });
@@ -622,8 +665,8 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-      agentId: actor.agentId,
+      actorKind: auditActorKind(actor),
+      agentId: auditAgentId(actor),
       reason: entityAuthz.reason,
       input: auditInput,
       output: {},
@@ -637,6 +680,7 @@ export async function dispatchAgentAction(
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(causationId !== undefined ? { causationId } : {}),
       delegationHopCount: hops,
       // Universal Permanent Prohibition (FORBIDDEN) is a categorically
       // different kind of denial from an ordinary policy/mode/write-gate
@@ -801,8 +845,8 @@ export async function dispatchAgentAction(
     appendUnifiedAuditEntry({
       type: routeLabel,
       actorId: actor.agentId,
-      actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-      agentId: actor.agentId,
+      actorKind: auditActorKind(actor),
+      agentId: auditAgentId(actor),
       reason: explanation.factors.join("; "),
       input: auditInput,
       output: {
@@ -830,6 +874,7 @@ export async function dispatchAgentAction(
       projectId: options.projectId ?? null,
       ownerId: actor.onBehalfOfUserId,
       ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(causationId !== undefined ? { causationId } : {}),
       delegationHopCount: hops,
       blockedAt: "APPROVAL",
     });
@@ -850,8 +895,8 @@ export async function dispatchAgentAction(
   const record = appendUnifiedAuditEntry({
     type: routeLabel,
     actorId: actor.agentId,
-    actorKind: actor.kind === "HUMAN" ? "USER" : "AGENT",
-    agentId: actor.agentId,
+    actorKind: auditActorKind(actor),
+    agentId: auditAgentId(actor),
     reason: explanation.factors.join("; "),
     input: auditInput,
     output: behavioralPattern ? { behavioralPattern } : {},
@@ -865,6 +910,7 @@ export async function dispatchAgentAction(
     projectId: options.projectId ?? null,
     ownerId: actor.onBehalfOfUserId,
     ...(correlationId !== undefined ? { correlationId } : {}),
+    ...(causationId !== undefined ? { causationId } : {}),
     delegationHopCount: hops,
   });
 
