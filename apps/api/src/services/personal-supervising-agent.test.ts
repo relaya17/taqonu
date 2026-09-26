@@ -300,6 +300,17 @@ describe("Personal Supervising Agent", () => {
     expect(types).toContain("psa.request");
   });
 
+  it("rejects a personal-agent id as the governed request specialist", async () => {
+    await initA();
+    const body = proposal(OWNER_A);
+    await expect(
+      requestGovernedAction(OWNER_A, {
+        ...body,
+        agentId: `psa:${OWNER_A}` as typeof body.agentId,
+      }),
+    ).rejects.toThrow(/Fabric specialist/);
+  });
+
   it("paused and disabled agents cannot dispatch", async () => {
     await initA();
     await setPersonalSupervisingAgentStatus(OWNER_A, "PAUSED");

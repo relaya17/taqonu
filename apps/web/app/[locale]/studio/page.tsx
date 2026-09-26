@@ -52,8 +52,10 @@ import { studioProblemRemediationId } from "@/lib/studio-problems";
 import {
   STUDIO_CHECK_IDS,
   STUDIO_TABS,
+  STUDIO_FILE_ACTIONS,
   buildStudioSearch,
   isStudioCheckId,
+  studioFileActionInstruction,
   isStudioTab,
   shouldShowStudioEmptyProjects,
   shouldShowStudioNeedRoot,
@@ -504,6 +506,8 @@ export default function StudioPage() {
   const selectedExemplar =
     exemplars.find((item) => item.id === exemplarId) ?? exemplars[0] ?? null;
 
+  const [moveTo, setMoveTo] = useState("");
+
   const saveFile = useMutation({
     mutationFn: () =>
       apiPut("/api/v1/studio/file", {
@@ -519,6 +523,25 @@ export default function StudioPage() {
         );
       }
       void fileQuery.refetch();
+      void treeQuery.refetch();
+    },
+  });
+
+  const moveFile = useMutation({
+    mutationFn: () =>
+      apiPost<{ from: string; to: string }>("/api/v1/studio/file/move", {
+        projectId,
+        from: selectedPath,
+        to: moveTo.trim(),
+      }),
+    onSuccess: (moved) => {
+      setBuffers((prev) => {
+        const next = { ...prev };
+        if (selectedPath) delete next[selectedPath];
+        return next;
+      });
+      setMoveTo("");
+      selectStudioFile(moved.to);
       void treeQuery.refetch();
     },
   });
@@ -941,10 +964,6 @@ export default function StudioPage() {
               </Typography>
             )}
           </Box>
-          <StudioGitStatus
-            projectId={projectId}
-            onOpenFile={(path) => selectStudioFile(path)}
-          />
           </Stack>
 
           <Stack spacing={2} sx={{ minWidth: 0 }}>
@@ -1068,6 +1087,43 @@ export default function StudioPage() {
                   {saveFile.isPending ? t("asking") : t("saveFile")}
                 </Button>
               </Stack>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ px: 1.5, py: 1, borderBottom: panelBorder }}
+              >
+                <TextField
+                  size="small"
+                  label={t("moveTo")}
+                  value={moveTo}
+                  onChange={(event) => setMoveTo(event.target.value)}
+                  sx={{ minWidth: 180, flex: 1 }}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={
+                    moveFile.isPending ||
+                    !selectedPath ||
+                    moveTo.trim().length === 0 ||
+                    moveTo.trim() === selectedPath
+                  }
+                  onClick={() => {
+                    if (isDirty && !window.confirm(t("unsavedConfirm"))) return;
+                    moveFile.mutate();
+                  }}
+                >
+                  {t("moveFile")}
+                </Button>
+              </Stack>
+              {moveFile.isError ? (
+                <Alert severity="warning" sx={{ mx: 1.5, mt: 1 }}>
+                  {(moveFile.error as Error).message}
+                </Alert>
+              ) : null}
               {selectedPath && fileQuery.data && !fileQuery.data.readOnly ? (
                 <Stack
                   direction="row"
@@ -1246,6 +1302,13 @@ export default function StudioPage() {
               }}
             />
 
+            <StudioGitStatus
+              projectId={projectId}
+              onOpenFile={(path) => selectStudioFile(path)}
+            />
+
+            <SupervisingAgentPanel projectId={projectId} />
+
             <Box
               sx={{
                 border: panelBorder,
@@ -1255,7 +1318,44 @@ export default function StudioPage() {
                 boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
               }}
             >
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Stack
+                direction="row"
+                spacing={1}
+                flexWrap="wrap"
+                useFlexGap
+                aria-label={t("fileActions")}
+              >
+                {STUDIO_FILE_ACTIONS.map((action) => (
+                  <Button
+                    key={action}
+                    size="small"
+                    variant="outlined"
+                    disabled={!selectedPath}
+                    onClick={() => {
+                      if (!selectedPath) return;
+                      setIntent("propose");
+                      setInstruction(
+                        studioFileActionInstruction(action, selectedPath),
+                      );
+                      propose.reset();
+                      runLoop.reset();
+                      saveNote.reset();
+                    }}
+                  >
+                    {t(`fileAction.${action}`)}
+                  </Button>
+                ))}
+                <Button size="small" variant="text" onClick={() => selectTab("run")}>
+                  {t("tab.run")}
+                </Button>
+                <Button size="small" variant="text" onClick={() => selectTab("checks")}>
+                  {t("tab.checks")}
+                </Button>
+              </Stack>
+              <Typography variant="caption" sx={{ color: "#8B9099", display: "block", mt: 0.75 }}>
+                {t("fileActionsHelp")}
+              </Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 1.5 }}>
                 <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>{t("askTitle")}</Typography>
                 <Chip size="small" label={t("engineerRole")} />
               </Stack>
@@ -1427,8 +1527,6 @@ export default function StudioPage() {
                 />
               ) : null}
             </Box>
-
-            <SupervisingAgentPanel projectId={projectId} />
 
             <StudioPatchWorkflow
               projectId={projectId}

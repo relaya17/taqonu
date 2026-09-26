@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { studioCheckHref } from "@/lib/studio-surfaces";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { useProjectQueryParam } from "@/lib/use-project-query";
 import { selectStudioTopTruthFinding } from "@/lib/studio-truth-finding";
@@ -406,7 +407,7 @@ export function TruthPanel({
           </Button>
           <Button
             component={Link}
-            href="/observer"
+            href={studioCheckHref("observer", activeId)}
             variant="text"
             sx={{ color: "#9A9EA8", fontWeight: 650 }}
           >
@@ -555,7 +556,7 @@ export function TruthPanel({
                 })}
                 sx={{ bgcolor: "rgba(224,122,95,0.18)", color: "#F2C4B8" }}
                 component={Link}
-                href="/sentinel"
+                href={studioCheckHref("sentinel", activeId)}
                 clickable
               />
               <Chip
@@ -790,7 +791,7 @@ export function TruthPanel({
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button
                       component={Link}
-                      href="/observer"
+                      href={studioCheckHref("observer", activeId)}
                       size="small"
                       variant="contained"
                       sx={{ bgcolor: "#DCDDE1", color: "#12141A", fontWeight: 700 }}
@@ -817,7 +818,7 @@ export function TruthPanel({
                     </Button>
                     <Button
                       component={Link}
-                      href="/readiness"
+                      href={studioCheckHref("readiness", activeId)}
                       size="small"
                       variant="text"
                       sx={{ color: "#9A9EA8" }}

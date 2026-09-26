@@ -20,7 +20,12 @@ import {
 } from "@/lib/api";
 import { Link } from "@/i18n/routing";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
-import { patchGovernedPath } from "@/lib/studio-patch-workflow";
+import { patchGovernedPath, canVerifyStudioPatch, deskPatchVerifyPath } from "@/lib/studio-patch-workflow";
+import {
+  formatPatchVerifyLabel,
+  studioRemediationAlertSeverity,
+  studioRemediationIsGreen,
+} from "@/lib/studio-remediation-truth";
 import { useProjectQueryParam } from "@/lib/use-project-query";
 
 interface ProjectItem {
@@ -154,10 +159,26 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   });
 
   const verify = useMutation({
-    mutationFn: (id: string) =>
-      apiPost(`/api/v1/remediation/drafts/${id}/verify`, {
+    mutationFn: async (patch: PatchItem) => {
+      const result = await apiPost<{
+        patch?: { status?: string };
+        verify?: { ok?: boolean; summary?: string };
+        patchVerifyStatus?: string;
+        findingRemediation?: {
+          result: string;
+          verifyStatus: string;
+          findingPresence: string;
+          summary: string;
+        };
+      }>(deskPatchVerifyPath(patch), {
+        projectId,
         ...(root.trim() ? { workspaceRoot: root.trim() } : {}),
-      }),
+      });
+      if (result?.verify && result.verify.ok === false) {
+        throw new Error(result.verify.summary || t("verifyFailed"));
+      }
+      return result;
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["patches"] });
     },
@@ -236,6 +257,36 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
           }
         </Alert>
       ) : null}
+      {verify.isSuccess && !verify.isError ? (
+        <Alert
+          severity={studioRemediationAlertSeverity(
+            verify.data?.verify?.ok !== false,
+            verify.data?.findingRemediation,
+          )}
+        >
+          {t("verifyStatus", {
+            status: formatPatchVerifyLabel(
+              verify.data?.patchVerifyStatus,
+              verify.data?.verify?.ok,
+            ),
+          })}
+          {verify.data?.findingRemediation
+            ? ` · ${t("remediationLine", {
+                result: verify.data.findingRemediation.result,
+                finding: verify.data.findingRemediation.findingPresence,
+              })}`
+            : ""}
+          {studioRemediationIsGreen(
+            verify.data?.verify?.ok !== false,
+            verify.data?.findingRemediation,
+          )
+            ? ` — ${t("remediationFixed")}`
+            : verify.data?.findingRemediation?.result === "NOT_FIXED" ||
+                verify.data?.findingRemediation?.result === "UNSUPPORTED"
+              ? ` — ${t("remediationNotFixed")}`
+              : ` — ${t("patchVerifyOnly")}`}
+        </Alert>
+      ) : null}
 
       <Stack spacing={2}>
         {(patches.data?.items ?? []).length === 0 ? (
@@ -308,8 +359,12 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
                 size="small"
                 variant="outlined"
                 color="success"
-                disabled={verify.isPending || !root.trim()}
-                onClick={() => verify.mutate(patch.id)}
+                disabled={
+                  verify.isPending ||
+                  !root.trim() ||
+                  !canVerifyStudioPatch(patch.status)
+                }
+                onClick={() => verify.mutate(patch)}
               >
                 {t("verify")}
               </Button>

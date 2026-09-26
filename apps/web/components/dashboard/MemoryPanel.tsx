@@ -64,8 +64,13 @@ function MemoryRow({
   onApprove,
   onCorrect,
   onErase,
+  onArchive,
+  onSupersede,
   approving,
   erasing,
+  archiving,
+  superseding,
+  canSupersede,
   correcting,
   draft,
   onDraftChange,
@@ -77,8 +82,13 @@ function MemoryRow({
   onApprove?: (item: Memory) => void;
   onCorrect?: (item: Memory) => void;
   onErase?: (item: Memory) => void;
+  onArchive?: (item: Memory) => void;
+  onSupersede?: (item: Memory) => void;
   approving: boolean;
   erasing: boolean;
+  archiving: boolean;
+  superseding: boolean;
+  canSupersede: boolean;
   correcting: boolean;
   draft: string;
   onDraftChange: (value: string) => void;
@@ -159,6 +169,26 @@ function MemoryRow({
             {t("erase")}
           </Button>
         ) : null}
+        {onArchive ? (
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={archiving}
+            onClick={() => onArchive(item)}
+          >
+            {t("archive")}
+          </Button>
+        ) : null}
+        {onSupersede ? (
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={superseding || !canSupersede}
+            onClick={() => onSupersede(item)}
+          >
+            {t("supersedeInto")}
+          </Button>
+        ) : null}
       </Stack>
       {correcting ? (
         <Stack spacing={1} sx={{ mt: 1 }}>
@@ -201,6 +231,7 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [correctionDraft, setCorrectionDraft] = useState("");
   const [exporting, setExporting] = useState(false);
   const [ttlHours, setTtlHours] = useState("");
+  const [keepId, setKeepId] = useState("");
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -258,6 +289,26 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
 
   const erase = useMutation({
     mutationFn: (item: Memory) => apiDelete(`/api/v1/memory/${item.id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["memory"] });
+      await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
+    },
+  });
+
+  const archive = useMutation({
+    mutationFn: (item: Memory) => apiPost(`/api/v1/memory/${item.id}/archive`, {}),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["memory"] });
+      await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
+    },
+  });
+
+  const consolidate = useMutation({
+    mutationFn: (item: Memory) =>
+      apiPost("/api/v1/memory/consolidate", {
+        keepId,
+        supersedeIds: [item.id],
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["memory"] });
       await queryClient.invalidateQueries({ queryKey: ["memory-pending"] });
@@ -440,8 +491,12 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
                 item={item}
                 approving={approve.isPending}
                 erasing={erase.isPending}
+                archiving={archive.isPending}
+                superseding={false}
+                canSupersede={false}
                 onApprove={(m) => approve.mutate(m)}
                 onErase={(m) => erase.mutate(m)}
+                onArchive={(m) => archive.mutate(m)}
                 onCorrect={(m) => {
                   setCorrectingId(m.id);
                   setCorrectionDraft(m.statement);
@@ -465,6 +520,31 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
         <Typography fontWeight={650} sx={{ mb: 0.5 }}>
           {t("confirmedTitle")}
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          {t("consolidateHelp")}
+        </Typography>
+        {confirmedItems.length > 1 ? (
+          <TextField
+            select
+            size="small"
+            label={t("keep")}
+            value={keepId}
+            onChange={(event) => setKeepId(event.target.value)}
+            sx={{ mb: 1, maxWidth: 420 }}
+          >
+            <MenuItem value="">—</MenuItem>
+            {confirmedItems.map((item) => (
+              <MenuItem key={item.id} value={item.id}>
+                {item.statement.slice(0, 80)}
+              </MenuItem>
+            ))}
+          </TextField>
+        ) : null}
+        {archive.isError || consolidate.isError ? (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {((archive.error || consolidate.error) as Error).message}
+          </Alert>
+        ) : null}
         <Stack spacing={0}>
           {confirmedItems.length === 0 ? (
             <Typography color="text.secondary">{t("empty")}</Typography>
@@ -475,7 +555,12 @@ export function MemoryPanel({ embedded = false }: { embedded?: boolean }) {
                 item={item}
                 approving={false}
                 erasing={erase.isPending}
+                archiving={archive.isPending}
+                superseding={consolidate.isPending}
+                canSupersede={keepId.length > 0 && keepId !== item.id}
                 onErase={(m) => erase.mutate(m)}
+                onArchive={(m) => archive.mutate(m)}
+                onSupersede={(m) => consolidate.mutate(m)}
                 onCorrect={(m) => {
                   setCorrectingId(m.id);
                   setCorrectionDraft(m.statement);

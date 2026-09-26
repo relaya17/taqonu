@@ -26,6 +26,7 @@ import {
   WEB_POST_AUTH_PATH,
   isMarketingShellPath,
   isPublicShellPath,
+  studioCheckHref,
   type StudioCheckId,
 } from "@/lib/studio-surfaces";
 import { useQuery } from "@tanstack/react-query";
@@ -411,7 +412,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               {collapsed ? null : (
               <List dense disablePadding>
                 {group.items.map((key) => {
-                  const href = PATHS[key];
+                  const check = NAV_TO_STUDIO_CHECK[key];
+                  const href = check
+                    ? studioCheckHref(check, searchParams.get("project"))
+                    : PATHS[key];
                   const selected = isNavSelected(key, pathname, searchParams);
                   return (
                     // Real <li> wrapper (WCAG 1.3.1 "list" rule — axe-core

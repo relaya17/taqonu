@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useProjectQueryParam } from "@/lib/use-project-query";
+import { studioCheckHref, studioProjectHref } from "@/lib/studio-surfaces";
 import {
   Alert,
   Box,
@@ -19,6 +20,7 @@ import { apiGet } from "@/lib/api";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { PersonalDesk } from "@/components/dashboard/PersonalDesk";
+import { RecurrenceNotice } from "@/components/dashboard/RecurrenceNotice";
 import { ResponsiveActions } from "@/components/layout/ResponsiveActions";
 import { Suspense } from "react";
 
@@ -282,7 +284,12 @@ export default function DashboardPage() {
           {t("dashboard.workingHome")}
         </Typography>
         <ResponsiveActions sx={{ mt: 2 }}>
-          <Button component={Link} href="/studio" variant="contained" size="large">
+          <Button
+            component={Link}
+            href={studioProjectHref(projectId)}
+            variant="contained"
+            size="large"
+          >
             {t("dashboard.ctaStudio")}
           </Button>
           <Button component={Link} href="/systems" variant="outlined" size="large">
@@ -300,7 +307,7 @@ export default function DashboardPage() {
           <Button component={Link} href="/legal-media" variant="outlined" size="large">
             {t("dashboard.ctaCounsel")}
           </Button>
-          <Button component={Link} href="/readiness" variant="text" size="large">
+          <Button component={Link} href={studioCheckHref("readiness", projectId)} variant="text" size="large">
             {t("dashboard.ctaReadiness")}
           </Button>
         </ResponsiveActions>
@@ -315,18 +322,18 @@ export default function DashboardPage() {
           {t("dashboard.opsHelp")}
         </Typography>
         <ResponsiveActions compact sx={{ mt: 1.5 }}>
-          <Button component={Link} href="/health" size="small" variant="outlined">
+          <Button component={Link} href={studioCheckHref("health", projectId)} size="small" variant="outlined">
             {t("dashboard.opsHealth")}
           </Button>
-          <Button component={Link} href="/readiness" size="small" variant="outlined">
+          <Button component={Link} href={studioCheckHref("readiness", projectId)} size="small" variant="outlined">
             {t("dashboard.opsReadiness")}
           </Button>
-          <Button component={Link} href="/qa" size="small" variant="outlined">
+          <Button component={Link} href={studioCheckHref("qa", projectId)} size="small" variant="outlined">
             {t("dashboard.opsQa")}
           </Button>
           <Button
             component={Link}
-            href="/process-audit"
+            href={studioCheckHref("processAudit", projectId)}
             size="small"
             variant="outlined"
           >
@@ -364,6 +371,8 @@ export default function DashboardPage() {
           ))}
         </TextField>
       )}
+
+      <RecurrenceNotice projectId={projectId} />
 
       {verdict.isError ? (
         <Alert severity="warning">{t("dashboard.verdictUnavailable")}</Alert>
@@ -453,7 +462,7 @@ export default function DashboardPage() {
               size="small"
               color="error"
               component={Link}
-              href="/readiness"
+              href={studioCheckHref("readiness", projectId)}
               clickable
               label={`${verdict.data.criticalBlockers} ${t("dashboard.blockersChip")}`}
             />
@@ -461,7 +470,7 @@ export default function DashboardPage() {
               size="small"
               color="warning"
               component={Link}
-              href="/readiness"
+              href={studioCheckHref("readiness", projectId)}
               clickable
               label={`${verdict.data.highRisks} ${t("dashboard.highRisksChip")}`}
             />
@@ -540,7 +549,7 @@ export default function DashboardPage() {
             })}
           </Typography>
           <ResponsiveActions compact sx={{ mt: 2 }}>
-            <Button component={Link} href="/readiness" size="small" variant="outlined">
+            <Button component={Link} href={studioCheckHref("readiness", projectId)} size="small" variant="outlined">
               {t("dashboard.viewCertificate")}
             </Button>
             <Button

@@ -18,6 +18,7 @@ import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
+import { studioCheckHref, studioProjectHref, workbenchProjectHref } from "@/lib/studio-surfaces";
 import type { EpistemicState } from "@atlas/shared";
 
 interface Project {
@@ -919,9 +920,9 @@ export default function ProjectsPage() {
                     {!project.workspaceRoot ? (
                       <Alert severity="warning" sx={{ mt: 1 }}>
                         {t("rootMissingHelp")}{" "}
-                        <Link href="/workbench">{t("openWorkbench")}</Link>
+                        <Link href={workbenchProjectHref(project.id)}>{t("openWorkbench")}</Link>
                         {" · "}
-                        <Link href="/process-audit">{t("openProcessAudit")}</Link>
+                        <Link href={studioCheckHref("processAudit", project.id)}>{t("openProcessAudit")}</Link>
                       </Alert>
                     ) : null}
                   </Box>
@@ -948,7 +949,7 @@ export default function ProjectsPage() {
                     ) : null}
                     <Button
                       component={Link}
-                      href="/studio"
+                      href={studioProjectHref(project.id)}
                       size="small"
                       variant="contained"
                       disabled={!project.workspaceRoot}
@@ -957,7 +958,7 @@ export default function ProjectsPage() {
                     </Button>
                     <Button
                       component={Link}
-                      href="/workbench"
+                      href={workbenchProjectHref(project.id)}
                       size="small"
                       variant="outlined"
                       disabled={!project.workspaceRoot}

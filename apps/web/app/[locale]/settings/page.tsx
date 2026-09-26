@@ -75,6 +75,18 @@ export default function SettingsPage() {
     retry: false,
   });
 
+  const storage = useQuery({
+    queryKey: ["memory-storage"],
+    enabled: Boolean(me.data?.authenticated),
+    queryFn: () =>
+      apiGet<{
+        bytes: number;
+        records: number;
+        warningBytes: number;
+        warning: boolean;
+      }>("/api/v1/memory/storage"),
+  });
+
   const sessions = useQuery({
     queryKey: ["auth-sessions"],
     enabled: Boolean(me.data?.authenticated),
@@ -190,6 +202,28 @@ export default function SettingsPage() {
               </Typography>
             </Box>
           </Stack>
+
+          <Box>
+            <Typography variant="h2" sx={{ fontSize: "1.25rem", mb: 1 }}>
+              {t("storageTitle")}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t("storageHelp")}
+            </Typography>
+            {storage.data ? (
+              <Typography sx={{ mt: 1 }}>
+                {t("storageUsed", {
+                  bytes: storage.data.bytes,
+                  records: storage.data.records,
+                })}
+              </Typography>
+            ) : null}
+            {storage.data?.warning ? (
+              <Alert severity="warning" sx={{ mt: 1 }}>
+                {t("storageWarning")}
+              </Alert>
+            ) : null}
+          </Box>
 
           <Box>
             <Typography variant="h2" sx={{ fontSize: "1.25rem", mb: 1.5 }}>

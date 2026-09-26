@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Box, Button, Chip, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -14,6 +14,7 @@ import {
   canRollbackStudioPatch,
   canVerifyStudioPatch,
   nextStudioPatchStep,
+  patchDecideAndExecutePath,
   patchGovernedPath,
   patchVerifyPath,
 } from "@/lib/studio-patch-workflow";
@@ -70,6 +71,7 @@ export function StudioPatchWorkflow({
   const [pendingRollbackById, setPendingRollbackById] = useState<
     Record<string, string>
   >({});
+  const [decisionReason, setDecisionReason] = useState("");
 
   const patches = useQuery({
     queryKey: ["patches", projectId],
@@ -78,6 +80,16 @@ export function StudioPatchWorkflow({
       apiGet<{ items: PatchItem[] }>(
         `/api/v1/code/patches?projectId=${encodeURIComponent(projectId)}`,
       ),
+  });
+
+  const session = useQuery({
+    queryKey: ["studio-patch-identity"],
+    queryFn: () =>
+      apiGet<{
+        authenticated: boolean;
+        user: { id: string; email: string } | null;
+      }>("/api/v1/auth/session"),
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -164,6 +176,32 @@ export function StudioPatchWorkflow({
     },
   });
 
+  const decide = useMutation({
+    mutationFn: (input: {
+      id: string;
+      action: "apply" | "rollback";
+      approvalId: string;
+    }) =>
+      apiPost(patchDecideAndExecutePath(input.id, input.action), {
+        approvalId: input.approvalId,
+        decisionReason: decisionReason.trim(),
+        workspaceRoot: root,
+      }),
+    onSuccess: async (_data, input) => {
+      const clear = (current: Record<string, string>) => {
+        const next = { ...current };
+        delete next[input.id];
+        return next;
+      };
+      if (input.action === "apply") setPendingApplyById(clear);
+      else setPendingRollbackById(clear);
+      setDecisionReason("");
+      await queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["studio-file"] });
+      await queryClient.invalidateQueries({ queryKey: ["studio-tree"] });
+    },
+  });
+
   const verify = useMutation({
     mutationFn: async (id: string) => {
       const result = await apiPost<{
@@ -192,7 +230,11 @@ export function StudioPatchWorkflow({
   });
 
   const busy =
-    approve.isPending || apply.isPending || verify.isPending || rollback.isPending;
+    approve.isPending ||
+    apply.isPending ||
+    verify.isPending ||
+    rollback.isPending ||
+    decide.isPending;
   const actionError = approve.error || apply.error || verify.error || rollback.error;
 
   return (
@@ -307,6 +349,82 @@ export function StudioPatchWorkflow({
           {pendingRollbackById[focused.id] ? (
             <Alert severity="warning" sx={{ mt: 1.5 }}>
               {tPatches("approvalPending", { id: pendingRollbackById[focused.id] })}
+            </Alert>
+          ) : null}
+          {pendingApplyById[focused.id] || pendingRollbackById[focused.id] ? (
+            <Box
+              sx={{
+                mt: 1.5,
+                p: 1.5,
+                border: "1px solid rgba(232,234,238,0.12)",
+                borderRadius: 2,
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ color: "#DCDDE1" }}>
+                {t("workflow.secondIdentity")}
+              </Typography>
+              <Typography variant="caption" sx={{ display: "block", color: "#8B9099", mt: 0.5 }}>
+                {t("workflow.secondIdentityHelp")}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1, color: "#DCDDE1" }}>
+                {t("workflow.currentIdentity")}: {session.data?.user?.email ?? "—"}
+              </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                label={t("workflow.decisionReason")}
+                value={decisionReason}
+                onChange={(event) => setDecisionReason(event.target.value)}
+                sx={{ mt: 1 }}
+              />
+              <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                {pendingApplyById[focused.id] ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={
+                      decide.isPending || !root || decisionReason.trim().length === 0
+                    }
+                    onClick={() =>
+                      decide.mutate({
+                        id: focused.id,
+                        action: "apply",
+                        approvalId: pendingApplyById[focused.id] ?? "",
+                      })
+                    }
+                  >
+                    {t("workflow.decideApply")}
+                  </Button>
+                ) : null}
+                {pendingRollbackById[focused.id] ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={
+                      decide.isPending || !root || decisionReason.trim().length === 0
+                    }
+                    onClick={() =>
+                      decide.mutate({
+                        id: focused.id,
+                        action: "rollback",
+                        approvalId: pendingRollbackById[focused.id] ?? "",
+                      })
+                    }
+                  >
+                    {t("workflow.decideRollback")}
+                  </Button>
+                ) : null}
+              </Stack>
+              {decide.isError ? (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  {(decide.error as Error).message}
+                </Alert>
+              ) : null}
+            </Box>
+          ) : null}
+          {decide.isSuccess ? (
+            <Alert severity="success" sx={{ mt: 1.5 }}>
+              {t("workflow.sodExecuted")}
             </Alert>
           ) : null}
           <StudioPatchDiff filesChanged={focused.filesChanged} />

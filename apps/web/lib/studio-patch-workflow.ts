@@ -66,3 +66,32 @@ export function patchGovernedPath(
 export function patchVerifyPath(id: string): string {
   return `/api/v1/code/patches/${id}/verify`;
 }
+
+/**
+ * Same split the API already enforces. Governed patches use Studio's verify.
+ * Auto-remediation drafts stay on the existing drafts verify. No third route.
+ */
+export function deskPatchVerifyPath(patch: {
+  readonly id: string;
+  readonly createdBy?: string | null;
+  readonly sourceIssueId?: string | null;
+  readonly title?: string | null;
+}): string {
+  const auto =
+    patch.createdBy === "atlas-auto-remediation" ||
+    patch.createdBy === "atlas-truth-remediation" ||
+    Boolean(patch.sourceIssueId) ||
+    (patch.title?.startsWith("AUTO_FIX:") ?? false) ||
+    (patch.title?.startsWith("TRUTH_FIX:") ?? false);
+  return auto
+    ? `/api/v1/remediation/drafts/${patch.id}/verify`
+    : patchVerifyPath(patch.id);
+}
+
+/** Existing live-human SoD route. The requester is denied by the server. */
+export function patchDecideAndExecutePath(
+  id: string,
+  action: "apply" | "rollback",
+): string {
+  return `/api/v1/code/patches/${id}/${action}/decide-and-execute`;
+}

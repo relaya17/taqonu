@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   WEB_POST_AUTH_PATH,
   buildStudioSearch,
+  studioFileActionInstruction,
+  studioCheckHref,
+  studioProjectHref,
+  workbenchProjectHref,
   isMarketingShellPath,
   isPublicShellPath,
   shouldShowStudioEmptyProjects,
@@ -79,6 +83,108 @@ describe("buildStudioSearch", () => {
     });
     expect(pty).toContain("tab=pty");
     expect(pty).not.toContain("file=");
+  });
+});
+
+describe("studioProjectHref", () => {
+  const projectId = "00000000-0000-4000-8000-def000000001";
+
+  it("keeps an active project on the Studio query", () => {
+    const href = studioProjectHref(projectId);
+    expect(href).toEqual({ pathname: "/studio", query: { project: projectId } });
+    expect(JSON.stringify(href)).not.toContain("/studio?");
+    expect(JSON.stringify(href)).not.toContain("/studio/");
+  });
+
+  it("leaves Studio without a project when none is selected", () => {
+    expect(studioProjectHref("")).toBe("/studio");
+    expect(studioProjectHref("   ")).toBe("/studio");
+    expect(studioProjectHref(null)).toBe("/studio");
+    expect(studioProjectHref(undefined)).toBe("/studio");
+  });
+});
+
+describe("studioCheckHref", () => {
+  const projectId = "00000000-0000-4000-8000-def000000001";
+
+  it("opens an existing Studio check and keeps the project", () => {
+    expect(studioCheckHref("truth", projectId)).toEqual({
+      pathname: "/studio",
+      query: { tab: "checks", check: "truth", project: projectId },
+    });
+    expect(studioCheckHref("processAudit", "  ")).toEqual({
+      pathname: "/studio",
+      query: { tab: "checks", check: "processAudit" },
+    });
+  });
+});
+
+describe("workbenchProjectHref", () => {
+  it("keeps the selected project id on the Workbench query", () => {
+    const projectId = "00000000-0000-4000-8000-def000000001";
+    const href = workbenchProjectHref(projectId);
+    expect(href).toEqual({
+      pathname: "/workbench",
+      query: { project: projectId },
+    });
+    expect(JSON.stringify(href)).not.toContain("/workbench?");
+    expect(JSON.stringify(href)).not.toContain("/workbench/");
+  });
+
+  it("uses that project's id rather than another project's id", () => {
+    const selected = workbenchProjectHref("project-x");
+    const other = workbenchProjectHref("project-y");
+    expect(selected).toEqual({ pathname: "/workbench", query: { project: "project-x" } });
+    expect(other).toEqual({ pathname: "/workbench", query: { project: "project-y" } });
+  });
+
+  it("leaves Workbench without a project when none is available", () => {
+    expect(workbenchProjectHref("")).toBe("/workbench");
+    expect(workbenchProjectHref("   ")).toBe("/workbench");
+    expect(workbenchProjectHref(null)).toBe("/workbench");
+    expect(workbenchProjectHref(undefined)).toBe("/workbench");
+  });
+});
+
+describe("studioFileActionInstruction", () => {
+  it("fills a proposal for the open file and does not apply", () => {
+    const path = "src/hello.ts";
+    for (const action of ["explain", "diagnose", "review"] as const) {
+      const text = studioFileActionInstruction(action, path);
+      expect(text).toContain(path);
+      expect(text).toContain("Stop at a proposal");
+      expect(text).toContain("Do not apply");
+    }
+    expect(studioFileActionInstruction("explain", path)).not.toBe(
+      studioFileActionInstruction("diagnose", path),
+    );
+    expect(studioFileActionInstruction("diagnose", path)).not.toBe(
+      studioFileActionInstruction("review", path),
+    );
+  });
+});
+
+describe("studio file action i18n", () => {
+  it("ships Explain, Diagnose, and Review in EN, HE, and AR", async () => {
+    const en = (await import("../messages/en.json")).default;
+    const he = (await import("../messages/he.json")).default;
+    const ar = (await import("../messages/ar.json")).default;
+    for (const locale of [en, he, ar]) {
+      expect(locale.studio.fileAction.explain.length).toBeGreaterThan(0);
+      expect(locale.studio.fileAction.diagnose.length).toBeGreaterThan(0);
+      expect(locale.studio.fileAction.review.length).toBeGreaterThan(0);
+      expect(locale.studio.fileActionsHelp.length).toBeGreaterThan(0);
+      expect(locale.studio.psa.explain.length).toBeGreaterThan(0);
+      expect(locale.studio.psa.recommend.length).toBeGreaterThan(0);
+      expect(locale.studio.psa.escalate.length).toBeGreaterThan(0);
+      expect(locale.studio.psa.request.length).toBeGreaterThan(0);
+      expect(locale.studio.psa.requestHelp.length).toBeGreaterThan(0);
+      expect(locale.studio.workflow.secondIdentity.length).toBeGreaterThan(0);
+      expect(locale.studio.workflow.secondIdentityHelp.length).toBeGreaterThan(0);
+      expect(locale.studio.workflow.decideApply.length).toBeGreaterThan(0);
+      expect(locale.studio.workflow.decideRollback.length).toBeGreaterThan(0);
+      expect(locale.nav.opsGroup.length).toBeGreaterThan(0);
+    }
   });
 });
 

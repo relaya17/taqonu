@@ -79,6 +79,63 @@ export function buildStudioSearch(input: {
 }
 
 /**
+ * Dashboard / Projects → Studio. next-intl Link on a MUI Button drops a
+ * string `/studio?project=`. An object keeps `project`. No id stays `/studio`.
+ */
+export function studioProjectHref(
+  projectId: string | null | undefined,
+): "/studio" | { pathname: "/studio"; query: { project: string } } {
+  const id = projectId?.trim() ?? "";
+  if (!id) return "/studio";
+  return { pathname: "/studio", query: { project: id } };
+}
+
+/** Sidebar and desk aliases into an existing Studio Check. Old URLs stay redirects. */
+export function studioCheckHref(
+  check: StudioCheckId,
+  projectId?: string | null,
+): {
+  pathname: "/studio";
+  query:
+    | { tab: "checks"; check: StudioCheckId; project: string }
+    | { tab: "checks"; check: StudioCheckId };
+} {
+  const id = projectId?.trim() ?? "";
+  if (!id) return { pathname: "/studio", query: { tab: "checks", check } };
+  return { pathname: "/studio", query: { tab: "checks", check, project: id } };
+}
+
+/**
+ * Projects → Workbench. Same MUI/next-intl object shape as Studio.
+ * No id stays `/workbench`, which already falls through to Studio chat.
+ */
+export function workbenchProjectHref(
+  projectId: string | null | undefined,
+): "/workbench" | { pathname: "/workbench"; query: { project: string } } {
+  const id = projectId?.trim() ?? "";
+  if (!id) return "/workbench";
+  return { pathname: "/workbench", query: { project: id } };
+}
+
+/** File-surface entry points. They fill a proposal. They do not apply. */
+export const STUDIO_FILE_ACTIONS = ["explain", "diagnose", "review"] as const;
+export type StudioFileAction = (typeof STUDIO_FILE_ACTIONS)[number];
+
+export function studioFileActionInstruction(
+  action: StudioFileAction,
+  path: string,
+): string {
+  const file = path.trim();
+  const verb =
+    action === "explain"
+      ? "Explain"
+      : action === "diagnose"
+        ? "Diagnose"
+        : "Review";
+  return `${verb} ${file}. Stop at a proposal. Do not apply.`;
+}
+
+/**
  * Signed-in working entry. Marketing `/` still redirects to welcome;
  * the locale dashboard (`/{locale}`) remains reachable and is not deleted.
  */
