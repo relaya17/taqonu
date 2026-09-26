@@ -21,6 +21,7 @@ import { delimiter, join, resolve } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { AtlasError } from "@atlas/shared";
+import { isAgentActorRequest } from "./studio-actor.js";
 
 export const STUDIO_PTY_SHELLS = ["powershell", "cmd"] as const;
 export type StudioPtyShell = (typeof STUDIO_PTY_SHELLS)[number];
@@ -170,9 +171,7 @@ export function setStudioPtyTimeoutsForTests(next: {
 }
 
 export function isAgentPtyRequest(headers: Record<string, unknown>): boolean {
-  const actor = String(headers["x-atlas-actor-kind"] ?? "").trim().toUpperCase();
-  const agentId = String(headers["x-atlas-agent-id"] ?? "").trim();
-  return actor === "AGENT" || agentId.length > 0;
+  return isAgentActorRequest(headers);
 }
 
 export function denyAgentPty(): never {

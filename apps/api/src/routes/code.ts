@@ -37,7 +37,7 @@ import {
   type EntityAuthorizationDecision,
 } from "@atlas/agent-core";
 import { z } from "zod";
-import { isAgentPtyRequest } from "../services/studio-pty.js";
+import { isAgentActorRequest } from "../services/studio-actor.js";
 import { osStore } from "../store/os-store.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -741,7 +741,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/v1/studio/file/move", async (request, reply) => {
-    if (isAgentPtyRequest(request.headers as Record<string, unknown>)) {
+    if (isAgentActorRequest(request.headers as Record<string, unknown>)) {
       throw new AtlasError("FORBIDDEN", "Studio file move is human-only.", {
         statusCode: 403,
       });
