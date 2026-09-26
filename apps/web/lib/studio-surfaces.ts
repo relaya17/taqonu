@@ -79,8 +79,19 @@ export function buildStudioSearch(input: {
 }
 
 /**
+ * MUI types `href` as a string. The value stays the next-intl object so a
+ * `project` query is not dropped. The cast does not change the runtime value.
+ */
+export function asMuiHref(
+  href: string | { readonly pathname: string; readonly query?: object },
+): string {
+  return href as unknown as string;
+}
+
+/**
  * Dashboard / Projects → Studio. next-intl Link on a MUI Button drops a
  * string `/studio?project=`. An object keeps `project`. No id stays `/studio`.
+ * Pass the result through `asMuiHref` when the receiver is a MUI `href`.
  */
 export function studioProjectHref(
   projectId: string | null | undefined,

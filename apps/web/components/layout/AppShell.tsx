@@ -26,6 +26,7 @@ import {
   WEB_POST_AUTH_PATH,
   isMarketingShellPath,
   isPublicShellPath,
+  asMuiHref,
   studioCheckHref,
   type StudioCheckId,
 } from "@/lib/studio-surfaces";
@@ -427,7 +428,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <ListItem key={key} disablePadding>
                       <ListItemButton
                         component={Link}
-                        href={href}
+                        href={asMuiHref(href)}
                         selected={selected}
                         aria-current={selected ? "page" : undefined}
                         onClick={opts.mobile ? () => setNavOpen(false) : undefined}

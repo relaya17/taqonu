@@ -3,6 +3,7 @@ import {
   WEB_POST_AUTH_PATH,
   buildStudioSearch,
   studioFileActionInstruction,
+  asMuiHref,
   studioCheckHref,
   studioProjectHref,
   workbenchProjectHref,
@@ -101,6 +102,12 @@ describe("studioProjectHref", () => {
     expect(studioProjectHref("   ")).toBe("/studio");
     expect(studioProjectHref(null)).toBe("/studio");
     expect(studioProjectHref(undefined)).toBe("/studio");
+  });
+
+  it("keeps the object when MUI requires a string href type", () => {
+    const href = studioProjectHref(projectId);
+    expect(asMuiHref(href)).toEqual(href);
+    expect(asMuiHref("/studio")).toBe("/studio");
   });
 });
 

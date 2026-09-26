@@ -17,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
 import { Link } from "@/i18n/routing";
-import { studioCheckHref } from "@/lib/studio-surfaces";
+import { asMuiHref, studioCheckHref } from "@/lib/studio-surfaces";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import { useProjectQueryParam } from "@/lib/use-project-query";
 
@@ -262,7 +262,7 @@ export function HealthPanel({
         </Button>
         <Button
           component={Link}
-          href={studioCheckHref("readiness", projectId)}
+          href={asMuiHref(studioCheckHref("readiness", projectId))}
           size="medium"
           variant="outlined"
           sx={{ minHeight: 44 }}
