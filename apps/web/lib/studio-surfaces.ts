@@ -117,6 +117,58 @@ export function studioCheckHref(
 }
 
 /**
+ * Dashboard project selector. Replaces `project` and keeps every other
+ * query parameter (including `desk`). An empty id removes `project`.
+ * Returns "" when nothing remains so the caller can replace to the path.
+ */
+export function withProjectSearch(currentSearch: string, projectId: string): string {
+  const raw = currentSearch.startsWith("?") ? currentSearch.slice(1) : currentSearch;
+  const params = new URLSearchParams(raw);
+  const id = projectId.trim();
+  if (id) params.set("project", id);
+  else params.delete("project");
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/**
+ * Personal-desk tab change. Sets `desk` and preserves `project` when present.
+ */
+export function withDeskSearch(currentSearch: string, desk: string): string {
+  const raw = currentSearch.startsWith("?") ? currentSearch.slice(1) : currentSearch;
+  const params = new URLSearchParams(raw);
+  params.set("desk", desk);
+  return `?${params.toString()}`;
+}
+
+/**
+ * Compatibility aliases into the dashboard desk. A project is copied only
+ * when the incoming URL already has one. Memory and decisions stay reachable
+ * with no project.
+ */
+export function deskAliasHref(
+  desk: "memory" | "decisions" | "patches",
+  projectId: string | null | undefined,
+): string {
+  const params = new URLSearchParams();
+  params.set("desk", desk);
+  const id = projectId?.trim() ?? "";
+  if (id) params.set("project", id);
+  return `/?${params.toString()}`;
+}
+
+/** Projects → Studio chat. The /workbench route stays as a compatibility redirect. */
+export function studioChatHref(
+  projectId: string | null | undefined,
+):
+  | { pathname: "/studio"; query: { tab: "chat"; project: string } }
+  | { pathname: "/studio"; query: { tab: "chat" } } {
+  const id = projectId?.trim() ?? "";
+  if (!id) return { pathname: "/studio", query: { tab: "chat" } };
+  return { pathname: "/studio", query: { tab: "chat", project: id } };
+}
+
+/**
  * Projects → Workbench. Same MUI/next-intl object shape as Studio.
  * No id stays `/workbench`, which already falls through to Studio chat.
  */

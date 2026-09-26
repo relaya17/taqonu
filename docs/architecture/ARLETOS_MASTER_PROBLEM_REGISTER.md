@@ -12,11 +12,11 @@
 
 | Item | Value |
 | --- | --- |
-| **Current stage** | Stage 4: ✅ **CLOSED (local verification, 2026-09-26)**: implemented; API 181/1852 passed, Stage 9 19 passed, typechecks clean (§7.7). Not Production-verified. Remaining findings assigned to later stages (§7.7). **Stage 5: ✅ CLOSED (native Windows verification, 2026-09-26)**: 21/21 Golden Loop, 1876/1876 API, 98/98 web/lib, 56/56 code-intelligence, 53/53 typecheck, ESLint clean (§7.11). Stage 9 E2E deferred/environment-dependent. |
+| **Current stage** | Stage 4: ✅ **CLOSED (local verification, 2026-09-26)**: implemented; API 181/1852 passed, Stage 9 19 passed, typechecks clean (§7.7). Not Production-verified. Remaining findings assigned to later stages (§7.7). **Stage 5: ✅ CLOSED (native Windows verification, 2026-09-26)**: 21/21 Golden Loop, 1876/1876 API, 98/98 web/lib, 56/56 code-intelligence, 53/53 typecheck, ESLint clean (§7.11). Stage 9 E2E deferred/environment-dependent. **Stage 6: VERIFIED locally (2026-09-27), ready for commit review, not CLOSED** (§7.12). web/lib 109/109, eslint and web typecheck clean, browser journeys PASS on the local Web in en/he/ar including S6-004 and S6-005. Not committed, not pushed. Admin-role nav link is source-observed only. **Stage 7: ✅ CLOSED (local verification, 2026-09-27)**: S7-A to S7-E VERIFIED locally, S7-F DEFERRED (§7.13 S7-C final test closure). `a11y-studio.spec.ts` 7/7, full Stage 9 **22/22** on the current suite (Arlet, 2026-09-27), a11y 5 passed / 1 fixme. ARL-E2E-001 OPEN, outside Stage 7. Stage 9 and Production are not closed. |
 | **Next authorized action** | See §15 |
 | ✅ Closed | Stage 1 / 1A, Stage 2 (local), ARL-HYDRATION-001 (§5) |
 | 🕘 Historical proof | STAGE_9 program, 19 passed at `2587d1b`. Valid history; **requires regression** on current HEAD (§5) |
-| Current Stage 9 E2E run | Earlier run (before Stage 4): **NOT GREEN**, 16 passed, 1 failed, 2 flaky, exit 1. After Stage 4 (2026-09-26): **19 passed, exit 0**. Earlier findings A–C not reproduced, cause unexplained (§11.1, §7.8) |
+| Current Stage 9 E2E run | Earlier run (before Stage 4): **NOT GREEN**, 16 passed, 1 failed, 2 flaky, exit 1. After Stage 4 (2026-09-26): **19 passed, exit 0**. Earlier findings A–C not reproduced, cause unexplained (§11.1, §7.8). 2026-09-27 (Stage 7 tree): full runs 1–2 failed on `auth-studio.spec.ts:14`, full run 3 **20 passed, exit 0**; current 22-test suite **22 passed, exit 0** (Arlet); intermittent failure tracked as **ARL-E2E-001** (OPEN) |
 | 🟡 Implemented, unverified | 10 items (§11) |
 | 🔴 Open gaps | 7: ARL-WS-001..007 (§6) |
 | ✅ Human decisions | D1–D10 and new decisions A–C **approved as direction** on 2026-09-26 (§7.2). None is implemented or verified by approval. Open inside approval: D2 thresholds, D7/D9 detailed placement (Stage 6), D10 ADR, A legacy records, C path mapping. Repository reconciliation in §7.3 |
@@ -94,8 +94,8 @@ This is the working sequence of the current Web/Studio workstream. It was first 
 | 3 | Human Decisions | ✅ **CLOSED**: technical review done; D1–D10 and A–C approved as direction by Arlet on 2026-09-26 (§7.1–§7.2). Implementation not started |
 | 4 | Agent Architecture / Boundaries | ✅ **CLOSED** (local verification, 2026-09-26; D-A, D-B, D-C approved; §7.7–§7.8). Not Production-verified |
 | 5 | Actual Golden Engineering Loop | ✅ **CLOSED** (native Windows, 2026-09-26): 21/21 Golden Loop PASS; G-1..G-13 reconciled; all implementation verified; Stage 9 E2E deferred/environment-dependent (§7.11) |
-| 6 | Web IA / Navigation | NOT STARTED |
-| 7 | UI / Accessibility / i18n | NOT STARTED |
+| 6 | Web IA / Navigation | **VERIFIED locally** (2026-09-27, §7.12). Browser journeys PASS, S6-004 and S6-005 included. Uncommitted. Not CLOSED. Stage 9 not closed |
+| 7 | UI / Accessibility / i18n | ✅ **CLOSED (local verification, 2026-09-27)**, §7.13 S7-C final test closure. S7-A to S7-E VERIFIED locally; S7-F DEFERRED. Not Production-verified; CI not re-run |
 | 8 | Security / Reliability | NOT STARTED |
 | 9 | Regression | Historical pass (19 passed, `2587d1b`). Run before Stage 4: NOT GREEN (16 passed, 1 failed, 2 flaky). Run after Stage 4: **19 passed, exit 0** (§11.1). Stage 9 not formally closed: findings A–C unexplained |
 | 10 | Production Proof | NOT STARTED (environment-blocked items in §12) |
@@ -115,7 +115,11 @@ A side investigation (hydration, ARL-HYDRATION-001) ran after Stage 2 and is ✅
 
 ## 4. Current stage
 
-**Stage 3 — Human Decisions: ✅ CLOSED (2026-09-26).** Arlet approved D1–D10 and new decisions A–C as architectural direction (§7.2). Approval is not implementation.
+**Stage 6 — Web IA / Navigation: VERIFIED locally (2026-09-27), ready for commit review, not CLOSED.** Started at HEAD `aab3da9942449287a0c3aebb0b034aa58e189798`. Evidence is §7.12. The 2026-09-26 browser run was interrupted when Docker stopped; it was completed on 2026-09-27. No commit and no push. Stage 5 remains CLOSED (§7.11). Stage 9 and Production are not part of this stage.
+
+**Stage 7 — Accessibility: ✅ CLOSED (local verification, 2026-09-27).** S7-A to S7-E VERIFIED locally; S7-F DEFERRED. S7-C closed by two permanent tests, `a11y-studio.spec.ts:103` (focus indicator ≥ 3:1) and `:176` (mobile drawer focus trap), file run 7/7 (§7.13 S7-C final test closure). Full Stage 9 run 3: 20 passed; `pnpm test:e2e:a11y`: 5 passed, 1 skipped. `auth-studio.spec.ts:14` failed in 2 of 3 full runs (intermittent, separate issue **ARL-E2E-001**, cause NOT VERIFIED). No commit and no push.
+
+**Historical (kept).** **Stage 3 — Human Decisions: ✅ CLOSED (2026-09-26).** Arlet approved D1–D10 and new decisions A–C as architectural direction (§7.2). Approval is not implementation.
 
 **Stage 4 — Agent Architecture / Boundaries: ✅ CLOSED (local verification, 2026-09-26).** Arlet approved D-A, D-B, D-C and authorized implementation. The implementation record, tests, verification, and remaining findings are in §7.7. §7.4–§7.6 are kept unchanged as the pre-implementation history. Stages still run one at a time; Stage 5 has not started.
 
@@ -158,8 +162,9 @@ A side investigation (hydration, ARL-HYDRATION-001) ran after Stage 2 and is ✅
 | ARL-WS-003 | UNDERSTAND has no verifiable completion criterion | 🔴 **OPEN** / 🧭 DECISION_REQUIRED | — | D2 |
 | ARL-WS-004 | Personal-agent error knowledge architecture incomplete | 🔴 **OPEN** (architecture gap, not scheduled) | **HIGH** (set by Arlet, 2026-09-26) | — |
 | ARL-WS-005 | Complete Golden Engineering Loop not proven end-to-end | 🔴 **OPEN** | — | D2 |
-| ARL-WS-006 | Web/Studio accessibility verification incomplete; current authenticated Studio contrast violation (§11.1 finding A) | 🔴 **OPEN** | — | — |
+| ARL-WS-006 | Web/Studio accessibility verification incomplete. The authenticated Studio contrast violation (§11.1 finding A) is fixed and verified locally in §7.13 S7-001; visible-focus paint and drawer focus trap covered by permanent tests (§7.13 S7-C) | ✅ **CLOSED (local, Stage 7 scope, 2026-09-27)**. Unauthenticated hamburger fixme DEFERRED; CI not re-run | — | — |
 | ARL-WS-007 | Studio commit/push policy not finalized | 🔴 **OPEN** / 🧭 DECISION_REQUIRED | — | D5 |
+| ARL-E2E-001 | Intermittent full-suite timeout in `auth-studio.spec.ts:14` (real-form login): failed 2 of 3 full Stage 9 runs, passed 5/5 isolated. Full record at the end of this document | 🔴 **OPEN** / INTERMITTENT / ROOT CAUSE UNVERIFIED / outside Stage 7 | — | — |
 
 Items that exist in code but are not verified are listed in §11, not here. Related code existing does not change these statuses.
 
@@ -218,6 +223,9 @@ Only a segment is locally verified, and that evidence is historical (§9). CORRE
 - Visible-focus paint **NOT PROVEN** (`remaining-work.md`, B4 row, REFERENCE ONLY).
 - 🔴 **CURRENT failure** (current Stage 9 run, §11.1 finding A): `e2e/stage9/a11y-studio.spec.ts:28`, axe `color-contrast` (wcag2aa, wcag143, impact serious). Contrast 2.89:1, expected 4.5:1: foreground `#6f7680` on background `#2a303a`, 11px (8.3pt) normal weight. Affected elements include "Build ▸" and "Tools & Resources". The authenticated Studio a11y check does **not** currently pass. Not fixed.
 - Update 2026-09-26: the same check passed in the post-Stage-4 Stage 9 run (§11.1). Nothing was changed for it; the cause of the earlier failure is **INSUFFICIENT_EVIDENCE**. The item stays OPEN.
+- Update 2026-09-27 (§7.13 S7-001): cause found. The scan could run before the sidebar mounted (false green). With a navigation wait the check failed with 3 nodes; after the sidebar token / opacity fix it passes, and `pnpm test:e2e:stage9` is 19 passed locally. The contrast finding is VERIFIED locally. ARL-WS-006 stays OPEN for the remaining items above.
+- Update 2026-09-27 (§7.13 final closure pass): contrast, More `aria-expanded`, RTL overlap and authenticated mobile drawer VERIFIED locally by executable tests. Visible-focus paint: fixed and probe-measured (S7-003), but UNVERIFIED — no existing executable coverage. Unauthenticated hamburger fixme DEFERRED. ARL-WS-006 stays OPEN for visible-focus paint.
+- Update 2026-09-27 (§7.13 S7-C final test closure): visible-focus paint now has permanent executable coverage, `e2e/stage9/a11y-studio.spec.ts:103` (outline present, ≥ 3:1 against `#2A303A`, painted), plus the mobile drawer focus trap `:176`; both pass (file run 7/7). ARL-WS-006 CLOSED locally for Stage 7 scope; the unauthenticated hamburger fixme stays DEFERRED; CI not re-run.
 
 ### ARL-WS-007 — Commit / push policy
 
@@ -718,7 +726,7 @@ Supplied by Arlet on 2026-09-26 as the actual output of a current `pnpm test:e2e
 
 | Finding | Test | Evidence | Classification | Owner | Root cause | Fixed? |
 | --- | --- | --- | --- | --- | --- | --- |
-| **A** — authenticated Studio a11y | `e2e/stage9/a11y-studio.spec.ts:28` "authenticated Studio has skip link, main landmark, and no axe violations" (Stage 9.9) | Failed in `expectNoA11yViolations(...)`: axe `color-contrast` (wcag2aa, wcag143), impact serious. Contrast 2.89:1, expected 4.5:1; `#6f7680` on `#2a303a`, 11px (8.3pt) normal weight. Elements include "Build ▸" and "Tools & Resources". | 🔴 **CURRENT accessibility verification failure.** Not flaky, not historical. | ARL-WS-006 | Not investigated | No |
+| **A** — authenticated Studio a11y | `e2e/stage9/a11y-studio.spec.ts:28` "authenticated Studio has skip link, main landmark, and no axe violations" (Stage 9.9) | Failed in `expectNoA11yViolations(...)`: axe `color-contrast` (wcag2aa, wcag143), impact serious. Contrast 2.89:1, expected 4.5:1; `#6f7680` on `#2a303a`, 11px (8.3pt) normal weight. Elements include "Build ▸" and "Tools & Resources". | 🔴 **CURRENT accessibility verification failure.** Not flaky, not historical. | ARL-WS-006 | 2026-09-27: root cause and fix in §7.13 S7-001; locally 19 passed | Locally yes; CI not re-run |
 | **B** — project isolation | `e2e/stage9/isolation.spec.ts:13` "switch A → B isolates workspace and survives refresh + deep link" (Stage 9.4) | Strict-mode violation: `getByRole('button', { name: 'beta-1790425418333.txt' })` resolved to two elements, the file-tree button and the Open-files tab/chip. | ⚠️ **UNRESOLVED — TEST SELECTOR VS UI DUPLICATION BEHAVIOR.** The locator is proven ambiguous. That the UI is wrong is **not** proven. | CURRENT VERIFICATION FINDING | Unresolved. Either both representations are intentional (then the selector must target the intended surface), or the duplication is unintended (then it is a UI defect). | No. The selector is unchanged; no `.first()` added. |
 | **C** — SoD approval | `e2e/stage9/sod.spec.ts:14` "requester cannot self-decide apply; distinct decider can" (Stage 9.6) | After `getByRole("button", { name: /^approve$/i }).click()`, `expect(page.getByText("APPROVED", { exact: true }).first()).toBeVisible({ timeout: 20_000 })` found no `APPROVED` element within the timeout. | ⚠️ **UNRESOLVED — SOD APPROVAL STATE TRANSITION.** Not proven to be a backend defect or a test defect. | CURRENT VERIFICATION FINDING; related to §9 APPROVE / GOVERN | Unresolved. Candidates: API or state transition, UI state propagation, synchronization or race, test expectation, changed product behavior, or another cause. | No. Timeout and retries unchanged. |
 
@@ -731,6 +739,8 @@ These are three findings with different evidence strength. Only A is a confirmed
 | Attempt 1 | Not executed: web server start failed, `ECONNREFUSED 127.0.0.1:15432`. **ENVIRONMENT_BLOCKER** |
 | Attempt 2 (after `npx supabase start`) | **19 passed (2.5m), exit code 0**; 0 failed, 0 flaky. `a11y-studio.spec.ts:28` (A), `isolation.spec.ts:13` (B), `sod.spec.ts:14` (C) passed |
 | Final code (with `causationId`) | **19 passed, exit code 0**. Supplied by Arlet |
+
+**2026-09-27 (Stage 7 regression runs):** a separate intermittent failure, `auth-studio.spec.ts:14`, was observed in 2 of 3 full runs. It is tracked as **ARL-E2E-001** (record at the end of this document) and is not one of findings A–C.
 
 Findings A–C are **NOT REPRODUCED** in these runs. Nothing was changed to fix them, and Stage 4 changed no Web/UI file, so this is not evidence that they are fixed. Their cause stays **INSUFFICIENT_EVIDENCE** and they stay OPEN until explained or repeatedly not reproduced. The earlier run's environment (probably `CI` set, INFERRED) may differ from these local runs.
 
@@ -779,7 +789,9 @@ Recorded, not fixed. Source documents are not edited by this master, with one ex
 
 *Superseded 2026-09-26 (history):* "Arlet decides the open items in §7.7 … Stage 5 starts only when Arlet authorizes it." Arlet authorized the Stage 5 audit.
 
-**Now:** Stage 5 is PARTIAL (§7.10). Arlet decides how to restrict the Control internal approval endpoints (G-10: e.g. exclude approvals minted by ArletOS lifecycle routes, or allow only approvals minted by Control itself), plus G-8 (verifier independence) and G-11 (tenant-admin approval scope). The §7.7 open items remain. Stage 5 implementation of G-1..G-7, G-9, G-12 follows under the Stage 5 authorization. Stage 9 findings A–C stay open and are handled in their own stages.
+*Superseded 2026-09-26 (history):* "Stage 5 is PARTIAL (§7.10)…" Stage 5 was later closed in §7.11 and committed as `aab3da99`. That paragraph is kept above this note as the pre-closure instruction. It does not reopen Stage 5.
+
+**Now:** Stage 6 is **VERIFIED locally**, ready for commit review, and not CLOSED (§7.12). Stage 7 is ✅ **CLOSED (local verification)**: S7-A to S7-E VERIFIED, S7-F DEFERRED, §7.13. ARL-E2E-001 stays OPEN outside Stage 7. No commit and no push in this pass. Stage 5 stays CLOSED. Stage 9 and Production stay separate.
 
 ---
 
@@ -1266,3 +1278,531 @@ No duplicate approval architecture. No hidden bypass.
 **CLOSED**
 
 Evidence: Native Windows verification 2026-09-26 — Stage 5 Golden Loop 21/21 PASS; Full API 1876/1876 PASS; Web/lib 98/98 PASS; Code Intelligence 56/56 PASS; Turbo typecheck 53/53 PASS; ESLint 0 errors. G-1 through G-13 reconciled (all FIXED+TESTED, DOCUMENTED, or N/A). G-10 restriction implemented and verified. Stage 9 E2E is deferred/environment-dependent and is not a Stage 5 requirement. No commit. No push.
+
+---
+
+## §7.12 — Stage 6: Web Information Architecture & Navigation
+
+**Date opened:** 2026-09-26
+**Starting commit:** `aab3da9942449287a0c3aebb0b034aa58e189798` (`feat(studio): close Stage 5 governed engineering loop`)
+**Branch:** `main`
+**HEAD == origin/main at start:** YES
+**Working tree at start:** `?? cookies.txt` only. That file is outside Stage 6 and is not opened, staged, or modified.
+**Status:** VERIFIED locally. Ready for commit review. Not CLOSED. No commit. No push.
+**Commit / push:** not authorized
+
+Stage 5 is not reopened. Stage 7 (a11y/i18n), Stage 8 (security), Stage 9 (regression), and Stage 10 (production) are not this stage.
+
+### Route classification (before code changes)
+
+Classification is from source inspection on the starting commit. It decides where `?project=` is required.
+
+| Route | Class | Project context | Stage 6 decision |
+| --- | --- | --- | --- |
+| `/welcome`, `/auth/*` | PUBLIC | none | unchanged |
+| `/` dashboard | GLOBAL page with an optional project selection | D6: selection must update `?project=` (replace). Desk query must survive that update | S6-002 |
+| `/projects` | GLOBAL list | each card carries its own id into Studio | unchanged entry helper |
+| `/projects/{id}/state` | RESOURCE-SCOPED | id in the path | unchanged |
+| `/studio` | STUDIO-SCOPED | `?project=` canonical | unchanged tab/check writers |
+| Studio Checks tabs and `/truth` `/health` `/readiness` `/qa` `/process-audit` `/observer` `/sentinel` | STUDIO-SCOPED aliases | copy `project` when the incoming URL has it | routes stay; sidebar group that duplicates them is removed (S6-001) |
+| `/patches` | LEGACY-COMPATIBILITY into the dashboard desk | already copies `project` | keep; share the desk helper (S6-002) |
+| `/memory`, `/decisions` | LEGACY-COMPATIBILITY into the personal desk | today they drop `project` | pass through an existing `project`; do not invent one. Memory and decisions stay personal/global surfaces (S6-002) |
+| Personal desk tab switch | mixed desk on the dashboard | today `?desk=` replaces the whole query and drops `project` | preserve other query params, including `project` (S6-002) |
+| `/workbench`, `/chat` | LEGACY-COMPATIBILITY | workbench copies `project` into Studio chat; `/chat` server-redirects to workbench without adding a project | routes stay. Projects buttons stop presenting Workbench as a second product and open Studio chat (S6-003) |
+| `/agent` → `/agents` | LEGACY-COMPATIBILITY | none | route stays |
+| `/state` → `/projects` | LEGACY-COMPATIBILITY | none | route stays |
+| `/proof` → `/readiness` → Studio Checks | LEGACY-COMPATIBILITY | none added by the server redirect | route stays |
+| `/agents` | GLOBAL catalog | not a project workspace | primary nav destination (D9 Agents). Personal memory stays on the desk, not inside this page |
+| `/settings`, `/settings/billing` | GLOBAL account | none | primary nav. Visible nav label becomes Account. Route and page title stay Settings |
+| `/systems`, `/systems/{id}` | GLOBAL list / RESOURCE-SCOPED row | dashboard already links here when systems are blocked | advanced group, not primary |
+| `/plan`, `/models`, `/integrations`, `/partners`, `/legal-media`, `/experts` | GLOBAL | none required | advanced group, collapsed. Upgrade CTA and dashboard links remain |
+| `/gates`, `/eval`, `/artifacts`, `/conflicts`, `/contract`, `/ops/metrics` | GLOBAL advanced pages | not placed in primary nav | no new sidebar items. Discoverability stays by direct route. Not deleted |
+| `/admin/*` | tenant Admin | separate shell | unchanged. Not platform Admin (`apps/admin`) |
+| Control (`apps/control-plane`) | separate application | not a Web nav destination | no new Control link |
+
+### S6-001 — Primary navigation
+
+**Requirement:** D7 / D9. Primary destinations are Dashboard, Projects, Studio, Agents, and Account. Checks are contextual inside Studio. Do not dump every route into the sidebar.
+
+**Finding:** `AppShell` `NAV_GROUPS` listed Truth, System Health, Readiness, QA, and E2E process tests in a "Studio checks" group. Those links already open Studio Checks. Studio's Checks tab already contains Observer, Security, QA, Process Audit, Health, Readiness, and Truth.
+
+**Decision:** Remove that group from the sidebar. Keep the routes as client redirects into Studio Checks. Primary order: Studio, Projects, Dashboard, Agents, Account (`/settings`). Remaining product destinations (Systems, Plan, Experts, Models, Integrations, Partners, Counsel brief) move to one collapsed "More" group so they stay discoverable. Observer and Security were already absent from the sidebar and stay that way. No command palette or global search is added (those controls do not exist; inventing them is out of scope). Tenant Admin stays a role-gated link, not a primary item. Platform Admin is not linked.
+
+**Terminology:** `nav.settings` label becomes Account (en), חשבון (he), الحساب (ar). `nav.agents` label becomes Agents / סוכנים / الوكلاء. Page titles are not rewritten. `nav.opsGroup` string is kept so existing i18n assertions still see it; it is no longer a sidebar group.
+
+**Files:** `apps/web/lib/web-nav.ts`, `apps/web/lib/web-nav.test.ts`, `apps/web/components/layout/AppShell.tsx`, `apps/web/messages/{en,he,ar}.json`.
+
+**Verification:** `npx vitest run apps/web/lib/web-nav.test.ts apps/web/lib/studio-surfaces.test.ts` — 2 files, 26 tests, all passed (2026-09-26). `web-nav.test.ts` 6 passed. `studio-surfaces.test.ts` 20 passed. Duration about 1.12s. Exit 0.
+
+### S6-002 — Project context on the dashboard and desk aliases
+
+**Requirement:** D6. `?project=` is canonical. Selection updates the URL. Refresh stays coherent. Do not force a project onto a global surface. Do not drop a project that is already in the query when the journey is the same dashboard.
+
+**Decision:**
+
+- Dashboard project selector writes `project` with `router.replace` and keeps `desk`.
+- Clearing the selector removes `project` and does not substitute another id.
+- Personal desk tab changes keep the current query and only set `desk`.
+- `/memory` and `/decisions` copy `project` when the incoming URL has one, matching `/patches`. They still open with no project when none was supplied. Memory remains personal (owner-scoped), not a project workspace.
+- Inside Studio, Checks panels no longer show a second project selector when `embedded` is true. Studio's own selector is the one that writes `?project=`. Tenant Admin still renders `HealthPanel` without `embedded`, so that selector stays.
+
+**Not in this change:** Studio's existing `buildStudioSearch` writers; the Need Root copy shown for an id that is not in the loaded project list (D1 not-found wording). That copy is a remaining gap, not a silent substitution.
+
+**Files:** `apps/web/lib/studio-surfaces.ts`, `apps/web/app/[locale]/page.tsx`, `apps/web/components/dashboard/PersonalDesk.tsx`, `apps/web/app/[locale]/memory/page.tsx`, `apps/web/app/[locale]/decisions/page.tsx`, `apps/web/app/[locale]/patches/page.tsx`, `apps/web/components/studio/{Health,Truth,Readiness,ProcessAudit,Qa}Panel.tsx`.
+
+**Verification:** covered by the web/lib run recorded under S6-003. `withProjectSearch`, `withDeskSearch`, and `deskAliasHref` are asserted in `studio-surfaces.test.ts`. Component wiring is source-observed: the pages call those functions. Browser click-through was not run.
+
+### S6-003 — Workbench is a compatibility route, not a second workspace
+
+**Requirement:** Studio is the engineering workspace. Do not delete `/workbench` or `/chat`.
+
+**Finding:** `/workbench` client-replaces to `/studio?tab=chat` and keeps `project`. Projects still shows a "Workbench" action beside Open Studio.
+
+**Decision:** Projects actions (the button and the no-root alert link) open Studio on the chat tab with the same project id (`studioChatHref`). The label is Agent chat (`projects.openAgentChat`) in en/he/ar. `/workbench` and `/chat` remain. `workbenchProjectHref` remains. The old `projects.openWorkbench` string remains in the message files and is no longer used by the Projects page.
+
+**Files:** `apps/web/app/[locale]/projects/page.tsx`, `apps/web/lib/studio-surfaces.ts`, `apps/web/messages/{en,he,ar}.json`.
+
+**Verification (S6-002 and S6-003 together, after both were wired):**
+
+| Command | Result |
+| --- | --- |
+| `npx vitest run apps/web/lib` | 24 files, 109 tests, all passed, exit 0, about 5.46s. Previous baseline on this tree before Stage 6 was 23 files / 98 tests. The added file is `web-nav.test.ts`. `studio-surfaces.test.ts` is 25 tests. |
+| `npx eslint` on the changed `.ts` / `.tsx` files listed in S6-001..S6-003 | exit 0, no reported errors or warnings |
+
+Browser E2E and `pnpm test:e2e:stage9` were not run in the implementation pass. That is not a Stage 6 pass. Stage 9 stays unclosed.
+
+### S6-004 — Primary Studio link keeps the current project
+
+**Date:** 2026-09-27
+**Stage:** 6
+**Finding:** PRODUCT_DEFECT. `navItemHref` returned `/studio` for the Studio item and ignored a non-empty current project id. Check keys already copied `project`. On 2026-09-26 the live page was `http://localhost:3000/en/studio?tab=checks&check=sentinel&project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3` and the rendered Studio anchor was `/en/studio` with no `project`.
+**Reason:** D6. Studio inherits `?project=` when one is already in the query. The primary Studio destination must not drop it. Global destinations must not gain one.
+**Files affected:** `apps/web/lib/web-nav.ts`, `apps/web/lib/web-nav.test.ts`, this Master.
+**Change performed:** When the key is `studio` and the trimmed project id is non-empty, `navItemHref` returns the same object as `studioProjectHref`. An empty id stays `/studio`. Projects, Dashboard, Agents, Account, and More are unchanged.
+**Evidence:** Browser href observation above, before the change.
+**Tests:** `npx vitest run apps/web/lib/web-nav.test.ts apps/web/lib/studio-surfaces.test.ts` — 2 files, 31 tests, exit 0. `npx vitest run apps/web/lib` — 24 files, 109 tests, exit 0. `npx eslint apps/web/lib/web-nav.ts apps/web/lib/web-nav.test.ts` — exit 0. `pnpm --filter @atlas/web typecheck` — exit 0. Assertions cover Studio with `proj-1`, Studio with a blank id, and that Projects, Dashboard, and Account do not receive the id.
+**Verification result:** Unit-tested on 2026-09-26. The browser re-check was ENVIRONMENT-BLOCKED at that time: `docker info` could not reach `dockerDesktopLinuxEngine`, Supabase (15432) and the API (4000) did not answer, and a browser navigation to the local Web returned `chrome-error://chromewebdata/`. The browser re-check was completed on 2026-09-27 (below).
+**Remaining limitation:** The Studio item does not keep `check`. Superseded for `tab` by S6-005.
+**Git state:** uncommitted. No push. `cookies.txt` not opened, staged, or modified.
+
+**Browser re-check (2026-09-27, after the local stack was back):** on `http://localhost:3000/en/studio?tab=checks&check=sentinel&project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3` the rendered Studio anchor was `/en/studio?project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3`. Projects `/en/projects`, Dashboard `/en`, Agents `/en/agents`, and Account `/en/settings` carried no project. Clicking Studio landed on `/en/studio?project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3` with the Studio combobox on AMD. PASS for the project. The tab mismatch seen on that click is S6-005.
+
+### S6-005 — Studio nav link names the tab it opens
+
+**Date:** 2026-09-27
+**Stage:** 6
+**Finding:** PRODUCT_DEFECT (URL / UI disagreement). After the S6-004 click above, the URL was `/en/studio?project=<AMD>` with no `tab`, while Studio still showed Checks → Security. `studio/page.tsx` copies `tab` and `check` from the URL only when they are present and valid; a missing `tab` keeps the current state. A refresh of that URL opens Files. The project did not change.
+**Reason:** The sidebar Studio link is the Stage 6 entry into the workspace. Its URL should describe what it shows. Studio itself is not redesigned in this stage.
+**Decision:** The Studio nav item always names `tab=files` (the Studio default a fresh `/studio` load shows) and keeps `project` when present. No change to `studio/page.tsx`, `studioProjectHref`, or the Projects page.
+**Files affected:** `apps/web/lib/web-nav.ts`, `apps/web/lib/web-nav.test.ts`, this Master.
+**Change performed:** `navItemHref("studio", id)` returns `{ pathname: "/studio", query: { tab: "files", project: id } }` for a non-empty trimmed id and `{ pathname: "/studio", query: { tab: "files" } }` otherwise. Check keys and global destinations are unchanged.
+**Evidence:** From `http://localhost:3000/en/studio?tab=checks&check=sentinel&project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3` the rendered Studio anchor is `/en/studio?tab=files&project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3`. Clicking it landed on that URL with the Files tab selected and the Studio combobox on AMD. Projects `/en/projects`, Dashboard `/en`, Agents `/en/agents`, and Account `/en/settings` carried no project. In Hebrew the anchor was `/he/studio?tab=files&project=bc8c1497-…`.
+**Tests:** `npx vitest run apps/web/lib/web-nav.test.ts apps/web/lib/studio-surfaces.test.ts` — 2 files, 31 tests, exit 0. `npx vitest run apps/web/lib` — 24 files, 109 tests, exit 0. `npx eslint apps/web/lib/web-nav.ts apps/web/lib/web-nav.test.ts` — exit 0. `pnpm --filter @atlas/web typecheck` — exit 0. Assertions cover Studio with `proj-1`, with `null`, and with a blank id.
+**Verification result:** VERIFIED locally (unit, typecheck, lint, browser click).
+**Remaining limitation:** A Studio URL written elsewhere without `tab` still keeps the current tab on a same-page navigation. That Studio page behavior predates Stage 6 and is not changed here.
+**Git state:** uncommitted. No push. `cookies.txt` not opened, staged, or modified.
+
+### Browser verification (local Web, English, signed-in dev owner)
+
+Local Web was `http://localhost:3000`. Project used: AMD `bc8c1497-c183-443e-98fd-5e4efb7fd3a3`, folder `C:\Users\User\project\github\amd`. The first session (2026-09-26) ended when the local stack stopped. The rows that were blocked then were completed on 2026-09-27 against the same Web, with the API `/health` returning 200.
+
+| Journey | Observed | Result |
+| --- | --- | --- |
+| Primary nav | Studio, Projects, Dashboard, Agents, Account. No Truth, System Health, Readiness, QA, or Observer in the sidebar. Studio stayed current on `/studio`. | PASS |
+| More | Expanded to Systems `/systems`, Audit & plan `/plan`, Experts `/experts`, AI models `/models`, Integrations `/integrations`, Design Partners `/partners`, Counsel brief `/legal-media`. Visible labels are the existing message strings. Each page loaded: `/en/systems`, `/en/plan` ("Readiness Audit & BYO cloud"), `/en/experts` ("Expert Council"), `/en/models` ("Model marketplace"), `/en/integrations`, `/en/partners` ("Design Partners"), `/en/legal-media` ("High-tech counsel briefing"). On each, More was expanded and the matching item was current. | PASS |
+| Projects → Open Studio | AMD href `/en/studio?project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3`. The same session opened that project (combobox AMD, folder `C:\Users\User\project\github\amd`). | PASS |
+| Projects → Agent chat | AMD and amina-main (`40942c3d-b4ce-4f54-b897-d547169d06da`) hrefs are `/en/studio?tab=chat&project=<id>`. Clicking AMD's Agent chat landed on `/en/studio?tab=chat&project=bc8c1497-…` with the combobox on AMD and folder `C:\Users\User\project\github\amd`. Arabic label `محادثة الوكيل`, href `/ar/studio?tab=chat&project=bc8c1497-…`. | PASS |
+| Studio tabs | Files, Agent chat, Run, Terminal, Cloud & Tools, Checks. Run → `tab=run`. Terminal → `tab=pty`. Cloud & Tools → `tab=cloud`. Project stayed AMD. | PASS |
+| Checks | Observer, Security, QA, Process Audit, Health, Readiness, Truth. One Project combobox. Security is `check=sentinel`. | PASS |
+| Project switch | AMD → amina-main changed the URL to `project=40942c3d-b4ce-4f54-b897-d547169d06da` and the folder path. A later tab stayed on that id. | PASS |
+| Back / Forward | 2026-09-26: Back from Studio landed on `/en/projects` because tab changes use `router.replace`. Forward restored Studio for amina-main. 2026-09-27: Projects → AMD Agent chat → Checks (`check=observer`) → switch to amina-main (`project=40942c3d-…`, Studio nav href followed). Back → `/en/projects`. Forward → `tab=checks&check=observer&project=40942c3d-…`, combobox amina-main, folder `C:\Users\User\project\github\amina-main`. No second project was substituted. | PASS (intermediate tab states are skipped by design) |
+| Dashboard selector | Selecting AMD wrote `?project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3` and the control showed `AMD (amd)`. Decisions wrote `desk=decisions` and kept the project. Patches wrote `desk=patches` and kept it. System Health linked to Studio Checks health with the same project. Clearing with "—" left `/en?desk=patches` and an empty dashboard control. | PASS for the dashboard control and URL |
+| Desk panel after clear | The Patches desk's own project control still showed AMD after the dashboard clear. `useProjectQueryParam` copies a non-empty `?project=` into local state and does not clear that state when the query is removed. | OBSERVED. Not changed. |
+| `/memory` `/decisions` `/patches` with project | Each replaced to `/?desk=<surface>&project=bc8c1497-c183-443e-98fd-5e4efb7fd3a3`. | PASS |
+| `/memory` and `/decisions` without project | `/en?desk=memory` and `/en?desk=decisions`. No project was invented. | PASS |
+| `/patches` without project | `/en?desk=patches`. Dashboard and desk project controls empty. No project was invented. | PASS |
+| Decisions form | URL and dashboard selector showed AMD. The decisions form control stayed empty. The alias preserves the query. It does not fill that form. | OBSERVED. Not changed. |
+| Legacy with project | `/workbench` and `/chat` → `/studio?tab=chat&project=…`. `/truth` `check=truth`. `/health` `check=health`. `/readiness` `check=readiness`. `/qa` `check=qa`. `/process-audit` `check=processAudit`. `/observer` `check=observer`. `/sentinel` → Security `check=sentinel`. Same AMD id. One project combobox on each. | PASS |
+| Legacy without project | `/workbench` → `/en/studio?tab=chat`. `/chat` → `/en/workbench` → `/en/studio?tab=chat`. `/truth` `/health` `/readiness` `/qa` `/process-audit` `/observer` `/sentinel` → `/en/studio?tab=checks&check=<id>` (`processAudit`, `sentinel`). No `project` in any result. Project-dependent actions disabled. | PASS |
+| Agents page | `/en/agents`. Agents current in the nav. Page h1 "Specialist lanes" and the fabric catalog ("Agent ≠ model") unchanged. | PASS |
+| Account / Admin | `/en/settings`. Account current. h1 "Settings". Signed-in `dev@atlas.local`, role owner. No link containing `/admin`, `:3200`, `:3100`, or control in the page. Source: tenant Admin renders only when `role === "admin"` and points at `/admin`. | PASS for the owner case. The admin-role case is source-observed only (no admin user in this session). |
+| No-root Agent chat click | Project "Studio Apply Proof" `f4c5ca2e-650f-438c-8116-04772337ab07`: Open Studio and the Agent chat button disabled, alert link enabled. Clicking the alert link landed on `/en/studio?tab=chat&project=f4c5ca2e-…`, combobox "Studio Apply Proof (no local path)", Agent chat tab, need-root message. | PASS. Behavior unchanged. |
+| Hebrew / Arabic nav | `/he/studio?project=<AMD>`: `dir=rtl`, `lang=he`. Nav סטודיו (`/he/studio?tab=files&project=…`), פרויקטים, לוח בקרה, סוכנים, חשבון, עוד. Studio tab שיח עם הסוכן. `/ar/projects`: `dir=rtl`. Nav Studio, المشاريع, لوحة التحكم, الوكلاء, الحساب, المزيد. The Arabic "Studio" label predates Stage 6. | PASS |
+| Dev overlay | Hydration warnings in the Next.js dev overlay come from `data-cursor-ref` attributes injected by the Cursor browser (ARL-HYDRATION-001). | OBSERVED. Not an app change. |
+
+D1 unknown project id still presents Need Root. Classification: later than Stage 6. Not changed. `projects.openWorkbench` has no reference in `apps/web` TypeScript. It remains in en/he/ar. Not deleted.
+
+### Deferred (explicitly not Stage 6)
+
+- D1 generic not-found / no-access copy when an id is missing from the project list.
+- Open Studio stays disabled when a project has no root (existing Projects rule). The no-root alert can still open Studio chat, which is the previous workbench behavior.
+- Accessibility, RTL redesign, broad i18n cleanup (Stage 7).
+- Stage 4/5 security, Golden Loop, Control decide restriction (closed; not touched).
+- Stage 9 E2E and Production.
+- G-13 Studio display of persisted understanding (recorded in §7.10 as Stage 6/7 and in §7.11 as reserved). Not pulled into navigation work.
+
+### Final navigation model
+
+Primary (always listed): Studio (`/studio?tab=files`, plus `project` when the URL has one), Projects, Dashboard, Agents (`/agents`), Account (`/settings`). Only Studio and the check keys carry `project`.
+
+Collapsed "More": Systems, Plan, Experts, Models, Integrations, Partners, Counsel brief.
+
+Contextual, not primary: Studio tabs (Files, Agent chat, Run, Terminal, Cloud & Tools, Checks) and the seven checks. Dashboard blocker and ops buttons still deep-link into Checks with the selected project. Legacy check URLs still redirect into Studio Checks and copy `project` when present.
+
+Global chrome unchanged: language, theme, session identity, logout, companion bar, role-gated tenant Admin. No Control destination was added.
+
+### Git state at end of this pass
+
+- Branch `main`
+- HEAD `aab3da9942449287a0c3aebb0b034aa58e189798`
+- `origin/main` the same commit at the start of the pass. This pass does not push, so the remote is unchanged.
+- Commit: none
+- Push: none
+- `cookies.txt`: still untracked. Not opened, staged, or modified.
+- `git add .` / `git add -A`: not used
+
+### Stage 6 status
+
+**VERIFIED — ready for commit review. Not CLOSED.**
+
+- IMPLEMENTED: yes, uncommitted working tree (files listed in §7.12 plus S6-004 and S6-005).
+- VERIFIED LOCALLY: `apps/web/lib` 24 files / 109 tests, eslint on changed nav files, and `@atlas/web` typecheck, all exit 0.
+- BROWSER VERIFIED: every journey in the table above, local Web, signed-in owner, en/he/ar.
+- NOT VERIFIED: tenant Admin link for a user with `role === "admin"` (source only). Production.
+- OBSERVED, not changed: desk panel keeps its own project after the dashboard clear; decisions form does not read `?project=`; Studio URLs written without `tab` keep the current tab on same-page navigation; D1.
+- COMMITTED: no. PUSHED: no. CLOSED requires an authorized commit of exactly the Stage 6 files.
+
+
+## §7.13 — Stage 7: Accessibility (entry audit)
+
+**Started:** 2026-09-27
+**Branch / HEAD at start:** `main` at `aab3da9942449287a0c3aebb0b034aa58e189798`, same as `origin/main`.
+**Working tree at start:** the uncommitted Stage 6 files (§7.12) and `?? cookies.txt`. `cookies.txt` is not opened, staged, or modified.
+**Scope of this pass:** the proven `color-contrast` failure in `e2e/stage9/a11y-studio.spec.ts` (§11.1 finding A, ARL-WS-006) only. Stage 6 navigation structure, Stage 5, Control, and agent identity/memory are not touched.
+**Status:** ✅ CLOSED (local verification, 2026-09-27). See "S7-C final test closure" below. The earlier "final closure pass" (NOT CLOSED, S7-C UNVERIFIED) is kept as history.
+
+### S7-001 — Sidebar caption text below 4.5:1 on the steel sidebar
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** PRODUCT_DEFECT, WCAG 2.2 AA 1.4.3 (axe `color-contrast`, serious). Normal-weight 11–11.2px text on the product sidebar background `#2a303a` renders at 2.66:1 to 3.47:1. Required: 4.5:1.
+
+**Source evidence:**
+- Background `#2A303A` is `navChrome.sidebar.bgcolor` in `apps/web/components/layout/AppShell.tsx` (also `atlasChrome.steel` in `apps/web/styles/palette.ts`). The desktop sidebar always uses the `sidebar` tone, in light and dark mode. The mobile drawer uses it in dark mode.
+- The failing colors are not literals. They are opacity blends of the sidebar tone tokens with an extra local `opacity` in `nav()`:
+  - Group label: `color: tone.accent` (`#9AA1AB`) with `opacity: 0.62` → `#6f7680`, 2.89:1.
+  - Tagline: `color: tone.textMuted` (`rgba(168,174,184,0.72)`) with `opacity: 0.7` → `#6a707a`, 2.66:1.
+  - Signed-in name: `color: tone.textSoft` (`rgba(168,174,184,0.82)`) with `opacity: 0.8` → `#7d838d`, 3.47:1.
+- Common cause: muted tone tokens that are already translucent, multiplied again by a per-element `opacity`.
+
+**Affected surface and semantic role:**
+
+| Text | Element | Role |
+| --- | --- | --- |
+| "Atlas · Truth & Control Layer" | `span` caption under the brand mark | Informational secondary label (meaningful) |
+| "More ▸" (HEAD: "Build ▸") | `button` caption, toggles the collapsed nav group | Interactive control |
+| "Studio checks", "Tools & Resources" (HEAD only) | `span` caption group headings | Section headings. Stage 6 removed these groups; the style is the same group-label style. |
+| Signed-in display name or email | `span` caption at the sidebar foot | Informational secondary label |
+
+**Browser evidence (local, 2026-09-27, before any change):** a temporary probe spec under the Stage 9 project waited for the main navigation, then ran axe with the same tags. Desktop light and dark, and the dark mobile drawer, each reported `color-contrast` on three nodes: tagline `#6a707a` 2.66:1, "More ▸" `#6f7680` 2.89:1, "Stage9 Requester" `#7d838d` 3.47:1, all on `#2a303a`. The light mobile drawer reported no violation; its background is translucent, so axe cannot compute a ratio there. The probe file was deleted after the run.
+
+**Test evidence gap:** the unmodified `a11y-studio.spec.ts` passed locally (4/4) with the defect present. At the moment it scans, after the "Project Studio" heading is visible, the main navigation count was 0: the sidebar mounts only after `/api/v1/auth/session` resolves. Whether the scan sees the sidebar depends on timing. That explains the earlier fail / pass alternation recorded in §11.1 and ARL-WS-006.
+
+**Classification:** PRODUCT_DEFECT (contrast) plus TEST_EVIDENCE_GAP (scan can run before the sidebar exists).
+
+**Planned remediation:**
+1. The test waits for the main navigation to be visible before the axe scan. No rule, tag, threshold, or assertion is removed.
+2. In `AppShell.tsx` only: drop the three local `opacity` multipliers, and set the sidebar `textMuted` / `textSoft` tokens (and the light `textMuted` token used by the same tagline in the light mobile drawer) to measured values at or above 4.5:1. No palette-wide change, no size or weight change, no text change.
+
+**Files changed:** `apps/web/components/layout/AppShell.tsx`, `e2e/stage9/a11y-studio.spec.ts`, this Master.
+
+**Change performed:**
+- `navChrome.sidebar.textMuted` `rgba(168,174,184,0.72)` → `0.85` (4.75:1 on `#2A303A`). `navChrome.sidebar.textSoft` `0.82` → `0.9` (5.13:1). Order muted < soft < item text (`#A8AEB8`, 5.95:1) is kept.
+- `navChrome.light.textMuted` `rgba(26,28,34,0.58)` → `0.66` (calculated 5.23:1 on the light drawer over the light page, 4.96:1 over dark content). `light.textSoft` (0.7) and `light.accent` are unchanged and already pass once the extra opacity is gone (5.96:1 and 9.05:1).
+- Removed `opacity: 0.7` (tagline), `opacity: 0.62` (group label), `opacity: 0.8` (signed-in name) in `nav()`. Group label now `#9AA1AB` on `#2A303A`, 5.09:1.
+- `a11y-studio.spec.ts`: waits for `navigation` "Main navigation" to be visible before `expectNoA11yViolations`. Tags `wcag2a`, `wcag2aa`, `wcag22aa`, the `toEqual([])` assertion, and every other check are unchanged. No rule disabled, no exclusion, no skip.
+- No palette, font size, weight, text, translation, navigation structure, or RTL change.
+
+**Verification evidence (local, 2026-09-27):**
+
+| Run | Result |
+| --- | --- |
+| Unmodified spec, before fix | 4 passed (false green: sidebar not mounted at scan time) |
+| Spec with navigation wait, before fix | 1 failed / 3 passed. `[color-contrast] … (impact: serious) — 3 node(s)` |
+| Spec with navigation wait, after fix | 4 passed (setup + 3), 0 axe violations |
+| Temporary probe after fix, all axe rules for the same tags | desktop light `[]`, desktop dark `[]`, mobile drawer light `[]`, mobile drawer dark `[]`, `/he/studio` (`dir=rtl`) `[]`, `/ar/studio` (`dir=rtl`) `[]`. Probe file deleted. |
+| `pnpm test:e2e:stage9` | 19 passed (setup + 18), 0 failed, 0 skipped, exit 0 |
+| `pnpm test:e2e:a11y` (unauthenticated) | 5 passed, 1 skipped (pre-existing `test.fixme` hamburger, ARL-WS-006), exit 0 |
+| `npx vitest run apps/web/lib` | 24 files, 109 tests, exit 0 |
+| `npx eslint apps/web/components/layout/AppShell.tsx e2e/stage9/a11y-studio.spec.ts` | exit 0 |
+| `pnpm --filter @atlas/web typecheck` | exit 0 |
+
+Ratios for the light tone are calculated; axe returns no result for the translucent light drawer, so that case is not axe-measured. To run the Stage 9 config locally, the dev API already on port 4000 was stopped (the config starts its own API) and restarted after the runs.
+
+**Verification result:** S7-001 VERIFIED locally. CI not re-run.
+
+**Remaining limitations:**
+- The collapsible group toggle ("More ▸") is a `button` without `aria-expanded`. Separate Stage 7 item (4.1.2). OPEN, not changed.
+- Other `opacity`-dimmed or muted text outside the sidebar was not audited in this pass.
+- `AppShell.tsx` also carries the uncommitted Stage 6 navigation changes. The Stage 7 hunks are the three tone tokens and the three removed `opacity` lines. A commit that keeps the stages separate must stage those hunks separately or follow the Stage 6 commit.
+
+**Git state:** uncommitted. No commit, no push. `cookies.txt` untracked, not opened, staged, or modified. `git add .` / `git add -A` not used.
+
+### Stage 7 continuation audit (2026-09-27)
+
+Evidence source for S7-002 to S7-007: temporary probe specs under the Stage 9 project (`zz-s7b-probe`, `zz-s7c-focus-probe`), signed-in Stage 9 requester, local Web on the current working tree, before any change in this continuation. Both probe files are deleted after use. Focus visibility is measured by screenshot pixel diff of the element box ±6px, unfocused vs keyboard-focused (Tab), reporting the highest contrast between an unfocused pixel and the same pixel focused.
+
+### S7-002 — "More" nav group toggle has no `aria-expanded`
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** PRODUCT_DEFECT, WCAG 4.1.2. `AppShell.tsx` renders the group label as `Typography component="button"` with an `onClick` that flips `collapsedGroups`. Visible state is only the `▸` / `▾` glyph. Probe: Enter expands (nav links 5 → 12), Space collapses (12 → 5), focus stays on the toggle, `aria-expanded` is `null` in every state. On `/en/systems` the group is forced open (`groupSelected`) and a click leaves it open.
+**Reason:** screen readers cannot tell whether the group is open.
+**Decision:** `aria-expanded` reflects the rendered state (`!collapsed`). No `aria-controls`: the item list is unmounted when collapsed, so there is no stable controlled element.
+**Files:** `apps/web/components/layout/AppShell.tsx`, `e2e/stage9/a11y-studio.spec.ts`, this Master.
+
+### S7-003 — Keyboard focus indicators in the shell are below 3:1 or not visible
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** PRODUCT_DEFECT, WCAG 2.4.7 and 1.4.11 (focus indicator ≥ 3:1 against adjacent colors). MUI `ButtonBase` sets `outline: 0`, so the theme-wide `:focus-visible` outline does not reach MUI buttons, links, tabs, or list items. They show only `action.focus` background or the focus ripple. Elements that do get the outline use `#5C6570`, which is 2.24:1 on the sidebar and dark paper `#2A303A`.
+
+| Element (desktop, `/en/studio`) | Light mode max change contrast | Dark mode |
+| --- | --- | --- |
+| Sidebar nav link "Projects" | 1.09 | 1.47 |
+| Selected nav link "Studio" | 1.14 | 1.00 (no pixel changed) |
+| "More" toggle (outline `#5C6570`) | 2.24 | 2.24 |
+| Brand link (outline `#5C6570`) | 2.24 | 2.24 |
+| Sidebar close icon, Sign out | 1.63, 1.66 | 1.63, 1.66 |
+| Header theme icon | 1.51 | 1.67 |
+| Studio "Files" tab | 2.47 | 2.47 |
+
+Skip link: after its 120 ms transition it is on screen at `[12, 8]`, `#D2D4D8` on `#3A4250`, and Enter moves focus to `main#main-content`. PASS, not changed.
+**Decision:** one theme rule gives every `ButtonBase` a `:focus-visible` outline; ring color is `#5C6570` in light mode (≥ 5.7:1 on the light surfaces) and `#D2D4D8` in dark mode. The sidebar (always `#2A303A`) and the light drawer use their own `tone.brand` (`#C2C6CD` 7.74:1 / `#1A1C22`). Tabs draw the ring inset because the tab scroller clips overflow.
+**Files:** `apps/web/styles/theme.ts`, `apps/web/components/layout/AppShell.tsx`, this Master.
+
+### S7-004 — RTL desktop: the docked sidebar covers the start of the main content
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** PRODUCT_DEFECT, WCAG 1.4.10 / 2.4.11 (content and focused controls hidden). `/he/studio` at 1280×900: sidebar paper `[0, 248]`, its reserved flex slot `[1032, 1280]`, `main#main-content` `[0, 1032]`, overlap 248px. The screenshot shows the Studio description, the info alert, and the header theme / language controls cut off under the sidebar. Same geometry for `/ar/studio`.
+**Root cause:** MUI `Drawer` flips `anchor="left"` to `right` in RTL (`getAnchor`, `useRtl`, `@mui/material` 6.5.0 `Drawer.js:162-165`), and `stylis-plugin-rtl` in the `muirtl` cache flips the resulting `right: 0` back to `left: 0`. The fixed paper ends on the physical left while the flex slot is on the right. The `anchor` comment in `AppShell.tsx` states the opposite.
+**Decision:** pin only the docked paper with logical insets (`inset-inline-start: 0`, `inset-inline-end: auto`), which `stylis-plugin-rtl` does not flip. LTR geometry is unchanged. The mobile modal drawer keeps its current side (a modal overlay, no overlap).
+**Files:** `apps/web/components/layout/AppShell.tsx`, `e2e/stage9/locale.spec.ts`, this Master.
+
+### S7-005 — Dark mode: text contrast outside the sidebar
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** PRODUCT_DEFECT, WCAG 1.4.3 (axe `color-contrast`, serious). Light mode: 0 violations on all 19 signed-in routes scanned. Dark mode: Studio routes 0; every other route fails, 105 nodes in total:
+
+| Pair (fg on bg) | Nodes | Ratio | Source |
+| --- | --- | --- | --- |
+| `#12141a` on `#5c6570` | 56 | 3.11 | contained buttons. `theme.ts` dark `MuiButton.styleOverrides.contained` uses the `sx` shorthand `bgcolor`, which `styleOverrides` ignore; its `color: c.ink` applies over `primary.main` `#5C6570` |
+| `#5c6570` on `#2a303a` | 39 | 2.24 | text in `primary` / `secondary` color (Typography, links, selected Tabs, outlined secondary Chip). Dark `primary.main` and `secondary.main` are `#5C6570` |
+| `#d2d4d8` on `#edf1f5` / `#fdf4e7` | 5 | 1.3–1.36 | text Button inside a light-background Alert (dark text-button color `chromeBright`) |
+| `#9e9eff` on `#edf1f5` | 3 | 2.1 | plain links inside an info Alert (browser dark `color-scheme` link color) |
+| `#12141a` on `#b55a54` | 1 | 3.99 | contained error button (same `color: c.ink` override) |
+| `#b55a54` on `#2a303a` | 1 | 2.87 | "Delete account" heading, `error.main` in dark |
+
+Routes: `/en`, `/en?desk=memory|decisions|patches`, `/en/projects`, `/en/agents`, `/en/settings`, `/en/systems`, `/en/plan`, `/en/experts`, `/en/models`, `/en/integrations`, `/en/partners`, `/en/legal-media`.
+**Decision (dark mode only, `theme.ts` / `palette.ts`):** dark `primary` `#D2D4D8` with ink text (8.94:1 on paper, 12.4:1 text), dark `secondary` `#B4B7BE` with ink text (6.61:1 / 9.17:1), dark `error.main` `#E0837D` with `#1A1C22` text (4.87:1 on paper), remove the dark `contained` override, and inside Alerts in dark mode links and text buttons inherit the Alert text color. Light-mode tokens are unchanged.
+**Files:** `apps/web/styles/theme.ts`, `apps/web/styles/palette.ts`, this Master.
+
+### S7-006 — Light-mode mobile drawer contrast measured by rendered pixels
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** VERIFICATION. axe leaves the light drawer text as `incomplete` (translucent background). Method: hide one text node, screenshot its box, take the median rendered background, composite the computed text color over it. Cross-check on surfaces axe can measure (dark drawer, desktop sidebar) reproduces the axe values exactly (4.75, 5.09, 5.13, 5.95). Light drawer over `/en/studio` with the modal backdrop: rendered background `#EAEBED`; tagline 5.08:1, "MORE ▸" 7.96:1, signed-in name 5.59:1, nav items 13.51:1.
+**Limitation:** the drawer is 94% opaque, so the rendered background depends on what is behind it. Measured over the Studio page only. Worst case over `#12141A` content is calculated at 4.96:1 for the tagline.
+**Verification result:** VERIFIED for the measured view (rendered pixels). Other underlying pages: calculated, not measured.
+
+### S7-007 — Unauthenticated hamburger `test.fixme` (`e2e/a11y.spec.ts`)
+
+**Date:** 2026-09-27
+**Stage:** 7
+**Finding:** CLASSIFICATION, no code change. The fixme expects a hamburger on signed-out `/en`. `AppShell` renders product navigation only when `isAuthed && !isPublicDoor`; a signed-out visitor intentionally has no product sidebar or hamburger. The test's premise does not match the product, so it is not an accessibility gap in the public shell. The authenticated behavior it wanted is covered by `e2e/stage9/a11y-studio.spec.ts` "authenticated hamburger opens the product sidebar", and this continuation's probe verified the mobile drawer keyboard path: Enter opens, focus moves into the drawer (`aside`), Tab cycles only inside it (22 presses), `aria-expanded` false → true → false, Escape and the Close button both return focus to "Open menu".
+**Decision:** fixme left in place. Converting it would mean either giving the chromium project an authenticated fixture (the reason recorded in the file) or rewriting it to a different premise. Neither is done here.
+**Verification result:** DEFERRED (by design / test premise), authenticated equivalent VERIFIED locally.
+
+### Stage 7 continuation — post-change verification (2026-09-27)
+
+Changes performed as decided in S7-002 to S7-005. Measurements repeated with the same probes on the changed tree, then the probes were deleted.
+
+- **S7-002:** `aria-expanded` is `false` collapsed, `true` after Enter, `false` after Space; `true` on `/en/systems` (group forced open). New test `a11y-studio.spec.ts` "More nav group toggle exposes its expanded state". VERIFIED locally.
+- **S7-003:** every element in the S7-003 table now reaches ≥ 5.18:1 focus change contrast (sidebar 7.74, header theme icon 5.18 light / 11.38 dark, Studio tab 5.37 / 12.94). Measured by probe; no permanent focus-paint test. VERIFIED locally (probe evidence).
+- **S7-004:** `/he/studio` paper `[1032, 1280]`, overlap with `main` 0; `/ar/studio` same; `/en/studio` unchanged `[0, 248]`; mobile drawer still on the left. `locale.spec.ts` now asserts sidebar/main overlap ≤ 1px in EN, HE, AR. VERIFIED locally.
+- **S7-005:** dark mode 105 nodes → 10 (first pass; the Alert link rule also matched anchor-rendered contained buttons, 4.32:1) → 0 after narrowing it to `a:not(.MuiButton-root)`. 19 routes × light + dark = 38 axe scans, 0 violations. axe `incomplete` nodes (translucent backgrounds) remain unmeasured by axe. VERIFIED locally (probe evidence).
+
+Native outputs on the changed tree:
+
+| Command | Result |
+| --- | --- |
+| `npx vitest run apps/web/lib` | 24 files, 109 passed |
+| `eslint` on `AppShell.tsx`, `theme.ts`, `palette.ts`, `a11y-studio.spec.ts`, `locale.spec.ts` | exit 0 |
+| `pnpm --filter @atlas/web typecheck` | exit 0 |
+| `git diff --check` | exit 0 |
+| `pnpm test:e2e:a11y` | 5 passed, 1 skipped (S7-007 fixme) |
+| Focused Stage 9: `a11y-studio.spec.ts` + `locale.spec.ts` | all passed (4 + 3) |
+| `pnpm test:e2e:stage9`, full, run 1 | 19 passed, 1 failed |
+| `pnpm test:e2e:stage9`, full, run 2 | 19 passed, 1 failed (3.5m) |
+| `auth-studio.spec.ts`, isolated, `--repeat-each=2` | 11 passed |
+| `pnpm test:e2e:stage9 -- e2e/stage9/auth-studio.spec.ts --repeat-each=3` (run by Arlet) | 16 passed (48.5s); `:14` passed 3 of 3 (3.8s, 3.8s, 4.6s) |
+| `pnpm test:e2e:stage9`, full, run 3 (dev API on :4000 stopped first; Web :3000 kept running, `/en/auth/login` 200) | **20 passed (1.6m)**, 0 failed, 0 skipped, exit 0; `auth-studio.spec.ts:14` passed as test 7 (4.0s) |
+| `pnpm test:e2e:a11y`, after run 3 | 5 passed, 1 skipped (`a11y.spec.ts:66` S7-007 fixme), 0 failed (33.2s), exit 0 |
+
+**Full-suite failure, runs 1 and 2 (now ARL-E2E-001; two statements in this paragraph are corrected there, see "Corrections"):** `auth-studio.spec.ts:14` "login through the real form reaches authenticated Studio", 120 s timeout. Page snapshot at failure: still on `/en/auth/login`, Email field `dev@atlas.local`, Password field holds the Stage 9 requester password, alert "Invalid email or password". `loginViaUi` asserts the email value before typing the password, so the login form was remounted after that assertion and the page's dev prefill (`isDevLoginPrefill`, `DEV_CREDENTIALS.email`) replaced the email. Run 1 showed page loads repeating every 2–3 s during this test. No Stage 7 change touches the login page, `dev-credentials.ts` or `accounts.ts`; the test passes in isolation (5 of 5 across two isolated runs) and fails only as test 7 of the full suite. Artifacts: `error-context.md` (page snapshot) only. No trace: `playwright.config.ts` uses `trace: "on-first-retry"` with `retries: 0` locally. Not confirmed on the pre-change tree (not run: reverting would also revert the uncommitted Stage 6 hunks in `AppShell.tsx`). Test, timeouts and retries not modified.
+
+**Classification after run 3:** INTERMITTENT full-suite failure. Failed in 2 of 3 full runs (runs 1 and 2), passed in run 3 on the same tree, passed 5 of 5 in isolation. It is not a consistent failure, and it is not "never reproduced" either. The observed mechanism (login form remount replacing the email with the dev prefill) is outside Stage 7 scope. Root cause NOT VERIFIED; tracked as a separate issue, not an accessibility finding. The Stage 7 changes are not implicated by any evidence, but that is not proven.
+
+Not run: `next build` (would overwrite the running dev server's `.next`). `AppShell.tsx` carries both uncommitted Stage 6 hunks and Stage 7 hunks.
+
+### Stage 7 final closure pass (2026-09-27)
+
+**Scope:** closure checks S7-A to S7-F only. No application code, test, timeout, retry, assertion, or axe rule changed in this pass. Only this Master changed.
+
+**Evidence currency:** last code write 01:12 (`theme.ts`); full Stage 9 run 3, `pnpm test:e2e:a11y`, ESLint and web typecheck all ran after it on the same tree. Re-run in this pass: `npx vitest run apps/web/lib` (24 files, 109 passed, exit 0) and `git diff --check` (exit 0). E2E not re-run: no Stage 7 change since run 3.
+
+| ID | Status | Evidence |
+| --- | --- | --- |
+| S7-A More `aria-expanded` | VERIFIED locally | `a11y-studio.spec.ts:47` passed in run 3: `false` → Enter → `true`, "Systems" link visible, focus stays on toggle → Space → `false`, "Systems" count 0. Rest of Stage 9 navigation passes (20/20). Implementation S7-002 |
+| S7-B RTL layout en/he/ar | VERIFIED locally | `locale.spec.ts:32/44/56` passed in run 3: `dir` ltr/rtl/rtl, localized heading, `expectSidebarBesideMain` asserts sidebar/main overlap ≤ 1px in each locale. Implementation S7-004 |
+| S7-C Keyboard/focus | **UNVERIFIED — no existing executable coverage** for focus-indicator paint (ARL-WS-006 "Visible-focus paint NOT PROVEN") and for the mobile drawer focus trap / Escape focus return | Executable and passing: skip link focus → activation focuses `main` (`a11y.spec.ts:44`); More toggle operable by Enter / Space with focus retained (`a11y-studio.spec.ts:47`). `a11y.spec.ts:109` "login form is keyboard-submittable" presses no keys and is not counted as keyboard evidence. Focus-ring contrast ≥ 5.18:1 (S7-003) and the drawer focus trap (S7-007 probe) were measured by temporary probes only, now deleted. No known failing keyboard/focus behavior |
+| S7-D Contrast | VERIFIED locally | Strict axe (`wcag2a`, `wcag2aa`, `wcag22aa`, no exclusions) passed in `a11y-studio.spec.ts:28` (run 3) and on every page of `pnpm test:e2e:a11y` (5 passed). S7-001 six-view probe: desktop light / dark, mobile drawer light / dark, `/he/studio`, `/ar/studio` all `[]` (§7.13 S7-001). Limitation: dark mode beyond Studio (S7-005, 38 scans) and the light drawer (S7-006) are probe-only |
+| S7-E Mobile drawer | VERIFIED locally (executable scope) | `a11y-studio.spec.ts:64` passed in run 3: at 390px "Open menu" has `aria-expanded="false"`, click opens the modal drawer, main navigation visible inside it. Limitation: drawer contrast is axe `incomplete` (translucent) and measured by probe only for the Studio view (S7-006) |
+| S7-F Signed-out hamburger | DEFERRED / EXISTING KNOWN SCOPE ITEM | `a11y.spec.ts:66` `test.fixme` kept; skipped in `pnpm test:e2e:a11y` (S7-007) |
+
+Current suites: `pnpm test:e2e:stage9` 20 passed, 0 failed, 0 skipped, exit 0 (1.6m). `pnpm test:e2e:a11y` 5 passed, 0 failed, 1 skipped (`a11y.spec.ts:66` fixme), exit 0 (33.2s).
+
+**`auth-studio.spec.ts:14` (ARL-E2E-001, full record at the end of this document):** OPEN / INTERMITTENT / ROOT CAUSE UNVERIFIED / OUTSIDE STAGE 7. Timed out in full runs 1 and 2, passed in full run 3, passed 5/5 isolated. The login-form remount / email-loss explanation is an unverified hypothesis. Not a confirmed product defect, not resolved.
+
+Not claimed: screen reader testing (NVDA / VoiceOver, not performed); CI re-run of Stage 9.9 (ENVIRONMENT-BLOCKED, no CI run from this machine); `next build` (not run).
+
+**Closure decision:** Stage 7 is **NOT CLOSED**. Single remaining item: S7-C, focus-indicator paint and drawer focus trap have no executable coverage. The closure rule requires every item VERIFIED or explicitly DEFERRED; probe measurements are recorded evidence but not existing executable coverage. No active failing Stage 7 test.
+
+**Stage 7 status:** NOT CLOSED. S7-A, S7-B, S7-D, S7-E VERIFIED locally; S7-F DEFERRED; S7-C UNVERIFIED (no existing executable coverage).
+
+(The closure pass above is kept as history. Superseded by the S7-C test closure below.)
+
+### S7-C final test closure (2026-09-27)
+
+**Authorization:** Arlet, S7-C only: exactly two permanent tests in `e2e/stage9/a11y-studio.spec.ts`. No application code changed. `auth-studio.spec.ts`, timeouts, retries, axe rules and existing assertions unchanged.
+
+**Change:** `e2e/stage9/a11y-studio.spec.ts` only. Contrast helpers `relativeLuminance` / `contrastRatio` (lines 25–47, WCAG relative-luminance formula, alpha composited over the background) and two tests:
+
+| Test | Location | What it asserts |
+| --- | --- | --- |
+| Test 1 — visible focus indicator | `e2e/stage9/a11y-studio.spec.ts:103` "keyboard focus on a sidebar link paints an outline of at least 3:1" | Desktop `/en/studio`, signed-in requester. Tab (≤ 25 presses) until focus is on an `<a>` inside the main navigation. Focused link has `Mui-focusVisible`, computed `outline-style` ≠ `none`, `outline-width` > 0, and outline color vs the resolved background (nearest ancestor backgrounds composited, `#2A303A` for the sidebar) ≥ **3:1** (WCAG 1.4.11, the S7-003 requirement). Screenshot of the link box ±8px focused vs blurred must differ (the indicator is painted) |
+| Test 2 — mobile drawer focus trap | `e2e/stage9/a11y-studio.spec.ts:176` "mobile drawer traps keyboard focus and Escape returns it to Open menu" | 390×844 (existing mobile viewport). Focus "Open menu", Enter. Drawer paper visible; focus moves inside it. After each of 30 Tab and 5 Shift+Tab presses, `document.activeElement` is inside the drawer (checked directly, no polling). Escape: drawer removed, "Open menu" focused, `aria-expanded="false"` |
+
+**First run (recorded, not hidden):** Test 1 passed; Test 2 failed at a line I had added beyond the brief, `expect(openMenu).toHaveAttribute("aria-expanded", "true")` while the drawer was open: `element(s) not found`. The MUI modal `aria-hidden`s the rest of the page including the hamburger (already documented in `e2e/a11y.spec.ts`), so the role locator cannot resolve it. Test authoring error, not an application defect. The line was removed; none of the required steps changed.
+
+**Negative control (temporary copies of the spec, deleted after the run):** Test 1 with injected `* { outline: none !important }` fails ("focused link must draw an outline", expected not `"none"`). With injected `outline-color: #3A4250` it fails at **1.31:1** < 3, background resolved as `rgb(42, 48, 58)` = `#2A303A`. Test 2 has no negative control (disabling the trap would need an application change).
+
+**Verification (2026-09-27, local, Arlet's machine):**
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:e2e:stage9 -- e2e/stage9/a11y-studio.spec.ts` (first run) | 6 passed, 1 failed (Test 2, see above), exit 1 |
+| `pnpm test:e2e:stage9 -- e2e/stage9/a11y-studio.spec.ts` (after the fix) | **7 passed (30.5s)**, exit 0: setup, `:50`, `:69`, `:86`, `:103` Test 1 (3.0s), `:176` Test 2 (4.4s), `:215` |
+| `npx vitest run apps/web/lib` | 24 files, 109 passed, exit 0 |
+| `pnpm test:e2e:a11y` | 5 passed, 1 skipped (`a11y.spec.ts:66` fixme), 0 failed (35.3s), exit 0. This command runs the `chromium` project, which ignores `e2e/stage9/`; it does not execute the two new tests |
+| `pnpm --filter @atlas/web typecheck` | exit 0 |
+| `npx tsc --noEmit -p e2e` | exit 0 |
+| `npx eslint e2e/stage9/a11y-studio.spec.ts` | exit 0 |
+| `git diff --check` | exit 0 |
+
+The full `pnpm test:e2e:stage9` suite was not re-run after adding the tests (the file-level Stage 9 run above covers them). The last full run is run 3: 20/20 before these two tests; the full suite now has 22 tests.
+
+**S7-C:** **VERIFIED locally.** Focus-indicator paint and contrast and the mobile drawer focus trap / Escape focus return now have permanent executable coverage, passing.
+
+| ID | Final status |
+| --- | --- |
+| S7-A More `aria-expanded` | VERIFIED locally (`a11y-studio.spec.ts:69`) |
+| S7-B RTL layout en/he/ar | VERIFIED locally (`locale.spec.ts:32/44/56`) |
+| S7-C Keyboard/focus | VERIFIED locally (`a11y.spec.ts:44`, `a11y-studio.spec.ts:69`, `:103`, `:176`) |
+| S7-D Contrast | VERIFIED locally (`a11y-studio.spec.ts:50`, `pnpm test:e2e:a11y`; S7-001 six-view probe) |
+| S7-E Mobile drawer | VERIFIED locally (`a11y-studio.spec.ts:86`, `:176`) |
+| S7-F Signed-out hamburger | DEFERRED / EXISTING KNOWN SCOPE ITEM (`a11y.spec.ts:66` fixme) |
+
+Limitations kept (not acceptance items): dark mode beyond Studio and the light drawer contrast are probe-measured only (S7-005, S7-006); screen reader testing not performed; CI re-run of Stage 9.9 ENVIRONMENT-BLOCKED here; `next build` not run. ARL-E2E-001 (`auth-studio.spec.ts:14`) stays OPEN / INTERMITTENT / ROOT CAUSE UNVERIFIED / OUTSIDE STAGE 7 and does not block Stage 7.
+
+**Stage 7 status:** ✅ **CLOSED (local verification, 2026-09-27).** Every S7 acceptance item VERIFIED locally or explicitly DEFERRED; no failing Stage 7 test. Not Production-verified, CI not re-run. Not committed, not pushed.
+
+**Post-closure observation (2026-09-27 01:58), no change:** Arlet reported that in the narrow Cursor browser pane nothing on `/he/projects` was centered (card cut off on the right). Measured: `innerWidth` 1280 / `innerHeight` 900 while `outerWidth` was 624. A leftover CDP device-metrics override (1280×900) from earlier agent browser checks was forcing a desktop layout, and the pane showed only its left strip. **ENVIRONMENT / TOOLING, not a product defect.** After `Emulation.clearDeviceMetricsOverride` at the real width 325px: `main` 0–310, h1 29–281 (centered), `scrollWidth` = `clientWidth` (no horizontal overflow); the only elements outside the viewport are MUI outlined-input legend notch spans with `opacity: 0`. No code or test changed. Stage 7 status unchanged.
+
+### Stage 6 + Stage 7 final reconciliation before commit (2026-09-27)
+
+**Full Stage 9 on the current 22-test suite (run by Arlet, after the S7-C tests were added):**
+
+```text
+pnpm test:e2e:stage9
+Running 22 tests using 1 worker
+22 passed (1.5m)
+```
+
+Exit code 0 (terminal record). Includes both S7-C tests (tests 5 and 6) and `auth-studio.spec.ts:14` (test 9, 3.7s, passed). This is the final local regression evidence for Stage 6 + Stage 7. It is not CI or Production evidence.
+
+**Reconciliation change:** in `apps/web/lib/studio-surfaces.ts` the Stage 6 helpers had been inserted between the `workbenchProjectHref` JSDoc and its function, leaving that comment above `withProjectSearch`. The JSDoc was moved back above `workbenchProjectHref`. Comment-only, no behavior change. Verified after the move: `npx vitest run apps/web/lib` 24 files / 109 passed; ESLint on `studio-surfaces.ts`, `studio-surfaces.test.ts`, `web-nav.ts`, `web-nav.test.ts` exit 0; `pnpm --filter @atlas/web typecheck` exit 0; `git diff --check` exit 0. The 22/22 run predates this comment move.
+
+**Reconciliation change 2:** `git diff --cached --check` failed on the new file `apps/web/lib/web-nav.ts` (113 lines reported as trailing whitespace): it had CRLF line endings while the repository uses LF (`core.autocrlf=false`, no `.gitattributes`). The worktree `git diff --check` had not covered it because the file was untracked. Converted to LF, no content change. After conversion: `git diff --cached --check` exit 0, vitest 109/109, ESLint on `web-nav.ts` exit 0, web typecheck exit 0.
+
+**Pre-commit diff audit:** Stage 6 and Stage 7 hunks both present in `AppShell.tsx` (Stage 6: `web-nav` groups, `navItemHref`, `isWebNavSelected`; Stage 7: sidebar tokens, removed opacities, `aria-expanded`, focus outline colors, RTL logical insets). No credentials, no `any`, no Tailwind, no removed or weakened test assertion, no change to Control, Stage 5 Golden Loop, or API. `cookies.txt` excluded.
+
+## ARL-E2E-001 — Intermittent full-suite timeout in `auth-studio.spec.ts:14` (real-form login)
+
+**ID:** ARL-E2E-001 (stable; do not renumber or merge).
+**Opened:** 2026-09-27, during Stage 7 regression runs.
+**Status:** 🔴 **OPEN / INTERMITTENT / ROOT CAUSE UNVERIFIED / OUTSIDE STAGE 7.** Not a confirmed product defect. Not resolved.
+**Owner stage:** Stage 9 regression (verification). Not a Stage 7 accessibility finding.
+**Test:** `e2e/stage9/auth-studio.spec.ts:14` "Stage 9.3 auth + Studio entry + project context › login through the real form reaches authenticated Studio". The test opens a fresh browser context (no storageState) and calls `loginViaUi` (`e2e/stage9/accounts.ts:113`), then expects `/en/studio`, the "Project Studio" h1, and `/api/v1/auth/me` 200 for the requester. `test.setTimeout(120_000)`.
+
+### Environment common to all runs below
+
+- Windows 10 (19045), PowerShell, Arlet's machine; Playwright `--project=stage9`, 1 worker, `retries: 0` (no `CI`), `trace: "on-first-retry"`, reporter `list`.
+- API: started by Playwright (`node e2e/stage9/reset-local-identities.mjs && pnpm --filter @atlas/api dev`, `reuseExistingServer: false`, fresh `ATLAS_AUTH_PATH` / `ATLAS_SESSIONS_PATH` per run).
+- Web: **reused** Next.js 15.5.23 **dev** server on `localhost:3000` (`reuseExistingServer: true`), the same long-running dev process used for interactive work (hot reload active).
+- Code: HEAD `aab3da9` plus uncommitted Stage 6 and Stage 7 working-tree changes. Last code write before the runs 01:12 (`apps/web/styles/theme.ts`); no code file changed between run 1 and run 3. No Stage 6 or Stage 7 change touches `apps/web/app/[locale]/auth/login/page.tsx`, `apps/web/lib/dev-credentials.ts`, `e2e/stage9/accounts.ts`, or `auth-studio.spec.ts`.
+
+### Every observed run of `auth-studio.spec.ts:14`
+
+| # | When (2026-09-27, local) | Command | Suite result | `:14` result | Setup (`auth.setup.ts`) | Log |
+| --- | --- | --- | --- | --- | --- | --- |
+| Prior | 2026-09-26 (Stage 4, Arlet) ×2 and 2026-09-27 (§7.13 S7-001 pass) | `pnpm test:e2e:stage9` | 19 passed, exit 0 (each) | passed (all tests passed) | not recorded | not kept |
+| Full 1 | ended 01:23:29 | `pnpm test:e2e:stage9` | 19 passed, **1 failed**, exit 1 (3.9m) | **FAILED**, test 7 of 20, 2.0m | **23.0s** | `%TEMP%\s7-stage9.log` |
+| Isolated 1 | ended 01:26:41 | `pnpm exec playwright test --project=stage9 e2e/stage9/auth-studio.spec.ts --repeat-each=2 --output=test-results/s7-auth` | 11 passed (41.5s) | passed 2/2 (4.2s, 4.2s) | 4.0s | `%TEMP%\s7-auth.log` |
+| Full 2 | 01:26:50 – 01:30:31 | `pnpm test:e2e:stage9` | 19 passed, **1 failed**, exit 1 (3.5m) | **FAILED**, test 7 of 20, 2.0m | 5.9s | `%TEMP%\s7-stage9-b.log` |
+| Isolated 2 (Arlet) | ~01:36 | `pnpm test:e2e:stage9 -- e2e/stage9/auth-studio.spec.ts --repeat-each=3` | 16 passed (48.5s) | passed 3/3 (3.8s, 3.8s, 4.6s) | 3.5s | Arlet's terminal |
+| Full 3 | ended 01:42:28 | `pnpm test:e2e:stage9` (dev API on :4000 stopped first) | **20 passed**, exit 0 (1.6m) | passed, test 7 of 20, 4.0s | 3.5s | `%TEMP%\s7-stage9-c.log` |
+| Full 4 (Arlet) | ~01:59 | `pnpm test:e2e:stage9` (22-test suite, after the S7-C tests) | **22 passed**, exit 0 (1.5m) | passed, test 9 of 22, 3.7s | 3.3s | Arlet's terminal |
+
+Totals on the current tree: full suite 2 failed / 3 runs; isolated 5 passed / 5. Update after full 4: full suite 2 failed / 4 runs. Two consecutive full passes do not resolve the issue; status unchanged. The two failures were both at position 7, directly after `ask-agent.spec.ts:12` (passed, 8.2s and 7.2s). The earlier CI-like run in §11.1 (16 passed, 1 failed, 2 flaky) does not name its flaky tests; it cannot be linked to this issue.
+
+### Exact failure location
+
+Both failures: `Test timeout of 120000ms exceeded.`, then the `finally` block error at `e2e/stage9/auth-studio.spec.ts:30:7` (`await context.close();`):
+
+- Full 1: `Error: browserContext.close: Test ended.`
+- Full 2: `Error: browserContext.close: Target page, context or browser has been closed`
+
+Line 30 is where the timeout surfaced, not where the test stalled. The pending step is not recorded (no trace). From the full 2 page snapshot the page was still on `/en/auth/login` after submit, so the stalled step was most likely `page.waitForURL(/\/(en|he|ar)\/studio.../, { timeout: 120_000 })` in `loginViaUi` (`accounts.ts:131`), whose own timeout equals the test timeout. **INFERRED.**
+
+### Artifacts
+
+- **Full 2 `error-context.md`** (page snapshot at timeout), read before deletion. Key content: h1 "Sign in"; dev-mode info alert "מצב פיתוח — atlas.local · dev@atlas.local"; textbox "Email" = `dev@atlas.local`; textbox "Password" = the Stage 9 requester password; alert "Invalid email or password".
+- **Full 1 `error-context.md`:** written to the same path and overwritten by full 2 before it was inspected. Its content is **UNKNOWN**.
+- Both snapshot files are now **deleted**: Playwright clears `test-results/` at the start of each run (full 3 and the a11y run followed).
+- **Logs kept (outside the repo, not committed, may be purged by the OS):** the four `%TEMP%` logs in the run table. Full 1's log includes the browser log since launch of the worker's browser (pid 17752): six React DevTools console banners (one per client boot) at 01:20:14.160, 01:20:17.228, 01:20:19.412, 01:20:21.699, 01:20:24.329, 01:20:49.209. The log covers the whole worker, so which boots belong to `:14` is **not established**.
+- **No trace, video, or screenshot:** `trace: "on-first-retry"` with `retries: 0` locally.
+
+### Current hypothesis (UNVERIFIED)
+
+After `loginViaUi` confirmed the email value and while it typed the password, the login page remounted and `useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "")` (`login/page.tsx:43`) restored `dev@atlas.local`, so the submit used the wrong email and the page stayed on login. Possible trigger: a client reload or remount from the shared Next.js dev server. Support: full 2 snapshot only. Not supported by any evidence from full 1. Not excluded: other remount causes, API-side rejection timing, interaction with the preceding test, dev-server compile load, concurrent use of the shared dev server. Whether the failure occurs on the tree without Stage 6 / Stage 7 changes is **NOT TESTED**.
+
+### Corrections to earlier statements (kept for history)
+
+The §7.13 post-change paragraph written after full 2 said "Page snapshot at failure …" for "both runs" and "Run 1 showed page loads repeating every 2–3 s during this test". Corrected here: the snapshot evidence is from full 2 only, and the full 1 boots cannot be attributed to this test.
+
+### Not done
+
+Test, timeouts, retries and assertions not modified. No investigation of the root cause yet. Evidence that would narrow it (not performed): a full run with trace enabled from the command line, preserving `error-context.md` before the next run, a run of the unchanged HEAD in a separate git worktree, a run against a production Web build instead of the shared dev server.

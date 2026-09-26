@@ -268,7 +268,7 @@ export function QaPanel({
             </MenuItem>
           ))}
         </TextField>
-        {scope !== "ENTIRE_PORTFOLIO" && !boundProjectId ? (
+        {scope !== "ENTIRE_PORTFOLIO" && !embedded && !boundProjectId ? (
           <TextField
             select
             label={t("project")}

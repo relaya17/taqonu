@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "@/i18n/routing";
 import { useProjectQueryParam } from "@/lib/use-project-query";
-import { asMuiHref, studioCheckHref, studioProjectHref } from "@/lib/studio-surfaces";
+import { asMuiHref, studioCheckHref, studioProjectHref, withProjectSearch } from "@/lib/studio-surfaces";
 import {
   Alert,
   Box,
@@ -62,6 +64,9 @@ interface EvidenceReport {
 export default function DashboardPage() {
   const t = useTranslations();
   const locale = useLocale();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [selectedId, setSelectedId] = useProjectQueryParam("");
   const [showReport, setShowReport] = useState(false);
   const [showExecutive, setShowExecutive] = useState(false);
@@ -353,7 +358,12 @@ export default function DashboardPage() {
           size="small"
           label={t("dashboard.projectSelect")}
           value={projectId}
-          onChange={(e) => setSelectedId(e.target.value)}
+          onChange={(e) => {
+            const id = e.target.value;
+            setSelectedId(id);
+            const search = withProjectSearch(searchParams.toString(), id);
+            router.replace(search ? `${pathname}${search}` : pathname);
+          }}
           sx={{
             maxWidth: 420,
             mx: "auto",

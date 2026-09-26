@@ -47,6 +47,8 @@ export const atlasStatus = {
   errorMain: "#B55A54",
   errorDark: "#964A45",
   errorText: "#FFFFFF",
+  // Dark mode: error text on #2A303A paper at 4.87:1; paired with dark text.
+  errorOnDark: "#E0837D",
 
   // Info — soft steel blue
   infoLight: "#EDF1F5",

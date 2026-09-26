@@ -207,7 +207,7 @@ export function HealthPanel({
         {t("pillars")}
       </Alert>
 
-      {!boundProjectId ? (
+      {!embedded && !boundProjectId ? (
       <TextField
         select
         size="small"

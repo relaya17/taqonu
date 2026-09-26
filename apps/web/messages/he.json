@@ -14,7 +14,7 @@
     "chat": "שיחה",
     "agent": "סוכן",
     "models": "מודלים של בינה מלאכותית",
-    "agents": "מומחי ריצה",
+    "agents": "סוכנים",
     "patches": "תיקוני קוד",
     "gates": "שערי איכות",
     "eval": "הערכה",
@@ -47,14 +47,15 @@
     "activity": "פעילות",
     "integrations": "אינטגרציות",
     "security": "אבטחה",
-    "settings": "הגדרות",
+    "settings": "חשבון",
     "admin": "אדמין",
     "main": "ניווט ראשי",
     "languages": "שפות",
     "theme": "ערכת נושא",
     "opsGroup": "בדיקות Studio",
     "buildGroup": "בנייה",
-    "workspaceGroup": "כלים ומשאבים"
+    "workspaceGroup": "כלים ומשאבים",
+    "advancedGroup": "עוד"
   },
   "legalMedia": {
     "title": "תדרוך לעורך דין הייטק",
@@ -924,6 +925,7 @@
     "emptyHelp": "הדביקו שמות מלאים ב-GitHub למטה, או רעננו גילוי אחרי חיבור באינטגרציות.",
     "rootMissingHelp": "בלי נתיב מקומי Studio / Workbench / E2E מוגבלים. שמרו נתיב מוחלט למטה והמשיכו:",
     "openWorkbench": "Workbench",
+    "openAgentChat": "שיח עם הסוכן",
     "openProcessAudit": "תהליך E2E"
   },
   "state": {

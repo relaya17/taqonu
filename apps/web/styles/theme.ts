@@ -10,18 +10,19 @@ export function createAtlasTheme(
   mode: AtlasColorMode = "light",
 ): Theme {
   const dark = mode === "dark";
+  const focusRing = dark ? c.chromeBright : c.accent;
   return createTheme({
     direction,
     cssVariables: false,
     palette: {
       mode: dark ? "dark" : "light",
       primary: {
-        main: dark ? c.accent : c.steelMid,
-        contrastText: dark ? c.onAccent : c.chromeBright,
+        main: dark ? c.chromeBright : c.steelMid,
+        contrastText: dark ? c.ink : c.chromeBright,
       },
       secondary: {
-        main: c.accent,
-        contrastText: c.onAccent,
+        main: dark ? c.chrome : c.accent,
+        contrastText: dark ? c.ink : c.onAccent,
       },
       background: {
         default: dark ? c.ink : c.silverBg,
@@ -46,10 +47,10 @@ export function createAtlasTheme(
         contrastText: dark ? status.warningText : "#FFFFFF",
       },
       error: {
-        main: dark ? status.errorMain : status.errorDark,
+        main: dark ? status.errorOnDark : status.errorDark,
         light: status.errorLight,
         dark: status.errorDark,
-        contrastText: status.errorText,
+        contrastText: dark ? c.textOnLight : status.errorText,
       },
       info: {
         main: dark ? status.infoMain : status.infoDark,
@@ -158,7 +159,7 @@ export function createAtlasTheme(
             overflowX: "auto",
           },
           ":focus-visible": {
-            outline: `3px solid ${c.accent}`,
+            outline: `3px solid ${focusRing}`,
             outlineOffset: 2,
           },
           ".skip-link": {
@@ -211,6 +212,26 @@ export function createAtlasTheme(
           },
         },
       },
+      // ButtonBase sets `outline: 0`, so the global :focus-visible ring
+      // never reaches MUI buttons, links, tabs, or list items.
+      MuiButtonBase: {
+        styleOverrides: {
+          root: {
+            "&.Mui-focusVisible": {
+              outline: `3px solid ${focusRing}`,
+              outlineOffset: 2,
+            },
+          },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            // The tab scroller clips overflow; draw the ring inside the tab.
+            "&&.Mui-focusVisible": { outlineOffset: -3 },
+          },
+        },
+      },
       MuiButton: {
         styleOverrides: {
           root: {
@@ -218,17 +239,6 @@ export function createAtlasTheme(
             minHeight: 44,
             px: 1.5,
           },
-          contained: dark
-            ? {
-                bgcolor: c.chromeBright,
-                color: c.ink,
-                "&:hover": { bgcolor: "#E8EAEE" },
-                "&.Mui-disabled": {
-                  bgcolor: "rgba(210, 212, 216, 0.28)",
-                  color: "rgba(18, 20, 26, 0.55)",
-                },
-              }
-            : {},
           outlined: dark
             ? {
                 color: "#F0F1F3",
@@ -307,7 +317,7 @@ export function createAtlasTheme(
         styleOverrides: {
           root: {
             "&:focus-visible": {
-              outline: `3px solid ${c.accent}`,
+              outline: `3px solid ${focusRing}`,
               outlineOffset: 2,
             },
           },
@@ -328,6 +338,10 @@ export function createAtlasTheme(
             borderRadius: 10,
             border: "1px solid",
             borderColor: "transparent",
+            // Alerts keep light backgrounds in dark mode.
+            ...(dark
+              ? { "& a:not(.MuiButton-root), & .MuiButton-text": { color: "inherit" } }
+              : {}),
           },
           standardSuccess: {
             backgroundColor: status.successLight,

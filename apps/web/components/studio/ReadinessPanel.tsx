@@ -132,7 +132,7 @@ export function ReadinessPanel({
 
       <Alert severity="info">{t("positioning")}</Alert>
 
-      {!boundProjectId ? (
+      {!embedded && !boundProjectId ? (
       <TextField
         select
         size="small"

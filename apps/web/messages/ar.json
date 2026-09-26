@@ -14,7 +14,7 @@
     "chat": "محادثة",
     "agent": "الوكيل",
     "models": "نماذج AI",
-    "agents": "متخصصون",
+    "agents": "الوكلاء",
     "patches": "Patches",
     "gates": "بوابات الجودة",
     "eval": "Eval",
@@ -47,12 +47,13 @@
     "activity": "النشاط",
     "integrations": "التكاملات",
     "security": "الأمان",
-    "settings": "الإعدادات",
+    "settings": "الحساب",
     "admin": "المشرف",
     "main": "التنقل الرئيسي",
     "languages": "اللغات",
     "theme": "المظهر",
     "opsGroup": "فحوصات Studio",
+    "advancedGroup": "المزيد",
     "buildGroup": "البناء",
     "workspaceGroup": "الأدوات والموارد"
   },
@@ -880,6 +881,7 @@
     "emptyHelp": "الصق أسماء GitHub الكاملة أدناه، أو حدّث الاكتشاف بعد ربط التكاملات.",
     "rootMissingHelp": "بدون مسار محلي تبقى Studio / Workbench / E2E محدودة. احفظ مسارًا مطلقًا أدناه ثم تابع:",
     "openWorkbench": "Workbench",
+    "openAgentChat": "محادثة الوكيل",
     "openProcessAudit": "عملية E2E"
   },
   "state": {

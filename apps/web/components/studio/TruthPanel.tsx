@@ -355,7 +355,7 @@ export function TruthPanel({
           spacing={1.5}
           alignItems={{ sm: "center" }}
         >
-          {!boundProjectId ? (
+          {!embedded && !boundProjectId ? (
           <TextField
             select
             size="small"

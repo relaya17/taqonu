@@ -22,6 +22,28 @@ async function expectNoA11yViolations(page: Page, testInfo: TestInfo) {
   ).toEqual([]);
 }
 
+type Rgba = { r: number; g: number; b: number; a: number };
+
+function relativeLuminance({ r, g, b }: Rgba): number {
+  const channel = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(fg: Rgba, bg: Rgba): number {
+  const a = fg.a;
+  const flat = {
+    r: fg.r * a + bg.r * (1 - a),
+    g: fg.g * a + bg.g * (1 - a),
+    b: fg.b * a + bg.b * (1 - a),
+    a: 1,
+  };
+  const [hi, lo] = [relativeLuminance(flat), relativeLuminance(bg)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
   test.setTimeout(120_000);
 
@@ -36,7 +58,29 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     ).toBeVisible({ timeout: 45_000 });
     const skip = page.locator("a.skip-link");
     await expect(skip).toHaveAttribute("href", "#main-content");
+    // The sidebar mounts only after the session query resolves; scanning
+    // before that leaves its text out of the axe run.
+    await expect(
+      page.getByRole("navigation", { name: /main navigation/i }),
+    ).toBeVisible({ timeout: 30_000 });
     await expectNoA11yViolations(page, testInfo);
+  });
+
+  test("More nav group toggle exposes its expanded state", async ({ page }) => {
+    await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
+    const nav = page.getByRole("navigation", { name: /main navigation/i });
+    await expect(nav).toBeVisible({ timeout: 45_000 });
+    const toggle = nav.getByRole("button", { name: /more/i });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(nav.getByRole("link", { name: "Systems" })).toHaveCount(0);
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(nav.getByRole("link", { name: "Systems" })).toBeVisible();
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(nav.getByRole("link", { name: "Systems" })).toHaveCount(0);
   });
 
   test("authenticated hamburger opens the product sidebar", async ({ page }) => {
@@ -54,6 +98,118 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     await expect(
       mobileDrawer.getByRole("navigation", { name: /main navigation/i }),
     ).toBeVisible();
+  });
+
+  test("keyboard focus on a sidebar link paints an outline of at least 3:1", async ({
+    page,
+  }) => {
+    await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
+    const nav = page.getByRole("navigation", { name: /main navigation/i });
+    await expect(nav).toBeVisible({ timeout: 45_000 });
+
+    let href: string | null = null;
+    for (let i = 0; i < 25 && !href; i++) {
+      await page.keyboard.press("Tab");
+      href = await nav.evaluate((el) => {
+        const active = document.activeElement;
+        return active instanceof HTMLAnchorElement && el.contains(active)
+          ? active.getAttribute("href")
+          : null;
+      });
+    }
+    expect(href, "Tab must reach a link inside the main navigation").not.toBeNull();
+    const link = nav.locator(`a[href="${href}"]`);
+    await expect(link).toBeFocused();
+    await expect(link).toHaveClass(/Mui-focusVisible/);
+
+    const ring = await link.evaluate((el) => {
+      const parse = (value: string) => {
+        const [r, g, b, a = 1] = (value.match(/[\d.]+/g) ?? []).map(Number);
+        return { r, g, b, a };
+      };
+      const layers: Array<{ r: number; g: number; b: number; a: number }> = [];
+      for (let node = el.parentElement; node; node = node.parentElement) {
+        const bg = parse(getComputedStyle(node).backgroundColor);
+        if (bg.a > 0) layers.push(bg);
+        if (bg.a >= 1) break;
+      }
+      let background = { r: 255, g: 255, b: 255, a: 1 };
+      for (const layer of layers.reverse()) {
+        background = {
+          r: layer.r * layer.a + background.r * (1 - layer.a),
+          g: layer.g * layer.a + background.g * (1 - layer.a),
+          b: layer.b * layer.a + background.b * (1 - layer.a),
+          a: 1,
+        };
+      }
+      const style = getComputedStyle(el);
+      return {
+        style: style.outlineStyle,
+        width: parseFloat(style.outlineWidth),
+        color: parse(style.outlineColor),
+        background,
+      };
+    });
+    expect(ring.style, "focused link must draw an outline").not.toBe("none");
+    expect(ring.width, "focused link outline width (px)").toBeGreaterThan(0);
+    // WCAG 1.4.11: the focus indicator needs 3:1 against the adjacent surface.
+    expect(
+      contrastRatio(ring.color, ring.background),
+      `outline ${JSON.stringify(ring.color)} on ${JSON.stringify(ring.background)}`,
+    ).toBeGreaterThanOrEqual(3);
+
+    const box = await link.boundingBox();
+    expect(box).not.toBeNull();
+    const clip = {
+      x: box!.x - 8,
+      y: box!.y - 8,
+      width: box!.width + 16,
+      height: box!.height + 16,
+    };
+    const focused = await page.screenshot({ clip, animations: "disabled" });
+    await link.evaluate((el) => (el as HTMLElement).blur());
+    await expect(link).not.toHaveClass(/Mui-focusVisible/);
+    const unfocused = await page.screenshot({ clip, animations: "disabled" });
+    expect(focused.equals(unfocused), "focus must change the rendered pixels").toBe(false);
+  });
+
+  test("mobile drawer traps keyboard focus and Escape returns it to Open menu", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Project Studio" }),
+    ).toBeVisible({ timeout: 45_000 });
+    const openMenu = page.getByRole("button", { name: /open menu/i });
+    await expect(openMenu).toBeVisible({ timeout: 15_000 });
+    await openMenu.focus();
+    await page.keyboard.press("Enter");
+
+    const mobileDrawer = page.locator(".MuiDrawer-modal .MuiDrawer-paper");
+    await expect(mobileDrawer).toBeVisible({ timeout: 15_000 });
+    const focusInsideDrawer = () =>
+      mobileDrawer.evaluate((el) => el.contains(document.activeElement));
+    await expect.poll(focusInsideDrawer, { message: "focus moves into the drawer" }).toBe(true);
+
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.press("Tab");
+      expect(await focusInsideDrawer(), `focus stays in the drawer after Tab ${i + 1}`).toBe(
+        true,
+      );
+    }
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press("Shift+Tab");
+      expect(
+        await focusInsideDrawer(),
+        `focus stays in the drawer after Shift+Tab ${i + 1}`,
+      ).toBe(true);
+    }
+
+    await page.keyboard.press("Escape");
+    await expect(mobileDrawer).toHaveCount(0, { timeout: 15_000 });
+    await expect(openMenu).toBeFocused();
+    await expect(openMenu).toHaveAttribute("aria-expanded", "false");
   });
 
   test("authenticated /en/projects document navigation is not ERR_ABORTED", async ({

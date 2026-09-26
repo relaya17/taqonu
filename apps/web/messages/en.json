@@ -14,7 +14,7 @@
     "chat": "Chat",
     "agent": "Agent",
     "models": "AI models",
-    "agents": "Specialists",
+    "agents": "Agents",
     "patches": "Patches",
     "gates": "Quality gates",
     "eval": "Eval",
@@ -47,14 +47,15 @@
     "activity": "Activity",
     "integrations": "Integrations",
     "security": "Security",
-    "settings": "Settings",
+    "settings": "Account",
     "admin": "Admin",
     "main": "Main navigation",
     "languages": "Languages",
     "theme": "Theme",
     "opsGroup": "Studio checks",
     "buildGroup": "Build",
-    "workspaceGroup": "Tools & Resources"
+    "workspaceGroup": "Tools & Resources",
+    "advancedGroup": "More"
   },
   "a11y": {
     "skipToContent": "Skip to content",
@@ -880,6 +881,7 @@
     "emptyHelp": "Paste GitHub full names below, or refresh discovery after connecting Integrations.",
     "rootMissingHelp": "Without a local path, Studio / Workbench / E2E stay limited. Save an absolute folder path below, then continue:",
     "openWorkbench": "Workbench",
+    "openAgentChat": "Agent chat",
     "openProcessAudit": "E2E process"
   },
   "state": {

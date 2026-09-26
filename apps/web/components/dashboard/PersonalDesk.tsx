@@ -5,6 +5,7 @@ import { Box, Tab, Tabs, Typography } from "@mui/material";
 import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/routing";
 import { useSearchParams } from "next/navigation";
+import { withDeskSearch } from "@/lib/studio-surfaces";
 import { MemoryPanel } from "@/components/dashboard/MemoryPanel";
 import { DecisionsPanel } from "@/components/dashboard/DecisionsPanel";
 import { PatchesPanel } from "@/components/dashboard/PatchesPanel";
@@ -46,7 +47,7 @@ export function PersonalDesk({
 
   const selectTab = (next: DeskTab) => {
     setTab(next);
-    router.replace(`${pathname}?desk=${next}`);
+    router.replace(`${pathname}${withDeskSearch(searchParams.toString(), next)}`);
   };
 
   return (

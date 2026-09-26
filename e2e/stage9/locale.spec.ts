@@ -11,6 +11,21 @@ async function expectAuthenticatedStudio(
   await expect(page).not.toHaveURL(/\/auth\/login/);
 }
 
+/** The docked sidebar must sit beside main, not over it, in either direction. */
+async function expectSidebarBesideMain(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  const sidebar = page.locator("aside:has(nav)");
+  await expect(sidebar).toBeVisible({ timeout: 30_000 });
+  const aside = await sidebar.boundingBox();
+  const main = await page.locator("main#main-content").boundingBox();
+  expect(aside && main, "sidebar and main must both render").toBeTruthy();
+  const overlap =
+    Math.min(aside!.x + aside!.width, main!.x + main!.width) -
+    Math.max(aside!.x, main!.x);
+  expect(overlap, "sidebar overlaps main content").toBeLessThanOrEqual(1);
+}
+
 test.describe("Stage 9.8 authenticated Studio locales", () => {
   test.setTimeout(90_000);
 
@@ -23,6 +38,7 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 45_000 });
     await expectAuthenticatedStudio(page);
+    await expectSidebarBesideMain(page);
   });
 
   test("HE Studio is RTL", async ({ page }) => {
@@ -34,6 +50,7 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.getByRole("heading", { level: 1, name: "סטודיו פרויקט" }),
     ).toBeVisible({ timeout: 45_000 });
     await expectAuthenticatedStudio(page);
+    await expectSidebarBesideMain(page);
   });
 
   test("AR Studio is RTL", async ({ page }) => {
@@ -45,5 +62,6 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.getByRole("heading", { level: 1, name: "Studio المشروع" }),
     ).toBeVisible({ timeout: 45_000 });
     await expectAuthenticatedStudio(page);
+    await expectSidebarBesideMain(page);
   });
 });

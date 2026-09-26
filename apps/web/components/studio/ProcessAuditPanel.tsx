@@ -216,7 +216,7 @@ export function ProcessAuditPanel({
       <Alert severity="info">{t("partnerNote")}</Alert>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="center">
-        {!boundProjectId ? (
+        {!embedded && !boundProjectId ? (
         <TextField
           select
           label={t("project")}

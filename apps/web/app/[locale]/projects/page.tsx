@@ -18,7 +18,7 @@ import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { Link } from "@/i18n/routing";
-import { asMuiHref, studioCheckHref, studioProjectHref, workbenchProjectHref } from "@/lib/studio-surfaces";
+import { asMuiHref, studioChatHref, studioCheckHref, studioProjectHref } from "@/lib/studio-surfaces";
 import type { EpistemicState } from "@atlas/shared";
 
 interface Project {
@@ -920,7 +920,7 @@ export default function ProjectsPage() {
                     {!project.workspaceRoot ? (
                       <Alert severity="warning" sx={{ mt: 1 }}>
                         {t("rootMissingHelp")}{" "}
-                        <Link href={workbenchProjectHref(project.id)}>{t("openWorkbench")}</Link>
+                        <Link href={studioChatHref(project.id)}>{t("openAgentChat")}</Link>
                         {" · "}
                         <Link href={studioCheckHref("processAudit", project.id)}>{t("openProcessAudit")}</Link>
                       </Alert>
@@ -958,12 +958,12 @@ export default function ProjectsPage() {
                     </Button>
                     <Button
                       component={Link}
-                      href={asMuiHref(workbenchProjectHref(project.id))}
+                      href={asMuiHref(studioChatHref(project.id))}
                       size="small"
                       variant="outlined"
                       disabled={!project.workspaceRoot}
                     >
-                      {t("openWorkbench")}
+                      {t("openAgentChat")}
                     </Button>
                     <Button
                       component={Link}

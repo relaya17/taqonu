@@ -27,9 +27,13 @@ import {
   isMarketingShellPath,
   isPublicShellPath,
   asMuiHref,
-  studioCheckHref,
-  type StudioCheckId,
 } from "@/lib/studio-surfaces";
+import {
+  NAV_GROUPS,
+  isWebNavSelected,
+  navItemHref,
+  type WebNavKey,
+} from "@/lib/web-nav";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
@@ -62,8 +66,9 @@ const navChrome = {
     bgcolor: "#2A303A",
     border: "1px solid rgba(160, 164, 172, 0.12)",
     color: "#A8AEB8",
-    textMuted: "rgba(168, 174, 184, 0.72)",
-    textSoft: "rgba(168, 174, 184, 0.82)",
+    // Caption text on #2A303A: 0.85 → 4.75:1, 0.9 → 5.13:1 (WCAG AA 4.5:1).
+    textMuted: "rgba(168, 174, 184, 0.85)",
+    textSoft: "rgba(168, 174, 184, 0.9)",
     accent: "#9AA1AB",
     chrome: "#A7ADB6",
     brand: "#C2C6CD",
@@ -75,7 +80,8 @@ const navChrome = {
     bgcolor: "rgba(241, 242, 244, 0.94)",
     border: "1px solid rgba(26, 28, 34, 0.14)",
     color: c.textOnLight,
-    textMuted: "rgba(26, 28, 34, 0.58)",
+    // Caption text on the translucent light drawer stays ≥ 4.5:1 over dark content.
+    textMuted: "rgba(26, 28, 34, 0.66)",
     textSoft: "rgba(26, 28, 34, 0.7)",
     accent: c.steelMid,
     chrome: c.textSecondaryOnLight,
@@ -86,77 +92,9 @@ const navChrome = {
   },
 } as const;
 
-type NavKey = keyof typeof WEB_NAV_PATHS;
+type NavKey = WebNavKey;
 
 const PATHS: Record<NavKey, string> = WEB_NAV_PATHS;
-
-/** Slim primary nav — state/chat/agent/proof removed; QA+health under dashboard ops. */
-const NAV_GROUPS: readonly {
-  readonly id: string;
-  readonly labelKey?: "opsGroup" | "workspaceGroup" | "buildGroup";
-  readonly collapsedByDefault?: boolean;
-  readonly items: readonly NavKey[];
-}[] = [
-  {
-    id: "main",
-    items: ["studio", "systems", "dashboard", "projects", "plan"],
-  },
-  {
-    id: "ops",
-    labelKey: "opsGroup",
-    items: ["truth", "health", "readiness", "qa", "processAudit"],
-  },
-  {
-    id: "build",
-    labelKey: "buildGroup",
-    collapsedByDefault: true,
-    items: ["agents", "experts"],
-  },
-  {
-    id: "workspace",
-    labelKey: "workspaceGroup",
-    items: ["models", "integrations", "partners", "legalMedia", "settings"],
-  },
-];
-
-const NAV_TO_STUDIO_CHECK: Partial<Record<NavKey, StudioCheckId>> = {
-  observer: "observer",
-  sentinel: "sentinel",
-  qa: "qa",
-  processAudit: "processAudit",
-  health: "health",
-  readiness: "readiness",
-  truth: "truth",
-};
-
-function isNavSelected(
-  key: NavKey,
-  pathname: string,
-  searchParams: { get: (name: string) => string | null },
-): boolean {
-  const studioPath = PATHS.studio;
-  if (pathname === studioPath || pathname.startsWith(`${studioPath}/`)) {
-    const tab = searchParams.get("tab");
-    const check = searchParams.get("check");
-    const mapped = NAV_TO_STUDIO_CHECK[key];
-    if (tab === "checks" && mapped) {
-      return check === mapped;
-    }
-    return key === "studio";
-  }
-  if (key === "projects" && /\/projects\/[^/]+\/state$/.test(pathname)) {
-    return false;
-  }
-  const href = PATHS[key];
-  if (!href || !pathname) {
-    return false;
-  }
-  if (href === "/") {
-    return pathname === "/";
-  }
-  const pathOnly = href.split("?")[0] ?? href;
-  return pathname === pathOnly || pathname.startsWith(`${pathOnly}/`);
-}
 
 interface AuthMe {
   authenticated?: boolean;
@@ -186,10 +124,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
   const navId = useId();
   /**
-   * Always physical "left". MUI `theme.direction` + stylis-plugin-rtl already
-   * map that to inline-start. Flipping again (`isRtl ? "right"`) parks the
-   * paper on the opposite side of the reserved slot, so the nav overlays
-   * the page and cannot be dismissed.
+   * Physical "left". In RTL, MUI flips the anchor to "right" and
+   * stylis-plugin-rtl flips the resulting `right: 0` back to `left: 0`, so the
+   * docked paper is pinned with logical insets to stay over its flex slot.
    */
   const anchor = "left" as const;
   /** Desktop permanent nav can be hidden; mobile still uses the overlay drawer. */
@@ -280,7 +217,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           gap: "1px",
           borderRadius: 1,
           "&:focus-visible": {
-            outline: `3px solid ${c.accent}`,
+            outline: `3px solid ${tone.brand}`,
             outlineOffset: 2,
           },
         }}
@@ -370,7 +307,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Stack>
           <Typography
             variant="caption"
-            sx={{ opacity: 0.7, textAlign: "start", color: tone.textMuted }}
+            sx={{ textAlign: "start", color: tone.textMuted }}
           >
             {t("brand.codename")} · {t("brand.tagline")}
           </Typography>
@@ -379,7 +316,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Box component="nav" aria-label={t("nav.main")}>
           {NAV_GROUPS.map((group) => {
             const groupSelected = group.items.some((key) =>
-              isNavSelected(key, pathname, searchParams),
+              isWebNavSelected(key, pathname, searchParams),
             );
             const collapsed =
               Boolean(group.collapsedByDefault) &&
@@ -391,6 +328,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Typography
                   component={group.collapsedByDefault ? "button" : "span"}
                   variant="caption"
+                  aria-expanded={group.collapsedByDefault ? !collapsed : undefined}
                   onClick={
                     group.collapsedByDefault
                       ? () =>
@@ -411,7 +349,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                     pt: 1,
                     pb: 0.5,
                     color: tone.accent,
-                    opacity: 0.62,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
                     fontSize: 11,
@@ -429,11 +366,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               {collapsed ? null : (
               <List dense disablePadding>
                 {group.items.map((key) => {
-                  const check = NAV_TO_STUDIO_CHECK[key];
-                  const href = check
-                    ? studioCheckHref(check, searchParams.get("project"))
-                    : PATHS[key];
-                  const selected = isNavSelected(key, pathname, searchParams);
+                  const href = navItemHref(key, searchParams.get("project"));
+                  const selected = isWebNavSelected(key, pathname, searchParams);
                   return (
                     // Real <li> wrapper (WCAG 1.3.1 "list" rule — axe-core
                     // flagged the previous markup, an <a> as a direct child
@@ -509,7 +443,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Box>
               <Typography
                 variant="caption"
-                sx={{ opacity: 0.8, display: "block", color: tone.textSoft }}
+                sx={{ display: "block", color: tone.textSoft }}
               >
                 {meQuery.data.user.displayName ?? meQuery.data.user.email}
               </Typography>
@@ -608,6 +542,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       overflowX: "hidden" as const,
       "--Paper-shadow": "none",
       "--Paper-overlay": "none",
+      "& :focus-visible, & .MuiButtonBase-root.Mui-focusVisible": {
+        outlineColor: chrome.brand,
+      },
     };
   };
 
@@ -807,7 +744,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               },
               width: DRAWER_WIDTH,
               flexShrink: 0,
-              [`& .MuiDrawer-paper`]: drawerPaperSx("sidebar"),
+              [`& .MuiDrawer-paper`]: {
+                ...drawerPaperSx("sidebar"),
+                insetInlineStart: 0,
+                insetInlineEnd: "auto",
+              },
             }}
             PaperProps={drawerPaperProps}
           >

@@ -4,8 +4,12 @@ import {
   buildStudioSearch,
   studioFileActionInstruction,
   asMuiHref,
+  deskAliasHref,
+  studioChatHref,
   studioCheckHref,
   studioProjectHref,
+  withDeskSearch,
+  withProjectSearch,
   workbenchProjectHref,
   isMarketingShellPath,
   isPublicShellPath,
@@ -122,6 +126,55 @@ describe("studioCheckHref", () => {
     expect(studioCheckHref("processAudit", "  ")).toEqual({
       pathname: "/studio",
       query: { tab: "checks", check: "processAudit" },
+    });
+  });
+});
+
+describe("Stage 6 project context", () => {
+  const projectId = "00000000-0000-4000-8000-def000000001";
+
+  it("writes the dashboard project and keeps the desk tab", () => {
+    expect(withProjectSearch("desk=patches", projectId)).toBe(
+      `?desk=patches&project=${projectId}`,
+    );
+    expect(withProjectSearch(`?project=${projectId}&desk=memory`, "")).toBe(
+      "?desk=memory",
+    );
+    expect(withProjectSearch("", "")).toBe("");
+  });
+
+  it("does not replace one project with a different id unless that id is passed", () => {
+    expect(withProjectSearch("project=alpha", "beta")).toBe("?project=beta");
+    expect(withProjectSearch("project=alpha", "alpha")).toBe("?project=alpha");
+  });
+
+  it("keeps project when the personal desk tab changes", () => {
+    expect(withDeskSearch(`project=${projectId}`, "decisions")).toBe(
+      `?project=${projectId}&desk=decisions`,
+    );
+    expect(withDeskSearch("", "memory")).toBe("?desk=memory");
+  });
+
+  it("copies project onto desk aliases only when one was supplied", () => {
+    expect(deskAliasHref("memory", projectId)).toBe(
+      `/?desk=memory&project=${projectId}`,
+    );
+    expect(deskAliasHref("decisions", "  ")).toBe("/?desk=decisions");
+    expect(deskAliasHref("patches", null)).toBe("/?desk=patches");
+    expect(deskAliasHref("patches", projectId)).toBe(
+      `/?desk=patches&project=${projectId}`,
+    );
+  });
+
+  it("opens Studio chat for a project without using the workbench path", () => {
+    expect(studioChatHref(projectId)).toEqual({
+      pathname: "/studio",
+      query: { tab: "chat", project: projectId },
+    });
+    expect(JSON.stringify(studioChatHref(projectId))).not.toContain("workbench");
+    expect(studioChatHref("")).toEqual({
+      pathname: "/studio",
+      query: { tab: "chat" },
     });
   });
 });
