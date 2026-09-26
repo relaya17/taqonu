@@ -59,6 +59,18 @@ export function evaluateVercelJsonEnv(input: {
     }
   }
 
+  if (input.plane === "user") {
+    const authPath = input.env.ATLAS_AUTH_PATH;
+    if (authPath && /(^|[/\\])tmp([/\\]|$)/i.test(authPath)) {
+      findings.push({
+        file: input.file,
+        ok: false,
+        evidence:
+          "ATLAS_AUTH_PATH must not be an ephemeral tmp path. Production user identity is Supabase Auth, not the serverless filesystem.",
+      });
+    }
+  }
+
   if (input.plane === "control") {
     const adminUrl = input.env.ATLAS_ADMIN_URL;
     if (adminUrl && !isLoopbackHttpOrigin(adminUrl)) {

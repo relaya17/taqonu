@@ -108,8 +108,19 @@ describe("checked-in vercel.json files", () => {
     expect(vercelTrustPlaneContractOk(api)).toBe(true);
     expect(vercelTrustPlaneContractOk(admin)).toBe(true);
     expect(vercelTrustPlaneContractOk(control)).toBe(true);
+    expect(readVercelEnv("apps/api/vercel.json").ATLAS_AUTH_PATH).toBeUndefined();
     expect(readVercelEnv("apps/api/vercel.json").WEB_ORIGIN).toBe(
       "https://taqonu-web.vercel.app",
     );
+  });
+
+  it("rejects an ephemeral tmp user store on the user plane", () => {
+    const findings = evaluateVercelJsonEnv({
+      file: "apps/api/vercel.json",
+      plane: "user",
+      env: { ATLAS_AUTH_PATH: "/tmp/atlas-demo-users.json" },
+    });
+    expect(vercelTrustPlaneContractOk(findings)).toBe(false);
+    expect(findings.some((row) => row.evidence.includes("ephemeral tmp"))).toBe(true);
   });
 });
