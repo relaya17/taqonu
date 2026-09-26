@@ -832,3 +832,87 @@ describe("R10 DELETE / TTL", () => {
     expect(statements).not.toContain("ttl soon");
   });
 });
+
+describe("memory lifecycle", () => {
+  it("archives an owned memory without deleting it", async () => {
+    seedMemory(ownerA.id, "archive me later");
+    const row = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.statement === "archive me later");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${row!.id}/archive`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("ARCHIVED");
+    const still = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.id === row!.id);
+    expect(still?.status).toBe("ARCHIVED");
+    expect(still?.statement).toBe("archive me later");
+  });
+
+  it("does not archive another owner's memory", async () => {
+    seedMemory(ownerB.id, "owner b stays active");
+    const row = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.statement === "owner b stays active");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/memory/${row!.id}/archive`,
+    });
+    expect(res.statusCode).toBe(404);
+    const still = [...osStore.memories.values()]
+      .flat()
+      .find((item) => item.id === row!.id);
+    expect(still?.status).toBe("ACTIVE");
+  });
+
+  it("consolidates by supersededBy and leaves both rows", async () => {
+    seedMemory(ownerA.id, "keep this lesson");
+    seedMemory(ownerA.id, "fold this lesson");
+    const rows = [...osStore.memories.values()].flat();
+    const keep = rows.find((item) => item.statement === "keep this lesson");
+    const fold = rows.find((item) => item.statement === "fold this lesson");
+    getRequestUser.mockReturnValue(ownerA);
+    resolveCloudIdentity.mockResolvedValue(cloudIdentityFor(ownerA));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/memory/consolidate",
+      payload: { keepId: keep!.id, supersedeIds: [fold!.id] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().superseded[0].supersededBy).toBe(keep!.id);
+    const stored = [...osStore.memories.values()].flat();
+    expect(stored.find((item) => item.id === keep!.id)?.status).toBe("ACTIVE");
+    expect(stored.find((item) => item.id === fold!.id)?.status).toBe("SUPERSEDED");
+    expect(stored.find((item) => item.id === fold!.id)?.supersededBy).toBe(keep!.id);
+  });
+
+  it("measures the caller's stored memory and does not delete on warning", async () => {
+    seedMemory(ownerA.id, "metered statement");
+    seedMemory(ownerB.id, "other tenant statement that must not count");
+    getRequestUser.mockReturnValue(ownerA);
+    const res = await app.inject({ method: "GET", url: "/api/v1/memory/storage" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { bytes: number; records: number; warning: boolean };
+    expect(body.records).toBeGreaterThan(0);
+    expect(body.bytes).toBeGreaterThan(0);
+    expect(body.warning).toBe(false);
+    const before = [...osStore.memories.values()].flat().length;
+    const { measureOwnedMemoryStorage } = await import("../services/memory-pipeline.js");
+    const warned = measureOwnedMemoryStorage(ownerA.id, 1);
+    expect(warned.warning).toBe(true);
+    expect([...osStore.memories.values()].flat().length).toBe(before);
+    const statements = [...osStore.memories.values()]
+      .flat()
+      .filter((item) => item.ownerId === ownerA.id)
+      .map((item) => item.statement);
+    expect(statements).toContain("metered statement");
+    expect(statements).not.toContain("other tenant statement that must not count");
+  });
+});

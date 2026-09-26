@@ -611,6 +611,114 @@ export function supersedeMemoryById(input: {
   return true;
 }
 
+/** User-owned memory text, not process heap. A warning does not delete rows. */
+export const USER_MEMORY_STORAGE_WARNING_BYTES = 1_048_576;
+
+export function measureOwnedMemoryStorage(
+  ownerId: string,
+  warningBytes: number = USER_MEMORY_STORAGE_WARNING_BYTES,
+): { bytes: number; records: number; warningBytes: number; warning: boolean } {
+  osStore.ensureLoaded();
+  let bytes = 0;
+  let records = 0;
+  for (const list of osStore.memories.values()) {
+    for (const memory of list) {
+      if (memory.ownerId !== ownerId) continue;
+      records += 1;
+      bytes += Buffer.byteLength(memory.statement, "utf8");
+      for (const reason of memory.reason) {
+        bytes += Buffer.byteLength(reason, "utf8");
+      }
+      for (const evidence of memory.evidence) {
+        bytes += Buffer.byteLength(evidence.reference, "utf8");
+        if (evidence.excerpt) bytes += Buffer.byteLength(evidence.excerpt, "utf8");
+      }
+    }
+  }
+  return {
+    bytes,
+    records,
+    warningBytes,
+    warning: bytes >= warningBytes,
+  };
+}
+
+/**
+ * Hide an owned ACTIVE memory from the active list. The row stays.
+ * This does not erase and does not set supersededBy.
+ */
+export function archiveOwnedMemory(input: {
+  memoryId: string;
+  ownerId: string;
+}): { ok: true; memory: Memory } | { ok: false; reason: "not_found" | "not_active" } {
+  const located = findOwnedMemory({
+    memoryId: input.memoryId,
+    ownerId: input.ownerId,
+  });
+  if (!located) return { ok: false, reason: "not_found" };
+  if (located.memory.status === "ARCHIVED") {
+    return { ok: true, memory: located.memory };
+  }
+  if (located.memory.status !== "ACTIVE") {
+    return { ok: false, reason: "not_active" };
+  }
+  const list = [...osStore.getMemories(located.key)];
+  const idx = list.findIndex((row) => row.id === input.memoryId);
+  if (idx < 0) return { ok: false, reason: "not_found" };
+  const updated: Memory = {
+    ...list[idx]!,
+    status: "ARCHIVED",
+    updatedAt: new Date().toISOString(),
+  };
+  list[idx] = updated;
+  osStore.replaceMemories(located.key, list);
+  return { ok: true, memory: updated };
+}
+
+/**
+ * Mark owned ACTIVE rows SUPERSEDED by an owned ACTIVE keeper.
+ * Uses supersededBy. Does not delete either row.
+ */
+export function consolidateOwnedMemories(input: {
+  ownerId: string;
+  keepId: string;
+  supersedeIds: readonly string[];
+}):
+  | { ok: true; kept: Memory; superseded: Memory[] }
+  | { ok: false; reason: "not_found" | "not_active" | "empty" } {
+  const ids = [...new Set(input.supersedeIds)];
+  if (ids.length === 0 || ids.includes(input.keepId)) {
+    return { ok: false, reason: "empty" };
+  }
+  const kept = findOwnedMemory({ memoryId: input.keepId, ownerId: input.ownerId });
+  if (!kept) return { ok: false, reason: "not_found" };
+  if (kept.memory.status !== "ACTIVE") return { ok: false, reason: "not_active" };
+  const targets = ids.map((memoryId) =>
+    findOwnedMemory({ memoryId, ownerId: input.ownerId }),
+  );
+  if (targets.some((row) => !row)) return { ok: false, reason: "not_found" };
+  if (targets.some((row) => row!.memory.status !== "ACTIVE")) {
+    return { ok: false, reason: "not_active" };
+  }
+  const superseded: Memory[] = [];
+  for (const target of targets) {
+    const located = target!;
+    const list = [...osStore.getMemories(located.key)];
+    const idx = list.findIndex((row) => row.id === located.memory.id);
+    if (idx < 0) return { ok: false, reason: "not_found" };
+    const updated: Memory = {
+      ...list[idx]!,
+      status: "SUPERSEDED",
+      supersededBy: input.keepId,
+      updatedAt: new Date().toISOString(),
+    };
+    list[idx] = updated;
+    osStore.replaceMemories(located.key, list);
+    superseded.push(updated);
+  }
+  return { ok: true, kept: kept.memory, superseded };
+}
+
 /**
  * Why `approveMemory()` can fail — lets the route explain the *reason*
  * instead of collapsing every rejection into an ambiguous 404:

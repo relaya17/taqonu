@@ -16,11 +16,14 @@ import { assertProjectWriteAccess } from "../services/project-access.js";
 import {
   appendDomainEvent,
   approveMemory,
+  archiveOwnedMemory,
   classifyMemoryType,
   commitMemory,
+  consolidateOwnedMemories,
   eraseOwnedMemory,
   expireDueMemories,
   findOwnedMemory,
+  measureOwnedMemoryStorage,
   retrieveMemories,
   setOwnedMemoryTtl,
   supersedeMatchingMemories,
@@ -428,6 +431,11 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
     return { items, total: items.length };
   });
 
+  app.get("/api/v1/memory/storage", async (request) => {
+    const user = await requireUser(app, request);
+    return measureOwnedMemoryStorage(user.id);
+  });
+
   /**
    * Owner-scoped memory dump. Not delete. Not a project context-export.
    * Regular callers receive only their rows; admins receive the same
@@ -518,6 +526,59 @@ export async function registerMemoryRoutes(app: FastifyInstance): Promise<void> 
         active.length === 0
           ? "No ACTIVE memories — moat empty until classify/approve accumulates."
           : "Portfolio memory rollup — prefer CONFIRMED/VERIFIED over PROPOSED.",
+    };
+  });
+
+  app.post("/api/v1/memory/:id/archive", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+    const result = archiveOwnedMemory({
+      memoryId: params.id,
+      ownerId: identity.ownerId,
+    });
+    if (!result.ok && result.reason === "not_found") {
+      return reply.status(404).send({ error: { message: "Memory not found" } });
+    }
+    if (!result.ok) {
+      return reply.status(409).send({
+        error: { message: "Only an active memory can be archived" },
+      });
+    }
+    return result.memory;
+  });
+
+  app.post("/api/v1/memory/consolidate", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
+    const body = z
+      .object({
+        keepId: z.string().uuid(),
+        supersedeIds: z.array(z.string().uuid()).min(1).max(20),
+      })
+      .parse(request.body ?? {});
+    const identity = await resolveCloudIdentity(app, request);
+    if (identity.setCookie) reply.header("Set-Cookie", identity.setCookie);
+    const result = consolidateOwnedMemories({
+      ownerId: identity.ownerId,
+      keepId: body.keepId,
+      supersedeIds: body.supersedeIds,
+    });
+    if (!result.ok && result.reason === "not_found") {
+      return reply.status(404).send({ error: { message: "Memory not found" } });
+    }
+    if (!result.ok) {
+      return reply.status(409).send({
+        error: { message: "Consolidation needs active memories you own" },
+      });
+    }
+    return {
+      kept: result.kept,
+      superseded: result.superseded.map((row) => ({
+        id: row.id,
+        status: row.status,
+        supersededBy: row.supersededBy,
+      })),
     };
   });
 
