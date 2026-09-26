@@ -1563,7 +1563,11 @@
     "remediationLine": "REMEDIATION: {result} · FINDING: {finding}",
     "patchVerifyOnly": "PATCH_VERIFY only — file write matched the patch. This is not a finding-remediation result.",
     "remediationNotFixed": "REMEDIATION NOT_FIXED — the original finding is still present.",
-    "remediationFixed": "REMEDIATION FIXED — the original detector no longer observes the finding."
+    "remediationFixed": "REMEDIATION FIXED — the original detector no longer observes the finding.",
+    "reject": "Reject",
+    "rejectReason": "Rejection reason (required)",
+    "rejectedBecause": "Rejected by {by}: {reason}",
+    "approvedBy": "Approved by {by}"
   },
   "gates": {
     "title": "Quality gates",

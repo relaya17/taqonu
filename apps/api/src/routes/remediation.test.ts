@@ -49,6 +49,57 @@ const { osStore } = await import("../store/os-store.js");
 const { setAuditLogPathForTests, listUnifiedAuditEntries } = await import(
   "../services/audit-log.js"
 );
+const { bindProjectOwner } = await import("../services/project-access.js");
+const { decideApprovalRequest } = await import("../services/approvals.js");
+const { resetApprovalsForTests } = await import("../services/approvals-test-store.js");
+
+/**
+ * Stage 5 (G-1): drafts live in a real project owned by the caller; the
+ * remediation routes now enforce the same project scope as `/code/patches`.
+ */
+function ownedProject(ownerId = "77777777-7777-4777-8777-777777777777"): string {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  osStore.upsertProject({
+    id,
+    slug: `remediation-${id.slice(0, 8)}`,
+    name: "Remediation project",
+    description: null,
+    status: "ACTIVE",
+    techStack: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  bindProjectOwner(id, ownerId, "bound_on_create");
+  osStore.setWorkspaceRoot(id, workspaceRoot);
+  return id;
+}
+
+const SOD_DECIDER = "88888888-8888-4888-8888-888888888888";
+
+/**
+ * Stage 5 (SoD): a draft applies through the governed Apply: 202 with a
+ * live approval request, decided by a different identity, then the retry.
+ */
+async function sodDraftApply(draftId: string) {
+  const first = await app.inject({
+    method: "POST",
+    url: `/api/v1/remediation/drafts/${draftId}/apply`,
+    payload: {},
+  });
+  expect(first.statusCode).toBe(202);
+  const approvalId = first.json().approvalId as string;
+  await decideApprovalRequest(approvalId, {
+    decidedBy: SOD_DECIDER,
+    approve: true,
+    decisionReason: "independent decision for remediation apply",
+  });
+  return app.inject({
+    method: "POST",
+    url: `/api/v1/remediation/drafts/${draftId}/apply?approvalId=${approvalId}`,
+    payload: {},
+  });
+}
 
 let app: FastifyInstance;
 let workspaceRoot: string;
@@ -85,6 +136,8 @@ function makeAutoFixDraft(overrides: Partial<PatchArtifact> = {}): PatchArtifact
         action: "modify",
         summary: "update test file",
         afterContent: "modified content",
+        // Stage 5 (D3): proposed against the fixture's "original content".
+        baseSha256: "bf573149b23303cac63c2a359b53760d919770c5d070047e76de42e2184f1046",
       },
     ],
     evidenceIds: [],
@@ -117,6 +170,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  resetApprovalsForTests();
   getRequestUser.mockReset();
   getRequestUser.mockReturnValue(testUser());
   authorizeEntityAction.mockReset();
@@ -132,8 +186,7 @@ afterEach(() => {
 
 describe("POST /api/v1/remediation/drafts/:id/apply", () => {
   it("401s for an unauthenticated caller", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -147,8 +200,7 @@ describe("POST /api/v1/remediation/drafts/:id/apply", () => {
   });
 
   it("403s when the real authorizeEntityAction is engaged and denies the action", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -167,8 +219,7 @@ describe("POST /api/v1/remediation/drafts/:id/apply", () => {
   });
 
   it("still 403s a not-yet-approved draft exactly as before (existing invariant preserved)", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({
       projectId,
       status: "AWAITING_APPROVAL",
@@ -184,17 +235,12 @@ describe("POST /api/v1/remediation/drafts/:id/apply", () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it("200s for a signed-in caller applying an approved LOW-risk draft", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+  it("Stage 5 SoD: an approved LOW-risk draft needs a second identity (202), then applies (200)", async () => {
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/v1/remediation/drafts/${draft.id}/apply`,
-      payload: {},
-    });
+    const res = await sodDraftApply(draft.id);
     expect(res.statusCode).toBe(200);
     // Auto-remediation drafts run verify inline after apply (see
     // `applyApprovedPatch`'s `isAutoRemediationDraft` branch), so a clean
@@ -239,8 +285,7 @@ describe("POST /api/v1/remediation/auto-apply-low", () => {
   });
 
   it("200s for a signed-in caller with force:true and applies a queued LOW draft", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({
       projectId,
       status: "AWAITING_APPROVAL",
@@ -279,8 +324,7 @@ describe("F-03 kill-switch coverage (ATLAS_KILL_SWITCHES=agentDispatch)", () => 
   });
 
   it("blocks POST /drafts/:id/apply, before patch-write.ts ever runs", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -302,8 +346,7 @@ describe("F-03 kill-switch coverage (ATLAS_KILL_SWITCHES=agentDispatch)", () => 
   });
 
   it("blocks POST /auto-apply-low, before patch-write.ts ever runs", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({
       projectId,
       status: "AWAITING_APPROVAL",
@@ -327,8 +370,7 @@ describe("F-03 kill-switch coverage (ATLAS_KILL_SWITCHES=agentDispatch)", () => 
   });
 
   it("does not block either path when only an unrelated category is active", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -338,7 +380,9 @@ describe("F-03 kill-switch coverage (ATLAS_KILL_SWITCHES=agentDispatch)", () => 
       url: `/api/v1/remediation/drafts/${draft.id}/apply`,
       payload: {},
     });
-    expect(res.statusCode).toBe(200);
+    // Not blocked: it reaches the governed Apply, which asks for a second
+    // identity (Stage 5 SoD) instead of a kill-switch 403.
+    expect(res.statusCode).toBe(202);
   });
 });
 
@@ -367,8 +411,7 @@ describe("Task 7 kill-switch coverage: durable runtime override (no env var)", (
 
   it("Proof 2: a runtime-only override (no env var) blocks POST /drafts/:id/apply, before patch-write.ts ever runs", async () => {
     delete process.env.ATLAS_KILL_SWITCHES;
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -388,8 +431,7 @@ describe("Task 7 kill-switch coverage: durable runtime override (no env var)", (
 
   it("Proof 4: clearing the runtime override while the env baseline still lists the category cannot unblock the remediation path", async () => {
     process.env.ATLAS_KILL_SWITCHES = "agentDispatch";
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -407,19 +449,14 @@ describe("Task 7 kill-switch coverage: durable runtime override (no env var)", (
 
   it("clearing a runtime-only override (env inactive) restores normal execution", async () => {
     delete process.env.ATLAS_KILL_SWITCHES;
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
     osStore.setKillSwitchOverride("agentDispatch", "operator-1", "runtime-only test");
     osStore.clearKillSwitchOverride("agentDispatch", "operator-1", "no longer needed");
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/v1/remediation/drafts/${draft.id}/apply`,
-      payload: {},
-    });
+    const res = await sodDraftApply(draft.id);
     expect(res.statusCode).toBe(200);
   });
 });
@@ -450,16 +487,11 @@ describe("F-03 canonical Unified Audit Log coverage", () => {
   });
 
   it("records a canonical SUCCESS entry, with a real actorId, for a successful /drafts/:id/apply", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/v1/remediation/drafts/${draft.id}/apply`,
-      payload: {},
-    });
+    const res = await sodDraftApply(draft.id);
     expect(res.statusCode).toBe(200);
 
     const entry = listUnifiedAuditEntries().find(
@@ -472,8 +504,7 @@ describe("F-03 canonical Unified Audit Log coverage", () => {
   });
 
   it("records a canonical SUCCESS entry, with a real actorId, for a successful /auto-apply-low", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({
       projectId,
       status: "AWAITING_APPROVAL",
@@ -498,8 +529,7 @@ describe("F-03 canonical Unified Audit Log coverage", () => {
   });
 
   it("records a canonical FAILURE entry (not merely the legacy side-channel) when the kill switch denies /drafts/:id/apply", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const draft = makeAutoFixDraft({ projectId });
     osStore.upsertPatch(draft);
 
@@ -540,8 +570,7 @@ describe("F-03 canonical Unified Audit Log coverage", () => {
 
 describe("POST /api/v1/remediation/drafts/:id/verify", () => {
   it("404s CODE_ENGINEER patches that are not auto-remediation drafts", async () => {
-    const projectId = crypto.randomUUID();
-    osStore.setWorkspaceRoot(projectId, workspaceRoot);
+    const projectId = ownedProject();
     const now = new Date().toISOString();
     const patch = patchArtifactSchema.parse({
       id: crypto.randomUUID(),

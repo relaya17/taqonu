@@ -37,7 +37,10 @@ export function evaluateStudioProposalGuardian(input: {
   memories: readonly MemoryKnowledgeSource[];
   proposedFiles?: readonly string[];
   focusPath?: string | null;
-}): GuardianEvaluation {
+}): GuardianEvaluation & {
+  /** Stage 5 (D2): counts of the bounded repository scan behind the verdict. */
+  readonly repository: { apps: number; packages: number; topLevel: number };
+} {
   const projectId = input.projectId ?? "";
   const ownerId = input.ownerId ?? "";
   let analysis = {
@@ -76,7 +79,7 @@ export function evaluateStudioProposalGuardian(input: {
     observedAt: new Date().toISOString(),
   });
 
-  return evaluateAgentSuggestion({
+  const evaluation = evaluateAgentSuggestion({
     suggestion: {
       projectId,
       ownerId,
@@ -86,4 +89,12 @@ export function evaluateStudioProposalGuardian(input: {
     },
     knowledge,
   });
+  return {
+    ...evaluation,
+    repository: {
+      apps: analysis.apps.length,
+      packages: analysis.packages.length,
+      topLevel: analysis.topLevel.length,
+    },
+  };
 }

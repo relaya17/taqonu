@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { resolve } from "node:path";
 import {
   authorizeToolCall,
   buildAgentContext,
@@ -19,6 +20,7 @@ import {
   MVP_AGENT_MODES,
   AI_PROVIDER_CATALOG,
   AtlasError,
+  isControlPlaneRole,
   type AgentMode,
   type MvpAgentMode,
 } from "@atlas/shared";
@@ -36,8 +38,12 @@ import { persistArletosAgentMemory } from "../services/arletos-agent-memory.js";
 import { buildMemoryContext } from "../services/memory-pipeline.js";
 import { resolveCloudIdentity } from "../services/cloud-identity.js";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
-import { canReadDecision, canReadProjectScoped } from "../services/project-access.js";
-import { proposePatch } from "@atlas/code-intelligence";
+import {
+  canReadDecision,
+  canReadProjectScoped,
+  getProjectOwnerId,
+} from "../services/project-access.js";
+import { captureBaseState, proposePatch } from "@atlas/code-intelligence";
 import {
   ENGINEERING_MODE_META,
   patchArtifactSchema,
@@ -382,15 +388,31 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       body.proposePatch === true ||
       Boolean(ENGINEERING_MODE_META[engMode]?.proposesPatch);
 
+    // Stage 5: a patch is created only in a project the caller owns (or as
+    // a Control Plane role), and only from that project's stored workspace
+    // root. The client `workspaceRoot` is never read: it must match the
+    // stored root when supplied.
+    const proposalRoot = authorizedProjectId
+      ? (osStore.getWorkspaceRoot(authorizedProjectId) ?? null)
+      : null;
+    const proposalProjectWritable =
+      authorizedProjectId !== null &&
+      (isControlPlaneRole(user.role) || getProjectOwnerId(authorizedProjectId) === user.id);
+    const proposalRootMatches =
+      proposalRoot !== null &&
+      (!body.workspaceRoot || resolve(body.workspaceRoot) === resolve(proposalRoot));
     if (
       epistemicLabel !== "INSUFFICIENT_EVIDENCE" &&
       shouldPropose &&
       body.workspaceRoot &&
-      authorizedProjectId
+      authorizedProjectId &&
+      proposalProjectWritable &&
+      proposalRootMatches &&
+      proposalRoot
     ) {
       try {
         const proposal = proposePatch({
-          workspaceRoot: body.workspaceRoot,
+          workspaceRoot: proposalRoot,
           mode: engMode,
           userRequest: body.userRequest,
         });
@@ -412,13 +434,16 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
             risk: proposal.risk,
             baseCommit: null,
             targetBranch: null,
-            filesChanged: proposal.filesChanged.map((f) => ({
-              path: f.path,
-              action: f.action,
-              summary: f.summary,
-              unifiedDiff: f.unifiedDiff,
-              afterContent: f.afterContent,
-            })),
+            filesChanged: captureBaseState(
+              proposalRoot,
+              proposal.filesChanged.map((f) => ({
+                path: f.path,
+                action: f.action,
+                summary: f.summary,
+                unifiedDiff: f.unifiedDiff,
+                afterContent: f.afterContent,
+              })),
+            ),
             evidenceIds: [],
             claimIds: [],
             expectedImpact: proposal.expectedImpact,

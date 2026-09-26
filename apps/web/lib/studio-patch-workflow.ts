@@ -46,6 +46,17 @@ export function canVerifyStudioPatch(status: string | null | undefined): boolean
   return status === "APPLIED" || status === "VERIFIED";
 }
 
+/** Same gate as POST /patches/:id/reject (approved D4): only before Apply. */
+export function canRejectStudioPatch(status: string | null | undefined): boolean {
+  return (
+    status === "DRAFT" ||
+    status === "PROPOSED" ||
+    status === "EVALUATED" ||
+    status === "AWAITING_APPROVAL" ||
+    status === "APPROVED"
+  );
+}
+
 /** Same gate as POST /patches/:id/rollback — APPLIED or VERIFIED only. */
 export function canRollbackStudioPatch(status: string | null | undefined): boolean {
   return status === "APPLIED" || status === "VERIFIED";
@@ -80,9 +91,7 @@ export function deskPatchVerifyPath(patch: {
   const auto =
     patch.createdBy === "atlas-auto-remediation" ||
     patch.createdBy === "atlas-truth-remediation" ||
-    Boolean(patch.sourceIssueId) ||
-    (patch.title?.startsWith("AUTO_FIX:") ?? false) ||
-    (patch.title?.startsWith("TRUTH_FIX:") ?? false);
+    Boolean(patch.sourceIssueId);
   return auto
     ? `/api/v1/remediation/drafts/${patch.id}/verify`
     : patchVerifyPath(patch.id);

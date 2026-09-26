@@ -615,3 +615,74 @@ describe("POST /api/v1/agent/runs -- Stage 4 identity and memory boundary", () =
     expect(completed[0]?.onBehalfOfUserId).toBe(ownerA.id);
   });
 });
+
+describe("Stage 5 — /agent/runs patch proposals use only the project's stored workspace", () => {
+  it("never reads a client workspaceRoot that differs from the stored root; the stored root yields a patch with a captured base", async () => {
+    const { mkdtempSync: mk, writeFileSync: wf, rmSync: rm } = await import("node:fs");
+    const stored = mk(join(tmpdir(), "atlas-stage5-agent-stored-"));
+    const foreign = mk(join(tmpdir(), "atlas-stage5-agent-foreign-"));
+    wf(join(stored, "hello.ts"), "export const greeting = 'hello';\n", "utf8");
+    wf(join(foreign, "hello.ts"), "FOREIGN-SERVER-FILE-CONTENT\n", "utf8");
+    const projectId = makeProject(ownerA, "stage5 agent proposal");
+    osStore.setWorkspaceRoot(projectId, stored);
+    seedDecision(projectId, "stage5 agent decision");
+    signInAs(ownerA);
+
+    const foreignRun = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/runs",
+      payload: {
+        userRequest: "hello.ts: change the greeting export comment",
+        projectId,
+        workspaceRoot: foreign,
+        proposePatch: true,
+        engineeringMode: "fix",
+      },
+    });
+    expect(foreignRun.statusCode).toBeLessThan(500);
+    expect(osStore.listPatches(projectId)).toHaveLength(0);
+    expect(foreignRun.body).not.toContain("FOREIGN-SERVER-FILE-CONTENT");
+
+    const storedRun = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/runs",
+      payload: {
+        userRequest: "hello.ts: change the greeting export comment",
+        projectId,
+        workspaceRoot: stored,
+        proposePatch: true,
+        engineeringMode: "fix",
+      },
+    });
+    expect(storedRun.statusCode).toBeLessThan(500);
+    const patches = osStore.listPatches(projectId);
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.filesChanged.every((f) => typeof f.baseSha256 === "string" || f.baseSha256 === null)).toBe(true);
+    expect(JSON.stringify(patches[0])).not.toContain("FOREIGN-SERVER-FILE-CONTENT");
+    rm(stored, { recursive: true, force: true });
+    rm(foreign, { recursive: true, force: true });
+  });
+
+  it("another owner's project never receives a patch from this run", async () => {
+    const { mkdtempSync: mk, writeFileSync: wf, rmSync: rm } = await import("node:fs");
+    const stored = mk(join(tmpdir(), "atlas-stage5-agent-b-"));
+    wf(join(stored, "hello.ts"), "export const greeting = 'hello';\n", "utf8");
+    const projectId = makeProject(ownerB, "stage5 owner B project");
+    osStore.setWorkspaceRoot(projectId, stored);
+    seedDecision(projectId, "owner B decision");
+    signInAs(ownerA);
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/runs",
+      payload: {
+        userRequest: "hello.ts: change the greeting export comment",
+        projectId,
+        workspaceRoot: stored,
+        proposePatch: true,
+        engineeringMode: "fix",
+      },
+    });
+    expect(osStore.listPatches(projectId)).toHaveLength(0);
+    rm(stored, { recursive: true, force: true });
+  });
+});

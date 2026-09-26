@@ -1563,7 +1563,11 @@
     "remediationLine": "REMEDIATION: {result} · FINDING: {finding}",
     "patchVerifyOnly": "PATCH_VERIFY בלבד — הכתיבה תואמת את ה־Patch. זו אינה תוצאת תיקון ממצא.",
     "remediationNotFixed": "REMEDIATION NOT_FIXED — הממצא המקורי עדיין קיים.",
-    "remediationFixed": "REMEDIATION FIXED — הגלאי כבר לא רואה את הממצא המקורי."
+    "remediationFixed": "REMEDIATION FIXED — הגלאי כבר לא רואה את הממצא המקורי.",
+    "reject": "דחייה",
+    "rejectReason": "סיבת הדחייה (חובה)",
+    "rejectedBecause": "נדחה על ידי {by}: {reason}",
+    "approvedBy": "אושר על ידי {by}"
   },
   "gates": {
     "title": "שערי איכות",

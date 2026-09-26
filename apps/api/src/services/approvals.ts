@@ -1,5 +1,6 @@
 import {
   AtlasError,
+  CONTROL_PLANE_SERVICE_ID,
   type ApprovalRequest,
 } from "@atlas/shared";
 import {
@@ -245,7 +246,8 @@ export async function decideApprovalRequest(
   appendUnifiedAuditEntry({
     type: "approval.decided",
     actorId: input.decidedBy,
-    actorKind: "USER",
+    // Stage 5: the Control service principal is not a human user.
+    actorKind: input.decidedBy === CONTROL_PLANE_SERVICE_ID ? "SYSTEM" : "USER",
     reason: input.decisionReason,
     input: {
       approvalId: id,

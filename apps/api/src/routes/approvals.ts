@@ -22,6 +22,23 @@ import {
 } from "../services/atlas-self-governance.js";
 import { requireControlPlaneService } from "../services/governed-lifecycle-handoff.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
+import { appendUnifiedAuditEntry } from "../services/audit-log.js";
+
+/**
+ * Stage 5 (G-10, approved architecture §7.9): human approval of the ArletOS
+ * patch lifecycle (Apply / Rollback of a PatchArtifact) belongs to ArletOS.
+ * The Control service may decide approvals it is responsible for, but not
+ * these. Evidence that it could (and that this enabled Apply) is in the
+ * master register §7.10.
+ */
+const ARLETOS_PATCH_LIFECYCLE_ROUTES = new Set(["code.patch.apply", "code.patch.rollback"]);
+
+function isArletosPatchLifecycleApproval(context: Record<string, unknown> | null | undefined): boolean {
+  if (!context) return false;
+  if (typeof context["patchId"] === "string") return true;
+  const route = context["route"];
+  return typeof route === "string" && ARLETOS_PATCH_LIFECYCLE_ROUTES.has(route);
+}
 
 const listQuerySchema = z.object({
   status: approvalRequestStatusSchema.optional(),
@@ -146,6 +163,28 @@ export async function registerApprovalRoutes(app: FastifyInstance): Promise<void
     const actorId = requireControlPlaneService(request.headers.authorization);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = controlDecideBodySchema.parse(request.body ?? {});
+    const target = await getApprovalRequest(id);
+    if (target && isArletosPatchLifecycleApproval(target.context as Record<string, unknown> | null)) {
+      appendUnifiedAuditEntry({
+        type: "approval.control.decide.denied",
+        actorId,
+        actorKind: "SYSTEM",
+        reason: "ArletOS patch lifecycle approvals are decided inside ArletOS, not by the Control service",
+        input: { approvalId: id, route: target.context?.["route"] ?? null },
+        output: {},
+        policy: `${target.entityType}.${target.action}`,
+        risk: "HIGH",
+        approval: "REJECTED",
+        result: "FAILURE",
+        decision: "DENY",
+        blockedAt: "AUTHORIZATION",
+      });
+      throw new AtlasError(
+        "FORBIDDEN",
+        "ArletOS patch lifecycle approvals are decided inside ArletOS, not by the Control service",
+        { statusCode: 403 },
+      );
+    }
     // Body `decidedBy` is wire-compatible with Control Plane's session
     // principal, but SoD and audit must bind the authenticated SERVICE hop.
     void body.decidedBy;

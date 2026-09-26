@@ -391,7 +391,8 @@ describe("POST /api/v1/engineering/loop/:id/approve -- governed apply (Item 1)",
       baseCommit: null,
       targetBranch: null,
       filesChanged: [
-        { path: "loop-apply-test.txt", action: "add", summary: "add file", afterContent: "hello" },
+        // Stage 5 (D3): a new file, absent when proposed.
+        { path: "loop-apply-test.txt", action: "add", summary: "add file", afterContent: "hello", baseSha256: null },
       ],
       evidenceIds: [],
       claimIds: [],
@@ -609,5 +610,19 @@ describe("GET /api/v1/proof/status", () => {
     // The two namespaced slots really are independent reports, not the
     // same one read twice.
     expect(global.json().report.id).not.toBe(scoped.json().report.id);
+  });
+});
+
+describe("Stage 5 — engineering loop raw workspaceRoot", () => {
+  it("403s a tenant user who supplies a raw workspaceRoot without a project", async () => {
+    getRequestUser.mockReturnValue(signedInUser());
+    const raw = mkdtempSync(join(tmpdir(), "atlas-stage5-loop-raw-"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/engineering/loop",
+      payload: { userRequest: "add a test file", workspaceRoot: raw },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toMatch(/Control Plane only/);
   });
 });

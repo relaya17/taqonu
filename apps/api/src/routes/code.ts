@@ -1,8 +1,9 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   applyPatchSchema,
   approvePatchSchema,
   createPatchSchema,
+  rejectPatchSchema,
   patchArtifactSchema,
   studioWriteFileBodySchema,
   AtlasError,
@@ -10,12 +11,10 @@ import {
   ENGINEERING_AGENT_MODES,
   isControlPlaneRole,
   memorySchema,
-  type AuthUser,
   type EngineeringAgentMode,
   type PatchArtifact,
-  type PatchRisk,
+  type PatchUnderstanding,
 } from "@atlas/shared";
-import type { ToolRisk } from "@atlas/shared";
 import {
   analyzeImpact,
   analyzeRepository,
@@ -23,19 +22,13 @@ import {
   proposePatch,
   rankRisks,
   readWorkspaceFile,
+  captureBaseState,
+  currentFileSha256,
   rollbackPatchFiles,
   searchWorkspaceFiles,
   writeWorkspaceFile,
   moveWorkspaceFile,
 } from "@atlas/code-intelligence";
-import {
-  authorizeEntityAction,
-  bucketForRiskScore,
-  computeActionRiskScore,
-  explainRiskScore,
-  type EntityAction,
-  type EntityAuthorizationDecision,
-} from "@atlas/agent-core";
 import { z } from "zod";
 import { isAgentActorRequest } from "../services/studio-actor.js";
 import { osStore } from "../store/os-store.js";
@@ -67,18 +60,27 @@ import {
 import {
   approvePatchArtifact,
   applyApprovedPatch,
+  assertPatchApplicable,
   assertPatchApprovedForApply,
+  assertRollbackApplicable,
   patchArtifactHash,
+  rejectPatchArtifact,
   resolveApplyWorkspaceRoot,
   verifyGovernedCodePatch,
 } from "../services/patch-write.js";
-import { createApprovalRequest, getApprovalRequest } from "../services/approvals.js";
+import { createApprovalRequest } from "../services/approvals.js";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
 import {
-  runGovernedClaimedExecution,
-  type HelperResult,
-} from "../services/governed-claimed-execution.js";
-import { runLiveHumanDecisionExecution } from "../services/live-human-execution.js";
+  approvalRequiredBody,
+  approvalWorkspaceContext,
+  assertApprovalMatchesPatch,
+  assertApprovalWorkspaceUnchanged,
+  evaluatePatchActionRisk,
+  governedPatchApply,
+  runPatchClaimedExecution,
+  runPatchLiveHumanClaimedExecution,
+  sendPatchHelperResult,
+} from "../services/patch-governance.js";
 import {
   applySecretRemediationToProposal,
   parsePatchRemediationTarget,
@@ -96,290 +98,11 @@ async function assertPatchWrite(
   return await requireSignedInForWrite(app, request);
 }
 
-/**
- * Maps the patch-level `PatchRisk` tier (`LOW|MEDIUM|HIGH|CRITICAL`, set by
- * the proposer / `code-intelligence` risk ranking) onto the entity-policy
- * layer's `ToolRisk` tier (`READ_ONLY|LOW_RISK_WRITE|HIGH_RISK_WRITE|
- * DESTRUCTIVE`) so it can feed `computeActionRiskScore`'s `baseTier`. A code
- * patch apply/rollback is never READ_ONLY (it mutates files on disk), so
- * that tier is intentionally unused here. `HIGH` and `CRITICAL` both map to
- * `DESTRUCTIVE` because `ToolRisk` has no tier above it — the two are still
- * distinguished by whatever `confidence`/`evidenceCount` the patch itself
- * carries, which is the best signal this route has beyond the coarse tier.
- */
-function patchRiskToToolRisk(risk: PatchRisk): ToolRisk {
-  switch (risk) {
-    case "LOW":
-      return "LOW_RISK_WRITE";
-    case "MEDIUM":
-      return "HIGH_RISK_WRITE";
-    case "HIGH":
-    case "CRITICAL":
-      return "DESTRUCTIVE";
-    default:
-      return "DESTRUCTIVE";
-  }
-}
-
-/**
- * Route-level 202 gate only. Does not authorize live execution.
- *
- * `entityApproved` is the patch-status signal for this score:
- *   - apply: `assertPatchApprovedForApply` already proved POST /patches/:id/approve
- *   - rollback: no equivalent patch-status gate, so false
- *
- * A live `ApprovalRequest` is never established by this boolean. Execution
- * goes through `runGovernedClaimedExecution`.
- */
-function evaluatePatchActionRisk(input: {
-  readonly patch: PatchArtifact;
-  readonly entityApproved: boolean;
-}): {
-  readonly entityAuthz: EntityAuthorizationDecision;
-  readonly score: number;
-  readonly bucket: ReturnType<typeof bucketForRiskScore>;
-  readonly explanation: ReturnType<typeof explainRiskScore>;
-} {
-  const entityAuthz = authorizeEntityAction("DOCUMENT", "EXECUTE", {
-    // `AgentMode` (@atlas/shared) has no literal "EXECUTE" value; "WRITE" is
-    // the closest real mode for an action that mutates workspace files.
-    mode: "WRITE",
-    approved: input.entityApproved,
-    writeGateOpen: true,
-  });
-
-  const riskInput = {
-    baseTier: patchRiskToToolRisk(input.patch.risk),
-    confidence: input.patch.confidence,
-    evidenceCount: input.patch.evidenceIds.length,
-    requiresApproval: entityAuthz.decision === "APPROVAL_REQUIRED",
-  };
-  const score = computeActionRiskScore(riskInput);
-  const bucket = bucketForRiskScore(score);
-  const explanation = explainRiskScore(riskInput);
-
-  return { entityAuthz, score, bucket, explanation };
-}
-
-async function assertApprovalMatchesPatch(
-  approvalId: string,
-  patchId: string,
-  route: string,
-): Promise<void> {
-  const approval = await getApprovalRequest(approvalId);
-  const mintedPatch = approval?.context?.patchId;
-  if (typeof mintedPatch === "string" && mintedPatch !== patchId) {
-    throw new AtlasError(
-      "FORBIDDEN",
-      "Approval does not belong to this patch",
-      { statusCode: 403 },
-    );
-  }
-  const mintedRoute = approval?.context?.route;
-  if (typeof mintedRoute === "string" && mintedRoute !== route) {
-    throw new AtlasError(
-      "FORBIDDEN",
-      "Approval does not belong to this action",
-      { statusCode: 403 },
-    );
-  }
-}
-
-async function assertApprovalWorkspaceUnchanged(
-  approvalId: string,
-  projectId: string | null,
-): Promise<void> {
-  if (!projectId) return;
-  const approval = await getApprovalRequest(approvalId);
-  const minted =
-    approval && typeof approval.context?.workspaceRoot === "string"
-      ? resolve(approval.context.workspaceRoot)
-      : null;
-  if (!minted) return;
-  const current = osStore.getWorkspaceRoot(projectId);
-  if (!current || resolve(current) !== minted) {
-    throw new AtlasError(
-      "FORBIDDEN",
-      "Workspace root changed since this approval was minted",
-      { statusCode: 403 },
-    );
-  }
-}
-
-function approvalWorkspaceContext(projectId: string | null): string | null {
-  if (!projectId) return null;
-  return osStore.getWorkspaceRoot(projectId) ?? null;
-}
-
-function approvalRequiredBody(
-  approvalId: string,
-  extras?: { readonly riskScore?: number; readonly riskBucket?: string },
-) {
-  return {
-    status: "APPROVAL_REQUIRED" as const,
-    approvalId,
-    ...(extras?.riskScore !== undefined ? { riskScore: extras.riskScore } : {}),
-    ...(extras?.riskBucket !== undefined ? { riskBucket: extras.riskBucket } : {}),
-    message:
-      "Submit POST /api/v1/approvals/:id/decide to approve, then retry this " +
-      `request with ?approvalId=${approvalId}.`,
-  };
-}
-
-function throwPatchHelperFailure(helper: HelperResult<unknown>): never {
-  const reason = "reason" in helper ? helper.reason : "governed execution failed";
-  if (helper.status === "DENIED" && /not found/i.test(helper.reason)) {
-    throw new AtlasError("NOT_FOUND", helper.reason, { statusCode: 404 });
-  }
-  if (helper.status === "OUTCOME_UNKNOWN" || helper.status === "FINALIZE_INCOMPLETE") {
-    throw new AtlasError("CONFLICT", reason, { statusCode: 409 });
-  }
-  throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
-}
-
-async function runPatchClaimedExecution<T>(input: {
-  readonly user: AuthUser;
-  readonly patch: PatchArtifact;
-  readonly requestId: string;
-  readonly routeLabel: string;
-  readonly approvalRequestId?: string;
-  readonly action: EntityAction;
-  readonly execute: () => T;
-  readonly evidence: (value: T) => string;
-}): Promise<HelperResult<T>> {
-  return runGovernedClaimedExecution({
-    executorId: input.user.id,
-    actor: {
-      kind: "AGENT",
-      agentId: input.user.id,
-      onBehalfOfUserId: input.user.id,
-    },
-    entityType: "DOCUMENT",
-    action: input.action,
-    artifactHash: patchArtifactHash(input.patch),
-    ...(input.approvalRequestId !== undefined
-      ? { approvalRequestId: input.approvalRequestId }
-      : {}),
-    requestId: input.requestId,
-    sourceContext: { origin: "user_message", trustLevel: "trusted" },
-    ...(input.patch.projectId ? { projectId: input.patch.projectId } : {}),
-    routeLabel: input.routeLabel,
-    // Step 4 patch-approval regression fix: the SAME signal
-    // `evaluatePatchActionRisk` already uses for this patch's own risk
-    // classification, now also reaching `dispatchAgentAction`'s own,
-    // previously-blind, internal recheck -- see
-    // `RunGovernedClaimedExecutionInput.confidence`/`evidenceCount` for why
-    // this was missing and what it fixes.
-    confidence: input.patch.confidence,
-    evidenceCount: input.patch.evidenceIds.length,
-    dispatchInput: { patchId: input.patch.id, route: input.routeLabel },
-    executeOnce: async () => {
-      try {
-        const value = input.execute();
-        return {
-          kind: "SUCCESS",
-          value,
-          outputEvidence: input.evidence(value),
-        };
-      } catch (error) {
-        return {
-          kind: "FAILURE",
-          reason: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
-  });
-}
-
-/**
- * CP7.1/CP7.2 HUMAN_ONLY live-human path -- mirrors `runPatchClaimedExecution`
- * exactly, except the claim is established by a live, separately-
- * authenticated human decision (`claim_live_approval_request_as_live_human`,
- * no intermediate APPROVED token) rather than by presenting a previously-
- * decided approval id. `DOCUMENT.EXECUTE` is HIGH_RISK_WRITE tier, which
- * (with the conservative default confidence/evidence this route supplies
- * none of) lands at exactly the HUMAN_ONLY threshold -- so a HIGH/CRITICAL
- * patch's approval can be granted via `/decide` but can never be consumed
- * by the ordinary `?approvalId=` retry (see `agent-dispatch-guard.ts`'s
- * unconditional HUMAN_ONLY block for AGENT-kind actors). This is that
- * action's only executable path.
- */
-async function runPatchLiveHumanClaimedExecution<T>(input: {
-  readonly patch: PatchArtifact;
-  readonly deciderId: string;
-  readonly decisionReason: string;
-  readonly approvalId: string;
-  readonly requestId: string;
-  readonly routeLabel: string;
-  readonly action: EntityAction;
-  readonly execute: () => T;
-  readonly evidence: (value: T) => string;
-}): Promise<HelperResult<T>> {
-  return runLiveHumanDecisionExecution({
-    approvalId: input.approvalId,
-    deciderId: input.deciderId,
-    decisionReason: input.decisionReason,
-    entityType: "DOCUMENT",
-    action: input.action,
-    artifactHash: patchArtifactHash(input.patch),
-    requestId: input.requestId,
-    sourceContext: { origin: "user_message", trustLevel: "trusted" },
-    ...(input.patch.projectId ? { projectId: input.patch.projectId } : {}),
-    routeLabel: input.routeLabel,
-    dispatchInput: { patchId: input.patch.id, route: input.routeLabel },
-    executeOnce: async () => {
-      try {
-        const value = input.execute();
-        return {
-          kind: "SUCCESS",
-          value,
-          outputEvidence: input.evidence(value),
-        };
-      } catch (error) {
-        return {
-          kind: "FAILURE",
-          reason: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
-  });
-}
-
 const decideAndExecuteBody = z.object({
   approvalId: z.string().uuid(),
   decisionReason: z.string().min(1).max(2000),
   workspaceRoot: z.string().min(1).max(1000),
 });
-
-async function sendPatchHelperResult<T>(
-  reply: FastifyReply,
-  helper: HelperResult<T>,
-): Promise<T> {
-  if (helper.status === "EXECUTED") {
-    // Terminal FULFILLED replay has no gate. Do not report a second success
-    // and do not run the callback again.
-    if (helper.gate === undefined) {
-      throw new AtlasError(
-        "FORBIDDEN",
-        helper.approval
-          ? `Approval request ${helper.approval.id} is already finalized`
-          : "approval already finalized",
-        { statusCode: 403 },
-      );
-    }
-    return helper.value;
-  }
-  if (helper.status === "APPROVAL_REQUIRED") {
-    const extras =
-      helper.gate.decision === "APPROVAL_REQUIRED"
-        ? { riskScore: helper.gate.score, riskBucket: helper.gate.bucket }
-        : undefined;
-    return reply.status(202).send(
-      approvalRequiredBody(helper.approvalRequestId, extras),
-    ) as T;
-  }
-  throwPatchHelperFailure(helper);
-}
 
 const analyzeBody = z.object({
   workspaceRoot: z.string().min(1).max(1000),
@@ -1039,6 +762,94 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     const now = new Date().toISOString();
+    // Stage 5 (approved D2): the Understanding is explicit, persisted with
+    // the patch, and gates proposal creation. CONFLICT and insufficient
+    // target understanding block; UNKNOWN proceeds only as an explicit
+    // UNVERIFIED understanding, never as a silent ALLOW.
+    const targets = filesChanged.map((file) => {
+      const baseSha256 = currentFileSha256(workspaceRoot, file.path);
+      const observed = file.action === "add" ? baseSha256 === null : baseSha256 !== null;
+      return { path: file.path, action: file.action, observed, baseSha256 };
+    });
+    const focusUnreadable =
+      Boolean(body.focusPath) && currentFileSha256(workspaceRoot, body.focusPath!) === null;
+    const unobserved = targets.filter((target) => !target.observed);
+    let understandingState: PatchUnderstanding["epistemicState"];
+    let gateReason: string;
+    if (focusUnreadable || unobserved.length > 0) {
+      understandingState = "INSUFFICIENT_EVIDENCE";
+      gateReason = focusUnreadable
+        ? `Focus file ${body.focusPath} could not be read in the workspace.`
+        : `Target state not understood: ${unobserved
+            .map((t) => `${t.path} (${t.action} but the file ${t.baseSha256 === null ? "does not exist" : "already exists"})`)
+            .join(", ")}.`;
+    } else if (guardianEvaluation.verdict === "CONFLICT") {
+      understandingState = "CONFLICTED";
+      gateReason = guardianEvaluation.summary;
+    } else if (guardianEvaluation.verdict === "UNKNOWN") {
+      understandingState = "UNVERIFIED";
+      gateReason =
+        "Targets observed; no project fact confirms or contradicts the request. Proceeding as UNVERIFIED.";
+    } else {
+      understandingState = "OBSERVED";
+      gateReason = "Targets observed and consistent with observed project facts.";
+    }
+    const understanding: PatchUnderstanding = {
+      id: crypto.randomUUID(),
+      createdAt: now,
+      projectId: body.projectId ?? null,
+      workspaceRoot,
+      request: body.userRequest.slice(0, 4000),
+      focusPath: body.focusPath ?? null,
+      targets,
+      repository: guardianEvaluation.repository,
+      guardian: {
+        verdict: guardianEvaluation.verdict,
+        action: guardianEvaluation.action,
+        summary: guardianEvaluation.summary.slice(0, 1000),
+        knowledgeUsed: guardianEvaluation.knowledgeUsed,
+        conflicts: guardianEvaluation.conflicts.length,
+      },
+      memoryIdsUsed: memoryItems.map((item) => item.id).slice(0, 50),
+      epistemicState: understandingState,
+      gate:
+        understandingState === "INSUFFICIENT_EVIDENCE" || understandingState === "CONFLICTED"
+          ? "BLOCKED"
+          : "PROCEED",
+      gateReason: gateReason.slice(0, 1000),
+    };
+    if (understanding.gate === "BLOCKED") {
+      appendUnifiedAuditEntry({
+        type: "code.proposal.blocked",
+        actorId: "CODE_ENGINEER",
+        actorKind: "AGENT",
+        agentId: "CODE_ENGINEER",
+        ownerId: user.id,
+        reason: understanding.gateReason,
+        correlationId: understanding.id,
+        input: { understanding, onBehalfOfUserId: user.id },
+        output: {},
+        policy: "studio.proposal.understanding",
+        risk: proposal.risk,
+        approval: "NOT_REQUIRED",
+        result: "FAILURE",
+        decision: "DENY",
+        blockedAt: "UNDERSTANDING",
+        projectId: body.projectId ?? null,
+      });
+      return reply.status(200).send({
+        patch: null,
+        understanding,
+        analysisGraph: proposal.analysisGraph,
+        evaluationSummary: understanding.gateReason,
+        note: `No patch: understanding is ${understanding.epistemicState}. ${understanding.gateReason}`,
+        memoryUsed: memoryItems.length,
+        memoryCitations: toMemoryCitations(memoryItems),
+        intelligenceKind: "heuristic",
+        modelInvoked: false,
+        guardianEvaluation,
+      });
+    }
     const patch = patchArtifactSchema.parse({
       id: crypto.randomUUID(),
       projectId: body.projectId ?? null,
@@ -1049,20 +860,23 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       risk: proposal.risk,
       baseCommit: null,
       targetBranch: null,
-      filesChanged: filesChanged.map((f) => ({
+      filesChanged: filesChanged.map((f, index) => ({
         path: f.path,
         action: f.action,
         summary: f.summary,
         unifiedDiff: f.unifiedDiff,
         afterContent: f.afterContent,
+        baseSha256: targets[index]!.baseSha256,
       })),
       evidenceIds: [],
       claimIds: [],
       expectedImpact: proposal.expectedImpact,
       tests: proposal.tests,
+      understanding,
       evaluationSummary: [
         proposal.evaluationSummary,
         `Guardian: ${guardianEvaluation.verdict} (${guardianEvaluation.action}).`,
+        `Understanding: ${understanding.epistemicState}.`,
         remediationTarget
           ? `Remediation target ${remediationTarget.findingId} (${remediationTarget.findingType}). PATCH_VERIFY ≠ finding remediation.`
           : null,
@@ -1093,6 +907,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       agentId: "CODE_ENGINEER",
       onBehalfOfUserId: user.id,
       patchId: patch.id,
+      correlationId: patch.id,
+      understandingId: understanding.id,
+      understandingState: understanding.epistemicState,
       mode: patch.mode,
       risk: patch.risk,
       findingId: patch.remediationTarget?.findingId ?? null,
@@ -1107,6 +924,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       intelligenceKind: "heuristic",
       modelInvoked: false,
       guardianEvaluation,
+      understanding,
       note: "Patch proposed by CODE_ENGINEER heuristic (not an LLM). Approve then Apply (ADR-015). Not applied yet. Not Truth.",
     });
   }
@@ -1166,11 +984,26 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
     const user = await assertPatchWrite(app, request, existing);
+    // Stage 5 (G-7): the approver is the authenticated session. A client
+    // `approvedBy` value is ignored.
     return approvePatchArtifact(existing, {
-      approvedBy: body.approvedBy?.trim() || user.email,
+      approvedBy: user.email,
       ...(body.note !== undefined ? { note: body.note } : {}),
       userId: user.id,
     });
+  });
+
+  /** Stage 5 (approved D4): terminal, reasoned, audited rejection. */
+  app.post("/api/v1/code/patches/:id/reject", async (request, reply) => {
+    await requireSignedInForWrite(app, request);
+    const id = (request.params as { id: string }).id;
+    const body = rejectPatchSchema.parse(request.body ?? {});
+    const existing = osStore.getPatch(id);
+    if (!existing) {
+      return reply.status(404).send({ error: { message: "Patch not found" } });
+    }
+    const user = await assertPatchWrite(app, request, existing);
+    return rejectPatchArtifact(existing, { user, reason: body.reason });
   });
 
   app.post("/api/v1/code/patches/:id/apply", async (request, reply) => {
@@ -1185,115 +1018,15 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: { message: "Patch not found" } });
     }
     const user = await assertPatchWrite(app, request, existing);
-
-    // Preserve the existing invariant (403 "approve first") before layering
-    // the new risk-based gate on top — a patch that never went through the
-    // pre-existing Approve step should fail exactly as it did before, not
-    // get routed into a brand-new approval-request round trip instead.
-    assertPatchApprovedForApply(existing);
-
-    const { entityAuthz, score, bucket, explanation } = evaluatePatchActionRisk({
-      patch: existing,
-      entityApproved: true,
-    });
-    if (entityAuthz.decision === "DENIED") {
-      throw new AtlasError("FORBIDDEN", entityAuthz.reason, {
-        statusCode: 403,
-      });
-    }
-
-    // DOCUMENT.EXECUTE's `requiresApproval: true` is unconditional (see
-    // entity-policies.ts; unchanged by this fix, not weakened) and applies
-    // to every bucket, including AUTO/AUTO_LOG -- there is no bucket-based
-    // exemption from it, by design (see the Step 4 architectural audit for
-    // the full policy-layer analysis). Before Step 4, AUTO/AUTO_LOG patches
-    // dodged this gate by dispatching a real filesystem write as a
-    // dishonest "READ" -- that mislabeling is permanently closed and is
-    // never restored here. Step 4 then tried to satisfy the gate at
-    // /approve time by minting a live `ApprovalRequest` and immediately
-    // deciding it with `decidedBy === requestedBy` -- a self-approval,
-    // unconditionally forbidden by the separation-of-duties invariant
-    // enforced in both `live-approval-requests.*` and the real Postgres
-    // RPC (supabase/migrations/20260905230000_atlas_universal_self_
-    // approval_prevention.sql). That self-approval attempt has been
-    // removed from `approvePatchArtifact` (patch-write.ts), not merely
-    // worked around here. There is no existing mechanism that lets the
-    // /approve-time PatchArtifact sign-off (status/approvals[]) honestly
-    // satisfy DOCUMENT.EXECUTE's claim requirement on its own: every
-    // bucket now requires a real, separately-decided `ApprovalRequest`
-    // before applying, exactly like APPROVAL/HUMAN_ONLY always did. This
-    // is a disclosed behavior change -- AUTO/AUTO_LOG patches no longer
-    // apply frictionlessly right after a single approve -- not a silent
-    // regression.
-    if (!query.approvalId) {
-      const approval = await createApprovalRequest({
-        entityType: "DOCUMENT",
-        action: "EXECUTE",
-        requestedBy: user.id,
-        reason: `apply patch ${existing.id} (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
-        artifactHash: patchArtifactHash(existing),
-        context: {
-          route: "code.patch.apply",
-          patchId: existing.id,
-          risk: existing.risk,
-          workspaceRoot: approvalWorkspaceContext(existing.projectId),
-        },
-      });
-      return reply.status(202).send(approvalRequiredBody(approval.id, {
-        riskScore: score,
-        riskBucket: bucket,
-      }));
-    }
-
-    await assertApprovalMatchesPatch(query.approvalId, existing.id, "code.patch.apply");
-    await assertApprovalWorkspaceUnchanged(query.approvalId, existing.projectId);
-
-    const helper = await runPatchClaimedExecution({
+    return governedPatchApply({
+      reply,
+      existing,
       user,
-      patch: existing,
       requestId: request.id,
-      routeLabel: "code.patch.apply.gate",
-      action: "EXECUTE",
-      approvalRequestId: query.approvalId,
-      execute: () =>
-        applyApprovedPatch({
-          existing,
-          user,
-          bodyWorkspaceRoot: body.workspaceRoot ?? null,
-          env: app.atlasEnv,
-        }),
-      evidence: (value) =>
-        JSON.stringify({ status: value.patch.status, applied: value.apply.applied }),
+      bodyWorkspaceRoot: body.workspaceRoot ?? null,
+      approvalId: query.approvalId ?? null,
+      env: app.atlasEnv,
     });
-    const result = await sendPatchHelperResult(reply, helper);
-    if (helper.status !== "EXECUTED") {
-      return result;
-    }
-
-    appendUnifiedAuditEntry({
-      type: "code.patch.applied",
-      actorId: user.id,
-      actorKind: "USER",
-      reason: `${explanation.bucket} (score=${explanation.score}): ${explanation.factors.join("; ")}`,
-      input: {
-        patchId: existing.id,
-        patchRisk: existing.risk,
-        applyWorkspaceRoot: body.workspaceRoot ?? null,
-      },
-      output: { status: result.patch.status, applied: result.apply.applied },
-      policy: "DOCUMENT.EXECUTE",
-      risk: existing.risk,
-      // DOCUMENT.EXECUTE's approval requirement is unconditional for every
-      // bucket -- a successful EXECUTED result is only reachable when a
-      // real ApprovalRequest, decided by an identity other than the
-      // requester, was claimed. "NOT_REQUIRED" is never an accurate value
-      // here.
-      approval: "APPROVED",
-      result: "SUCCESS",
-      projectId: existing.projectId,
-    });
-
-    return result;
   });
 
   app.post("/api/v1/code/patches/:id/verify", async (request, reply) => {
@@ -1322,6 +1055,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       type: "code.patch.verified",
       actorId: user.id,
       actorKind: "USER",
+      correlationId: existing.id,
       reason: [
         verify.summary,
         findingRemediation.summary,
@@ -1383,6 +1117,14 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
 
       await assertApprovalMatchesPatch(body.approvalId, existing.id, "code.patch.apply");
       await assertApprovalWorkspaceUnchanged(body.approvalId, existing.projectId);
+      assertPatchApplicable({
+        patch: existing,
+        workspaceRoot: resolveApplyWorkspaceRoot({
+          projectId: existing.projectId,
+          bodyWorkspaceRoot: body.workspaceRoot,
+        }),
+        actorId: user.id,
+      });
 
       const helper = await runPatchLiveHumanClaimedExecution({
         patch: existing,
@@ -1411,6 +1153,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         type: "code.patch.applied",
         actorId: user.id,
         actorKind: "USER",
+        correlationId: existing.id,
+        causationId: body.approvalId,
         reason: `live-human decision (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
         input: {
           patchId: existing.id,
@@ -1460,6 +1204,13 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    const rollbackRoot = resolveApplyWorkspaceRoot({
+      projectId: existing.projectId,
+      bodyWorkspaceRoot: body.workspaceRoot,
+      requireProjectRoot: Boolean(existing.projectId),
+    });
+    assertRollbackApplicable({ patch: existing, workspaceRoot: rollbackRoot, actorId: user.id });
+
     const needsApprovalRequest = bucket === "APPROVAL" || bucket === "HUMAN_ONLY";
     if (needsApprovalRequest && !query.approvalId) {
       const approval = await createApprovalRequest({
@@ -1471,6 +1222,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         context: {
           route: "code.patch.rollback",
           patchId: existing.id,
+          correlationId: existing.id,
           risk: existing.risk,
           workspaceRoot: approvalWorkspaceContext(existing.projectId),
         },
@@ -1500,6 +1252,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       ...(query.approvalId !== undefined ? { approvalRequestId: query.approvalId } : {}),
       execute: () => {
         // Patched-path restore only — see rollbackPatchFiles contract.
+        // Stage 5 (D3): re-check right before writing (TOCTOU).
+        assertRollbackApplicable({ patch: existing, workspaceRoot, actorId: user.id });
         const restored = rollbackPatchFiles(workspaceRoot, existing.rollbackSnapshot);
         const now = new Date().toISOString();
         const patch = patchArtifactSchema.parse({
@@ -1512,6 +1266,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         osStore.appendAudit({
           type: "code.patch.rolled_back",
           patchId: id,
+          correlationId: id,
           at: now,
           by: user.id,
         });
@@ -1530,6 +1285,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       type: "code.patch.rolled_back",
       actorId: user.id,
       actorKind: "USER",
+      correlationId: existing.id,
+      ...(query.approvalId !== undefined ? { causationId: query.approvalId } : {}),
       reason: `${explanation.bucket} (score=${explanation.score}): ${explanation.factors.join("; ")}`,
       input: {
         patchId: existing.id,
@@ -1581,6 +1338,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       });
       await assertApprovalMatchesPatch(body.approvalId, existing.id, "code.patch.rollback");
       await assertApprovalWorkspaceUnchanged(body.approvalId, existing.projectId);
+      assertRollbackApplicable({ patch: existing, workspaceRoot, actorId: user.id });
 
       const helper = await runPatchLiveHumanClaimedExecution({
         patch: existing,
@@ -1591,6 +1349,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         routeLabel: "code.patch.rollback.live-human",
         action: "EXECUTE",
         execute: () => {
+          assertRollbackApplicable({ patch: existing, workspaceRoot, actorId: user.id });
           const restored = rollbackPatchFiles(workspaceRoot, existing.rollbackSnapshot);
           const now = new Date().toISOString();
           const patch = patchArtifactSchema.parse({
@@ -1603,6 +1362,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           osStore.appendAudit({
             type: "code.patch.rolled_back",
             patchId: id,
+            correlationId: id,
             at: now,
             by: user.id,
           });
@@ -1621,6 +1381,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         type: "code.patch.rolled_back",
         actorId: user.id,
         actorKind: "USER",
+        correlationId: existing.id,
+        causationId: body.approvalId,
         reason: `live-human decision (${explanation.bucket}, score=${explanation.score}): ${explanation.factors.join("; ")}`,
         input: {
           patchId: existing.id,
@@ -1704,6 +1466,32 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
     await assertProjectWriteAccess(app, request, body.projectId);
 
+    // Stage 5 (D4): a correction references the REJECTED patch it replaces.
+    if (body.supersedesPatchId) {
+      const rejected = osStore.getPatch(body.supersedesPatchId);
+      if (!rejected || rejected.projectId !== body.projectId) {
+        throw new AtlasError("VALIDATION_ERROR", "Superseded patch not found in this project", {
+          statusCode: 400,
+        });
+      }
+      if (rejected.status !== "REJECTED") {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "Only a REJECTED patch can be superseded by a correction",
+          { statusCode: 409 },
+        );
+      }
+    }
+
+    // Stage 5 (D3): the base state is captured by the server from the
+    // project's workspace, never taken from the client. Without a linked
+    // workspace the base stays unknown and Apply fails closed.
+    const createRoot = osStore.getWorkspaceRoot(body.projectId);
+    const filesChanged =
+      createRoot && existsSync(resolve(createRoot))
+        ? captureBaseState(resolve(createRoot), body.filesChanged)
+        : body.filesChanged;
+
     const evidenceIds = body.evidenceIds ?? [];
     for (const evidenceId of evidenceIds) {
       const record = osStore.findEvidenceById(evidenceId);
@@ -1733,8 +1521,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       risk: body.risk ?? "MEDIUM",
       baseCommit: body.baseCommit ?? null,
       targetBranch: body.targetBranch ?? null,
-      filesChanged: body.filesChanged,
+      filesChanged,
       evidenceIds,
+      ...(body.supersedesPatchId ? { supersedesPatchId: body.supersedesPatchId } : {}),
       claimIds: [],
       expectedImpact: body.expectedImpact ?? "",
       tests: body.tests ?? [],
@@ -1760,6 +1549,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       agentId: null,
       onBehalfOfUserId: user.id,
       patchId: patch.id,
+      correlationId: patch.id,
+      supersedesPatchId: patch.supersedesPatchId ?? null,
       projectId: patch.projectId ?? null,
       at: new Date().toISOString(),
     });

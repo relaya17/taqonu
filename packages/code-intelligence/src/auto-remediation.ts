@@ -63,11 +63,10 @@ export function isAutoApplyEligibleIssue(issue: EngineeringIssue): boolean {
 export function isAutoApplyEligiblePatch(patch: PatchArtifact): boolean {
   return (
     patch.risk === "LOW" &&
+    // Stage 5 (G-2): server-set provenance only; the title is presentation.
     (patch.createdBy === "atlas-auto-remediation" ||
       patch.createdBy === "atlas-truth-remediation" ||
-      Boolean(patch.sourceIssueId) ||
-      patch.title.startsWith("AUTO_FIX:") ||
-      patch.title.startsWith("TRUTH_FIX:")) &&
+      Boolean(patch.sourceIssueId)) &&
     patch.status !== "APPLIED" &&
     patch.status !== "ROLLED_BACK" &&
     patch.status !== "REJECTED"

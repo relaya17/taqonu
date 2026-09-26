@@ -90,7 +90,6 @@ export function PatchesPanel({ embedded = false }: { embedded?: boolean }) {
   const approve = useMutation({
     mutationFn: (id: string) =>
       apiPost(`/api/v1/code/patches/${id}/approve`, {
-        approvedBy: "human",
         note: "UI approve",
       }),
     onSuccess: async () => {

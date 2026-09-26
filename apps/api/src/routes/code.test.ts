@@ -90,6 +90,8 @@ function makePatch(overrides: Partial<PatchArtifact> = {}): PatchArtifact {
         action: "modify",
         summary: "update test file",
         afterContent: "modified content",
+        // Stage 5 (D3): proposed against the fixture's "original content".
+        baseSha256: "bf573149b23303cac63c2a359b53760d919770c5d070047e76de42e2184f1046",
       },
     ],
     evidenceIds: [],
@@ -282,6 +284,7 @@ describe("POST /api/v1/code/patches/:id/apply", () => {
           action: "add",
           summary: "other",
           afterContent: "other",
+          baseSha256: null,
         },
       ],
     });
@@ -662,6 +665,9 @@ describe("POST /api/v1/code/patches/:id/rollback", async () => {
   });
 
   it("404s when the apply-flow approvalId is unknown, and 403s when it is still PENDING", async () => {
+    // The workspace holds what Apply wrote, as after a real Apply (Stage 5
+    // rollback preflight refuses to overwrite anything else).
+    writeFileSync(join(workspaceRoot, "test.txt"), "modified content", "utf8");
     const patch = makePatch({
       risk: "LOW",
       status: "APPLIED",
@@ -1061,7 +1067,10 @@ describe("POST /api/v1/code/patches/:id/verify and Apply memory write-back", () 
     expect(readFileSync(join(workspaceRoot, "test.txt"), "utf8")).toBe("original content");
   });
 
-  it("subsequent ask-agent retrieval includes the memory produced by Apply", async () => {
+  // Stage 5 (G-5): CODE_ENGINEER is a Fabric identity and reads no memory
+  // (Stage 4 fail-closed contract). The Apply memory is written, but the
+  // next proposal does not consume it. The title states that behavior.
+  it("Apply writes an applied-result memory that the next CODE_ENGINEER proposal does not read (Fabric memory stays closed)", async () => {
     const projectId = makeOwnedProject();
     const owner = testUser();
     const patch = makePatch({

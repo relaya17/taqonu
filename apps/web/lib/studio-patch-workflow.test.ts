@@ -49,6 +49,14 @@ describe("studio patch workflow gates", () => {
         title: "linked finding",
       }),
     ).toBe("/api/v1/remediation/drafts/draft-2/verify");
+    // Stage 5 (G-2): a title prefix is presentation text, not provenance.
+    expect(
+      deskPatchVerifyPath({
+        id: "human-1",
+        createdBy: "11111111-1111-4111-8111-111111111111",
+        title: "AUTO_FIX: typed by a human",
+      }),
+    ).toBe("/api/v1/code/patches/human-1/verify");
   });
 
   it("allows Rollback only after Apply, never from PROPOSED", () => {

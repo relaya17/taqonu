@@ -1,23 +1,79 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   AtlasError,
   applyPatchSchema,
   approvePatchSchema,
+  isControlPlaneRole,
   uuidSchema,
+  type AuthUser,
+  type PatchArtifact,
 } from "@atlas/shared";
 import { z } from "zod";
 import { osStore } from "../store/os-store.js";
 import { firstActiveEffectiveKillSwitch } from "../services/kill-switch-runtime.js";
-import { requireSignedInForWrite } from "../middleware/auth-guards.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
+import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
+import {
+  assertEntityReadAccess,
+  assertProjectWriteAccess,
+  canReadProjectScoped,
+  getProjectOwnerId,
+} from "../services/project-access.js";
+import { governedPatchApply } from "../services/patch-governance.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
 import {
   approvePatchArtifact,
-  applyApprovedPatch,
   assertPatchApprovedForApply,
   isAutoRemediationDraft,
 } from "../services/patch-write.js";
+
+/**
+ * Stage 5 (G-1): every remediation draft route uses the same project scope
+ * as the governed Studio patch routes (`/code/patches/*`). A draft in another
+ * owner's project is reported as not found, so its existence is not
+ * revealed.
+ */
+async function loadDraftForRead(
+  app: FastifyInstance,
+  request: FastifyRequest,
+  id: string,
+): Promise<{ draft: PatchArtifact; user: AuthUser } | null> {
+  const user = await requireUser(app, request);
+  const draft = osStore.getPatch(id);
+  if (!draft || !isAutoRemediationDraft(draft)) return null;
+  if (!canReadProjectScoped(user, draft.projectId)) return null;
+  await assertEntityReadAccess(app, request, draft.projectId);
+  return { draft, user };
+}
+
+async function loadDraftForWrite(
+  app: FastifyInstance,
+  request: FastifyRequest,
+  id: string,
+): Promise<{ draft: PatchArtifact; user: AuthUser } | null> {
+  const signedIn = await requireSignedInForWrite(app, request);
+  const draft = osStore.getPatch(id);
+  if (!draft || !isAutoRemediationDraft(draft)) return null;
+  if (!canReadProjectScoped(signedIn, draft.projectId)) return null;
+  const user = draft.projectId
+    ? await assertProjectWriteAccess(app, request, draft.projectId)
+    : signedIn;
+  return { draft, user };
+}
+
+function draftNotFound(reply: { status: (code: number) => { send: (body: unknown) => unknown } }) {
+  return reply.status(404).send({
+    error: { code: "NOT_FOUND", message: "Remediation draft not found" },
+  });
+}
+
+/** Drafts the caller may write: own projects, unowned projects, or any as a Control Plane role. */
+function canWriteDraftProject(user: AuthUser, projectId: string | null): boolean {
+  if (!projectId) return isControlPlaneRole(user.role);
+  if (user.role === "admin" || isControlPlaneRole(user.role)) return true;
+  const owner = getProjectOwnerId(projectId);
+  return owner === user.id;
+}
 import {
   autoApplyLowRemediations,
   proposeTruthFindingRemediation,
@@ -99,15 +155,20 @@ export async function registerRemediationRoutes(
   app: FastifyInstance,
 ): Promise<void> {
   app.get("/api/v1/remediation/drafts", async (request) => {
+    const user = await requireUser(app, request);
     const q = z
       .object({
         projectId: uuidSchema.optional(),
         status: z.string().max(40).optional(),
       })
       .parse(request.query ?? {});
+    if (q.projectId) {
+      await assertEntityReadAccess(app, request, q.projectId);
+    }
     let items = osStore
       .listPatches(q.projectId)
-      .filter(isAutoRemediationDraft);
+      .filter(isAutoRemediationDraft)
+      .filter((p) => canReadProjectScoped(user, p.projectId));
     if (q.status) {
       items = items.filter((p) => p.status === q.status);
     }
@@ -123,45 +184,43 @@ export async function registerRemediationRoutes(
 
   app.get("/api/v1/remediation/drafts/:id", async (request, reply) => {
     const id = z.object({ id: uuidSchema }).parse(request.params).id;
-    const patch = osStore.getPatch(id);
-    if (!patch || !isAutoRemediationDraft(patch)) {
-      return reply.status(404).send({
-        error: { code: "NOT_FOUND", message: "Remediation draft not found" },
-      });
-    }
-    return patch;
+    const loaded = await loadDraftForRead(app, request, id);
+    if (!loaded) return draftNotFound(reply);
+    return loaded.draft;
   });
 
   app.post(
     "/api/v1/remediation/drafts/:id/approve",
     async (request, reply) => {
-      const user = await requireSignedInForWrite(app, request);
       const id = z.object({ id: uuidSchema }).parse(request.params).id;
       const body = approvePatchSchema.parse(request.body ?? {});
-      const existing = osStore.getPatch(id);
-      if (!existing || !isAutoRemediationDraft(existing)) {
-        return reply.status(404).send({
-          error: { code: "NOT_FOUND", message: "Remediation draft not found" },
-        });
-      }
-      return approvePatchArtifact(existing, {
-        approvedBy: body.approvedBy?.trim() || user.email,
+      const loaded = await loadDraftForWrite(app, request, id);
+      if (!loaded) return draftNotFound(reply);
+      // Stage 5 (G-7): approver identity comes from the session only.
+      return approvePatchArtifact(loaded.draft, {
+        approvedBy: loaded.user.email,
         ...(body.note !== undefined ? { note: body.note } : {}),
-        userId: user.id,
+        userId: loaded.user.id,
       });
     },
   );
 
+  /**
+   * Stage 5 (G-1/G-2/SoD): a remediation draft applies through the same
+   * governed Apply as a Studio patch (`governedPatchApply`): 202 with a live
+   * approval request first, then `?approvalId=` once a different identity
+   * decided it. The route keeps its own draft-only checks (LOW/MEDIUM only,
+   * kill switch, entity policy).
+   */
   app.post("/api/v1/remediation/drafts/:id/apply", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
     const id = z.object({ id: uuidSchema }).parse(request.params).id;
     const body = applyPatchSchema.parse(request.body ?? {});
-    const existing = osStore.getPatch(id);
-    if (!existing || !isAutoRemediationDraft(existing)) {
-      return reply.status(404).send({
-        error: { code: "NOT_FOUND", message: "Remediation draft not found" },
-      });
-    }
+    const query = z
+      .object({ approvalId: z.string().uuid().optional() })
+      .parse(request.query ?? {});
+    const loaded = await loadDraftForWrite(app, request, id);
+    if (!loaded) return draftNotFound(reply);
+    const { draft: existing, user } = loaded;
     if (existing.risk === "HIGH" || existing.risk === "CRITICAL") {
       throw new AtlasError(
         "FORBIDDEN",
@@ -169,14 +228,6 @@ export async function registerRemediationRoutes(
         { statusCode: 403 },
       );
     }
-
-    // ENTITY-LEVEL gate, independent of the WRITE-role check above:
-    // `assertPatchApprovedForApply` is the same pre-existing "a human
-    // already approved this exact patch" signal used by
-    // `apps/api/src/routes/code.ts`'s `/code/patches/:id/apply`, so
-    // `approved: true` reflects a real, already-established sign-off
-    // rather than being manufactured here. Safe/idempotent to call before
-    // `applyApprovedPatch` also calls it internally.
     assertPatchApprovedForApply(existing);
     assertRemediationNotKillSwitched({
       entityType: "DOCUMENT",
@@ -194,32 +245,36 @@ export async function registerRemediationRoutes(
       projectId: existing.projectId,
       input: { patchId: existing.id },
     });
-
-    return applyApprovedPatch({
+    if (!existing.projectId) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "AUTO_FIX apply requires a patch with projectId and an explicit workspaceRoot",
+        { statusCode: 400 },
+      );
+    }
+    return governedPatchApply({
+      reply,
       existing,
       user,
+      requestId: request.id,
       bodyWorkspaceRoot: body.workspaceRoot ?? null,
-      requireProjectRoot: true,
+      approvalId: query.approvalId ?? null,
       env: app.atlasEnv,
+      routeLabel: "remediation.drafts.apply.gate",
     });
   });
 
   app.post("/api/v1/remediation/drafts/:id/verify", async (request, reply) => {
-    const user = await requireSignedInForWrite(app, request);
     const id = z.object({ id: uuidSchema }).parse(request.params).id;
     const body = z
       .object({ workspaceRoot: z.string().min(1).max(1000).optional() })
       .parse(request.body ?? {});
-    const existing = osStore.getPatch(id);
-    if (!existing || !isAutoRemediationDraft(existing)) {
-      return reply.status(404).send({
-        error: { code: "NOT_FOUND", message: "Remediation draft not found" },
-      });
-    }
+    const loaded = await loadDraftForWrite(app, request, id);
+    if (!loaded) return draftNotFound(reply);
     return verifyAppliedRemediation({
-      patch: existing,
+      patch: loaded.draft,
       workspaceRoot: body.workspaceRoot ?? null,
-      userId: user.id,
+      userId: loaded.user.id,
     });
   });
 
@@ -330,9 +385,14 @@ export async function registerRemediationRoutes(
       },
     });
 
+    if (body.projectId) {
+      await assertProjectWriteAccess(app, request, body.projectId);
+    }
+    // Stage 5 (G-1): only drafts in projects the caller may write.
     let patches = osStore
       .listPatches(body.projectId ?? undefined)
       .filter(isAutoRemediationDraft)
+      .filter((p) => canWriteDraftProject(user, p.projectId))
       .filter(isAutoApplyEligiblePatch)
       .filter(
         (p) =>

@@ -4,6 +4,7 @@ import {
 } from "@atlas/shared";
 import { analyzeImpact } from "./impact.js";
 import { analyzeRepository, findFilesByKeyword, readTextFile } from "./analyze.js";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -332,4 +333,144 @@ export function rollbackPatchFiles(
     restored.push(rel);
   }
   return restored;
+}
+
+
+/* ------------------------------------------------------------------------ */
+/* Stage 5 (approved D3): base-state capture and stale-write protection.     */
+/* ------------------------------------------------------------------------ */
+
+export function sha256Text(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+function unsafeRelPath(rel: string): boolean {
+  return rel.includes("..") || rel.startsWith("/") || /^[A-Za-z]:/.test(rel);
+}
+
+/** SHA-256 of a workspace file, or `null` when it does not exist. */
+export function currentFileSha256(workspaceRoot: string, relPath: string): string | null {
+  const root = resolve(workspaceRoot);
+  const rel = safeRelPath(relPath);
+  if (unsafeRelPath(rel)) return null;
+  const full = join(root, rel);
+  if (!full.startsWith(root) || !existsSync(full)) return null;
+  return sha256Text(readFileSync(full, "utf8"));
+}
+
+/**
+ * Record the base state of every target file at patch creation time.
+ * `baseSha256: null` means the path did not exist.
+ */
+export function captureBaseState<T extends { path: string }>(
+  workspaceRoot: string,
+  files: readonly T[],
+): Array<T & { baseSha256: string | null }> {
+  return files.map((file) => ({
+    ...file,
+    baseSha256: currentFileSha256(workspaceRoot, file.path),
+  }));
+}
+
+export interface PatchStateConflict {
+  readonly path: string;
+  readonly reason: string;
+}
+
+/**
+ * Apply preflight. Nothing is written when any conflict is returned, so a
+ * patch is applied completely or not at all:
+ * - unsafe path, or add/modify without content → invalid
+ * - no recorded base state (legacy patch) → fail closed
+ * - `add` over an existing file → create never replaces
+ * - `delete` of a path that did not exist at proposal time → invalid
+ * - current file differs from the recorded base → changed since proposal
+ */
+export function checkPatchApplicable(
+  workspaceRoot: string,
+  files: readonly {
+    path: string;
+    action: "add" | "modify" | "delete";
+    afterContent?: string | undefined;
+    baseSha256?: string | null | undefined;
+  }[],
+): PatchStateConflict[] {
+  const conflicts: PatchStateConflict[] = [];
+  for (const file of files) {
+    const rel = safeRelPath(file.path);
+    if (unsafeRelPath(rel)) {
+      conflicts.push({ path: rel, reason: "unsafe path" });
+      continue;
+    }
+    if (file.action !== "delete" && file.afterContent === undefined) {
+      conflicts.push({ path: rel, reason: "no content to write" });
+      continue;
+    }
+    if (file.baseSha256 === undefined) {
+      conflicts.push({
+        path: rel,
+        reason: "no recorded base state; propose the change again",
+      });
+      continue;
+    }
+    if (file.action === "add" && file.baseSha256 !== null) {
+      conflicts.push({ path: rel, reason: "create would replace an existing file" });
+      continue;
+    }
+    if (file.action === "delete" && file.baseSha256 === null) {
+      conflicts.push({ path: rel, reason: "delete target did not exist" });
+      continue;
+    }
+    const current = currentFileSha256(workspaceRoot, rel);
+    if (current !== file.baseSha256) {
+      conflicts.push({
+        path: rel,
+        reason:
+          current === null
+            ? "file was removed since the patch was proposed"
+            : file.baseSha256 === null
+              ? "file was created since the patch was proposed"
+              : "file changed since the patch was proposed",
+      });
+    }
+  }
+  return conflicts;
+}
+
+/**
+ * Rollback preflight: every patched path must still be exactly what Apply
+ * wrote (or absent, for a delete). Anything else is a later change that a
+ * rollback must not overwrite.
+ */
+export function checkRollbackApplicable(
+  workspaceRoot: string,
+  files: readonly {
+    path: string;
+    action: "add" | "modify" | "delete";
+    afterContent?: string | undefined;
+  }[],
+  snapshot: readonly { path: string; previousContent: string | null }[],
+): PatchStateConflict[] {
+  const conflicts: PatchStateConflict[] = [];
+  for (const item of snapshot) {
+    const rel = safeRelPath(item.path);
+    if (unsafeRelPath(rel)) {
+      conflicts.push({ path: rel, reason: "unsafe path" });
+      continue;
+    }
+    const change = files.find((file) => safeRelPath(file.path) === rel);
+    if (!change) {
+      conflicts.push({ path: rel, reason: "snapshot path is not part of the patch" });
+      continue;
+    }
+    const expected =
+      change.action === "delete" || change.afterContent === undefined
+        ? null
+        : sha256Text(change.afterContent);
+    const current = currentFileSha256(workspaceRoot, rel);
+    if (current !== expected) {
+      conflicts.push({ path: rel, reason: "file changed since the patch was applied" });
+    }
+  }
+  return conflicts;
 }

@@ -1563,7 +1563,11 @@
     "remediationLine": "REMEDIATION: {result} · FINDING: {finding}",
     "patchVerifyOnly": "PATCH_VERIFY فقط — الكتابة طابقت الـ Patch. هذا ليس نتيجة معالجة للملاحظة.",
     "remediationNotFixed": "REMEDIATION NOT_FIXED — الملاحظة الأصلية ما زالت موجودة.",
-    "remediationFixed": "REMEDIATION FIXED — الكاشف لم يعد يرى الملاحظة الأصلية."
+    "remediationFixed": "REMEDIATION FIXED — الكاشف لم يعد يرى الملاحظة الأصلية.",
+    "reject": "رفض",
+    "rejectReason": "سبب الرفض (مطلوب)",
+    "rejectedBecause": "رفضه {by}: {reason}",
+    "approvedBy": "وافق عليه {by}"
   },
   "gates": {
     "title": "بوابات الجودة",

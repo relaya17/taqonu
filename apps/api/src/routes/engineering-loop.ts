@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   AtlasError,
+  isControlPlaneRole,
   approveEngineeringLoopSchema,
   atlasProofReportSchema,
   classifyActionRequestSchema,
@@ -15,6 +16,7 @@ import {
   uuidSchema,
 } from "@atlas/shared";
 import { authorizeEntityAction } from "@atlas/agent-core";
+import { captureBaseState } from "@atlas/code-intelligence";
 import {
   classifyAction,
   compareSuiteRuns,
@@ -100,6 +102,15 @@ export async function registerEngineeringLoopRoutes(
       throw new AtlasError("FORBIDDEN", reason, { statusCode: 403 });
     }
 
+    // Stage 5: a raw client workspaceRoot (no project) is Control Plane
+    // only, the same rule as `/code/analyze` and `/code/patch`.
+    if (!body.projectId && body.workspaceRoot && !isControlPlaneRole(user.role)) {
+      throw new AtlasError(
+        "FORBIDDEN",
+        "Engineering loop on a raw workspaceRoot is Control Plane only. Use a project you own.",
+        { statusCode: 403 },
+      );
+    }
     const storedRoot = body.projectId
       ? osStore.getWorkspaceRoot(body.projectId)
       : null;
@@ -144,17 +155,21 @@ export async function registerEngineeringLoopRoutes(
           risk: proposal.risk,
           baseCommit: null,
           targetBranch: null,
-          filesChanged: proposal.filesChanged.map((f) => ({
-            path: f.path,
-            action: f.action,
-            summary: f.summary,
-            ...(f.unifiedDiff !== undefined
-              ? { unifiedDiff: f.unifiedDiff }
-              : {}),
-            ...(f.afterContent !== undefined
-              ? { afterContent: f.afterContent }
-              : {}),
-          })),
+          // Stage 5 (D3): base state captured from the loop workspace.
+          filesChanged: captureBaseState(
+            workspaceRoot,
+            proposal.filesChanged.map((f) => ({
+              path: f.path,
+              action: f.action,
+              summary: f.summary,
+              ...(f.unifiedDiff !== undefined
+                ? { unifiedDiff: f.unifiedDiff }
+                : {}),
+              ...(f.afterContent !== undefined
+                ? { afterContent: f.afterContent }
+                : {}),
+            })),
+          ),
           evidenceIds: [],
           claimIds: [],
           expectedImpact: proposal.expectedImpact,

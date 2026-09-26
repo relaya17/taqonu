@@ -20,6 +20,7 @@ import {
   readWorkspaceFile,
   resolveUnderWorkspace,
   type WorkspaceTreeNode,
+  captureBaseState,
 } from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
 import { commitMemory } from "./memory-pipeline.js";
@@ -281,7 +282,8 @@ export function buildClonePatch(input: {
     risk: isWhole ? "HIGH" : "MEDIUM",
     baseCommit: null,
     targetBranch: null,
-    filesChanged,
+    // Stage 5 (D3): base state of each target in the destination workspace.
+    filesChanged: captureBaseState(input.workspaceRoot, filesChanged),
     evidenceIds: [],
     claimIds: [],
     expectedImpact: `Copy ${filesChanged.length} file(s) from exemplar ${input.exemplar.slug}.`,

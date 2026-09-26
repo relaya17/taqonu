@@ -11,6 +11,7 @@ import {
   STUDIO_PATCH_STEPS,
   canApplyStudioPatch,
   canApproveStudioPatch,
+  canRejectStudioPatch,
   canRollbackStudioPatch,
   canVerifyStudioPatch,
   nextStudioPatchStep,
@@ -42,6 +43,7 @@ interface PatchItem {
     afterContent?: string;
   }>;
   approvals: Array<{ by: string; at: string }>;
+  rejection?: { by: string; at: string; reason: string } | null;
 }
 
 /**
@@ -107,8 +109,8 @@ export function StudioPatchWorkflow({
 
   const approve = useMutation({
     mutationFn: (id: string) =>
+      // Stage 5: the approver is the signed-in session (server-derived).
       apiPost(`/api/v1/code/patches/${id}/approve`, {
-        approvedBy: "human",
         note: "Studio approve",
       }),
     onSuccess: async () => {
@@ -202,6 +204,16 @@ export function StudioPatchWorkflow({
     },
   });
 
+  const [rejectReason, setRejectReason] = useState("");
+  const reject = useMutation({
+    mutationFn: (id: string) =>
+      apiPost(`/api/v1/code/patches/${id}/reject`, { reason: rejectReason.trim() }),
+    onSuccess: async () => {
+      setRejectReason("");
+      await queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
+    },
+  });
+
   const verify = useMutation({
     mutationFn: async (id: string) => {
       const result = await apiPost<{
@@ -234,8 +246,10 @@ export function StudioPatchWorkflow({
     apply.isPending ||
     verify.isPending ||
     rollback.isPending ||
+    reject.isPending ||
     decide.isPending;
-  const actionError = approve.error || apply.error || verify.error || rollback.error;
+  const actionError =
+    approve.error || apply.error || verify.error || rollback.error || reject.error;
 
   return (
     <Box
@@ -335,6 +349,21 @@ export function StudioPatchWorkflow({
             <Typography variant="body2" sx={{ mt: 0.5, color: "#DCDDE1" }}>
               {focused.expectedImpact}
             </Typography>
+          ) : null}
+          {focused.approvals.length > 0 ? (
+            <Typography variant="caption" display="block" sx={{ mt: 0.5, color: "#8B9099" }}>
+              {tPatches("approvedBy", {
+                by: focused.approvals[focused.approvals.length - 1]!.by,
+              })}
+            </Typography>
+          ) : null}
+          {focused.rejection ? (
+            <Alert severity="warning" sx={{ mt: 1 }}>
+              {tPatches("rejectedBecause", {
+                by: focused.rejection.by,
+                reason: focused.rejection.reason,
+              })}
+            </Alert>
           ) : null}
           {focused.evaluationSummary ? (
             <Typography variant="caption" display="block" sx={{ mt: 0.5, color: "#8B9099" }}>
@@ -468,6 +497,25 @@ export function StudioPatchWorkflow({
                 ? tPatches("retryRollback")
                 : tPatches("rollback")}
             </Button>
+            {canRejectStudioPatch(focused.status) ? (
+              <>
+                <TextField
+                  size="small"
+                  label={tPatches("rejectReason")}
+                  value={rejectReason}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  disabled={busy || rejectReason.trim().length === 0}
+                  onClick={() => reject.mutate(focused.id)}
+                >
+                  {tPatches("reject")}
+                </Button>
+              </>
+            ) : null}
             <Button component={Link} href="/patches" size="small" variant="text">
               {t("openPatches")}
             </Button>

@@ -13,7 +13,11 @@ import { redactSecrets } from "@atlas/agent-core";
 import type { MemoryStoreEnv } from "@atlas/database";
 import {
   applyPatchFiles,
+  checkPatchApplicable,
+  checkRollbackApplicable,
+  rollbackPatchFiles,
   verifyRemediationApply,
+  type PatchStateConflict,
   type RemediationVerifyResult,
 } from "@atlas/code-intelligence";
 import { osStore } from "../store/os-store.js";
@@ -23,6 +27,7 @@ import { atlasMetrics } from "../routes/metrics.js";
 import { appendOracleAudit } from "./admin-oracle-digest.js";
 import { computeArtifactHash } from "./governed-execution.js";
 import { evaluateFindingRemediation } from "./patch-remediation-truth.js";
+import { appendUnifiedAuditEntry } from "./audit-log.js";
 
 /**
  * Step 4 Decision A. Moved here (from `routes/code.ts`, which still
@@ -47,14 +52,152 @@ export function patchArtifactHash(patch: PatchArtifact): string {
   );
 }
 
+/**
+ * Stage 5 (G-2): remediation provenance is decided only by server-set fields.
+ * `createdBy` is always set by the server (a human-submitted patch carries
+ * the submitter's user id) and `sourceIssueId` is never accepted from a
+ * client. The title is caller-controlled presentation text and no longer
+ * selects a code path.
+ */
+export const REMEDIATION_DRAFT_CREATORS = [
+  "atlas-auto-remediation",
+  "atlas-truth-remediation",
+] as const;
+
 export function isAutoRemediationDraft(patch: PatchArtifact): boolean {
   return (
-    patch.createdBy === "atlas-auto-remediation" ||
-    patch.createdBy === "atlas-truth-remediation" ||
-    Boolean(patch.sourceIssueId) ||
-    patch.title.startsWith("AUTO_FIX:") ||
-    patch.title.startsWith("TRUTH_FIX:")
+    (REMEDIATION_DRAFT_CREATORS as readonly string[]).includes(patch.createdBy) ||
+    Boolean(patch.sourceIssueId)
   );
+}
+
+/** Stage 5 (D4): statuses from which a patch may still be rejected. */
+const REJECTABLE_STATUSES = new Set([
+  "DRAFT",
+  "PROPOSED",
+  "EVALUATED",
+  "AWAITING_APPROVAL",
+  "APPROVED",
+]);
+
+function conflictSummary(conflicts: readonly PatchStateConflict[]): string {
+  return conflicts.map((c) => `${c.path}: ${c.reason}`).join("; ").slice(0, 1500);
+}
+
+/**
+ * Stage 5 (D3/G-3/G-6): refuse a patch whose target files no longer match
+ * the state it was proposed against. Nothing is written. The refusal is
+ * audited so the conflict is part of the evidence chain.
+ */
+export function assertPatchApplicable(input: {
+  readonly patch: PatchArtifact;
+  readonly workspaceRoot: string;
+  readonly actorId: string;
+}): void {
+  const conflicts = checkPatchApplicable(input.workspaceRoot, input.patch.filesChanged);
+  if (conflicts.length === 0) return;
+  appendUnifiedAuditEntry({
+    type: "code.patch.apply.conflict",
+    actorId: input.actorId,
+    actorKind: "USER",
+    reason: conflictSummary(conflicts),
+    correlationId: input.patch.id,
+    input: { patchId: input.patch.id, paths: conflicts.map((c) => c.path) },
+    output: { conflicts },
+    policy: "DOCUMENT.EXECUTE",
+    risk: input.patch.risk,
+    approval: "NOT_REQUIRED",
+    result: "FAILURE",
+    decision: "DENY",
+    blockedAt: "EXECUTION",
+    projectId: input.patch.projectId,
+  });
+  throw new AtlasError(
+    "CONFLICT",
+    `Patch cannot be applied: ${conflictSummary(conflicts)}. Nothing was written.`,
+    { statusCode: 409, details: { conflicts } },
+  );
+}
+
+/** Stage 5 (D3/G-3): refuse a rollback that would overwrite a later change. */
+export function assertRollbackApplicable(input: {
+  readonly patch: PatchArtifact;
+  readonly workspaceRoot: string;
+  readonly actorId: string;
+}): void {
+  const conflicts = checkRollbackApplicable(
+    input.workspaceRoot,
+    input.patch.filesChanged,
+    input.patch.rollbackSnapshot,
+  );
+  if (conflicts.length === 0) return;
+  appendUnifiedAuditEntry({
+    type: "code.patch.rollback.conflict",
+    actorId: input.actorId,
+    actorKind: "USER",
+    reason: conflictSummary(conflicts),
+    correlationId: input.patch.id,
+    input: { patchId: input.patch.id, paths: conflicts.map((c) => c.path) },
+    output: { conflicts },
+    policy: "DOCUMENT.EXECUTE",
+    risk: input.patch.risk,
+    approval: "NOT_REQUIRED",
+    result: "FAILURE",
+    decision: "DENY",
+    blockedAt: "EXECUTION",
+    projectId: input.patch.projectId,
+  });
+  throw new AtlasError(
+    "CONFLICT",
+    `Rollback would overwrite a later change: ${conflictSummary(conflicts)}. Nothing was restored.`,
+    { statusCode: 409, details: { conflicts } },
+  );
+}
+
+/**
+ * Stage 5 (approved D4): terminal rejection. Reason, actor, and time are
+ * recorded once; the patch content is not changed; a correction is a new
+ * patch that references this one (`supersedesPatchId`).
+ */
+export function rejectPatchArtifact(
+  existing: PatchArtifact,
+  input: { readonly user: AuthUser; readonly reason: string },
+): PatchArtifact {
+  if (!REJECTABLE_STATUSES.has(existing.status)) {
+    throw new AtlasError(
+      "VALIDATION_ERROR",
+      `Cannot reject patch in status ${existing.status}`,
+      { statusCode: 409 },
+    );
+  }
+  const now = new Date().toISOString();
+  const patch = patchArtifactSchema.parse({
+    ...existing,
+    status: "REJECTED",
+    rejection: {
+      by: input.user.email,
+      userId: input.user.id,
+      at: now,
+      reason: input.reason,
+    },
+    updatedAt: now,
+  });
+  osStore.upsertPatch(patch);
+  appendUnifiedAuditEntry({
+    type: "code.patch.rejected",
+    actorId: input.user.id,
+    actorKind: "USER",
+    reason: input.reason,
+    correlationId: existing.id,
+    input: { patchId: existing.id, previousStatus: existing.status },
+    output: { status: "REJECTED" },
+    policy: "code.patch.reject",
+    risk: existing.risk,
+    approval: "NOT_REQUIRED",
+    result: "SUCCESS",
+    projectId: existing.projectId,
+  });
+  return patch;
 }
 
 /**
@@ -150,7 +293,8 @@ export function approvePatchArtifact(
   if (
     existing.status === "APPLIED" ||
     existing.status === "VERIFIED" ||
-    existing.status === "ROLLED_BACK"
+    existing.status === "ROLLED_BACK" ||
+    existing.status === "REJECTED"
   ) {
     throw new AtlasError(
       "VALIDATION_ERROR",
@@ -158,8 +302,11 @@ export function approvePatchArtifact(
     );
   }
   const now = new Date().toISOString();
-  const approval: { by: string; at: string; note?: string } = {
+  // Stage 5 (G-7): `approvedBy` is the authenticated approver, supplied by
+  // the route from the session; `userId` is recorded alongside it.
+  const approval: { by: string; userId: string; at: string; note?: string } = {
     by: input.approvedBy,
+    userId: input.userId,
     at: now,
   };
   if (input.note !== undefined) approval.note = input.note;
@@ -187,6 +334,7 @@ export function approvePatchArtifact(
   osStore.appendAudit({
     type: "code.patch.approved",
     patchId: existing.id,
+    correlationId: existing.id,
     at: now,
     by: input.userId,
     sourceIssueId: existing.sourceIssueId ?? null,
@@ -281,6 +429,7 @@ export function recordRemediationVerification(input: {
   osStore.appendAudit({
     type: "code.patch.verified",
     patchId: patch.id,
+    correlationId: patch.id,
     ok: input.verify.ok,
     patchVerifyStatus: input.verify.ok ? "PASS" : "FAIL",
     remediationResult: input.findingRemediation?.result ?? null,
@@ -548,6 +697,14 @@ export function applyApprovedPatch(input: {
       : {}),
   });
 
+  // Stage 5 (D3/G-3/G-6): all-or-nothing. Refuse before writing when any
+  // target no longer matches the state the patch was proposed against.
+  assertPatchApplicable({
+    patch: input.existing,
+    workspaceRoot,
+    actorId: input.user.id,
+  });
+
   const now = new Date().toISOString();
   const result = applyPatchFiles(
     workspaceRoot,
@@ -568,6 +725,20 @@ export function applyApprovedPatch(input: {
       return change;
     }),
   );
+  if (result.skipped.length > 0) {
+    // Defense in depth: the preflight above makes this unreachable. If it
+    // ever happens, undo what was written and refuse rather than report a
+    // partial write as APPLIED.
+    rollbackPatchFiles(
+      workspaceRoot,
+      result.rollbackSnapshot.filter((item) => result.applied.includes(item.path)),
+    );
+    throw new AtlasError(
+      "CONFLICT",
+      `Patch not applied: skipped ${result.skipped.join(", ")}. Written files were restored.`,
+      { statusCode: 409 },
+    );
+  }
 
   const evidenceIds = [...input.existing.evidenceIds];
   let evidenceId: string | null = null;
@@ -631,6 +802,7 @@ export function applyApprovedPatch(input: {
   osStore.appendAudit({
     type: "code.patch.applied",
     patchId: input.existing.id,
+    correlationId: input.existing.id,
     applied: result.applied,
     workspaceRoot,
     sourceIssueId: input.existing.sourceIssueId ?? null,

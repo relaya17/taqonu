@@ -11,6 +11,7 @@ import {
   type RemediationVerifyResult,
   type TruthFindingProposeInput,
   type TruthRemediationDraft,
+  captureBaseState,
 } from "@atlas/code-intelligence";
 import {
   AtlasError,
@@ -78,12 +79,20 @@ export function persistAutoRemediationDrafts(input: {
   readonly issues: readonly EngineeringIssue[];
   readonly workspaceRoot: string;
 }): AutoRemediationDraft[] {
-  const drafts = draftAutoRemediations({
+  const rawDrafts = draftAutoRemediations({
     projectId: input.projectId,
     issues: input.issues,
     workspaceRoot: input.workspaceRoot,
     existingSourceIssueIds: openRemediationSourceIssueIds(input.projectId),
   });
+  // Stage 5 (D3): record the base state of each target at draft time.
+  const drafts: AutoRemediationDraft[] = rawDrafts.map((d) => ({
+    ...d,
+    patch: {
+      ...d.patch,
+      filesChanged: captureBaseState(input.workspaceRoot, d.patch.filesChanged),
+    },
+  }));
   for (const d of drafts) {
     osStore.upsertPatch(d.patch);
     appendDomainEvent({
@@ -141,7 +150,7 @@ export function verifyAppliedRemediation(input: {
 
   const findingKey =
     input.reobserveFindingId?.trim() ||
-    (input.patch.title.startsWith("TRUTH_FIX:")
+    (input.patch.createdBy === "atlas-truth-remediation"
       ? input.patch.sourceIssueId
       : null);
 
@@ -350,19 +359,27 @@ export function proposeTruthFindingRemediation(input: {
       { statusCode: 400 },
     );
   }
-  const draft = draftTruthFindingRemediation({
+  const rawDraft = draftTruthFindingRemediation({
     projectId: input.projectId,
     workspaceRoot: linked,
     finding: input.finding,
     existingSourceIssueIds: openRemediationSourceIssueIds(input.projectId),
   });
-  if (!draft) {
+  if (!rawDraft) {
     throw new AtlasError(
       "CONFLICT",
       "A remediation draft already exists for this Truth finding",
       { statusCode: 409 },
     );
   }
+  // Stage 5 (D3): record the base state of each target at draft time.
+  const draft: TruthRemediationDraft = {
+    ...rawDraft,
+    patch: {
+      ...rawDraft.patch,
+      filesChanged: captureBaseState(linked, rawDraft.patch.filesChanged),
+    },
+  };
   osStore.upsertPatch(draft.patch);
   appendDomainEvent({
     type: "patch.proposed",

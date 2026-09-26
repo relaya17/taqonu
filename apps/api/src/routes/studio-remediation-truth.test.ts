@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -91,6 +92,8 @@ function secretPatch(
         action: "modify",
         summary: "rewrite",
         afterContent,
+        // Stage 5 (D3): proposed against `rootFile`.
+        baseSha256: createHash("sha256").update(rootFile, "utf8").digest("hex"),
       },
     ],
     evidenceIds: [],
