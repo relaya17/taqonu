@@ -8,6 +8,7 @@ import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
 import { atlasChrome as c } from "@/styles/palette";
 import { apiGet } from "@/lib/api";
+import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 
 export function WelcomeLanding({ children }: { children?: ReactNode }) {
   const t = useTranslations("landing");
@@ -140,6 +141,24 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
             justifyContent="center"
             sx={{ pt: 0.5, width: "100%" }}
           >
+            {session.isSuccess ? (
+              <Button
+                component="a"
+                href={`/${locale}${WEB_POST_AUTH_PATH}`}
+                variant="contained"
+                size="large"
+                sx={{
+                  width: { xs: "100%", sm: "auto" },
+                  bgcolor: c.accent,
+                  color: c.onAccent,
+                  fontWeight: 700,
+                  px: 3,
+                  "&:hover": { bgcolor: c.accentHover },
+                }}
+              >
+                {t("ctaContinue")}
+              </Button>
+            ) : null}
             <Button
               component="a"
               href={`/${locale}/auth/register`}

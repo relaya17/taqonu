@@ -40,7 +40,7 @@ import { atlasChrome as c } from "@/styles/palette";
 
 const DRAWER_WIDTH = 248;
 
-type NavTone = "dark" | "light";
+type NavTone = "dark" | "light" | "sidebar";
 
 /** Same glass as the small-screen top bar — drawer must not flip color when opened. */
 const navChrome = {
@@ -56,6 +56,20 @@ const navChrome = {
     selectedBg: c.selected,
     hoverBg: c.hover,
     outlineBorder: "rgba(154,158,168,0.45)",
+  },
+  /** Product sidebar only: quieter than the near-black glass and bright labels. */
+  sidebar: {
+    bgcolor: "#2A303A",
+    border: "1px solid rgba(160, 164, 172, 0.12)",
+    color: "#A8AEB8",
+    textMuted: "rgba(168, 174, 184, 0.72)",
+    textSoft: "rgba(168, 174, 184, 0.82)",
+    accent: "#9AA1AB",
+    chrome: "#A7ADB6",
+    brand: "#C2C6CD",
+    selectedBg: "rgba(255, 255, 255, 0.06)",
+    hoverBg: "rgba(255, 255, 255, 0.04)",
+    outlineBorder: "rgba(160, 164, 172, 0.22)",
   },
   light: {
     bgcolor: "rgba(241, 242, 244, 0.94)",
@@ -218,6 +232,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const isPublicDoor = isPublicShellPath(pathname);
   const isMarketing = isMarketingShellPath(pathname);
+  const isStudioWorkspace =
+    pathname === PATHS.studio || pathname.startsWith(`${PATHS.studio}/`);
   const showUpgradeCta = planQuery.data?.tier === "free";
   // Product nav (Studio / Checks / Systems) is signed-in only. Do not
   // default it open on /welcome or /auth — a signed-out visitor must not
@@ -320,7 +336,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const langMenu = (menuId: string, opts?: { mobile?: boolean; tone?: NavTone }) => {
-    const toneKey = opts?.tone ?? "dark";
+    const toneKey = opts?.tone === "light" ? "light" : "dark";
     return (
       <LanguageSwitcher
         tone={toneKey}
@@ -395,11 +411,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                     pt: 1,
                     pb: 0.5,
                     color: tone.accent,
-                    opacity: 0.9,
+                    opacity: 0.62,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
                     fontSize: 11,
-                    fontWeight: 650,
+                    fontWeight: 550,
                   }}
                 >
                   {t(`nav.${group.labelKey}`)}
@@ -439,11 +455,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                           color: tone.color,
                           "&.Mui-selected": {
                             backgroundColor: tone.selectedBg,
-                            color: tone.accent,
+                            color: tone.brand,
+                          },
+                          "&.Mui-selected:hover": {
+                            backgroundColor: tone.hoverBg,
                           },
                           "&.Mui-selected .MuiListItemText-primary": {
-                            fontWeight: 700,
-                            color: tone.accent,
+                            fontWeight: 600,
+                            color: tone.brand,
                           },
                           "&:hover": {
                             backgroundColor: tone.hoverBg,
@@ -578,8 +597,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       borderInlineEnd: chrome.border,
       backgroundColor: chrome.bgcolor,
       backgroundImage: "none",
-      backdropFilter: "blur(18px) saturate(1.15)",
-      WebkitBackdropFilter: "blur(18px) saturate(1.15)",
+      backdropFilter: tone === "sidebar" ? "none" : "blur(18px) saturate(1.15)",
+      WebkitBackdropFilter: tone === "sidebar" ? "none" : "blur(18px) saturate(1.15)",
       boxShadow: "none",
       color: chrome.color,
       py: 2.5,
@@ -650,33 +669,52 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 {t("landing.ctaPricing")}
               </Button>
-              <Button
-                component="a"
-                href={`/${locale}/auth/register`}
-                size="small"
-                variant="contained"
-                sx={{
-                  bgcolor: c.accent,
-                  color: c.onAccent,
-                  fontWeight: 700,
-                  "&:hover": { bgcolor: c.accentHover },
-                }}
-              >
-                {t("auth.register")}
-              </Button>
-              <Button
-                component="a"
-                href={`/${locale}/auth/login`}
-                size="small"
-                variant="outlined"
-                sx={{
-                  borderColor: marketingTone.outlineBorder,
-                  color: marketingTone.color,
-                  fontWeight: 650,
-                }}
-              >
-                {t("auth.login")}
-              </Button>
+              {isAuthed ? (
+                <Button
+                  component={Link}
+                  href={WEB_POST_AUTH_PATH}
+                  size="small"
+                  variant="contained"
+                  sx={{
+                    bgcolor: c.accent,
+                    color: c.onAccent,
+                    fontWeight: 700,
+                    "&:hover": { bgcolor: c.accentHover },
+                  }}
+                >
+                  {t("landing.ctaContinue")}
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    component="a"
+                    href={`/${locale}/auth/register`}
+                    size="small"
+                    variant="contained"
+                    sx={{
+                      bgcolor: c.accent,
+                      color: c.onAccent,
+                      fontWeight: 700,
+                      "&:hover": { bgcolor: c.accentHover },
+                    }}
+                  >
+                    {t("auth.register")}
+                  </Button>
+                  <Button
+                    component="a"
+                    href={`/${locale}/auth/login`}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      borderColor: marketingTone.outlineBorder,
+                      color: marketingTone.color,
+                      fontWeight: 650,
+                    }}
+                  >
+                    {t("auth.login")}
+                  </Button>
+                </>
+              )}
             </Stack>
             <Stack
               direction="row"
@@ -710,7 +748,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const appMobileToneKey: NavTone = mode === "dark" ? "dark" : "light";
+  const appMobileToneKey: NavTone = mode === "dark" ? "sidebar" : "light";
   const appMobileTone = navChrome[appMobileToneKey];
 
   return (
@@ -769,11 +807,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               },
               width: DRAWER_WIDTH,
               flexShrink: 0,
-              [`& .MuiDrawer-paper`]: drawerPaperSx("dark"),
+              [`& .MuiDrawer-paper`]: drawerPaperSx("sidebar"),
             }}
             PaperProps={drawerPaperProps}
           >
-            {nav({ mobile: false, tone: "dark" })}
+            {nav({ mobile: false, tone: "sidebar" })}
           </Drawer>
         </>
       ) : null}
@@ -833,8 +871,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             flexWrap="wrap"
             sx={{
               "& .MuiIconButton-root": {
-                minWidth: 32,
-                minHeight: 36,
+                minWidth: 44,
+                minHeight: 44,
                 p: 0.5,
                 color: appMobileTone.textMuted,
               },
@@ -876,14 +914,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           </PageContainer>
         ) : null}
         <PageContainer
-          maxWidth={920}
+          maxWidth={isStudioWorkspace ? "full" : 920}
+          noPadding={isStudioWorkspace}
           sx={{
             mb: { xs: 2, md: 3 },
             bgcolor: "background.paper",
             border: "1px solid",
             borderColor: "divider",
-            borderRadius: 2,
+            borderRadius: isStudioWorkspace ? { xs: 1, md: 2 } : 2,
             textAlign: "start",
+            minWidth: 0,
+            px: isStudioWorkspace ? { xs: 1.5, sm: 2, md: 2.5 } : undefined,
+            py: isStudioWorkspace ? { xs: 1.5, sm: 2 } : undefined,
           }}
         >
           {children}

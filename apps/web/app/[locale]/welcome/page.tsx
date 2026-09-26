@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { WelcomeLanding } from "@/components/marketing/WelcomeLanding";
-import { LandingInformation } from "@/components/marketing/LandingInformation";
 import { absoluteUrl, getSiteUrl } from "@/lib/site-url";
 
 export async function generateMetadata({
@@ -39,7 +38,7 @@ export async function generateMetadata({
       url,
       title,
       description,
-      siteName: "ArletOS · Atlas",
+      siteName: "ArletOS",
     },
     twitter: {
       card: "summary_large_image",
@@ -70,7 +69,6 @@ export default async function WelcomePage({
   const t = await getTranslations({ locale, namespace: "landing" });
   const url = absoluteUrl(`/${locale}/welcome`);
 
-  const faqIds = ["q1", "q2", "q3", "q4", "q5"] as const;
   const jsonLd = [
     {
       "@context": "https://schema.org",
@@ -88,19 +86,8 @@ export default async function WelcomePage({
     },
     {
       "@context": "https://schema.org",
-      "@type": "TechArticle",
-      headline: t("info.title"),
-      description: t("info.lead"),
-      inLanguage: locale,
-      author: { "@type": "Organization", name: "ArletOS" },
-      about: ["software readiness", "evidence", "AI governance", "Atlas"],
-      mainEntityOfPage: url,
-    },
-    {
-      "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       name: "ArletOS",
-      alternateName: "Atlas",
       applicationCategory: "DeveloperApplication",
       operatingSystem: "Web",
       description: t("seoDescription"),
@@ -120,18 +107,6 @@ export default async function WelcomePage({
     },
     {
       "@context": "https://schema.org",
-      "@type": "FAQPage",
-      mainEntity: faqIds.map((id) => ({
-        "@type": "Question",
-        name: t(`info.faq.${id}.q`),
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: t(`info.faq.${id}.a`),
-        },
-      })),
-    },
-    {
-      "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       itemListElement: [
         {
@@ -143,7 +118,7 @@ export default async function WelcomePage({
         {
           "@type": "ListItem",
           position: 2,
-          name: t("info.title"),
+          name: t("headline"),
           item: url,
         },
       ],
@@ -159,9 +134,7 @@ export default async function WelcomePage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(block) }}
         />
       ))}
-      <WelcomeLanding>
-        <LandingInformation />
-      </WelcomeLanding>
+      <WelcomeLanding />
     </>
   );
 }

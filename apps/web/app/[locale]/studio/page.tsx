@@ -648,9 +648,9 @@ export default function StudioPage() {
   return (
     <Box
       sx={{
-        mx: { xs: -2, sm: -3, md: -4 },
-        px: { xs: 2, sm: 3, md: 4 },
-        py: { xs: 2, md: 2.5 },
+        mx: 0,
+        px: 0,
+        py: { xs: 0.5, md: 1 },
         minHeight: "70vh",
         borderRadius: { xs: 0, md: 3 },
         color: "#DCDDE1",
@@ -661,7 +661,7 @@ export default function StudioPage() {
         `,
       }}
     >
-    <Stack spacing={2.5} sx={{ maxWidth: 1240, width: "100%", minWidth: 0 }}>
+    <Stack spacing={2.5} sx={{ maxWidth: 1240, width: "100%", minWidth: 0, mx: "auto" }}>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={2}
@@ -817,12 +817,15 @@ export default function StudioPage() {
             if (id && isStudioTab(id) && id !== tab) selectTab(id);
           });
         }}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
         sx={{
           borderBottom: panelBorder,
-          minHeight: 40,
+          minHeight: 44,
           "& .MuiTab-root": {
             color: "rgba(232,234,238,0.65)",
-            minHeight: 40,
+            minHeight: 44,
             textTransform: "none",
           },
           "& .Mui-selected": { color: "#EEEEF0 !important" },
@@ -1694,12 +1697,13 @@ export default function StudioPage() {
               }}
               variant="scrollable"
               scrollButtons="auto"
+              allowScrollButtonsMobile
               sx={{
                 borderBottom: panelBorder,
-                minHeight: 36,
+                minHeight: 44,
                 "& .MuiTab-root": {
                   color: "rgba(232,234,238,0.6)",
-                  minHeight: 36,
+                  minHeight: 44,
                   textTransform: "none",
                   fontSize: 13,
                 },

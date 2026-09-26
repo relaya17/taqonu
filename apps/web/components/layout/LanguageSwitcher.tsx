@@ -42,12 +42,12 @@ export function LanguageSwitcher({
 
   const colors = {
     dark: {
-      text: "#E0E1E4",
-      textMuted: "rgba(224, 225, 228, 0.72)",
-      bg: "rgba(42, 48, 58, 0.98)",
-      border: "rgba(210, 212, 216, 0.35)",
-      hover: "rgba(154, 158, 168, 0.16)",
-      selected: "rgba(154, 158, 168, 0.28)",
+      text: "#B7BCC4",
+      textMuted: "rgba(168, 174, 184, 0.78)",
+      bg: "#2A303A",
+      border: "rgba(160, 164, 172, 0.22)",
+      hover: "rgba(255, 255, 255, 0.05)",
+      selected: "rgba(255, 255, 255, 0.08)",
     },
     light: {
       text: "#1A1C22",
