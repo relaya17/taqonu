@@ -11,6 +11,7 @@ import { buildEvidencePackageForAgent, type KnowledgeRetrievalScope } from "@atl
 import { getFabricAgent } from "../registry/catalog.js";
 import { planAgentWork } from "./plan.js";
 import { evaluateJudge } from "../judge/evaluate.js";
+import { isAgentEnabled } from "../kernel/registry-lifecycle.js";
 
 function loadKnowledge(
   request: string,
@@ -135,6 +136,25 @@ export async function dispatchAgentPlan(input: {
         [s.agentId],
         input.retrievalScope,
       );
+      if (!isAgentEnabled(s.agentId)) {
+        runs.push({
+          agentId: s.agentId,
+          status: "SKIPPED",
+          summary: `Agent ${s.agentId} is disabled and was not dispatched.`,
+          claims: [
+            `registration.enforcement: agentId=${s.agentId} status=disabled`,
+            `dispatch.denied: agentId=${s.agentId}`,
+          ],
+          evidenceRefs: [
+            `denied:registry.disabled:${s.agentId}`,
+            `audit:dispatch.registration.denied:agentId=${s.agentId}`,
+          ],
+          epistemicState: "OBSERVED",
+          costUsd: 0,
+          durationMs: 0,
+        } as import("@atlas/shared").AgentRunResult);
+        continue;
+      }
       const override = await input.specialistOverride?.(s.agentId, input.request);
       runs.push(override ?? runSpecialistStub(s.agentId, input.request, specialistKnowledge));
     }
