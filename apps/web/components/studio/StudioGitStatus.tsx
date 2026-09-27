@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Box, Button, Chip, List, ListItemButton, ListItemText, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, List, ListItem, ListItemButton, ListItemText, Stack, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
@@ -254,18 +254,19 @@ export function StudioGitStatus({
               ) : (
                 <List dense disablePadding>
                   {changes.map((change) => (
-                    <ListItemButton
-                      key={`${change.xy}:${change.path}`}
-                      onClick={() => onOpenFile(change.path)}
-                      sx={{ borderRadius: 1, py: 0.25 }}
-                    >
-                      <ListItemText
-                        primary={change.path}
-                        secondary={t(`kind.${change.kind}`)}
-                        primaryTypographyProps={{ sx: { color: "#DCDDE1", fontSize: 13 } }}
-                        secondaryTypographyProps={{ sx: { color: "#8B9099", fontSize: 11 } }}
-                      />
-                    </ListItemButton>
+                    <ListItem key={`${change.xy}:${change.path}`} disablePadding>
+                      <ListItemButton
+                        onClick={() => onOpenFile(change.path)}
+                        sx={{ borderRadius: 1, py: 0.25 }}
+                      >
+                        <ListItemText
+                          primary={change.path}
+                          secondary={t(`kind.${change.kind}`)}
+                          primaryTypographyProps={{ sx: { color: "#DCDDE1", fontSize: 13 } }}
+                          secondaryTypographyProps={{ sx: { color: "#8B9099", fontSize: 11 } }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
                   ))}
                 </List>
               )}

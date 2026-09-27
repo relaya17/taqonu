@@ -7,7 +7,8 @@ import { notFound } from "next/navigation";
 import { COLOR_MODE_COOKIE, parseColorMode } from "@/lib/color-mode";
 import { AppProviders } from "@/components/providers/AppProviders";
 import { AppShell } from "@/components/layout/AppShell";
-import { routing } from "@/i18n/routing";
+import { isAppLocale, routing } from "@/i18n/routing";
+import { localeDir } from "@/lib/locale-dir";
 import { getSiteUrl } from "@/lib/site-url";
 
 export function generateStaticParams() {
@@ -39,13 +40,13 @@ export default async function LocaleLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  if (!routing.locales.includes(locale as "he" | "en" | "ar")) {
+  if (!isAppLocale(locale)) {
     notFound();
   }
 
   setRequestLocale(locale);
   const messages = await getMessages();
-  const dir = locale === "en" ? "ltr" : "rtl";
+  const dir = localeDir(locale);
   const cookieStore = await cookies();
   const initialMode = parseColorMode(cookieStore.get(COLOR_MODE_COOKIE)?.value);
 

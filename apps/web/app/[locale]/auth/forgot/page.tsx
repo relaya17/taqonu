@@ -8,12 +8,13 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiPost } from "@/lib/api";
 import { authHrefWithNext, inputDirForLocale } from "@/lib/audit-return-path";
+import { useHydrationSafeInput } from "@/lib/use-hydration-safe-input";
 
 function ForgotPasswordPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
   const next = useSearchParams().get("next");
-  const [email, setEmail] = useState("");
+  const [email, setEmail, emailRef] = useHydrationSafeInput("");
   const [token, setToken] = useState<string | null>(null);
   const fieldDir = inputDirForLocale(locale);
 
@@ -46,6 +47,7 @@ function ForgotPasswordPage() {
           label={t("email")}
           type="email"
           value={email}
+          inputRef={emailRef}
           onChange={(e) => setEmail(e.target.value)}
           fullWidth
           required

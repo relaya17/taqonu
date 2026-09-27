@@ -8,6 +8,7 @@ import {
   Drawer,
   IconButton,
   List,
+  ListItem,
   ListItemButton,
   ListItemText,
   Stack,
@@ -74,17 +75,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
               ? pathname === "/admin"
               : pathname.startsWith(link.href);
           return (
-            <ListItemButton
-              key={link.href}
-              component={Link}
-              href={link.href}
-              selected={selected}
-              aria-current={selected ? "page" : undefined}
-              onClick={() => setOpen(false)}
-              sx={{ borderRadius: 2, mx: 1, mb: 0.5 }}
-            >
-              <ListItemText primary={link.label} />
-            </ListItemButton>
+            <ListItem key={link.href} disablePadding>
+              <ListItemButton
+                component={Link}
+                href={link.href}
+                selected={selected}
+                aria-current={selected ? "page" : undefined}
+                onClick={() => setOpen(false)}
+                sx={{ borderRadius: 2, mx: 1, mb: 0.5 }}
+              >
+                <ListItemText primary={link.label} />
+              </ListItemButton>
+            </ListItem>
           );
         })}
       </List>

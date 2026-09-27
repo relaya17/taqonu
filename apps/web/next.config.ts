@@ -36,10 +36,10 @@ const nextConfig: NextConfig = {
    */
   async redirects() {
     return [
-      { source: "/:locale(he|en|ar)/state", destination: "/:locale/projects", permanent: false },
-      { source: "/:locale(he|en|ar)/chat", destination: "/:locale/workbench", permanent: false },
-      { source: "/:locale(he|en|ar)/agent", destination: "/:locale/agents", permanent: false },
-      { source: "/:locale(he|en|ar)/proof", destination: "/:locale/readiness", permanent: false },
+      { source: "/:locale(he|en|ar|fr)/state", destination: "/:locale/projects", permanent: false },
+      { source: "/:locale(he|en|ar|fr)/chat", destination: "/:locale/workbench", permanent: false },
+      { source: "/:locale(he|en|ar|fr)/agent", destination: "/:locale/agents", permanent: false },
+      { source: "/:locale(he|en|ar|fr)/proof", destination: "/:locale/readiness", permanent: false },
     ];
   },
 };

@@ -77,15 +77,42 @@ export const PTY_COPY = {
     resize: "تغيير حجم الطرفية",
     clipboardDenied: "الحافظة محظورة في سياق هذا المتصفح. استخدم زر النسخ أو اللصق، أو اكتب في الطرفية.",
   },
+  fr: {
+    help: "Terminal interactif humain dans l’espace de travail lié. Il s’agit d’un vrai processus/PTY, pas d’une exécution commandId gouvernée.",
+    notAgent: "L’agent ne peut pas utiliser ce terminal. L’exécution de l’agent reste limitée aux commandId autorisés + SoD.",
+    shell: "Shell",
+    new: "Nouveau terminal",
+    opening: "Ouverture…",
+    interrupt: "Ctrl+C",
+    clear: "Effacer",
+    close: "Fermer le terminal",
+    closed: "session fermée",
+    status: "Statut",
+    sessions: "Sessions de terminal",
+    session: "Session",
+    cwd: "Répertoire de travail",
+    empty: "Ouvrez un terminal pour démarrer un shell interactif dans l’espace de travail du projet.",
+    terminal: "Terminal interactif",
+    error: "Échec du terminal",
+    streamError: "Échec du flux du terminal",
+    reconnect: "Reconnecter",
+    reconnecting: "Reconnexion…",
+    eof: "EOF",
+    copy: "Copier",
+    paste: "Coller",
+    resize: "Redimensionner le terminal",
+    clipboardDenied: "Le presse-papiers est bloqué dans ce contexte de navigateur. Utilisez le bouton Copier ou Coller, ou tapez dans le terminal.",
+  },
 } as const;
 
 export type PtyCopyKey = keyof (typeof PTY_COPY)["en"];
 
 // Each locale object has the same keys but its own literal string values,
-// so the real return type is the union of all three -- not just `en`'s
+// so the real return type is the union of all locales -- not just `en`'s
 // exact literal shape -- while every value stays assignable to `string`.
 export function ptyCopyFor(locale: string): (typeof PTY_COPY)[keyof typeof PTY_COPY] {
   if (locale === "he") return PTY_COPY.he;
   if (locale === "ar") return PTY_COPY.ar;
+  if (locale === "fr") return PTY_COPY.fr;
   return PTY_COPY.en;
 }

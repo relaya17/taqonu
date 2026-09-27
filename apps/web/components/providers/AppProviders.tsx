@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { prefixer } from "stylis";
 import rtlPlugin from "stylis-plugin-rtl";
 import { createAtlasTheme, type AtlasColorMode } from "@/styles/theme";
+import { localeDir } from "@/lib/locale-dir";
 import { AiCompanionProvider } from "@/components/providers/AiCompanionProvider";
 import {
   ColorModeProvider,
@@ -32,7 +33,7 @@ function ThemedApp({
   locale: string;
   children: ReactNode;
 }) {
-  const direction = locale === "en" ? "ltr" : "rtl";
+  const direction = localeDir(locale);
   const { mode } = useColorMode();
   const theme = useMemo(
     () => createAtlasTheme(direction, mode),

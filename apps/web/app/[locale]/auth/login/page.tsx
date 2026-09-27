@@ -17,6 +17,7 @@ import { Link } from "@/i18n/routing";
 import { apiGet, apiPost, downloadVerifiedSourcesPack, ADMIN_LOGIN_PATH } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
+import { useHydrationSafeInput } from "@/lib/use-hydration-safe-input";
 import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 import {
   auditReturnPath,
@@ -40,8 +41,10 @@ function LoginPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
   const next = useSearchParams().get("next");
-  const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
-  const [password, setPassword] = useState("");
+  const [email, setEmail, emailRef] = useHydrationSafeInput(
+    isDevLoginPrefill ? DEV_CREDENTIALS.email : "",
+  );
+  const [password, setPassword, passwordRef] = useHydrationSafeInput("");
   const [oauthError, setOauthError] = useState<string | null>(null);
   const fieldDir = inputDirForLocale(locale);
 
@@ -133,6 +136,7 @@ function LoginPage() {
             type="email"
             autoComplete="email"
             value={email}
+            inputRef={emailRef}
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
             required
@@ -143,6 +147,7 @@ function LoginPage() {
             type="password"
             autoComplete="current-password"
             value={password}
+            inputRef={passwordRef}
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
             required

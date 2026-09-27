@@ -99,7 +99,7 @@ export default function ArchitectureContractPage() {
   return (
     <Stack spacing={3} sx={{ maxWidth: 720 }}>
       <Box>
-        <Typography variant="h4" sx={{ fontFamily: '"Fraunces", serif', mb: 1 }}>
+        <Typography variant="h4" component="h1" sx={{ fontFamily: '"Fraunces", serif', mb: 1 }}>
           {t("contract.title")}
         </Typography>
         <Typography color="text.secondary">{t("contract.subtitle")}</Typography>

@@ -57,10 +57,21 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(appShell).toContain("WEB_NAV_PATHS");
     expect(appShell).toContain("WEB_POST_AUTH_PATH");
     expect(surfaces).toContain('export const WEB_POST_AUTH_PATH = "/studio"');
-    expect(appShell).toContain('items: ["studio", "systems", "dashboard", "projects", "plan"]');
-    expect(appShell).toContain('items: ["truth", "health", "readiness", "qa", "processAudit"]');
-    expect(appShell).toContain("studioCheckHref");
-    expect(appShell).toContain('items: ["agents", "experts"]');
+    // D9 (Stage 6): lib/web-nav.ts is the only definition of the nav groups;
+    // Checks are not nav items and open inside Studio.
+    const webNav = readWeb("lib/web-nav.ts");
+    expect(appShell).toContain('from "@/lib/web-nav"');
+    expect(appShell).toContain("NAV_GROUPS");
+    expect(appShell).not.toMatch(/items:\s*\[/);
+    expect(webNav).toMatch(
+      /PRIMARY_NAV_KEYS = \[\s*"studio",\s*"projects",\s*"dashboard",\s*"agents",\s*"settings",\s*\]/,
+    );
+    expect(webNav).toMatch(
+      /ADVANCED_NAV_KEYS = \[\s*"systems",\s*"plan",\s*"experts",\s*"models",\s*"integrations",\s*"partners",\s*"legalMedia",\s*\]/,
+    );
+    expect(webNav).toMatch(/\{ id: "main", items: PRIMARY_NAV_KEYS \}/);
+    expect(webNav).toMatch(/collapsedByDefault: true,\s*items: ADVANCED_NAV_KEYS/);
+    expect(webNav).toContain('query: { tab: "checks", check }');
     const login = readWeb("app/[locale]/auth/login/page.tsx");
     const register = readWeb("app/[locale]/auth/register/page.tsx");
     const callback = readWeb("app/[locale]/auth/callback/page.tsx");

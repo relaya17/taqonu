@@ -17,6 +17,7 @@ import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
 import { getSupabaseBrowserClient, oauthRedirectTo } from "@/lib/supabase";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
+import { useHydrationSafeInput } from "@/lib/use-hydration-safe-input";
 import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 import {
   auditReturnPath,
@@ -35,9 +36,11 @@ function RegisterPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
   const next = useSearchParams().get("next");
-  const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
-  const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState(
+  const [email, setEmail, emailRef] = useHydrationSafeInput(
+    isDevLoginPrefill ? DEV_CREDENTIALS.email : "",
+  );
+  const [password, setPassword, passwordRef] = useHydrationSafeInput("");
+  const [displayName, setDisplayName, displayNameRef] = useHydrationSafeInput(
     isDevLoginPrefill ? DEV_CREDENTIALS.displayName : "",
   );
   const [oauthError, setOauthError] = useState<string | null>(null);
@@ -121,6 +124,7 @@ function RegisterPage() {
           <TextField
             label={t("displayName")}
             value={displayName}
+            inputRef={displayNameRef}
             onChange={(e) => setDisplayName(e.target.value)}
             fullWidth
             autoComplete="name"
@@ -131,6 +135,7 @@ function RegisterPage() {
             type="email"
             autoComplete="email"
             value={email}
+            inputRef={emailRef}
             onChange={(e) => setEmail(e.target.value)}
             fullWidth
             required
@@ -141,6 +146,7 @@ function RegisterPage() {
             type="password"
             autoComplete="new-password"
             value={password}
+            inputRef={passwordRef}
             onChange={(e) => setPassword(e.target.value)}
             helperText={t("passwordHint")}
             fullWidth

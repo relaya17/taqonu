@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
+import { routing } from "@/i18n/routing";
 import { getSiteUrl } from "@/lib/site-url";
 
-const LOCALES = ["he", "en", "ar"] as const;
+const LOCALES = routing.locales;
 const PATHS = [
   "/",
   "/welcome",

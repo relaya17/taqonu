@@ -1,26 +1,13 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test, expect } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
-import type { Page, TestInfo } from "@playwright/test";
-
-async function expectNoA11yViolations(page: Page, testInfo: TestInfo) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
-    .analyze();
-  await testInfo.attach("axe-scan-results", {
-    body: JSON.stringify(results, null, 2),
-    contentType: "application/json",
-  });
-  expect(
-    results.violations,
-    `axe-core found ${results.violations.length} WCAG 2.2 AA violation(s) on ${page.url()}:\n` +
-      results.violations
-        .map(
-          (v) =>
-            `- [${v.id}] ${v.help} (impact: ${v.impact}) — ${v.nodes.length} node(s)\n  ${v.helpUrl}`,
-        )
-        .join("\n"),
-  ).toEqual([]);
-}
+import { expectNoA11yViolations } from "../axe";
+import {
+  createMarkerWorkspace,
+  createStage9Project,
+  linkWorkspaceRoot,
+  studioProjectUrl,
+} from "./projects";
 
 type Rgba = { r: number; g: number; b: number; a: number };
 
@@ -210,6 +197,58 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     await expect(mobileDrawer).toHaveCount(0, { timeout: 15_000 });
     await expect(openMenu).toBeFocused();
     await expect(openMenu).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("open files are tabs in a tablist with arrow-key selection and no axe violations", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const stamp = Date.now();
+    const project = await createStage9Project(request, `Stage9 Tabs ${stamp}`);
+    const first = `first-${stamp}.txt`;
+    const second = `second-${stamp}.txt`;
+    const root = await createMarkerWorkspace({ fileName: first, contents: `FIRST ${stamp}` });
+    await writeFile(join(root, second), `SECOND ${stamp}`, "utf8");
+    await linkWorkspaceRoot(request, project.id, root);
+
+    await page.goto(studioProjectUrl(project.id), { waitUntil: "domcontentloaded" });
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Project Studio" }),
+    ).toBeVisible({ timeout: 45_000 });
+    await page.getByRole("button", { name: first }).click({ timeout: 20_000 });
+    await expect(page.getByRole("textbox", { name: first })).toHaveValue(`FIRST ${stamp}`, {
+      timeout: 20_000,
+    });
+    await page.getByRole("button", { name: second }).click();
+    await expect(page.getByRole("textbox", { name: second })).toHaveValue(`SECOND ${stamp}`, {
+      timeout: 20_000,
+    });
+
+    const strip = page.getByRole("tablist", { name: "Open files" });
+    await expect(strip.getByRole("tab")).toHaveCount(2);
+    await expect(strip.getByRole("button")).toHaveCount(0);
+    const firstTab = strip.getByRole("tab", { name: first });
+    const secondTab = strip.getByRole("tab", { name: second });
+    await expect(secondTab).toHaveAttribute("aria-selected", "true");
+    await expect(secondTab).toHaveAttribute("tabindex", "0");
+    await expect(firstTab).toHaveAttribute("aria-selected", "false");
+    await expect(firstTab).toHaveAttribute("tabindex", "-1");
+    const panel = page.getByRole("tabpanel");
+    await expect(panel).toHaveAttribute("aria-labelledby", (await secondTab.getAttribute("id"))!);
+    await expect(secondTab).toHaveAttribute("aria-controls", (await panel.getAttribute("id"))!);
+
+    await secondTab.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(firstTab).toBeFocused();
+    await expect(firstTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("textbox", { name: first })).toHaveValue(`FIRST ${stamp}`, {
+      timeout: 20_000,
+    });
+    await page.keyboard.press("End");
+    await expect(secondTab).toBeFocused();
+    await expect(secondTab).toHaveAttribute("aria-selected", "true");
+
+    await expectNoA11yViolations(page, testInfo);
   });
 
   test("authenticated /en/projects document navigation is not ERR_ABORTED", async ({

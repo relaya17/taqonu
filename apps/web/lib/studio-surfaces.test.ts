@@ -13,6 +13,7 @@ import {
   workbenchProjectHref,
   isMarketingShellPath,
   isPublicShellPath,
+  requiresSignIn,
   shouldShowStudioEmptyProjects,
   shouldShowStudioNeedRoot,
 } from "./studio-surfaces";
@@ -33,6 +34,41 @@ describe("isPublicShellPath", () => {
     expect(isMarketingShellPath("/he/welcome")).toBe(true);
     expect(isMarketingShellPath("/auth/login")).toBe(false);
     expect(isMarketingShellPath("/studio")).toBe(false);
+  });
+});
+
+describe("requiresSignIn", () => {
+  it("leaves the public doors and pricing open in every locale", () => {
+    for (const locale of ["", "/he", "/en", "/ar", "/fr"]) {
+      expect(requiresSignIn(`${locale}/welcome`)).toBe(false);
+      expect(requiresSignIn(`${locale}/auth/login`)).toBe(false);
+      expect(requiresSignIn(`${locale}/auth/reset`)).toBe(false);
+      expect(requiresSignIn(`${locale}/plan`)).toBe(false);
+    }
+  });
+
+  it("requires a session for the dashboard and every product page", () => {
+    for (const path of [
+      "/en",
+      "/fr",
+      "/",
+      "/en/studio",
+      "/he/projects",
+      "/ar/settings",
+      "/en/settings/billing",
+      "/fr/health",
+      "/en/partners",
+      "/en/experts",
+      "/en/state",
+    ]) {
+      expect(requiresSignIn(path)).toBe(true);
+    }
+  });
+
+  it("does not open look-alike paths", () => {
+    expect(requiresSignIn("/en/planner")).toBe(true);
+    expect(requiresSignIn("/en/authority")).toBe(true);
+    expect(requiresSignIn("/en/welcomex")).toBe(true);
   });
 });
 

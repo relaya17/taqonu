@@ -31,6 +31,44 @@ test.describe("Stage 9.3 auth + Studio entry + project context", () => {
     }
   });
 
+  test("an email typed before hydration survives and is the one submitted", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    let releaseScripts!: () => void;
+    const scriptsHeld = new Promise<void>((resolve) => {
+      releaseScripts = resolve;
+    });
+    await page.route("**/_next/static/chunks/**", async (route) => {
+      await scriptsHeld;
+      await route.continue();
+    });
+    try {
+      await page.goto("/en/auth/login", { waitUntil: "domcontentloaded" });
+      const email = page.getByRole("textbox", { name: /email/i });
+      const password = page.getByRole("textbox", { name: /password/i });
+      await expect(email).toBeEditable({ timeout: 60_000 });
+      await email.fill(STAGE9_REQUESTER.email);
+
+      const hydrated = page.waitForResponse(/\/api\/v1\/auth\/providers/, { timeout: 90_000 });
+      releaseScripts();
+      await hydrated;
+
+      await password.click();
+      await password.pressSequentially(STAGE9_REQUESTER.password, { delay: 15 });
+      await expect(email).toHaveValue(STAGE9_REQUESTER.email);
+      await page.getByRole("button", { name: /^sign in$/i }).click();
+      await page.waitForURL(/\/en\/studio(?:[/?#]|$)/, { timeout: 60_000 });
+      const me = await page.context().request.get(`${stage9ApiBase(page.url())}/api/v1/auth/me`);
+      expect(me.status()).toBe(200);
+      const body = (await me.json()) as { user: { email: string } };
+      expect(body.user.email.toLowerCase()).toBe(STAGE9_REQUESTER_EMAIL);
+    } finally {
+      await context.close();
+    }
+  });
+
   test("storageState session stays authenticated on Studio", async ({
     page,
     request,
@@ -57,8 +95,12 @@ test.describe("Stage 9.3 auth + Studio entry + project context", () => {
       page.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 45_000 });
 
+    // Sign out lives in the product sidebar. At desktop width this button
+    // toggles the docked sidebar, so it is clicked only when the sidebar is
+    // closed; clicking an open one would hide Sign out.
     const openMenu = page.getByRole("button", { name: /open menu/i });
-    if (await openMenu.isVisible()) {
+    await expect(openMenu).toBeVisible({ timeout: 20_000 });
+    if ((await openMenu.getAttribute("aria-expanded")) !== "true") {
       await openMenu.click();
     }
     const signOut = page.getByRole("button", { name: /^sign out$/i });

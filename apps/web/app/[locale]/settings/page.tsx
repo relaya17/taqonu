@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations, useLocale } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { AUTH_SESSION_QUERY_KEY, fetchAuthSession } from "@/lib/auth-session";
 
 interface AuthUser {
   id: string;
@@ -54,24 +55,8 @@ export default function SettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const me = useQuery({
-    queryKey: ["auth-session"],
-    queryFn: async () => {
-      const session = await apiGet<{
-        authenticated: boolean;
-        user: AuthUser | null;
-        role: string | null;
-        capabilities: string[];
-      }>("/api/v1/auth/session");
-      if (!session.authenticated || !session.user) {
-        throw new Error("Not signed in");
-      }
-      return {
-        authenticated: true as const,
-        user: session.user,
-        role: session.role ?? session.user.role,
-        capabilities: session.capabilities,
-      };
-    },
+    queryKey: AUTH_SESSION_QUERY_KEY,
+    queryFn: () => fetchAuthSession<AuthUser>(),
     retry: false,
   });
 
@@ -113,7 +98,7 @@ export default function SettingsPage() {
       }),
     onSuccess: () => {
       setNotice(t("profileSaved"));
-      void queryClient.invalidateQueries({ queryKey: ["auth-session"] });
+      void queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
     },
   });
 
@@ -127,7 +112,7 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setNotice(t("passwordChanged"));
-      void queryClient.invalidateQueries({ queryKey: ["auth-session"] });
+      void queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
     },
   });
 

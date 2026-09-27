@@ -205,7 +205,7 @@ export function studioFileActionInstruction(
 export const WEB_POST_AUTH_PATH = "/studio";
 
 function stripLocalePrefix(pathname: string): string {
-  return pathname.replace(/^\/(he|en|ar)(?=\/|$)/, "") || "/";
+  return pathname.replace(/^\/(he|en|ar|fr)(?=\/|$)/, "") || "/";
 }
 
 /**
@@ -221,6 +221,17 @@ export function isPublicShellPath(pathname: string): boolean {
     path === "/auth" ||
     path.startsWith("/auth/")
   );
+}
+
+/**
+ * Locale pages that render without a session: the public doors plus the
+ * pricing page. Every other locale page is private, and the shell shows it
+ * only after the session check says the visitor is signed in.
+ */
+export function requiresSignIn(pathname: string): boolean {
+  if (isPublicShellPath(pathname)) return false;
+  const path = stripLocalePrefix(pathname);
+  return !(path === "/plan" || path.startsWith("/plan/"));
 }
 
 /** Marketing landing chrome — welcome only, not login/register. */

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Alert,
   Box,
@@ -13,10 +12,13 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { apiPost, downloadVerifiedSourcesPack } from "@/lib/api";
 import { DEV_CREDENTIALS, isDevLoginPrefill } from "@/lib/dev-credentials";
+import { useHydrationSafeInput } from "@/lib/use-hydration-safe-input";
 
 export default function AdminLoginPage() {
-  const [email, setEmail] = useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "");
-  const [password, setPassword] = useState("");
+  const [email, setEmail, emailRef] = useHydrationSafeInput(
+    isDevLoginPrefill ? DEV_CREDENTIALS.email : "",
+  );
+  const [password, setPassword, passwordRef] = useHydrationSafeInput("");
 
   const login = useMutation({
     mutationFn: () =>
@@ -120,6 +122,7 @@ export default function AdminLoginPage() {
           label="אימייל"
           type="email"
           value={email}
+          inputRef={emailRef}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="username"
           fullWidth
@@ -138,6 +141,7 @@ export default function AdminLoginPage() {
           label="סיסמה"
           type="password"
           value={password}
+          inputRef={passwordRef}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           fullWidth

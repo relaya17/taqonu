@@ -40,6 +40,35 @@ export function anyStudioBufferDirty(
   return Object.values(buffers).some((buffer) => buffer.draft !== buffer.saved);
 }
 
+/**
+ * WAI-ARIA tabs keyboard model for the open-files strip. Returns the index of
+ * the tab to focus and select, or null when the key is not a tab-navigation key.
+ * ArrowLeft/ArrowRight follow the visual order, so they swap in RTL.
+ */
+export function openStudioFileTabIndexForKey(
+  key: string,
+  current: number,
+  count: number,
+  rtl: boolean,
+): number | null {
+  if (count <= 0) return null;
+  const from = current >= 0 && current < count ? current : 0;
+  const forward = rtl ? "ArrowLeft" : "ArrowRight";
+  const backward = rtl ? "ArrowRight" : "ArrowLeft";
+  switch (key) {
+    case forward:
+      return (from + 1) % count;
+    case backward:
+      return (from - 1 + count) % count;
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return null;
+  }
+}
+
 export function studioFileBaseName(path: string): string {
   const parts = path.replaceAll("\\", "/").split("/");
   return parts[parts.length - 1] || path;

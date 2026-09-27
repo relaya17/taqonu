@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "@/i18n/routing";
 import { ProductReel } from "@/components/marketing/ProductReel";
 import { atlasChrome as c } from "@/styles/palette";
-import { apiGet } from "@/lib/api";
+import { AUTH_SESSION_QUERY_KEY, fetchAuthSession } from "@/lib/auth-session";
 import { WEB_POST_AUTH_PATH } from "@/lib/studio-surfaces";
 
 export function WelcomeLanding({ children }: { children?: ReactNode }) {
@@ -16,17 +16,8 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
   const router = useRouter();
   const [promoEnded, setPromoEnded] = useState(false);
   const session = useQuery({
-    queryKey: ["auth-session"],
-    queryFn: async () => {
-      const state = await apiGet<{
-        authenticated?: boolean;
-        user: { email: string } | null;
-      }>("/api/v1/auth/session");
-      if (!state.authenticated || !state.user) {
-        throw new Error("Not signed in");
-      }
-      return state;
-    },
+    queryKey: AUTH_SESSION_QUERY_KEY,
+    queryFn: () => fetchAuthSession<{ email: string; role: string }>(),
     retry: false,
     staleTime: 5 * 60_000,
   });
@@ -297,7 +288,7 @@ export function WelcomeLanding({ children }: { children?: ReactNode }) {
               bgcolor: c.hover,
             }}
           >
-            <Typography sx={{ fontWeight: 700, fontSize: "clamp(1.05rem, 2vw, 1.2rem)", mb: 1, color: c.accent }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "clamp(1.05rem, 2vw, 1.2rem)", mb: 1, color: c.chrome }}>
               {t("proName")}
             </Typography>
             <Typography sx={{ color: c.textMuted, mb: 2, fontSize: "clamp(0.85rem, 1.6vw, 0.95rem)" }}>

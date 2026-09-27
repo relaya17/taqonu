@@ -6,6 +6,7 @@ import {
   closeOpenStudioFile,
   markStudioFileSaved,
   mergeStudioFileFromDisk,
+  openStudioFileTabIndexForKey,
   studioBufferIsDirty,
   studioFileBaseName,
 } from "./studio-workspace";
@@ -26,6 +27,25 @@ describe("studio open files", () => {
     expect(closed.open).toEqual(["a.ts", "c.ts"]);
     expect(closed.nextActive).toBe("a.ts");
     expect(closeOpenStudioFile(["only.ts"], "only.ts").nextActive).toBeNull();
+  });
+
+  it("moves between open-file tabs with arrows, Home and End (LTR)", () => {
+    expect(openStudioFileTabIndexForKey("ArrowRight", 0, 3, false)).toBe(1);
+    expect(openStudioFileTabIndexForKey("ArrowRight", 2, 3, false)).toBe(0);
+    expect(openStudioFileTabIndexForKey("ArrowLeft", 0, 3, false)).toBe(2);
+    expect(openStudioFileTabIndexForKey("Home", 2, 3, false)).toBe(0);
+    expect(openStudioFileTabIndexForKey("End", 0, 3, false)).toBe(2);
+  });
+
+  it("swaps arrow directions in RTL", () => {
+    expect(openStudioFileTabIndexForKey("ArrowLeft", 0, 3, true)).toBe(1);
+    expect(openStudioFileTabIndexForKey("ArrowRight", 0, 3, true)).toBe(2);
+  });
+
+  it("ignores other keys and empty strips; clamps an unknown current tab", () => {
+    expect(openStudioFileTabIndexForKey("Enter", 0, 3, false)).toBeNull();
+    expect(openStudioFileTabIndexForKey("ArrowRight", 0, 0, false)).toBeNull();
+    expect(openStudioFileTabIndexForKey("ArrowRight", -1, 3, false)).toBe(1);
   });
 });
 

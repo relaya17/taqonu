@@ -71,6 +71,13 @@
     "themeDark": "Switch to dark lighting",
     "themeLight": "Switch to light lighting"
   },
+  "session": {
+    "checking": "Checking your session…",
+    "redirecting": "You are not signed in. Opening the sign-in page…",
+    "unavailableTitle": "Atlas cannot verify your session",
+    "unavailableBody": "The Atlas API did not respond, so this page stays closed. Nothing was shown or changed.",
+    "retry": "Try again"
+  },
   "companion": {
     "title": "AI companion",
     "label": "Companion model",
@@ -929,6 +936,8 @@
     "subtitle": "The offer is a one-week Readiness Audit on one production system. Your data stays on Cloudflare (or another cloud you own). Usage meters exist so Atlas stays honest — they are not the product.",
     "auditBanner": "Request a Readiness Audit: Discover → Verdict → Evidence report. Code stays with you. No invented case studies.",
     "openAudit": "Open the Audit intake",
+    "signInToManage": "Sign in to see your plan, usage and cloud connection.",
+    "signIn": "Sign in",
     "sellBanner": "After the Audit: Free = your Cloudflare + limited Atlas usage. Pro = higher ceilings if you keep Atlas as the control layer.",
     "compareTitle": "Choose a plan",
     "freeColumnTitle": "Free",

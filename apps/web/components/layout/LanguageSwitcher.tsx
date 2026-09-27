@@ -4,26 +4,32 @@ import { useState, type MouseEvent } from "react";
 import { Button, Menu, MenuItem, Stack, Typography } from "@mui/material";
 import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
 import { useLocale, useTranslations } from "next-intl";
-import { Link, usePathname } from "@/i18n/routing";
+import { Link, usePathname, type AppLocale } from "@/i18n/routing";
+import { localeDir, type TextDirection } from "@/lib/locale-dir";
 
-type LocaleCode = "he" | "en" | "ar";
+type LocaleCode = AppLocale;
 
 interface LanguageOption {
   code: LocaleCode;
   native: string;
   short: string;
-  dir: "rtl" | "ltr";
+  dir: TextDirection;
 }
 
-const LANGUAGES: LanguageOption[] = [
-  { code: "he", native: "עברית", short: "HE", dir: "rtl" },
-  { code: "en", native: "English", short: "EN", dir: "ltr" },
-  { code: "ar", native: "العربية", short: "AR", dir: "rtl" },
-];
+const LANGUAGES: LanguageOption[] = (
+  [
+    { code: "he", native: "עברית", short: "HE" },
+    { code: "en", native: "English", short: "EN" },
+    { code: "ar", native: "العربية", short: "AR" },
+    { code: "fr", native: "Français", short: "FR" },
+  ] as const
+).map((lang) => ({ ...lang, dir: localeDir(lang.code) }));
 
 interface LanguageSwitcherProps {
   tone?: "dark" | "light" | undefined;
   compact?: boolean | undefined;
+  /** Icon-width trigger that sits flush against a neighbouring icon button. */
+  dense?: boolean | undefined;
   onSelect?: (() => void) | undefined;
   menuId?: string | undefined;
 }
@@ -31,6 +37,7 @@ interface LanguageSwitcherProps {
 export function LanguageSwitcher({
   tone = "dark",
   compact = false,
+  dense = false,
   onSelect,
   menuId = "atlas-lang-menu",
 }: LanguageSwitcherProps) {
@@ -78,10 +85,11 @@ export function LanguageSwitcher({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         sx={{
-          minWidth: compact ? 36 : 40,
-          minHeight: 36,
+          minWidth: dense ? 32 : compact ? 36 : 40,
+          width: dense ? 32 : undefined,
+          minHeight: dense ? 44 : 36,
           color: colors.textMuted,
-          px: compact ? 0.75 : 1,
+          px: dense ? 0 : compact ? 0.75 : 1,
           "&:hover": { bgcolor: colors.hover, color: colors.text },
         }}
       >

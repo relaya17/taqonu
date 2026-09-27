@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
 import { useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -13,14 +13,15 @@ import {
   authHrefWithNext,
   inputDirForLocale,
 } from "@/lib/audit-return-path";
+import { useHydrationSafeInput } from "@/lib/use-hydration-safe-input";
 
 function ResetPasswordForm() {
   const t = useTranslations("auth");
   const locale = useLocale();
   const params = useSearchParams();
   const next = params.get("next");
-  const [token, setToken] = useState(params.get("token") ?? "");
-  const [password, setPassword] = useState("");
+  const [token, setToken, tokenRef] = useHydrationSafeInput(params.get("token") ?? "");
+  const [password, setPassword, passwordRef] = useHydrationSafeInput("");
   const fieldDir = inputDirForLocale(locale);
 
   const reset = useMutation({
@@ -50,6 +51,7 @@ function ResetPasswordForm() {
         <TextField
           label={t("resetToken")}
           value={token}
+          inputRef={tokenRef}
           onChange={(e) => setToken(e.target.value)}
           fullWidth
           required
@@ -59,6 +61,7 @@ function ResetPasswordForm() {
           label={t("newPassword")}
           type="password"
           value={password}
+          inputRef={passwordRef}
           onChange={(e) => setPassword(e.target.value)}
           fullWidth
           required

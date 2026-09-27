@@ -7,6 +7,11 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiGet, apiPost } from "@/lib/api";
+import {
+  AUTH_SESSION_QUERY_KEY,
+  fetchAuthSession,
+  sessionGate,
+} from "@/lib/auth-session";
 
 interface AccountPlan {
   tier: "free" | "pro";
@@ -62,20 +67,32 @@ export default function PlanPage() {
   const [cfLabel, setCfLabel] = useState("");
   const [cfAccountId, setCfAccountId] = useState("");
 
+  const session = useQuery({
+    queryKey: AUTH_SESSION_QUERY_KEY,
+    queryFn: () => fetchAuthSession<{ role: string }>(),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const gate = sessionGate(session);
+  const signedIn = gate === "signed-in";
+
   const planQuery = useQuery({
     queryKey: ["billing-plan"],
     queryFn: () => apiGet<AccountPlan>("/api/v1/billing/plan"),
+    enabled: signedIn,
   });
 
   const byoQuery = useQuery({
     queryKey: ["byo-cloud-status"],
     queryFn: () => apiGet<ByoCloudBinding>("/api/v1/byo-cloud/status"),
+    enabled: signedIn,
   });
 
   const platformQuery = useQuery({
     queryKey: ["platform-info"],
     queryFn: () => apiGet<PlatformInfo>("/api/v1/platform"),
     staleTime: 5 * 60_000,
+    enabled: signedIn,
   });
 
   const setPlan = useMutation({
@@ -161,6 +178,17 @@ export default function PlanPage() {
         {t("openAudit")}
       </Button>
 
+      {gate === "signed-out" ? (
+        <Stack spacing={1} alignItems="center">
+          <Typography variant="body2" color="text.secondary">
+            {t("signInToManage")}
+          </Typography>
+          <Button component={Link} href="/auth/login" variant="outlined">
+            {t("signIn")}
+          </Button>
+        </Stack>
+      ) : null}
+
       <Box sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
         <Typography fontWeight={700} sx={{ mb: 1 }}>
           {t("byoTitle")}
@@ -168,7 +196,7 @@ export default function PlanPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {t("byoHelp")}
         </Typography>
-        {byo?.status === "connected" ? (
+        {!signedIn ? null : byo?.status === "connected" ? (
           <Stack spacing={1}>
             <Alert severity="success">
               {t("byoConnected", { label: byo.accountLabel ?? "Cloudflare" })}
@@ -242,7 +270,7 @@ export default function PlanPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
             {t("proHint")}
           </Typography>
-          {plan?.tier !== "pro" ? (
+          {signedIn && plan?.tier !== "pro" ? (
             <Button
               variant="contained"
               disabled={stripeCheckout.isPending || setPlan.isPending}

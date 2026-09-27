@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   Alert,
   Box,
@@ -8,6 +16,7 @@ import {
   Chip,
   Collapse,
   List,
+  ListItem,
   ListItemButton,
   ListItemText,
   MenuItem,
@@ -68,6 +77,7 @@ import {
   closeOpenStudioFile,
   markStudioFileSaved,
   mergeStudioFileFromDisk,
+  openStudioFileTabIndexForKey,
   studioBufferIsDirty,
   studioFileBaseName,
   type StudioFileBuffer,
@@ -199,31 +209,34 @@ function TreeBranch({
   const [open, setOpen] = useState(depth < 2);
   if (node.kind === "file") {
     return (
-      <ListItemButton
-        dense
-        selected={selectedPath === node.path}
-        onClick={() => onSelect(node.path, "file")}
-        sx={{
-          ps: 1.5 + depth * 1.25,
-          borderRadius: 1.5,
-          mx: 0.5,
-          color: "#DCDDE1",
-          "&.Mui-selected": {
-            bgcolor: "rgba(154,158,168,0.18)",
-          },
-        }}
-      >
-        <ListItemText
-          primary={node.name}
-          primaryTypographyProps={{ fontSize: 13, noWrap: true }}
-        />
-      </ListItemButton>
+      <ListItem disablePadding>
+        <ListItemButton
+          dense
+          selected={selectedPath === node.path}
+          onClick={() => onSelect(node.path, "file")}
+          sx={{
+            ps: 1.5 + depth * 1.25,
+            borderRadius: 1.5,
+            mx: 0.5,
+            color: "#DCDDE1",
+            "&.Mui-selected": {
+              bgcolor: "rgba(154,158,168,0.18)",
+            },
+          }}
+        >
+          <ListItemText
+            primary={node.name}
+            primaryTypographyProps={{ fontSize: 13, noWrap: true }}
+          />
+        </ListItemButton>
+      </ListItem>
     );
   }
   return (
-    <Box>
+    <ListItem disablePadding sx={{ display: "block" }}>
       <ListItemButton
         dense
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         sx={{ ps: 1.5 + depth * 1.25, borderRadius: 1.5, mx: 0.5, color: "#DCDDE1" }}
       >
@@ -249,7 +262,7 @@ function TreeBranch({
           ))}
         </List>
       </Collapse>
-    </Box>
+    </ListItem>
   );
 }
 
@@ -351,6 +364,31 @@ export default function StudioPage() {
         file: path,
       })}`,
     );
+  };
+
+  const openFilesId = useId();
+  const editorPanelId = `${openFilesId}-panel`;
+  const openFileTabId = (index: number) => `${openFilesId}-tab-${index}`;
+  const selectedOpenIndex = selectedPath ? openFiles.indexOf(selectedPath) : -1;
+  const focusableOpenIndex = selectedOpenIndex >= 0 ? selectedOpenIndex : 0;
+
+  const onOpenFilesKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
+    const next = openStudioFileTabIndexForKey(
+      event.key,
+      selectedOpenIndex,
+      openFiles.length,
+      rtl,
+    );
+    if (next === null) return;
+    const path = openFiles[next];
+    if (path === undefined) return;
+    event.preventDefault();
+    event.currentTarget
+      .querySelectorAll<HTMLElement>('[role="tab"]')
+      .item(next)
+      ?.focus();
+    selectStudioFile(path);
   };
 
   const closeStudioFile = (path: string) => {
@@ -915,7 +953,7 @@ export default function StudioPage() {
               }}
             />
             {trimmedSearch.length >= 2 ? (
-              <List dense disablePadding sx={{ px: 0.5, pb: 1 }}>
+              <Box sx={{ px: 0.5, pb: 1 }}>
                 {searchQuery.isError ? (
                   <Alert severity="error" sx={{ mx: 1, mb: 1 }}>
                     {(searchQuery.error as Error).message}
@@ -924,20 +962,23 @@ export default function StudioPage() {
                 {searchQuery.data?.truncated ? (
                   <Chip size="small" label={t("searchTruncated")} sx={{ mx: 1.5, mb: 0.5 }} />
                 ) : null}
-                {(searchQuery.data?.items ?? []).map((hit) => (
-                  <ListItemButton
-                    key={`${hit.path}:${hit.line}:${hit.preview}`}
-                    onClick={() => selectStudioFile(hit.path, hit.line)}
-                    sx={{ color: "#DCDDE1", borderRadius: 1 }}
-                  >
-                    <ListItemText
-                      primary={hit.path}
-                      secondary={`${hit.line}: ${hit.preview}`}
-                      primaryTypographyProps={{ noWrap: true, fontSize: "0.8rem" }}
-                      secondaryTypographyProps={{ noWrap: true, color: "#8B9099" }}
-                    />
-                  </ListItemButton>
-                ))}
+                <List dense disablePadding>
+                  {(searchQuery.data?.items ?? []).map((hit) => (
+                    <ListItem key={`${hit.path}:${hit.line}:${hit.preview}`} disablePadding>
+                      <ListItemButton
+                        onClick={() => selectStudioFile(hit.path, hit.line)}
+                        sx={{ color: "#DCDDE1", borderRadius: 1 }}
+                      >
+                        <ListItemText
+                          primary={hit.path}
+                          secondary={`${hit.line}: ${hit.preview}`}
+                          primaryTypographyProps={{ noWrap: true, fontSize: "0.8rem" }}
+                          secondaryTypographyProps={{ noWrap: true, color: "#8B9099" }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
                 {searchQuery.isLoading ? (
                   <Typography variant="caption" sx={{ px: 1.5, color: "#8B9099" }}>
                     {t("searchLoading")}
@@ -948,7 +989,7 @@ export default function StudioPage() {
                     {t("searchEmpty")}
                   </Typography>
                 ) : null}
-              </List>
+              </Box>
             ) : null}
             {treeQuery.data ? (
               <List dense disablePadding sx={{ py: 0.75 }}>
@@ -991,11 +1032,17 @@ export default function StudioPage() {
                   useFlexGap
                   role="tablist"
                   aria-label={t("openFiles")}
+                  onKeyDown={onOpenFilesKeyDown}
                   sx={{ px: 1.5, pt: 1, borderBottom: panelBorder }}
                 >
-                  {openFiles.map((path) => (
+                  {openFiles.map((path, index) => (
                     <Chip
                       key={path}
+                      role="tab"
+                      id={openFileTabId(index)}
+                      aria-selected={path === selectedPath}
+                      aria-controls={editorPanelId}
+                      tabIndex={index === focusableOpenIndex ? 0 : -1}
                       size="small"
                       color={path === selectedPath ? "primary" : "default"}
                       variant={path === selectedPath ? "filled" : "outlined"}
@@ -1017,117 +1064,87 @@ export default function StudioPage() {
                   ))}
                 </Stack>
               ) : null}
-              <Stack
-                direction="row"
-                spacing={1}
-                alignItems="center"
-                sx={{ px: 1.5, py: 1.25, borderBottom: panelBorder }}
+              <Box
+                id={editorPanelId}
+                role={openFiles.length > 0 ? "tabpanel" : undefined}
+                aria-labelledby={
+                  openFiles.length > 0 ? openFileTabId(focusableOpenIndex) : undefined
+                }
+                sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
               >
-                <Typography
-                  variant="subtitle2"
-                  fontWeight={700}
-                  noWrap
-                  sx={{ flex: 1 }}
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  sx={{ px: 1.5, py: 1.25, borderBottom: panelBorder }}
                 >
-                  {selectedPath ?? t("pickFile")}
-                </Typography>
-                {fileQuery.data?.languageHint ? (
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={700}
+                    noWrap
+                    sx={{ flex: 1 }}
+                  >
+                    {selectedPath ?? t("pickFile")}
+                  </Typography>
+                  {fileQuery.data?.languageHint ? (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={fileQuery.data.languageHint}
+                      sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }}
+                    />
+                  ) : null}
                   <Chip
                     size="small"
-                    variant="outlined"
-                    label={fileQuery.data.languageHint}
-                    sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }}
-                  />
-                ) : null}
-                <Chip
-                  size="small"
-                  label={
-                    fileQuery.data?.truncated
-                      ? t("fileTruncated")
-                      : isDirty
-                        ? t("dirty")
-                        : t("editable")
-                  }
-                />
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={!selectedPath || fileQuery.isFetching}
-                  onClick={() => {
-                    if (
-                      isDirty &&
-                      !window.confirm(t("unsavedConfirm"))
-                    ) {
-                      return;
+                    label={
+                      fileQuery.data?.truncated
+                        ? t("fileTruncated")
+                        : isDirty
+                          ? t("dirty")
+                          : t("editable")
                     }
-                    if (!selectedPath) return;
-                    setBuffers((prev) => {
-                      const next = { ...prev };
-                      delete next[selectedPath];
-                      return next;
-                    });
-                    setDiskChangedPath((current) =>
-                      current === selectedPath ? null : current,
-                    );
-                    void fileQuery.refetch();
-                  }}
-                >
-                  {t("reloadFile")}
-                </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  disabled={
-                    saveFile.isPending ||
-                    !selectedPath ||
-                    !currentBuffer ||
-                    Boolean(fileQuery.data?.truncated) ||
-                    Boolean(fileQuery.data?.readOnly) ||
-                    !isDirty
-                  }
-                  onClick={() => saveFile.mutate()}
-                >
-                  {saveFile.isPending ? t("asking") : t("saveFile")}
-                </Button>
-              </Stack>
-              <Stack
-                direction="row"
-                spacing={1}
-                alignItems="center"
-                flexWrap="wrap"
-                useFlexGap
-                sx={{ px: 1.5, py: 1, borderBottom: panelBorder }}
-              >
-                <TextField
-                  size="small"
-                  label={t("moveTo")}
-                  value={moveTo}
-                  onChange={(event) => setMoveTo(event.target.value)}
-                  sx={{ minWidth: 180, flex: 1 }}
-                />
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={
-                    moveFile.isPending ||
-                    !selectedPath ||
-                    moveTo.trim().length === 0 ||
-                    moveTo.trim() === selectedPath
-                  }
-                  onClick={() => {
-                    if (isDirty && !window.confirm(t("unsavedConfirm"))) return;
-                    moveFile.mutate();
-                  }}
-                >
-                  {t("moveFile")}
-                </Button>
-              </Stack>
-              {moveFile.isError ? (
-                <Alert severity="warning" sx={{ mx: 1.5, mt: 1 }}>
-                  {(moveFile.error as Error).message}
-                </Alert>
-              ) : null}
-              {selectedPath && fileQuery.data && !fileQuery.data.readOnly ? (
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={!selectedPath || fileQuery.isFetching}
+                    onClick={() => {
+                      if (
+                        isDirty &&
+                        !window.confirm(t("unsavedConfirm"))
+                      ) {
+                        return;
+                      }
+                      if (!selectedPath) return;
+                      setBuffers((prev) => {
+                        const next = { ...prev };
+                        delete next[selectedPath];
+                        return next;
+                      });
+                      setDiskChangedPath((current) =>
+                        current === selectedPath ? null : current,
+                      );
+                      void fileQuery.refetch();
+                    }}
+                  >
+                    {t("reloadFile")}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={
+                      saveFile.isPending ||
+                      !selectedPath ||
+                      !currentBuffer ||
+                      Boolean(fileQuery.data?.truncated) ||
+                      Boolean(fileQuery.data?.readOnly) ||
+                      !isDirty
+                    }
+                    onClick={() => saveFile.mutate()}
+                  >
+                    {saveFile.isPending ? t("asking") : t("saveFile")}
+                  </Button>
+                </Stack>
                 <Stack
                   direction="row"
                   spacing={1}
@@ -1138,154 +1155,193 @@ export default function StudioPage() {
                 >
                   <TextField
                     size="small"
-                    label={t("findInFile")}
-                    value={findText}
-                    onChange={(event) => {
-                      setFindText(event.target.value);
-                      setReplaceNote(null);
-                    }}
-                    sx={{ minWidth: 140, flex: 1 }}
-                  />
-                  <TextField
-                    size="small"
-                    label={t("replaceInFile")}
-                    value={replaceText}
-                    onChange={(event) => {
-                      setReplaceText(event.target.value);
-                      setReplaceNote(null);
-                    }}
-                    sx={{ minWidth: 140, flex: 1 }}
+                    label={t("moveTo")}
+                    value={moveTo}
+                    onChange={(event) => setMoveTo(event.target.value)}
+                    sx={{ minWidth: 180, flex: 1 }}
                   />
                   <Button
                     size="small"
                     variant="outlined"
-                    disabled={!findText || Boolean(fileQuery.data.truncated)}
-                    onClick={() => applyBufferReplace("one")}
-                    aria-label={t("replaceOne")}
+                    disabled={
+                      moveFile.isPending ||
+                      !selectedPath ||
+                      moveTo.trim().length === 0 ||
+                      moveTo.trim() === selectedPath
+                    }
+                    onClick={() => {
+                      if (isDirty && !window.confirm(t("unsavedConfirm"))) return;
+                      moveFile.mutate();
+                    }}
                   >
-                    {t("replaceOne")}
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={!findText || Boolean(fileQuery.data.truncated)}
-                    onClick={() => applyBufferReplace("all")}
-                    aria-label={t("replaceAll")}
-                  >
-                    {t("replaceAll")}
+                    {t("moveFile")}
                   </Button>
                 </Stack>
-              ) : null}
-              {replaceNote ? (
-                <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
-                  {replaceNote}
-                </Typography>
-              ) : null}
-              {crumbs.length > 0 ? (
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  alignItems="center"
-                  flexWrap="wrap"
-                  useFlexGap
-                  aria-label={t("breadcrumbs")}
-                  sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
-                >
-                  {crumbs.map((crumb, index) => (
-                    <Chip
-                      key={`${crumb}-${index}`}
+                {moveFile.isError ? (
+                  <Alert severity="warning" sx={{ mx: 1.5, mt: 1 }}>
+                    {(moveFile.error as Error).message}
+                  </Alert>
+                ) : null}
+                {selectedPath && fileQuery.data && !fileQuery.data.readOnly ? (
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    flexWrap="wrap"
+                    useFlexGap
+                    sx={{ px: 1.5, py: 1, borderBottom: panelBorder }}
+                  >
+                    <TextField
+                      size="small"
+                      label={t("findInFile")}
+                      value={findText}
+                      onChange={(event) => {
+                        setFindText(event.target.value);
+                        setReplaceNote(null);
+                      }}
+                      sx={{ minWidth: 140, flex: 1 }}
+                    />
+                    <TextField
+                      size="small"
+                      label={t("replaceInFile")}
+                      value={replaceText}
+                      onChange={(event) => {
+                        setReplaceText(event.target.value);
+                        setReplaceNote(null);
+                      }}
+                      sx={{ minWidth: 140, flex: 1 }}
+                    />
+                    <Button
                       size="small"
                       variant="outlined"
-                      label={crumb}
-                      sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.2)" }}
-                    />
-                  ))}
-                </Stack>
-              ) : null}
-              {outline.length > 0 ? (
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  flexWrap="wrap"
-                  useFlexGap
-                  aria-label={t("outline")}
-                  sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
-                >
-                  {outline.slice(0, 16).map((symbol) => (
-                    <Chip
-                      key={`${symbol.kind}:${symbol.name}:${symbol.line}`}
+                      disabled={!findText || Boolean(fileQuery.data.truncated)}
+                      onClick={() => applyBufferReplace("one")}
+                      aria-label={t("replaceOne")}
+                    >
+                      {t("replaceOne")}
+                    </Button>
+                    <Button
                       size="small"
-                      label={`${symbol.name}:${symbol.line}`}
-                      onClick={() => setRevealLine(symbol.line)}
-                      aria-label={`${symbol.kind} ${symbol.name}`}
-                      sx={{ color: "#DCDDE1", borderColor: "rgba(232,234,238,0.25)" }}
-                    />
-                  ))}
-                </Stack>
-              ) : selectedPath && fileQuery.data ? (
-                <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
-                  {t("outlineEmpty")}
-                </Typography>
-              ) : null}
-              {fileQuery.isError ? (
-                <Alert severity="warning" sx={{ m: 1.5 }}>
-                  {(fileQuery.error as Error).message}
-                </Alert>
-              ) : null}
-              {saveFile.isError ? (
-                <Alert severity="error" sx={{ m: 1.5 }}>
-                  {(saveFile.error as Error).message}
-                </Alert>
-              ) : null}
-              {saveFile.isSuccess ? (
-                <Alert severity="success" sx={{ m: 1.5 }}>
-                  {t("savedFile")}
-                </Alert>
-              ) : null}
-              {selectedPath && fileQuery.data && /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/i.test(selectedPath) ? (
-                <StudioLanguageBar
-                  projectId={projectId}
-                  path={selectedPath}
-                  content={currentBuffer?.draft ?? fileQuery.data.content}
-                  onOpen={(path, line) => selectStudioFile(path, line)}
-                />
-              ) : null}
-              {diskChangedPath && diskChangedPath === selectedPath ? (
-                <Alert severity="warning" sx={{ m: 1.5 }}>
-                  {t("diskChanged")}
-                </Alert>
-              ) : null}
-              {fileQuery.data ? (
-                <StudioCodeEditor
-                  value={currentBuffer?.draft ?? fileQuery.data.content}
-                  onChange={(value) => {
-                    if (!selectedPath) return;
-                    setBuffers((prev) => {
-                      const existing = prev[selectedPath] ?? {
-                        draft: fileQuery.data.content,
-                        saved: fileQuery.data.content,
-                      };
-                      return {
-                        ...prev,
-                        [selectedPath]: { ...existing, draft: value },
-                      };
-                    });
-                  }}
-                  languageHint={fileQuery.data.languageHint}
-                  readOnly={
-                    Boolean(fileQuery.data.truncated) ||
-                    fileQuery.data.readOnly
-                  }
-                  ariaLabel={selectedPath ?? t("pickFile")}
-                  revealLine={revealLine}
-                />
-              ) : (
-                <Typography variant="body2" color="text.secondary" sx={{ p: 2.5 }}>
-                  {selectedPath && fileQuery.isLoading
-                    ? t("loadingFile")
-                    : t("viewerHint")}
-                </Typography>
-              )}
+                      variant="outlined"
+                      disabled={!findText || Boolean(fileQuery.data.truncated)}
+                      onClick={() => applyBufferReplace("all")}
+                      aria-label={t("replaceAll")}
+                    >
+                      {t("replaceAll")}
+                    </Button>
+                  </Stack>
+                ) : null}
+                {replaceNote ? (
+                  <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
+                    {replaceNote}
+                  </Typography>
+                ) : null}
+                {crumbs.length > 0 ? (
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    alignItems="center"
+                    flexWrap="wrap"
+                    useFlexGap
+                    aria-label={t("breadcrumbs")}
+                    sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
+                  >
+                    {crumbs.map((crumb, index) => (
+                      <Chip
+                        key={`${crumb}-${index}`}
+                        size="small"
+                        variant="outlined"
+                        label={crumb}
+                        sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.2)" }}
+                      />
+                    ))}
+                  </Stack>
+                ) : null}
+                {outline.length > 0 ? (
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    flexWrap="wrap"
+                    useFlexGap
+                    aria-label={t("outline")}
+                    sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
+                  >
+                    {outline.slice(0, 16).map((symbol) => (
+                      <Chip
+                        key={`${symbol.kind}:${symbol.name}:${symbol.line}`}
+                        size="small"
+                        label={`${symbol.name}:${symbol.line}`}
+                        onClick={() => setRevealLine(symbol.line)}
+                        aria-label={`${symbol.kind} ${symbol.name}`}
+                        sx={{ color: "#DCDDE1", borderColor: "rgba(232,234,238,0.25)" }}
+                      />
+                    ))}
+                  </Stack>
+                ) : selectedPath && fileQuery.data ? (
+                  <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
+                    {t("outlineEmpty")}
+                  </Typography>
+                ) : null}
+                {fileQuery.isError ? (
+                  <Alert severity="warning" sx={{ m: 1.5 }}>
+                    {(fileQuery.error as Error).message}
+                  </Alert>
+                ) : null}
+                {saveFile.isError ? (
+                  <Alert severity="error" sx={{ m: 1.5 }}>
+                    {(saveFile.error as Error).message}
+                  </Alert>
+                ) : null}
+                {saveFile.isSuccess ? (
+                  <Alert severity="success" sx={{ m: 1.5 }}>
+                    {t("savedFile")}
+                  </Alert>
+                ) : null}
+                {selectedPath && fileQuery.data && /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/i.test(selectedPath) ? (
+                  <StudioLanguageBar
+                    projectId={projectId}
+                    path={selectedPath}
+                    content={currentBuffer?.draft ?? fileQuery.data.content}
+                    onOpen={(path, line) => selectStudioFile(path, line)}
+                  />
+                ) : null}
+                {diskChangedPath && diskChangedPath === selectedPath ? (
+                  <Alert severity="warning" sx={{ m: 1.5 }}>
+                    {t("diskChanged")}
+                  </Alert>
+                ) : null}
+                {fileQuery.data ? (
+                  <StudioCodeEditor
+                    value={currentBuffer?.draft ?? fileQuery.data.content}
+                    onChange={(value) => {
+                      if (!selectedPath) return;
+                      setBuffers((prev) => {
+                        const existing = prev[selectedPath] ?? {
+                          draft: fileQuery.data.content,
+                          saved: fileQuery.data.content,
+                        };
+                        return {
+                          ...prev,
+                          [selectedPath]: { ...existing, draft: value },
+                        };
+                      });
+                    }}
+                    languageHint={fileQuery.data.languageHint}
+                    readOnly={
+                      Boolean(fileQuery.data.truncated) ||
+                      fileQuery.data.readOnly
+                    }
+                    ariaLabel={selectedPath ?? t("pickFile")}
+                    revealLine={revealLine}
+                  />
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 2.5 }}>
+                    {selectedPath && fileQuery.isLoading
+                      ? t("loadingFile")
+                      : t("viewerHint")}
+                  </Typography>
+                )}
+              </Box>
             </Box>
 
             <StudioProblemsPanel

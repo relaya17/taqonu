@@ -1,50 +1,25 @@
 import { test, expect } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
-import type { Page, TestInfo } from "@playwright/test";
+import { expectNoA11yViolations } from "./axe";
+import { expectSignInRedirect } from "./signed-out";
 /**
 * Manual a11y / responsive smoke checks, PLUS a real automated WCAG 2.2 AA
 * scan (axe-core) on every page this suite already visits.
 * Checks landmarks, skip link, keyboard-named controls, mobile overflow.
+* This suite is signed out, so it covers the public pages; the signed-in
+* product pages get the same checks in e2e/stage9/product-surfaces.spec.ts.
 */
-/**
-* Run an axe-core scan for WCAG 2.0/2.1 A+AA and WCAG 2.2 AA, and assert
-* there are no violations. Attaches the full JSON report to the test result
-* (pass or fail) so violations are inspectable from the HTML report.
-*/
-async function expectNoA11yViolations(page: Page, testInfo: TestInfo) {
-const results = await new AxeBuilder({ page })
-.withTags(["wcag2a", "wcag2aa", "wcag22aa"])
-.analyze();
-await testInfo.attach("axe-scan-results", {
-body: JSON.stringify(results, null, 2),
-contentType: "application/json",
-});
-expect(
-results.violations,
-`axe-core found ${results.violations.length} WCAG 2.2 AA violation(s) on ${page.url()}:\n` +
-results.violations
-.map(
-(v) =>
-`- [${v.id}] ${v.help} (impact: ${v.impact}) — ${v.nodes.length} node(s)\n  ${v.helpUrl}`,
-)
-.join("\n"),
-).toEqual([]);
-}
-const PRIMARY = [
-"/en",
-"/en/projects",
-"/en/systems",
-"/en/health",
-"/en/decisions",
-"/en/agents",
-"/en/memory",
+const PUBLIC_PAGES = [
+"/en/welcome",
+"/en/plan",
 "/en/auth/login",
+"/en/auth/register",
+"/en/auth/forgot",
 ] as const;
 test.describe("A11y smoke (EN)", () => {
-test("home has skip link, main landmark, and h1", async ({
+test("signed-out home lands on sign-in with skip link, main landmark, and h1", async ({
 page,
 }, testInfo) => {
-await page.goto("/en");
+await expectSignInRedirect(page, "/en");
 const main = page.locator("main#main-content");
 await expect(main).toBeVisible({ timeout: 45_000 });
 await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
@@ -56,46 +31,20 @@ await expect(skip).toBeFocused();
 await skip.click();
 await expect(main).toBeFocused();
 });
-// KNOWN GAP: the mobile hamburger/sidebar is rendered only for the
-// authenticated product shell (AppShell.tsx: showProductNav = isAuthed &&
-// !isPublicDoor). Neither this suite nor CI (.github/workflows/
-// e2e-critical-path.yml) has an authenticated-session fixture, and none may
-// be added without creating a real account or fabricating a session — both
-// out of scope here. Tracked as fixme rather than silently deleted or
-// rewritten to test the unauthenticated public shell instead.
-test.fixme("narrow viewport shows hamburger that opens sidebar", async ({
-page,
-}, testInfo) => {
-await page.setViewportSize({ width: 390, height: 844 });
-await page.goto("/en");
-await expect(page.locator("main#main-content")).toBeVisible({
-timeout: 45_000,
-});
-await expectNoA11yViolations(page, testInfo);
-const openMenu = page.getByRole("button", { name: /open menu/i });
-await expect(openMenu).toBeVisible({ timeout: 15_000 });
-await expect(openMenu).toHaveAttribute("aria-expanded", "false");
-await openMenu.click();
-// MUI temporary Drawer modals aria-hide the rest of the page (incl. hamburger).
-const mobileDrawer = page.locator(".MuiDrawer-modal .MuiDrawer-paper");
-await expect(mobileDrawer).toBeVisible({ timeout: 15_000 });
-await expect(
-mobileDrawer.getByRole("navigation", { name: /main navigation/i }),
-).toBeVisible();
-const closeMenu = page.getByRole("button", { name: /close menu/i });
-await expect(closeMenu).toBeVisible();
-await closeMenu.click();
-await expect(openMenu).toBeVisible({ timeout: 15_000 });
-await expect(openMenu).toHaveAttribute("aria-expanded", "false");
-});
-test("primary surfaces avoid horizontal overflow on narrow viewports", async ({
+// The authenticated hamburger/sidebar is covered signed in by
+// e2e/stage9/a11y-studio.spec.ts ("authenticated hamburger opens the product
+// sidebar" and "mobile drawer traps keyboard focus ...").
+test("public pages avoid horizontal overflow on narrow viewports", async ({
 page,
 }, testInfo) => {
 test.setTimeout(180_000);
 await page.setViewportSize({ width: 375, height: 812 });
-for (const path of PRIMARY) {
+for (const path of PUBLIC_PAGES) {
 await page.goto(path, { waitUntil: "domcontentloaded" });
 await expect(page.locator("main")).toBeVisible({ timeout: 20_000 });
+await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({
+timeout: 45_000,
+});
 // Do not wait for networkidle — dashboard/systems keep polling and CI
 // closes the page when the 60s test timeout wins.
 const overflowed = await page.evaluate(() => {
@@ -120,20 +69,8 @@ form.getByRole("button", { name: /sign in/i }),
 ).toBeVisible();
 await expectNoA11yViolations(page, testInfo);
 });
-test("memory page exposes main landmark and heading", async ({
-page,
-}, testInfo) => {
-await page.goto("/en/memory");
-// /en/memory redirects to /en?desk=memory (dashboard with memory desk).
-// Wait for the client-side redirect to complete.
-await expect(page).toHaveURL(/\/en\?.*desk=memory/, {
-  timeout: 30_000,
-});
-await expect(page.locator("main")).toBeVisible({ timeout: 45_000 });
-await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({
-  timeout: 10_000,
-});
-await expectNoA11yViolations(page, testInfo);
+test("memory page sends a signed-out visitor to sign-in", async ({ page }) => {
+await expectSignInRedirect(page, "/en/memory");
 });
 test("investors landing has brand hero and evidence graph visual", async ({
 page,
@@ -148,5 +85,44 @@ await expect(
 page.getByRole("img", { name: /evidence graph/i }),
 ).toBeVisible();
 await expectNoA11yViolations(page, testInfo);
+});
+test("public pages hydrate without React hydration errors", async ({
+page,
+}) => {
+test.setTimeout(180_000);
+const hydrationErrors: string[] = [];
+page.on("console", (message) => {
+if (
+message.type() === "error" &&
+/hydrat|server rendered HTML|did not match/i.test(message.text())
+) {
+hydrationErrors.push(`${page.url()}: ${message.text().slice(0, 300)}`);
+}
+});
+page.on("pageerror", (error) => {
+if (/hydrat/i.test(error.message)) {
+hydrationErrors.push(`${page.url()}: ${error.message.slice(0, 300)}`);
+}
+});
+for (const path of [
+"/investors",
+"/he/welcome",
+"/fr/welcome",
+"/en/auth/login",
+"/fr/auth/login",
+]) {
+await page.goto(path, { waitUntil: "domcontentloaded" });
+const languages = page
+.getByRole("button", { name: /^(languages|langues|שפות|اللغات)$/i })
+.first();
+await expect(languages).toBeVisible({ timeout: 45_000 });
+// A menu only opens after hydration, so the console has seen any mismatch.
+await expect(async () => {
+await languages.click();
+await expect(page.getByRole("menu")).toBeVisible({ timeout: 2_000 });
+}).toPass({ timeout: 60_000 });
+await page.keyboard.press("Escape");
+}
+expect(hydrationErrors).toEqual([]);
 });
 });

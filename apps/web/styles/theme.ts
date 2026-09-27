@@ -338,35 +338,66 @@ export function createAtlasTheme(
             borderRadius: 10,
             border: "1px solid",
             borderColor: "transparent",
-            // Alerts keep light backgrounds in dark mode.
+            backdropFilter: "blur(14px) saturate(1.2)",
+            WebkitBackdropFilter: "blur(14px) saturate(1.2)",
             ...(dark
               ? { "& a:not(.MuiButton-root), & .MuiButton-text": { color: "inherit" } }
               : {}),
           },
-          standardSuccess: {
-            backgroundColor: status.successLight,
-            borderColor: `${status.successMain}33`,
-            color: status.successText,
-            "& .MuiAlert-icon": { color: status.successMain },
-          },
-          standardWarning: {
-            backgroundColor: status.warningLight,
-            borderColor: `${status.warningMain}33`,
-            color: status.warningText,
-            "& .MuiAlert-icon": { color: status.warningMain },
-          },
-          standardError: {
-            backgroundColor: status.errorLight,
-            borderColor: `${status.errorMain}33`,
-            color: status.errorDark,
-            "& .MuiAlert-icon": { color: status.errorMain },
-          },
-          standardInfo: {
-            backgroundColor: status.infoLight,
-            borderColor: `${status.infoMain}33`,
-            color: status.infoDark,
-            "& .MuiAlert-icon": { color: status.infoMain },
-          },
+          // Dark mode: translucent tinted glass with light text (>= 10:1 on the
+          // darkest composite); light mode keeps the tinted surfaces, translucent.
+          standardSuccess: dark
+            ? {
+                backgroundColor: "rgba(90, 138, 110, 0.16)",
+                borderColor: "rgba(143, 194, 163, 0.35)",
+                color: "#F0F1F3",
+                "& .MuiAlert-icon": { color: "#8FC2A3" },
+              }
+            : {
+                backgroundColor: "rgba(232, 242, 236, 0.78)",
+                borderColor: `${status.successMain}33`,
+                color: status.successText,
+                "& .MuiAlert-icon": { color: status.successMain },
+              },
+          standardWarning: dark
+            ? {
+                backgroundColor: "rgba(176, 139, 74, 0.16)",
+                borderColor: "rgba(227, 190, 122, 0.38)",
+                color: "#F0F1F3",
+                "& .MuiAlert-icon": { color: "#E3BE7A" },
+              }
+            : {
+                backgroundColor: "rgba(253, 244, 231, 0.8)",
+                borderColor: `${status.warningMain}33`,
+                color: status.warningText,
+                "& .MuiAlert-icon": { color: status.warningMain },
+              },
+          standardError: dark
+            ? {
+                backgroundColor: "rgba(181, 90, 84, 0.18)",
+                borderColor: "rgba(224, 131, 125, 0.4)",
+                color: "#F0F1F3",
+                "& .MuiAlert-icon": { color: status.errorOnDark },
+              }
+            : {
+                backgroundColor: "rgba(250, 237, 236, 0.8)",
+                borderColor: `${status.errorMain}33`,
+                color: status.errorDark,
+                "& .MuiAlert-icon": { color: status.errorMain },
+              },
+          standardInfo: dark
+            ? {
+                backgroundColor: "rgba(90, 115, 144, 0.18)",
+                borderColor: "rgba(159, 180, 204, 0.38)",
+                color: "#F0F1F3",
+                "& .MuiAlert-icon": { color: "#9FB4CC" },
+              }
+            : {
+                backgroundColor: "rgba(237, 241, 245, 0.78)",
+                borderColor: `${status.infoMain}33`,
+                color: status.infoDark,
+                "& .MuiAlert-icon": { color: status.infoMain },
+              },
           icon: {
             margin: 0,
             padding: 0,

@@ -5,13 +5,18 @@ import {
   Alert,
   Box,
   Button,
+  IconButton,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import LanguageOutlinedIcon from "@mui/icons-material/LanguageOutlined";
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { apiPost } from "@/lib/api";
+import { localeDir } from "@/lib/locale-dir";
 
 const copy = {
   he: {
@@ -131,7 +136,65 @@ const copy = {
     thanks: "وصلت الرسالة. شكراً.",
     footer: "للمستثمرين والشركاء",
   },
+  fr: {
+    product: "Produit",
+    partners: "Design Partners",
+    heroHeadline: "La couche de vérité d’ingénierie pour les équipes natives de l’IA",
+    heroSupport:
+      "Sachez ce qui est vérifié, ce qui est risqué, et quelle est la preuve — avant de livrer.",
+    ctaTalk: "Parlons-en",
+    ctaPartner: "Devenir Design Partner",
+    ctaProduct: "Ouvrir le produit",
+    problemTitle: "Le problème",
+    problemBody:
+      "Les équipes utilisent Cursor, la CI, des scanners et des LLM — mais aucun ne répond de façon fiable : qu’est-ce qui est réellement vrai sur ce logiciel en ce moment ?",
+    solutionTitle: "La solution",
+    solutionBody:
+      "Atlas construit un Evidence Graph vivant : code → tests → infra → déploiements → décisions → risques → préparation. Les éditeurs restent en place ; Atlas porte la vérité, la QA et la gouvernance.",
+    flowTitle: "Flux principal",
+    flow:
+      "DISCOVER → RECONCILE → CLAIMS → EVIDENCE → RISK → QA → SECURITY → COUNCIL → GATES → VERDICT",
+    productVisualTitle: "À quoi ressemble le produit",
+    productVisualBody:
+      "Un Evidence Graph vivant : CODE · TESTS · SÉCURITÉ · DÉPLOIEMENT distincts — jamais fusionnés en silence dans un seul bloc.",
+    moatTitle: "L’avantage durable",
+    moatBody:
+      "Pas le LLM. Evidence Graph + mémoire d’ingénierie historique — avec des étiquettes épistémiques et INSUFFICIENT_EVIDENCE plutôt que l’hallucination.",
+    partnerTitle: "Design Partner",
+    partnerBody:
+      "Un audit de préparation d’ingénierie sur un dépôt de production. Mesurez les risques inconnus, les blocages et le temps gagné — puis une étude de cas.",
+    partnerCta: "Ouvrir le playbook",
+    contactTitle: "Contact",
+    contactBody: "Investisseurs et partenaires — laissez vos coordonnées. Nous revenons vers vous avec une démo et un modèle.",
+    name: "Nom",
+    email: "E-mail",
+    company: "Entreprise",
+    role: "Fonction",
+    message: "Message",
+    send: "Envoyer",
+    thanks: "Message reçu. Merci.",
+    footer: "Pour les investisseurs et partenaires",
+  },
 } as const;
+
+type InvestorsLang = keyof typeof copy;
+
+const LANG_OPTIONS: ReadonlyArray<{ code: InvestorsLang; native: string; short: string }> = [
+  { code: "he", native: "עברית", short: "HE" },
+  { code: "en", native: "English", short: "EN" },
+  { code: "ar", native: "العربية", short: "AR" },
+  { code: "fr", native: "Français", short: "FR" },
+];
+
+const LANG_MENU_LABEL: Record<InvestorsLang, string> = {
+  he: "שפות",
+  en: "Languages",
+  ar: "اللغات",
+  fr: "Langues",
+};
+
+/** The contact API schema accepts he/en/ar only; other languages omit the optional field. */
+const CONTACT_API_LOCALES: ReadonlySet<InvestorsLang> = new Set(["he", "en", "ar"]);
 
 const fieldSx = {
   "& .MuiOutlinedInput-root": {
@@ -143,7 +206,8 @@ const fieldSx = {
 } as const;
 
 export default function InvestorsPage() {
-  const [lang, setLang] = useState<"he" | "en" | "ar">("he");
+  const [lang, setLang] = useState<InvestorsLang>("he");
+  const [langAnchor, setLangAnchor] = useState<HTMLElement | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
@@ -152,8 +216,8 @@ export default function InvestorsPage() {
   const [sentId, setSentId] = useState<string | null>(null);
 
   const t = copy[lang];
-  const dir = lang === "en" ? "ltr" : "rtl";
-  const productHref = lang === "en" ? "/en" : lang === "ar" ? "/ar" : "/he";
+  const dir = localeDir(lang);
+  const productHref = `/${lang}`;
 
   const contact = useMutation({
     mutationFn: () =>
@@ -164,7 +228,7 @@ export default function InvestorsPage() {
         role: role || undefined,
         message,
         source: "investors",
-        locale: lang,
+        locale: CONTACT_API_LOCALES.has(lang) ? lang : undefined,
       }),
     onSuccess: (data) => setSentId(data.id),
   });
@@ -214,45 +278,69 @@ export default function InvestorsPage() {
         >
           ArletOS
         </Typography>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Button
-            size="small"
-            variant={lang === "he" ? "contained" : "outlined"}
-            color="secondary"
-            onClick={() => setLang("he")}
-            aria-pressed={lang === "he"}
-          >
-            עב
-          </Button>
-          <Button
-            size="small"
-            variant={lang === "en" ? "contained" : "outlined"}
-            color="secondary"
-            onClick={() => setLang("en")}
-            aria-pressed={lang === "en"}
-          >
-            EN
-          </Button>
-          <Button
-            size="small"
-            variant={lang === "ar" ? "contained" : "outlined"}
-            color="secondary"
-            onClick={() => setLang("ar")}
-            aria-pressed={lang === "ar"}
-          >
-            ع
-          </Button>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
           <Button
             component={Link}
             href={`${productHref}/experts`}
             size="small"
-            sx={{ color: "#DCDDE1" }}
+            sx={{ color: "#DCDDE1", whiteSpace: "nowrap", minWidth: 0, px: 1 }}
           >
             {t.partners}
           </Button>
-          <Button component={Link} href={productHref} size="small" sx={{ color: "#DCDDE1" }}>
+          <Button
+            component={Link}
+            href={productHref}
+            size="small"
+            sx={{ color: "#DCDDE1", whiteSpace: "nowrap", minWidth: 0, px: 1 }}
+          >
             {t.product}
           </Button>
+          <IconButton
+            onClick={(e) => setLangAnchor(e.currentTarget)}
+            aria-label={LANG_MENU_LABEL[lang]}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(langAnchor)}
+            aria-controls={langAnchor ? "investors-lang-menu" : undefined}
+            sx={{ color: "rgba(220,221,225,0.85)", width: 40, height: 40 }}
+          >
+            <LanguageOutlinedIcon fontSize="small" />
+          </IconButton>
+          <Menu
+            id="investors-lang-menu"
+            anchorEl={langAnchor}
+            open={Boolean(langAnchor)}
+            onClose={() => setLangAnchor(null)}
+            PaperProps={{
+              sx: {
+                bgcolor: "rgba(28,31,38,0.92)",
+                backdropFilter: "blur(14px)",
+                color: "#DCDDE1",
+                border: "1px solid rgba(160,164,172,0.22)",
+                minWidth: 180,
+              },
+            }}
+          >
+            {LANG_OPTIONS.map((option) => (
+              <MenuItem
+                key={option.code}
+                selected={lang === option.code}
+                lang={option.code}
+                dir={localeDir(option.code)}
+                onClick={() => {
+                  setLang(option.code);
+                  setLangAnchor(null);
+                }}
+                sx={{ justifyContent: "space-between", gap: 1.5 }}
+              >
+                <Typography sx={{ fontWeight: lang === option.code ? 700 : 500 }}>
+                  {option.native}
+                </Typography>
+                <Typography variant="caption" sx={{ color: "rgba(220,221,225,0.7)" }}>
+                  {option.short}
+                </Typography>
+              </MenuItem>
+            ))}
+          </Menu>
         </Stack>
       </Box>
 

@@ -13,6 +13,8 @@ import {
   Stack,
   Typography,
   Button,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
@@ -26,8 +28,15 @@ import {
   WEB_POST_AUTH_PATH,
   isMarketingShellPath,
   isPublicShellPath,
+  requiresSignIn,
   asMuiHref,
 } from "@/lib/studio-surfaces";
+import {
+  AUTH_SESSION_QUERY_KEY,
+  fetchAuthSession,
+  sessionGate,
+} from "@/lib/auth-session";
+import { authHrefWithNext } from "@/lib/audit-return-path";
 import {
   NAV_GROUPS,
   isWebNavSelected,
@@ -39,6 +48,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { SessionGateNotice } from "@/components/layout/SessionGateNotice";
 import { useColorMode } from "@/components/providers/ColorModeProvider";
 import { atlasChrome as c } from "@/styles/palette";
 
@@ -96,11 +106,10 @@ type NavKey = WebNavKey;
 
 const PATHS: Record<NavKey, string> = WEB_NAV_PATHS;
 
-interface AuthMe {
-  authenticated?: boolean;
-  user: { email: string; displayName: string | null; role: string };
-  role?: string;
-  capabilities?: string[];
+interface ShellUser {
+  email: string;
+  displayName: string | null;
+  role: string;
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -123,6 +132,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       ),
   );
   const navId = useId();
+  const dockedNavId = useId();
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   /**
    * Physical "left". In RTL, MUI flips the anchor to "right" and
    * stylis-plugin-rtl flips the resulting `right: 0` back to `left: 0`, so the
@@ -137,24 +149,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   const meQuery = useQuery({
-    queryKey: ["auth-session"],
-    queryFn: async () => {
-      const session = await apiGet<
-        AuthMe & { authenticated: boolean; user: AuthMe["user"] | null }
-      >("/api/v1/auth/session");
-      if (!session.authenticated || !session.user) {
-        throw new Error("Not signed in");
-      }
-      return {
-        authenticated: true as const,
-        user: session.user,
-        role: session.role ?? session.user.role,
-        capabilities: session.capabilities ?? [],
-      };
-    },
+    queryKey: AUTH_SESSION_QUERY_KEY,
+    queryFn: () => fetchAuthSession<ShellUser>(),
     retry: false,
     staleTime: 5 * 60_000,
   });
+  const gate = sessionGate(meQuery);
+  const isPrivatePage = requiresSignIn(pathname);
+
+  useEffect(() => {
+    if (isPrivatePage && gate === "signed-out") {
+      window.location.replace(
+        `/${locale}${authHrefWithNext("/auth/login", pathname)}`,
+      );
+    }
+  }, [isPrivatePage, gate, locale, pathname]);
 
   const planQuery = useQuery({
     queryKey: ["billing-plan"],
@@ -178,6 +187,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   // while meQuery is still loading, not only after it confirms signed-out.
   const isAuthed = Boolean(meQuery.data?.user);
   const showProductNav = isAuthed && !isPublicDoor;
+  // Private pages mount only after sign-in, so they never fire requests the
+  // API is certain to reject.
+  const pageBody =
+    !isPrivatePage || gate === "signed-in" ? (
+      children
+    ) : (
+      <SessionGateNotice
+        gate={gate}
+        retrying={meQuery.isFetching}
+        onRetry={() => void meQuery.refetch()}
+      />
+    );
 
   const logout = async () => {
     await apiPost("/api/v1/auth/logout", {});
@@ -272,12 +293,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   };
 
-  const langMenu = (menuId: string, opts?: { mobile?: boolean; tone?: NavTone }) => {
+  const langMenu = (
+    menuId: string,
+    opts?: { mobile?: boolean; tone?: NavTone; dense?: boolean },
+  ) => {
     const toneKey = opts?.tone === "light" ? "light" : "dark";
     return (
       <LanguageSwitcher
         tone={toneKey}
         compact={opts?.mobile}
+        dense={opts?.dense}
         menuId={menuId}
         onSelect={opts?.mobile ? () => setNavOpen(false) : undefined}
       />
@@ -289,12 +314,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <>
         <Stack spacing={0.75} sx={{ px: 1.5, mb: 3 }}>
-          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={0.5}>
-            {brandMark(isAuthed ? WEB_POST_AUTH_PATH : PATHS.dashboard, {
-              ...(opts.mobile ? { onClick: () => setNavOpen(false) } : {}),
-              tone: opts.tone ?? "dark",
-            })}
-            {opts.mobile ? null : (
+          {opts.mobile ? null : (
+            <Stack direction="row" justifyContent="flex-end">
               <IconButton
                 size="small"
                 aria-label={t("a11y.closeMenu")}
@@ -303,8 +324,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <CloseIcon fontSize="small" />
               </IconButton>
-            )}
-          </Stack>
+            </Stack>
+          )}
           <Typography
             variant="caption"
             sx={{ textAlign: "start", color: tone.textMuted }}
@@ -750,7 +771,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 insetInlineEnd: "auto",
               },
             }}
-            PaperProps={drawerPaperProps}
+            PaperProps={{ ...drawerPaperProps, id: dockedNavId }}
           >
             {nav({ mobile: false, tone: "sidebar" })}
           </Drawer>
@@ -790,64 +811,61 @@ export function AppShell({ children }: { children: ReactNode }) {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 1,
-            flexWrap: "wrap",
-            mx: { xs: -1.5, sm: -2.5, md: 0 },
-            px: { xs: 1.5, sm: 2, md: 0 },
-            py: 1,
-            bgcolor: { xs: appMobileTone.bgcolor, md: "transparent" },
-            borderBottom: { xs: appMobileTone.border, md: "none" },
-            backdropFilter: { xs: "blur(16px) saturate(1.1)", md: "none" },
-            WebkitBackdropFilter: { xs: "blur(16px) saturate(1.1)", md: "none" },
+            mt: { xs: -1.5, sm: -2.5, md: -3 },
+            mx: { xs: -1.5, sm: -2.5, md: -3 },
+            px: { xs: 1.5, sm: 2, md: 3 },
+            minHeight: 56,
+            bgcolor: appMobileTone.bgcolor,
+            borderBottom: appMobileTone.border,
+            backdropFilter: "blur(16px) saturate(1.1)",
+            WebkitBackdropFilter: "blur(16px) saturate(1.1)",
           }}
         >
-          <Box sx={{ display: { xs: "block", md: "none" } }}>
-            {brandMark(isAuthed ? WEB_POST_AUTH_PATH : PATHS.dashboard, { size: "sm", tone: appMobileToneKey })}
-          </Box>
-          <Box sx={{ display: { xs: "none", md: "block" }, flex: 1 }} />
           <Stack
             direction="row"
             alignItems="center"
-            spacing={1}
-            useFlexGap
-            flexWrap="wrap"
+            spacing={0.5}
             sx={{
+              flexShrink: 0,
               "& .MuiIconButton-root": {
-                minWidth: 44,
                 minHeight: 44,
-                p: 0.5,
                 color: appMobileTone.textMuted,
               },
             }}
           >
-            {themeToggle({ tone: appMobileToneKey })}
-            {langMenu("atlas-lang-menu-header", {
-              tone: appMobileToneKey,
-            })}
             {showProductNav ? (
               <IconButton
                 ref={menuButtonRef}
-                edge="end"
+                edge="start"
                 onClick={() => {
-                  if (navCollapsed) {
-                    setNavCollapsed(false);
+                  if (isDesktop) {
+                    setNavCollapsed((collapsed) => !collapsed);
                     return;
                   }
                   setNavOpen(true);
                 }}
                 aria-label={t("a11y.openMenu")}
-                aria-expanded={navOpen}
-                aria-controls={navId}
-                sx={{
-                  display: {
-                    xs: "inline-flex",
-                    md: navCollapsed ? "inline-flex" : "none",
-                  },
-                }}
+                aria-expanded={isDesktop ? !navCollapsed : navOpen}
+                aria-controls={isDesktop ? dockedNavId : navId}
+                sx={{ minWidth: 44, p: 0.5 }}
               >
                 <MenuIcon />
               </IconButton>
             ) : null}
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={0}
+              sx={{ "&& .MuiIconButton-root": { minWidth: 32, width: 32, p: 0 } }}
+            >
+              {langMenu("atlas-lang-menu-header", {
+                tone: appMobileToneKey,
+                dense: true,
+              })}
+              {themeToggle({ tone: appMobileToneKey })}
+            </Stack>
           </Stack>
+          {brandMark(isAuthed ? WEB_POST_AUTH_PATH : "/welcome", { size: "sm", tone: appMobileToneKey })}
         </Box>
         {showProductNav ? (
           <PageContainer maxWidth={920} noPadding>
@@ -859,7 +877,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           noPadding={isStudioWorkspace}
           sx={{
             mb: { xs: 2, md: 3 },
-            bgcolor: "background.paper",
+            bgcolor: mode === "dark" ? "rgba(42, 48, 58, 0.6)" : "rgba(250, 250, 250, 0.66)",
+            backdropFilter: "blur(18px) saturate(1.15)",
+            WebkitBackdropFilter: "blur(18px) saturate(1.15)",
             border: "1px solid",
             borderColor: "divider",
             borderRadius: isStudioWorkspace ? { xs: 1, md: 2 } : 2,
@@ -869,7 +889,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             py: isStudioWorkspace ? { xs: 1.5, sm: 2 } : undefined,
           }}
         >
-          {children}
+          {pageBody}
         </PageContainer>
       </Box>
     </Box>

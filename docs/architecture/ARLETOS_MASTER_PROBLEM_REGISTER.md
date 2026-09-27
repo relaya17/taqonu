@@ -16,7 +16,7 @@
 | **Next authorized action** | See §15 |
 | ✅ Closed | Stage 1 / 1A, Stage 2 (local), ARL-HYDRATION-001 (§5) |
 | 🕘 Historical proof | STAGE_9 program, 19 passed at `2587d1b`. Valid history; **requires regression** on current HEAD (§5) |
-| Current Stage 9 E2E run | Earlier run (before Stage 4): **NOT GREEN**, 16 passed, 1 failed, 2 flaky, exit 1. After Stage 4 (2026-09-26): **19 passed, exit 0**. Earlier findings A–C not reproduced, cause unexplained (§11.1, §7.8). 2026-09-27 (Stage 7 tree): full runs 1–2 failed on `auth-studio.spec.ts:14`, full run 3 **20 passed, exit 0**; current 22-test suite **22 passed, exit 0** (Arlet); intermittent failure tracked as **ARL-E2E-001** (OPEN) |
+| Current Stage 9 E2E run | Earlier run (before Stage 4): **NOT GREEN**, 16 passed, 1 failed, 2 flaky, exit 1. After Stage 4 (2026-09-26): **19 passed, exit 0**. Earlier findings A–C not reproduced, cause unexplained (§11.1, §7.8). 2026-09-27 (Stage 7 tree): full runs 1–2 failed on `auth-studio.spec.ts:14`, full run 3 **20 passed, exit 0**; current 22-test suite **22 passed, exit 0** (Arlet); intermittent failure tracked as **ARL-E2E-001** (OPEN). §7.14 tree (French, header, glass; uncommitted): full runs A/B/C **NOT GREEN** (24/25, 23/25, 26/28); run C failures are `auth-studio.spec.ts:14` (ARL-E2E-001) and `isolation.spec.ts:68` (**ARL-E2E-002**, OPEN); all locale and header tests passed |
 | 🟡 Implemented, unverified | 10 items (§11) |
 | 🔴 Open gaps | 7: ARL-WS-001..007 (§6) |
 | ✅ Human decisions | D1–D10 and new decisions A–C **approved as direction** on 2026-09-26 (§7.2). None is implemented or verified by approval. Open inside approval: D2 thresholds, D7/D9 detailed placement (Stage 6), D10 ADR, A legacy records, C path mapping. Repository reconciliation in §7.3 |
@@ -1749,11 +1749,249 @@ Exit code 0 (terminal record). Includes both S7-C tests (tests 5 and 6) and `aut
 
 **Pre-commit diff audit:** Stage 6 and Stage 7 hunks both present in `AppShell.tsx` (Stage 6: `web-nav` groups, `navItemHref`, `isWebNavSelected`; Stage 7: sidebar tokens, removed opacities, `aria-expanded`, focus outline colors, RTL logical insets). No credentials, no `any`, no Tailwind, no removed or weakened test assertion, no change to Control, Stage 5 Golden Loop, or API. `cookies.txt` excluded.
 
+## §7.14 — Post-Stage-7 request: French locale, header layout, glass surfaces (2026-09-27)
+
+**Base:** HEAD `26fc787` (Stage 6 + 7 commit, pushed). Everything below is **uncommitted, not pushed**; commit/push not authorized. `cookies.txt` untouched (untracked). Web only: no change to `packages/shared`, API, Control, Stage 5, memory authorization, or infrastructure.
+
+**Arlet's requests (Hebrew, paraphrased):**
+1. (02:03) Add French to the language button so every part of the app becomes French, verified; move the site name to the opposite side and the sun / language / hamburger to the other side; shrink the gap between sun and language.
+2. The AskQuestion form (server content in French? header mirroring? desktop scope?) came back empty; Arlet answered "לא". Working interpretation told to Arlet: Web-only French, server-provided content stays English, header mirrored by direction, all breakpoints.
+3. (02:25, with four screenshots) The nav is not responsive in every state — it must be the same in every state and the app name must not change sides; no hamburger; sun still far from language; buttons not centered; all white cards should be translucent blurred glass; investors page: why not an icon, why does everything grow out of proportion.
+
+### S14-001 — French locale (Web)
+
+- `i18n/routing.ts` locales `he, en, ar, fr` (+ `AppLocale`, `isAppLocale`); `i18n/request.ts`, `app/[locale]/layout.tsx` use `isAppLocale`; `middleware.ts` matcher and `next.config.ts` legacy redirects include `fr`; `app/sitemap.ts` uses `routing.locales`; `lib/studio-surfaces.ts` `stripLocalePrefix` includes `fr`.
+- **Direction fix:** `layout.tsx` and `AppProviders.tsx` used `locale === "en" ? "ltr" : "rtl"` (any new locale would have rendered RTL). New `lib/locale-dir.ts` `localeDir()`: RTL only for `he`/`ar`.
+- `LanguageSwitcher`: `Français · FR`, direction from `localeDir`.
+- `apps/web/messages/fr.json`: 1725 leaf keys, translated in five namespace parts (subagents), merged in `en.json` order, independently re-verified (same keys, same `{placeholders}`, no empty values, no ASCII apostrophe). 144 values identical to English reviewed one by one: product names / code tokens / French cognates kept; 13 real misses fixed (e.g. "System Health" → "Santé du système", "Free" → "Gratuit", "Rollback" → "Restaurer", "Marketplace" → "Marché des modèles").
+- ASCII apostrophe rule: next-intl renders `l'{x}` as the literal `l{x}` **without raising an error** (checked with `createTranslator`); French therefore uses `’` and a test forbids `'`.
+- Hard-coded copy: `lib/studio-pty-copy.ts` (Studio terminal) gained `fr`; `app/investors/page.tsx` gained a `fr` dictionary, `dir` from `localeDir`, product link `/${lang}`.
+- **Not French (limitation, not claimed):** server-provided catalog text (experts, agents, models titles/strengths, legal-media summaries, `AiCompanionBar` model titles) falls back to English; report `locale` query params fall back to `en`; Settings profile language stays he/en/ar and the investors contact form omits `locale` for French, because the API schemas (`auth.schema.ts`, `contact.schema.ts`) accept he/en/ar only and were not changed.
+
+### S14-002 — Header: brand and controls on fixed sides in every state
+
+- Header DOM order (not CSS reverse, so Tab order matches the screen): hamburger (signed-in only) + language + sun at the inline start, the ArletOS brand at the inline end. In he/ar that is controls right / brand left; in en/fr controls left / brand right.
+- Same glass top bar at every width (previously transparent on desktop with no brand); the brand is shown at every width and **removed from the sidebar / drawer** so it has one location.
+- Hamburger is shown at every width for signed-in users: mobile opens the drawer (unchanged), desktop toggles the docked sidebar; `aria-expanded` / `aria-controls` follow the breakpoint (`useMediaQuery`; the docked paper got an id).
+- Language and sun: 32 px wide each (44 px tall), no gap between them (was 8 px Stack spacing with 44 px / 40 px buttons). `LanguageSwitcher` `dense` prop.
+- **Signed-out has no hamburger — by design, unchanged:** `showProductNav = isAuthed && !isPublicDoor` (signed-out visitors must not see the product nav). Arlet's screenshots were signed-out because the local API on :4000 was not running during interactive use.
+
+### S14-003 — Glass surfaces and invisible onboarding buttons
+
+- Root cause of "buttons not centered": the theme kept `Alert` light in dark mode, while dark-mode outlined buttons use `#F0F1F3` text. In `OnboardingPath` steps 2 and 3 were practically invisible on the light alert, so only step 1 showed and looked off-center.
+- Dark mode `Alert`s are now translucent tinted glass (`backdrop-filter: blur(14px)`), text `#F0F1F3`, icons in light tints; light mode keeps its tinted surfaces at ~0.8 alpha. The main content container is translucent with blur in both modes.
+- Measured in the browser (dark, 390 px, /he/projects): alert background `rgba(90,115,144,0.18)`, all three step buttons visible at full width; 1280 px /fr/projects: three steps side by side, centered in the alert message area; no horizontal overflow at either width.
+
+### S14-004 — Investors page language control
+
+Four outlined language buttons (wrapping at 390 px) replaced by a globe icon menu (native names + code). Header stays on one line at 390 px (measured: brand, Design Partners, product link, globe; overflow 0).
+
+### Tests added
+
+- `apps/web/lib/messages-fr.test.ts` (7): key parity, placeholder parity, no empty values, no ASCII apostrophe, every French message formatted through next-intl `createTranslator` with zero errors, `localeDir`, PTY French copy parity. Negative check: `createTranslator` reports `INVALID_MESSAGE` for `{x`.
+- `e2e/stage9/locale.spec.ts`: language menu switches `/he/studio` → `/fr/studio` (lang `fr`, dir `ltr`, French h1); header sides + sun/language adjacency for he and fr at 390 px and 1280 px (4 tests); desktop hamburger closes and reopens the docked sidebar. Expected strings are read from the message files.
+- **Correction during this pass:** the first version of the French-switch test clicked the language trigger as soon as the server-rendered h1 was visible. In full run B the click landed before hydration and was dropped (snapshot: trigger focused, no menu), timing out at 90 s. The test now retries the click until the menu item is visible (`expect(...).toPass`), with the same assertions. The desktop hamburger test waits for `aria-expanded="true"`, which only appears after hydration.
+
+### Verification (local only; not CI, not Production)
+
+| Check | Result |
+| --- | --- |
+| `pnpm exec vitest run apps/web` | 25 files, 116 passed |
+| `pnpm --filter @atlas/web exec tsc -p tsconfig.json --noEmit` | exit 0 |
+| `pnpm exec tsc -p e2e/tsconfig.json --noEmit` | exit 0 |
+| ESLint on every changed Web file | exit 0 |
+| `git diff --check` | exit 0 |
+| Stage 9 `locale.spec.ts` + `a11y-studio.spec.ts` (after S14-002/003) | 16 passed, incl. axe on authenticated Studio |
+| `pnpm test:e2e:a11y` (after S14-002/003) | 5 passed, 1 skipped (existing `test.fixme`) |
+| Browser (Cursor tab, signed-out): he/fr at 390 and 1280, investors FR | as described in S14-002 to S14-004 |
+
+Full Stage 9 runs on this pass (1 worker, `retries: 0`, reused Web dev server):
+
+| Run | Code state | Result | Failures |
+| --- | --- | --- | --- |
+| A | French + first header swap | 24 passed, 1 failed (25) | `isolation.spec.ts:68` → ARL-E2E-002 |
+| B | same | 23 passed, 2 failed (25) | `auth-studio.spec.ts:14` (ARL-E2E-001); French-switch test (hydration race, fixed above) |
+| C | final (S14-001 to S14-004, fixed French test, header/hamburger tests) | 26 passed, 2 failed (28), exit 1 | `auth-studio.spec.ts:14` (ARL-E2E-001); `isolation.spec.ts:68` (ARL-E2E-002) |
+
+In run C all 9 locale tests passed, including every test added in this pass (French switch 3.1 s, four header-side cases, desktop hamburger). The suite is **not green**: both failures are the two open intermittent issues, and neither test was changed in this pass. The full Stage 9 suite has not passed on this tree. Logs: `%TEMP%\atlas-fr\stage9-run.log` (A), `stage9-run2.log` (B), `stage9-run3.log` (C) (outside the repo, not committed).
+
+Browser note: the Next.js dev overlay showed a hydration mismatch only after the Cursor snapshot tool injected `data-cursor-ref` attributes; a clean reload of `/fr/projects` showed no issue and no injected attributes (same limitation as ARL-HYDRATION-001).
+
+## §7.15 — Console audit and root-cause fixes for the open intermittent failures (2026-09-27)
+
+**Request (Arlet, 2026-09-27 02:41):** build a stable, correctly founded system; do not skip steps; fix every open item of the current fix stage on the correct side; verify. Arlet attached a browser console log (hydration warning on `/investors`; 401 on `/projects`, `/connections`, `/experts`; 403 on `/supervising-agent`; `ERR_CONNECTION_REFUSED` on `:4000`; slow Fast Refresh).
+
+**Scope:** Web (`apps/web`) and e2e only. No change to the API, `packages/shared`, Control, Stage 5, the Golden Loop, memory authorization or infrastructure. No commit, no push.
+
+### S15-001 — ARL-E2E-001 root cause: text typed before hydration is lost in controlled inputs (FIXED)
+
+- **Mechanism (verified in source):** the React build shipped by Next 15.5.23 (`next/dist/compiled/react-dom`, `initInput(..., isHydrating)`) keeps a value typed into the server-rendered input in the DOM but does not copy it into component state and fires no change event. The next re-render of the controlled input writes the state value back into the DOM.
+- **Effect on the login form:** `loginViaUi` fills the email as soon as the server-rendered input is editable. When hydration lands after that, state stays at the dev prefill `dev@atlas.local`; the first password keystroke re-renders and the email field reverts to `dev@atlas.local`; the form submits the wrong email and shows "Invalid email or password". This matches every preserved failure snapshot (full 2, 6, 7). The earlier "remount" hypothesis is superseded.
+- **Product impact:** not test-only. Without the dev prefill, a user who types before hydration (slow network or device) loses the email when typing the password.
+- **Deterministic reproduction (new test, `auth-studio.spec.ts` "an email typed before hydration survives and is the one submitted"):** holds `/_next/static/chunks/**` until the email is filled, releases the scripts, waits for the post-hydration `/api/v1/auth/providers` request, types the password, asserts the email value, submits and checks `/auth/me`. **Before the fix: failed** with `Expected "stage9-requester@atlas.test"`, `Received "dev@atlas.local"` (log `%TEMP%\atlas-fr\hydr-repro-before.log`). **After the fix: passed**, with the whole `auth-studio.spec.ts` 7/7 (`%TEMP%\atlas-fr\hydr-after.log`).
+- **Fix:** new hook `apps/web/lib/use-hydration-safe-input.ts` (`useHydrationSafeInput`): controlled state plus an input ref; a layout effect at mount adopts the DOM value if it differs from the initial value, before any re-render can overwrite it. Applied to every server-rendered auth form: `[locale]/auth/login`, `register`, `forgot`, `reset`, and `admin/login`.
+- **Not covered:** other controlled inputs in signed-in pages keep the React default. They are normally reached after hydration by client navigation; a first load straight into them with fast typing is NOT TESTED.
+
+### S15-002 — ARL-E2E-002 root cause: the open-files strip was a `tablist` of buttons (FIXED)
+
+- **Defect (verified in source):** `studio/page.tsx` rendered `role="tablist"` whose children were MUI `Chip` buttons. WAI-ARIA requires `tab` children (axe `aria-required-children`). The chip's accessible name equals the file-tree button's name, so `getByRole("button", { name: file })` matched two elements whenever the file was open, which is the ARL-E2E-002 strict-mode failure.
+- **Fix (WAI-ARIA tabs pattern):** each chip is `role="tab"` with `aria-selected`, `aria-controls` and an id; roving `tabIndex` (only the selected tab is in the Tab order); ArrowLeft/ArrowRight (swapped in RTL, read from computed `direction`), Home and End move focus and selection (`openStudioFileTabIndexForKey` in `lib/studio-workspace.ts`, 3 unit tests); the file content area is `role="tabpanel"` labelled by the selected tab. Close stays on the chip's delete icon and the Delete/Backspace keys (MUI Chip behavior).
+- **Test (new, `a11y-studio.spec.ts` "open files are tabs in a tablist with arrow-key selection and no axe violations"):** opens two files, asserts 2 tabs and 0 buttons in the strip, selected state, roving tabindex, panel linkage, ArrowLeft and End behavior, and runs axe with files open. The isolation test is unchanged and now cannot match two buttons.
+
+### S15-003 — Invalid list markup in the Studio file tree and related lists (FIXED; found by the new axe scan)
+
+The first run of the new tabs test failed on axe `list` (serious, 2 nodes): the file tree `<ul>` contained `<div>` and `role=button` children directly. Earlier axe runs never had a project with files open, so they did not reach it. Fixed with MUI's documented pattern (`ListItem disablePadding` around `ListItemButton`, as `AppShell` already does): Studio `TreeBranch` (files and folders; folder toggle now also exposes `aria-expanded`), Studio search results (status messages moved outside the `<ul>`), `StudioGitStatus` changed-file list, and the tenant `AdminShell` sidebar (`apps/web`, not Control Plane). After the fix: `a11y-studio.spec.ts` + `isolation.spec.ts` 9/9 passed (`%TEMP%\atlas-fr\tabs-run2.log`).
+
+### S15-004 — Console log items (explained; no product defect found)
+
+| Item | Finding | Evidence | Status |
+| --- | --- | --- | --- |
+| Hydration warning on `/investors` | The diff lists only `data-cursor-ref` attributes injected by the Cursor browser tool | New test `e2e/a11y.spec.ts` "public pages hydrate without React hydration errors" (`/investors`, `/he/welcome`, `/fr/welcome`, `/en/auth/login`, `/fr/auth/login`; waits until the language menu opens, which requires hydration): passed, 0 errors. A temporary copy that injects an attribute before hydration was detected (sensitivity check), then deleted | Not an app defect (ARL-HYDRATION-001) |
+| 401 on `/projects`, `/connections`, `/experts` | Product pages (Experts, partner intake) query these endpoints without a client-side sign-in gate; the API correctly answers 401 when the browser has no session valid for the running API | Source: queries have no `enabled` auth gate; AppShell/middleware do not redirect signed-out users from product pages. A signed-in Stage 9 probe saw no 401 | Expected API enforcement; client-side gating is a **product decision** (which pages redirect to login), not changed |
+| 403 on `/supervising-agent` | Not reproduced. In a signed-in Stage 9 probe (Studio without and with a project, Experts, partners, dashboard) the only API error was `GET /supervising-agent 404` (agent not initialized; the panel treats it as "none") | Temporary probe spec, deleted after the run | NOT REPRODUCED; most likely the browser was talking to the Playwright test API (fresh identity store) at the time — INFERRED |
+| `ERR_CONNECTION_REFUSED` on `:4000` | Stage 9 and a11y runs start their own API on port 4000 (`reuseExistingServer: false`) and stop it at the end; the regular dev API was not running | Port check: nothing listening on 4000 between runs | Environment; the browser needs the dev API started again after e2e runs |
+| Slow Fast Refresh (2–14 s) | Dev-server recompiles after edits in this session | — | Not a defect |
+
+### Verification (local only; not CI, not Production)
+
+| Check | Result |
+| --- | --- |
+| `pnpm exec vitest run apps/web` | 25 files, 119 passed |
+| Web `tsc --noEmit`, e2e `tsc --noEmit` | exit 0, exit 0 |
+| ESLint on every changed Web file | exit 0 |
+| Reproduction test before / after the S15-001 fix | failed as predicted / passed |
+| `a11y-studio.spec.ts` + `isolation.spec.ts` after S15-002/003 | 9 passed |
+| Public hydration test | passed |
+| `pnpm test:e2e:a11y` | 6 passed, 1 skipped (existing `test.fixme`) |
+| Full Stage 9 run 1 (30 tests) | **30 passed, exit 0** |
+| Full Stage 9 run 2 | 29 passed, 1 failed: `isolation.spec.ts:37` → new **ARL-E2E-003** (not ARL-E2E-001/002) |
+| Full Stage 9 run 3 | **30 passed, exit 0** |
+| `isolation.spec.ts --repeat-each=5` | 5/5 passed |
+| Full Stage 9 run 4 | **30 passed, exit 0** |
+
+Across the 4 full runs after the fixes, `auth-studio.spec.ts:14` passed 4/4 and the new pre-hydration test passed 4/4. The `isolation.spec.ts:68` strict-mode failure did not recur (it is now impossible by markup). Logs: `%TEMP%\atlas-fr\stage9-fix-run1..4.log`, `a11y-fix.log`, `isolation-repeat-fix.log`.
+
+## §7.16 — Signed-out access handled at the foundation, and the failures it exposed (2026-09-27)
+
+**Decision (Arlet, 2026-09-27):** product pages are not shown to signed-out visitors ("redirect"); after the CI conflict was shown (the signed-out CI suites visit product pages), Arlet chose **"לתקן מהיסוד"** (fix from the foundation): the Web decides route access in one place, and the signed-out suites change to assert the redirect while the page content checks move to authenticated Stage 9. No CI workflow change.
+
+**Scope:** `apps/web`, `e2e`, this document. No change to the API, `packages/shared`, Control, Stage 5, the Golden Loop, memory authorization, CI workflows or infrastructure. **No commit, no push.**
+
+### S16-001 — Changes made (code state before the failure closure)
+
+| Change | Files |
+| --- | --- |
+| One session fetch for every reader of the `["auth-session"]` query: `fetchAuthSession` throws `SignedOutError` only when the API answers `authenticated: false`; `sessionGate()` maps the query to `checking` / `signed-in` / `signed-out` / `unavailable` (network or 5xx). The three duplicated query functions (AppShell, WelcomeLanding, Settings) now call it. | `apps/web/lib/auth-session.ts` (new), `auth-session.test.ts` (new, 4 tests), `components/layout/AppShell.tsx`, `components/marketing/WelcomeLanding.tsx`, `app/[locale]/settings/page.tsx` |
+| One route-access rule: `requiresSignIn(pathname)`; public = `/welcome*`, `/auth*`, `/plan*`; every other locale page is private. | `apps/web/lib/studio-surfaces.ts`, `studio-surfaces.test.ts` (3 tests) |
+| AppShell gate: on a private page, children mount only when `signed-in`; `signed-out` → `window.location.replace` to `/{locale}/auth/login` (with `next` only for the allowlisted `/partners`, `/experts`); `checking` → status line; `unavailable` → warning with "Try again" (API-unavailable state). Signed-out brand link → `/welcome` (was the dashboard, which now redirects). | `AppShell.tsx`, `components/layout/SessionGateNotice.tsx` (new) |
+| `/plan` stays public (pricing is linked from login and welcome). Account queries (`/billing/plan`, `/byo-cloud/status`, `/platform`, all session-only in the API) run only when signed in; signed out sees a sign-in button instead of the upgrade and BYO controls. | `app/[locale]/plan/page.tsx` |
+| Translations `session.*` and `plan.signInToManage` / `plan.signIn` in he, en, ar, fr. | `apps/web/messages/{he,en,ar,fr}.json` |
+| Welcome contrast: the "Ongoing control" title used `accent` `#5C6570` as text on `#202228` (axe: 2.68:1, needs 4.5:1; found because the signed-out a11y scan now covers `/en/welcome`). Now `chrome` `#B4B7BE` (≈ 7.9:1). Pre-existing. | `components/marketing/WelcomeLanding.tsx` |
+| E2E restructuring: shared helpers `e2e/axe.ts` (one axe helper instead of two copies) and `e2e/signed-out.ts` (`expectSignInRedirect` also asserts **no API response 401**). Signed-out suites assert the redirect for private pages and keep the public checks: `critical-path.spec.ts` (+ public welcome and `/he/plan`), `product-surfaces.spec.ts`, `new-surfaces.spec.ts`, `a11y.spec.ts` (overflow + axe now on the public pages; the stale `test.fixme` hamburger test removed, its coverage is `stage9/a11y-studio.spec.ts` "authenticated hamburger opens the product sidebar"). Content checks ported to the new authenticated `e2e/stage9/product-surfaces.spec.ts`; every former "main is visible" check now requires the page's own h1, because `<main>` is also visible while the gate is checking. | `e2e/axe.ts`, `e2e/signed-out.ts` (new), `e2e/critical-path.spec.ts`, `e2e/product-surfaces.spec.ts`, `e2e/new-surfaces.spec.ts`, `e2e/a11y.spec.ts`, `e2e/stage9/a11y-studio.spec.ts` (helper import only), `e2e/stage9/product-surfaces.spec.ts` (new) |
+| ARL-E2E-003: `isolation.spec.ts:37` timeout aligned to 20 s (Arlet's decision "align20"). | `e2e/stage9/isolation.spec.ts` |
+
+### S16-002 — Test results so far (local; not CI, not Production)
+
+| Run | Result |
+| --- | --- |
+| `pnpm exec vitest run apps/web` | 26 files, 126 passed |
+| Web `tsc --noEmit`, e2e `tsc --noEmit`, ESLint on changed Web files | exit 0, exit 0, exit 0 |
+| Signed-out suites run 1 (agent, before the contrast fix) | 31 passed, 2 failed: `/en/welcome` axe `color-contrast` (fixed afterwards, see S16-001); `/he/plan` showed raw keys `plan.signInToManage` / `plan.signIn` although all four JSON files parse with the keys (the dev server served the new text on a later request; stale dev-server messages INFERRED, not verified). Log `%TEMP%\atlas-fr\signed-out-run1.log` |
+| Signed-out suites run 2 (agent) | stopped by the agent before completion at Arlet's request; no result |
+| Signed-out suites (Arlet, `--project=chromium`, 33 tests) | **32 passed, 1 failed** → ARL-E2E-004 |
+| `pnpm test:e2e:stage9` (Arlet, 56 tests incl. the new `product-surfaces.spec.ts`) | **53 passed, 3 failed** → ARL-E2E-005, ARL-E2E-006, ARL-E2E-007 |
+| `pnpm --filter @atlas/api exec vitest run src/__tests__/web-studio-surfaces.test.ts` | 10 passed, 1 failed → ARL-TEST-001 |
+
+### S16-003 — Failures observed (status at record time: OPEN / ROOT CAUSE UNKNOWN)
+
+| ID | Test | Failure |
+| --- | --- | --- |
+| ARL-E2E-004 | `e2e/critical-path.spec.ts:39` "pricing stays public and asks for sign-in instead of loading the account" | `page.goto("/he/plan")` exceeded the 30 s test timeout waiting for `load` |
+| ARL-E2E-005 | `e2e/stage9/auth-studio.spec.ts:92` "logout clears the session and returns to login" | `getByRole('button', { name: /^sign out$/i })` not visible in 20 s |
+| ARL-E2E-006 | `e2e/stage9/product-surfaces.spec.ts:39` "architecture contract page reachable" | `getByRole('heading', { level: 1 }).first()` not found in 45 s |
+| ARL-E2E-007 | `e2e/stage9/product-surfaces.spec.ts:110` "model marketplace page reachable" | `getByText(/marketplace\|strength\|weakness\|credit/i).first()` resolved to a hidden `<a href="/en/models">Marketplace</a>` |
+
+Snapshots of ARL-E2E-005/006/007 preserved outside the repo in `%TEMP%\atlas-fr\s16\`. The ARL-E2E-004 snapshot was cleared by the Stage 9 run that followed (Playwright empties `test-results/` per run) and is **lost**.
+
+### S16-004 — Root causes (recorded before any fix)
+
+- **ARL-E2E-006 — PRODUCT DEFECT (pre-existing).** Snapshot: URL `/he/contract`, signed in (sidebar with "התנתקות", user "Stage9 Requester"), the route rendered its form; the page title "חוזה ארכיטקטורה" is `heading [level=4]` and the page has **no h1**. Source: `app/[locale]/contract/page.tsx:102` `<Typography variant="h4">`; identical at HEAD. The former signed-out test only checked `main`, so it never saw this. Fix: `component="h1"` with the same visual variant, the pattern already used by `ObserverPanel` and `SentinelPanel`.
+- **ARL-E2E-007 — STALE TEST LOCATOR (introduced by §7.16's port).** Snapshot: `/en/models` fully rendered (h1 "Model marketplace", intro "Rent intelligence by strength, weakness, and credit cost …", model cards). The locator's first match is the "Marketplace" link (`messages.companion.browseModels`) inside the **collapsed** AI companion bar (`AiCompanionBar.tsx:148` `Collapse in={expanded}`, link at `:193`). The companion bar renders only for signed-in users (`showProductNav`), so the pattern ported from the signed-out suite now hits it first. Product behavior is correct. Fix: assert the page's own h1 and intro text.
+- **ARL-E2E-005 — TEST DEPENDED ON A RACE, EXPOSED BY THE GATE.** Snapshot: `/en/studio`, signed in (h1 "Project Studio", companion bar), **no sidebar**, `button "Open menu"` **without** `[expanded]`. At desktop width the hamburger toggles the docked sidebar (`AppShell.tsx`: `isDesktop ? setNavCollapsed(...)`; `aria-expanded = !navCollapsed`; decided in §7.14, covered by `a11y-studio`/locale "closes and reopens the docked sidebar"). The test clicks "Open menu" whenever it is visible, which **collapses** an already open sidebar and hides "Sign out". Before §7.16 the Studio h1 rendered before the session query resolved, so the hamburger was usually not yet rendered at the `isVisible()` check and no click happened (INFERRED from render order). With the gate, the h1 appears only after sign-in is confirmed, so the hamburger is always there. Sign out itself is rendered and unchanged (visible in the ARL-E2E-006 snapshot sidebar). Fix: open the menu only when `aria-expanded` is not `"true"` (the test's own intent: reveal Sign out).
+- **ARL-E2E-004 — UNVERIFIED.** The failure is in document navigation (`page.goto` waiting for `load`), not in an assertion after render. The page snapshot, console and network evidence were lost (see above), so whether `/he/plan` rendered or called the API during that run is **UNKNOWN**. Known facts: in agent run 1 the same test reached the rendered page (h1, sign-in button area, raw keys) in under 30 s, so the route does render signed out; this test has no `test.setTimeout` and uses the 30 s default, while the redirect tests in the same file take 2–11 s. Candidate (INFERRED, not tested): on-demand dev-server compilation of `/he/plan` after the §7.16 edits exceeding 30 s. Not excluded: a product hang specific to `/plan`. No timeout or assertion changed.
+
+### S16-005 — Fixes applied (2026-09-27 03:50), NOT YET VERIFIED BY A RUN
+
+Arlet asked the agent not to re-run tests; the targeted run was not executed. Nothing below is "fixed" until a run proves it.
+
+| ID | Change | File |
+| --- | --- | --- |
+| ARL-E2E-006 | Contract title `variant="h4" component="h1"` (visual unchanged; page now has an h1) | `apps/web/app/[locale]/contract/page.tsx` |
+| ARL-E2E-007 | Test asserts h1 "Model marketplace" and the page's intro text `strength, weakness, and credit cost` instead of the first text match anywhere | `e2e/stage9/product-surfaces.spec.ts` |
+| ARL-E2E-005 | Test clicks "Open menu" only when `aria-expanded` is not `"true"` (assertion on Sign out, its click, the redirect and the 401 check unchanged) | `e2e/stage9/auth-studio.spec.ts` |
+| ARL-E2E-004 | No change (root cause unverified) | — |
+
+### S16-006 — Code-only investigation of ARL-E2E-004 and ARL-TEST-001 correction (Arlet: "do everything except running tests")
+
+**ARL-E2E-004 (still UNVERIFIED, no product change):**
+- No `/plan`-specific routing: `middleware.ts` only redirects `/` and runs next-intl; `next.config.ts` redirects only `/state`, `/chat`, `/agent`, `/proof`. `requiresSignIn("/plan")` is false, so AppShell does not redirect. `/plan` is a client page; React Query does not fetch during SSR.
+- The route was already compiled in that run: `a11y.spec.ts` "public pages avoid horizontal overflow" (test 2 of 33) opened `/en/plan` and passed, and `/he/*` pages with the Hebrew messages opened in tests 7–11. The dev-compile candidate in S16-004 is therefore weakened.
+- **Code-proven dependency (candidate, not proven cause):** every locale page loads a render-blocking third-party stylesheet, `fonts.googleapis.com/css2?...` with seven families (`app/[locale]/layout.tsx:57`), and its font files from `fonts.gstatic.com`. The `load` event waits for them. In `critical-path.spec.ts`, the redirect tests go through `expectSignInRedirect` with `waitUntil: "domcontentloaded"`; only the welcome test (passed, 1.6 s) and the `/plan` test wait for `load`. A stalled external font request would stop `load` without any app defect. **NOT VERIFIED**: the evidence from the failing run was lost.
+- **Decisive evidence to collect (Arlet runs):** `pnpm exec playwright test e2e/critical-path.spec.ts:39 --project=chromium --repeat-each=5 --trace on`, then `pnpm exec playwright show-trace <trace.zip of a failed attempt>`. The trace's Network tab shows which request held back `load`. If it is the Google Fonts request, the product fix is to self-host the fonts (`next/font` or local files) — a wider change (theme and components reference the family names), done only on that evidence.
+
+**ARL-TEST-001 correction (test maintenance, documented before the edit):** Stage 6 implemented D9 (§7.12; D9 recorded above: Studio, Projects, Dashboard, Agents, Account primary; Checks contextual inside Studio). The stale lines in `apps/api/src/__tests__/web-studio-surfaces.test.ts` asserted the pre-D9 groups (`["studio","systems","dashboard","projects","plan"]`, a five-check ops group, `studioCheckHref`, `["agents","experts"]`) as text in `AppShell.tsx`. Replaced by assertions on the D9 contract: `AppShell.tsx` imports `NAV_GROUPS` from `@/lib/web-nav`; `lib/web-nav.ts` lists `PRIMARY_NAV_KEYS` studio, projects, dashboard, agents, settings; Checks open as `{ tab: "checks", check }` inside Studio. Test file only; no API production code. Behavior of the groups is additionally covered by `apps/web/lib/web-nav.test.ts`.
+
+### S16-007 — Code-only remediation completed (2026-09-27 11:2x); VERIFICATION PENDING
+
+Arlet authorized everything except running tests. **No test, type check, linter or E2E command was executed in S16-005/006/007.** Every item below is IMPLEMENTED, not VERIFIED.
+
+| ID | Nature | Correction (final state) | File |
+| --- | --- | --- | --- |
+| ARL-TEST-001 | Test maintenance (stale source-text assertion) | The four pre-D9 lines are replaced by assertions on the D9 contract: `AppShell.tsx` imports `NAV_GROUPS` from `@/lib/web-nav` and contains no `items: [` array of its own; `lib/web-nav.ts` has `PRIMARY_NAV_KEYS` = studio, projects, dashboard, agents, settings; `ADVANCED_NAV_KEYS` = systems, plan, experts, models, integrations, partners, legalMedia; the `main` group uses the primary keys and the advanced group is `collapsedByDefault` with the advanced keys; Checks resolve to `{ tab: "checks", check }` inside Studio. Rest of the test unchanged. No API production code touched. | `apps/api/src/__tests__/web-studio-surfaces.test.ts` |
+| ARL-E2E-005 | Test synchronization (race exposed by the §7.16 gate) | Real UI flow kept: the test waits until "Open menu" is visible (always rendered for a signed-in user on a product page), clicks it only when `aria-expanded` is not `"true"` (desktop: the button toggles the docked sidebar; narrow: it opens the drawer), then the unchanged assertions: Sign out visible → click → `/en/auth/login` with h1 "Sign in" → `/auth/me` 401. Replaces the earlier `isVisible()` check, which does not wait. Product logout code unchanged (Sign out is rendered; OBSERVED in the ARL-E2E-006 snapshot). | `e2e/stage9/auth-studio.spec.ts` |
+| ARL-E2E-006 | Product defect (pre-existing, no h1) | Contract title `variant="h4" component="h1"` (visual unchanged). Test tightened from "any h1" to the named h1 "חוזה ארכיטקטורה" (`contract.title` in he.json), so it proves the contract surface itself rendered. | `apps/web/app/[locale]/contract/page.tsx`, `e2e/stage9/product-surfaces.spec.ts` |
+| ARL-E2E-007 | Stale test locator (hidden companion-bar link matched first) | Test asserts the named h1 "Model marketplace" and the page's own visible intro `strength, weakness, and credit cost` (the phrase occurs once in `en.json`, `models.subtitle`, so the strict locator has one target). No hidden-element or "route exists" assertion. Product unchanged. | `e2e/stage9/product-surfaces.spec.ts` |
+| ARL-E2E-004 | **UNVERIFIED** | No production or test change. Code inspection found no deterministic `/plan` cause (S16-006). OBSERVED: `/he/plan` with `waitUntil: "load"` completed once (agent run 1 reached the assertions) and timed out once (Arlet's run). The Google Fonts dependency is a candidate only (INFERRED). `waitUntil`, timeouts and external resources untouched. Next step is the traced run. | — |
+
+### S16-008 — ARL-E2E-004: 5/5 reproduction and a concrete cause (2026-09-27 11:3x); VERIFICATION PENDING
+
+**OBSERVED / REPRODUCED (Arlet):** `pnpm exec playwright test e2e/critical-path.spec.ts:39 --project=chromium --repeat-each=5 --trace on` → **5/5 failed**. The failure point moved: `page.goto("/he/plan")` completed; the test failed at `getByRole("link", { name: "כניסה", exact: true })` — element not found. This is distinct from the earlier single `page.goto` 30 s timeout (S16-003), which stays UNVERIFIED and is not claimed to share this cause.
+
+**Rendering contract from source (no guessing):**
+1. `/plan` is public: `requiresSignIn("/plan")` is false (`lib/studio-surfaces.ts`); AppShell renders the page for signed-out visitors.
+2–5. The CTA is rendered by `app/[locale]/plan/page.tsx`: MUI `<Button component={Link} href="/auth/login" variant="outlined">{t("signIn")}</Button>`, i.e. an `<a>` (role link) to `/he/auth/login`, accessible name = `plan.signIn`, Hebrew value `"כניסה"` (`messages/he.json`, `plan` block, one key, no duplicate).
+6–7. Rendered only when `sessionGate(session) === "signed-out"`. In `checking` or `unavailable` the CTA is intentionally not shown (the account area is not claimed either way); account queries run only when `signed-in`, so no 401 blocks the public page.
+8. `/plan` uses the same `AUTH_SESSION_QUERY_KEY` + `fetchAuthSession` + `sessionGate` as AppShell; no separate auth path.
+10. Not hidden by AppShell: signed-out visitors get no product nav or drawer on `/plan`; the CTA sits in the page body.
+9. **Translation key present in source, but NOT in what the dev server serves** — the cause below.
+
+**Concrete finding (OBSERVED by inspecting build output, not by a test):** the dev server's compiled message bundles `apps/web/.next/server/_rsc_messages_{he,en,ar}_json.js` (written 03:36:44) contain the §7.16 `session.*` keys but **not** `plan.signInToManage` / `plan.signIn`; `_rsc_messages_fr_json.js` contains both. In the compiled Hebrew bundle `"openAudit"` is followed directly by `"sellBanner"`, while `he.json` has `signInToManage` and `signIn` between them. The source files are correct (`git diff` shows both additions; all four parse with the keys). Each of he/en/ar was written twice about a second apart at 03:17 (first `session.*`, then the `plan` keys); the compiled bundles hold the first write. The dev server restarted since (PID 17436 → 21060) and still served the stale bundle, which fits webpack's persistent-cache snapshot having recorded the later file timestamp with the earlier content (INFERRED mechanism; the stale content itself is OBSERVED). With the stale bundle, next-intl renders the raw key, so the link's name is `plan.signIn`, not `"כניסה"` — exactly the agent run 1 snapshot (`link "plan.signIn"`, `paragraph: plan.signInToManage`) and a deterministic 5/5.
+
+**Classification:** VERIFICATION-ENVIRONMENT DEFECT (stale dev-server build cache). Not a product defect (source and component are correct) and not a test-contract defect ("כניסה" is the intended Hebrew name and appears once).
+
+**Correction (no product or test change):** the modification time of `apps/web/messages/{he,en,ar,fr}.json` was updated (content unchanged, SHA-256 identical before/after; `git diff` unaffected) so the running dev server and its cache invalidate the stale bundles on the next request. No font, `waitUntil`, timeout, retry, mock, or assertion change.
+
+**Status:** ARL-E2E-004 current failure mode — **ROOT CAUSE IDENTIFIED (environment), FIX APPLIED, NOT VERIFIED**. The earlier `page.goto` timeout observation — **UNVERIFIED / ROOT CAUSE NOT ESTABLISHED**. If the rerun still shows raw keys, the next step is Arlet's: stop the dev server, remove the build cache `apps/web/.next/cache`, restart, rerun.
+
+**Regression review of this pass (code reading, not execution):** no `any`; no assertion removed or weakened (two assertions tightened to named headings); no timeout or retry raised (the new `toBeVisible({ timeout: 20_000 })` matches the existing Sign-out wait); no mocks or fake data; no CI, API production, `packages/shared` or infrastructure change; RTL/locale behavior, Studio navigation and the auth boundary unchanged.
+
+**Verification still required (Arlet):** `pnpm exec playwright test --project=stage9 e2e/stage9/auth-studio.spec.ts e2e/stage9/product-surfaces.spec.ts` (ARL-E2E-005/006/007); `pnpm --filter @atlas/api exec vitest run src/__tests__/web-studio-surfaces.test.ts` (ARL-TEST-001); the ARL-E2E-004 command `pnpm exec playwright test e2e/critical-path.spec.ts:39 --project=chromium --repeat-each=5` (after S16-008); Web `tsc`, e2e `tsc`, ESLint on the changed files; then the two full commands in §7.16 S16-002 before any commit. Not re-run after S16-005/006: Web vitest, Web/e2e `tsc`, ESLint.
+
+**Stage status:** Stage 7 stays ✅ CLOSED (local verification); §7.16 is post-closure work outside Stage 7 acceptance. **Stage 8: NOT STARTED.** **Commit: none. Push: none.**
+
+## ARL-TEST-001 — `web-studio-surfaces.test.ts` expects nav groups inside `AppShell.tsx`
+
+**ID:** ARL-TEST-001 (stable). **Opened:** 2026-09-27, §7.16.
+**Observation:** `apps/api/src/__tests__/web-studio-surfaces.test.ts` › "keeps every existing Web nav route in AppShell PATHS" expects `AppShell.tsx` to contain `items: ["studio", "systems", "dashboard", "projects", "plan"]`. At HEAD (`26fc787`, = `origin/main`, at record time) `AppShell.tsx` contains no `items: [` line and imports `NAV_GROUPS` from `apps/web/lib/web-nav.ts` (present at HEAD). The test therefore fails at HEAD; it is not caused by §7.16. 10 of 11 tests in the file pass.
+**Classification:** **VERIFICATION / TEST-MAINTENANCE ISSUE**, not a product defect. The production code intentionally moved the navigation definition to `apps/web/lib/web-nav.ts` (`NAV_GROUPS`, imported by `AppShell.tsx`, both at HEAD); the source-text assertion still points at the old location.
+**Status:** 🟡 **CORRECTION APPLIED, NOT YET RUN** (§7.16 S16-006, authorized by Arlet's "do everything except running tests"). Earlier: not changed pending authorization.
+
 ## ARL-E2E-001 — Intermittent full-suite timeout in `auth-studio.spec.ts:14` (real-form login)
 
 **ID:** ARL-E2E-001 (stable; do not renumber or merge).
 **Opened:** 2026-09-27, during Stage 7 regression runs.
-**Status:** 🔴 **OPEN / INTERMITTENT / ROOT CAUSE UNVERIFIED / OUTSIDE STAGE 7.** Not a confirmed product defect. Not resolved.
+**Status (2026-09-27, §7.15 S15-001):** 🟢 **ROOT CAUSE VERIFIED AND FIXED (local).** Text typed before hydration is lost in controlled inputs; reproduced deterministically before the fix, passing after; `:14` passed 4/4 full runs after the fix. Not CI-verified. The earlier status below is kept as history.
+**Earlier status:** 🔴 OPEN / INTERMITTENT / ROOT CAUSE UNVERIFIED / OUTSIDE STAGE 7.
 **Owner stage:** Stage 9 regression (verification). Not a Stage 7 accessibility finding.
 **Test:** `e2e/stage9/auth-studio.spec.ts:14` "Stage 9.3 auth + Studio entry + project context › login through the real form reaches authenticated Studio". The test opens a fresh browser context (no storageState) and calls `loginViaUi` (`e2e/stage9/accounts.ts:113`), then expects `/en/studio`, the "Project Studio" h1, and `/api/v1/auth/me` 200 for the requester. `test.setTimeout(120_000)`.
 
@@ -1775,8 +2013,13 @@ Exit code 0 (terminal record). Includes both S7-C tests (tests 5 and 6) and `aut
 | Isolated 2 (Arlet) | ~01:36 | `pnpm test:e2e:stage9 -- e2e/stage9/auth-studio.spec.ts --repeat-each=3` | 16 passed (48.5s) | passed 3/3 (3.8s, 3.8s, 4.6s) | 3.5s | Arlet's terminal |
 | Full 3 | ended 01:42:28 | `pnpm test:e2e:stage9` (dev API on :4000 stopped first) | **20 passed**, exit 0 (1.6m) | passed, test 7 of 20, 4.0s | 3.5s | `%TEMP%\s7-stage9-c.log` |
 | Full 4 (Arlet) | ~01:59 | `pnpm test:e2e:stage9` (22-test suite, after the S7-C tests) | **22 passed**, exit 0 (1.5m) | passed, test 9 of 22, 3.7s | 3.3s | Arlet's terminal |
+| Full 5 (§7.14 run A) | ended ~02:13 | `pnpm test:e2e:stage9` (25-test suite, French + first header swap) | 24 passed, 1 failed (other test), exit 1 (2.3m) | passed, test 9 of 25, 10.0s | **22.8s** | `%TEMP%\atlas-fr\stage9-run.log` |
+| Full 6 (§7.14 run B) | ended ~02:25 | `pnpm test:e2e:stage9` (same tree) | 23 passed, **2 failed**, exit 1 (5.4m) | **FAILED**, test 9 of 25, 2.0m | 4.3s | `%TEMP%\atlas-fr\stage9-run2.log` |
+| Full 7 (§7.14 run C) | 02:33:40 – 02:37:54 | `pnpm test:e2e:stage9` (28-test suite, final §7.14 tree) | 26 passed, **2 failed**, exit 1 (4.1m) | **FAILED**, test 9 of 28, 2.0m | 5.2s | `%TEMP%\atlas-fr\stage9-run3.log` |
 
 Totals on the current tree: full suite 2 failed / 3 runs; isolated 5 passed / 5. Update after full 4: full suite 2 failed / 4 runs. Two consecutive full passes do not resolve the issue; status unchanged. The two failures were both at position 7, directly after `ask-agent.spec.ts:12` (passed, 8.2s and 7.2s). The earlier CI-like run in §11.1 (16 passed, 1 failed, 2 flaky) does not name its flaky tests; it cannot be linked to this issue.
+
+Update after full 7 (from full 5 on, the tree also includes the §7.14 changes; none of them edits `login/page.tsx`, `dev-credentials.ts`, `accounts.ts` or `auth-studio.spec.ts`, but the shared `AppShell`, `LanguageSwitcher`, theme, middleware and locale routing changes also render on or route the login page, so they are not excluded): full suite 4 failed / 7 runs; on the §7.14 tree 2 failed / 3 runs. All four failures came directly after `ask-agent.spec.ts:12` (passed 9.0 s before full 6 and full 7). Status unchanged.
 
 ### Exact failure location
 
@@ -1784,6 +2027,8 @@ Both failures: `Test timeout of 120000ms exceeded.`, then the `finally` block er
 
 - Full 1: `Error: browserContext.close: Test ended.`
 - Full 2: `Error: browserContext.close: Target page, context or browser has been closed`
+- Full 6: `Error: browserContext.close: Test ended.`
+- Full 7: `Error: browserContext.close: Target page, context or browser has been closed`
 
 Line 30 is where the timeout surfaced, not where the test stalled. The pending step is not recorded (no trace). From the full 2 page snapshot the page was still on `/en/auth/login` after submit, so the stalled step was most likely `page.waitForURL(/\/(en|he|ar)\/studio.../, { timeout: 120_000 })` in `loginViaUi` (`accounts.ts:131`), whose own timeout equals the test timeout. **INFERRED.**
 
@@ -1794,10 +2039,11 @@ Line 30 is where the timeout surfaced, not where the test stalled. The pending s
 - Both snapshot files are now **deleted**: Playwright clears `test-results/` at the start of each run (full 3 and the a11y run followed).
 - **Logs kept (outside the repo, not committed, may be purged by the OS):** the four `%TEMP%` logs in the run table. Full 1's log includes the browser log since launch of the worker's browser (pid 17752): six React DevTools console banners (one per client boot) at 01:20:14.160, 01:20:17.228, 01:20:19.412, 01:20:21.699, 01:20:24.329, 01:20:49.209. The log covers the whole worker, so which boots belong to `:14` is **not established**.
 - **No trace, video, or screenshot:** `trace: "on-first-retry"` with `retries: 0` locally.
+- **Full 6 and full 7 `error-context.md`: preserved** outside the repo before the next run cleared `test-results/`, as `%TEMP%\atlas-fr\stage9-auth-studio-Stage-9-a9b25-eaches-authenticated-Studio-stage9-error-context.md` (full 6) and `%TEMP%\atlas-fr\run3-auth-error-context.md` (full 7). Both show the same state as full 2: h1 "Sign in", textbox "Email" = `dev@atlas.local` (not the requester email), the password field filled, alert "Invalid email or password". The password value was not printed while inspecting. Three failures (full 2, 6, 7) now share this snapshot; full 1 stays UNKNOWN.
 
 ### Current hypothesis (UNVERIFIED)
 
-After `loginViaUi` confirmed the email value and while it typed the password, the login page remounted and `useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "")` (`login/page.tsx:43`) restored `dev@atlas.local`, so the submit used the wrong email and the page stayed on login. Possible trigger: a client reload or remount from the shared Next.js dev server. Support: full 2 snapshot only. Not supported by any evidence from full 1. Not excluded: other remount causes, API-side rejection timing, interaction with the preceding test, dev-server compile load, concurrent use of the shared dev server. Whether the failure occurs on the tree without Stage 6 / Stage 7 changes is **NOT TESTED**.
+After `loginViaUi` confirmed the email value and while it typed the password, the login page remounted and `useState(isDevLoginPrefill ? DEV_CREDENTIALS.email : "")` (`login/page.tsx:43`) restored `dev@atlas.local`, so the submit used the wrong email and the page stayed on login. Possible trigger: a client reload or remount from the shared Next.js dev server. Support: full 2, full 6 and full 7 snapshots (the same end state; the remount itself was not observed). Not supported by any evidence from full 1. Not excluded: other remount causes, API-side rejection timing, interaction with the preceding test, dev-server compile load, concurrent use of the shared dev server. Whether the failure occurs on the tree without Stage 6 / Stage 7 changes is **NOT TESTED**.
 
 ### Corrections to earlier statements (kept for history)
 
@@ -1805,4 +2051,46 @@ The §7.13 post-change paragraph written after full 2 said "Page snapshot at fai
 
 ### Not done
 
-Test, timeouts, retries and assertions not modified. No investigation of the root cause yet. Evidence that would narrow it (not performed): a full run with trace enabled from the command line, preserving `error-context.md` before the next run, a run of the unchanged HEAD in a separate git worktree, a run against a production Web build instead of the shared dev server.
+Test, timeouts, retries and assertions not modified. No investigation of the root cause yet. Evidence that would narrow it (not performed): a full run with trace enabled from the command line, a run of the unchanged HEAD in a separate git worktree, a run against a production Web build instead of the shared dev server. (Preserving `error-context.md` was done for full 6 and full 7; see Artifacts.)
+
+## ARL-E2E-002 — Intermittent strict-mode failure in `isolation.spec.ts:68` (file name after reload)
+
+**ID:** ARL-E2E-002 (stable; do not renumber or merge).
+**Opened:** 2026-09-27, during the §7.14 full runs.
+**Status (2026-09-27, §7.15 S15-002):** 🟢 **ROOT CAUSE VERIFIED AND FIXED (local).** The open-files strip was a `tablist` of buttons; the chips are now `role="tab"`, so the locator can match only the tree button. The test is not modified; no recurrence in 4 full runs and 5 isolated runs. Not CI-verified.
+**Earlier status:** 🔴 OPEN / INTERMITTENT / ROOT CAUSE UNVERIFIED.
+**Test:** `e2e/stage9/isolation.spec.ts:13` "Stage 9.4 switch, isolation, persistence, deep links › switch A → B isolates workspace and survives refresh + deep link". Failing assertion at line 68: after `page.reload()` on project B, `expect(page.getByRole("button", { name: fileB })).toBeVisible({ timeout: 20_000 })`.
+
+### Observed runs
+
+| Run | Result | Log |
+| --- | --- | --- |
+| Full 1 – full 4 (§7.13 tree, ARL-E2E-001 table) | passed in every full run | as in ARL-E2E-001 |
+| §7.14 run A (full 5) | **FAILED** (13.3 s), strict mode violation | `%TEMP%\atlas-fr\stage9-run.log` |
+| Isolated, `--repeat-each=5` (same tree as run A) | passed 5/5 (15.4–17.3 s) | `%TEMP%\atlas-fr\isolation-repeat.log` |
+| §7.14 run B (full 6) | passed (17.6 s) | `%TEMP%\atlas-fr\stage9-run2.log` |
+| §7.14 run C (full 7) | **FAILED** (15.8 s), same strict mode violation | `%TEMP%\atlas-fr\stage9-run3.log` |
+
+Totals: full suite 2 failed / 3 runs on the §7.14 tree; 0 failed / 4 full runs on the earlier tree; isolated 5/5 passed.
+
+### Failure evidence
+
+Both failures: `Error: strict mode violation: getByRole('button', { name: 'beta-<stamp>.txt' }) resolved to 2 elements`. The two elements are the file-tree `ListItemButton` (selected) and the `Chip` in `tablist "Open files"` with `aria-label` equal to the file name. Page snapshots (`%TEMP%\atlas-fr\isolation-error-context.md` for run A, `%TEMP%\atlas-fr\run3-isolation-error-context.md` for run C) show the correct state: project B, file B in the tree, file B open with `PROJECT_B_ONLY <stamp>`, no file A. **Isolation itself held in both failures; the locator matched two correct elements.**
+
+### Current hypothesis (INFERRED, UNVERIFIED)
+
+Before the reload, the test clicked file B, so it was open. After the reload, the open-file tab is restored. If the tab chip is already rendered when the assertion first resolves the locator, strict mode fails at once instead of retrying; if the tree item renders alone first, the assertion passes. So the result depends on render timing. The same locator at line 52 is evaluated before file B is opened, so it cannot collide there. Why the failure appeared only on the §7.14 tree (theme, shell and locale changes; no Studio file-tree or tab change) is **NOT TESTED**. The earlier tree had only 4 full runs, so the difference may be chance.
+
+### Not done
+
+Test, locator, timeouts and retries not modified (a scoped locator would be a test change and needs its own decision). No trace (`trace: "on-first-retry"`, `retries: 0` locally).
+
+## ARL-E2E-003 — Project picker still "Loading projects…" at `isolation.spec.ts:37`
+
+**ID:** ARL-E2E-003 (stable; do not renumber or merge).
+**Opened:** 2026-09-27, §7.15 full run 2.
+**Status:** 🔴 **OPEN / OBSERVED ONCE / ROOT CAUSE UNVERIFIED.** Test not modified.
+**Observation:** `expect(getByRole("combobox", { name: /project/i })).toContainText(projectA.name)` with the default 5 s expect timeout received "Loading projects…" (the picker label while `GET /api/v1/projects` is pending, `studio/page.tsx`). The test failed after 8.0 s. Its `error-context.md` was cleared by the next run before it was preserved.
+**Runs:** failed 1 of 4 full runs after §7.15; passed in full runs 1, 3 and 4 and 5/5 isolated. It never failed at line 37 in the earlier 7 full runs.
+**Assessment:** the projects query is unchanged by §7.14/§7.15. The line-37 assertion uses the 5 s default while the neighbouring data assertions in the same test use 20 s, so a slow API response under full-suite load can fail it. INFERRED, not verified. Raising the timeout is a test change that needs Arlet's decision.
+**Update (2026-09-27, §7.16):** Arlet decided "align20": line 37 now uses `{ timeout: 20_000 }`, the same as the other data assertions in the test. Root cause still UNVERIFIED; status stays OPEN until repeated full runs show no recurrence. In Arlet's full Stage 9 run of 56 tests (§7.16 S16-002) `isolation.spec.ts` passed.
