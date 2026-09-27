@@ -99,7 +99,7 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(dashboard).toContain("dashboard.workingHome");
     const projectsPage = readWeb("app/[locale]/projects/page.tsx");
     expect(projectsPage).toContain("studioProjectHref(project.id)");
-    expect(projectsPage).toContain("workbenchProjectHref(project.id)");
+    // workbenchProjectHref removed from Projects page at Stage 6 (§7.12); studioProjectHref is the current contract
     expect(projectsPage).toContain('studioCheckHref("processAudit", project.id)');
     expect(projectsPage).not.toContain('href="/workbench"');
     expect(projectsPage).not.toContain('href="/process-audit"');
