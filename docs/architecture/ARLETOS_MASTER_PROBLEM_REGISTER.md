@@ -4,7 +4,7 @@
 
 **Overall status:** 🔴 **OPEN**. An item is **CLOSED** only with evidence. OPEN register ≠ broken product: the Web/Studio core exists (§11). What remains is verification, decisions, and the gaps in §6.
 
-**Last consolidated:** 2026-09-26 against HEAD `10714506bd22f61399cc2155ee9ef93a8a02a03d`. Stage 4 implementation record added 2026-09-26 (§7.7).
+**Last consolidated:** 2026-09-27 against HEAD `d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4`. Stage 4 implementation record added 2026-09-26 (§7.7). ARL-TEST-001 CLOSED 2026-09-27 (§7.16 reconciliation pass).
 
 ---
 
@@ -76,8 +76,8 @@ Out of scope. **REFERENCE ONLY** when a boundary fact is needed:
 
 | Field | Value |
 | --- | --- |
-| HEAD | `10714506bd22f61399cc2155ee9ef93a8a02a03d` (`main` == `origin/main`) |
-| Working tree | At HEAD: untracked `cookies.txt` only, plus uncommitted edits to this file until they are committed. Never open, stage, or commit `cookies.txt`. |
+| HEAD | `d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4` (`main` == `origin/main`) |
+| Working tree | At HEAD: modified `e2e/new-surfaces.spec.ts` (unrelated/protected, not staged) and untracked `cookies.txt`. Never stage or commit either file without separate authorization. |
 | Last closed stage | Stage 2 (local runtime) |
 | Production | **NOT VERIFIED** for Web/Studio (see §12) |
 
@@ -1941,13 +1941,13 @@ Arlet asked the agent not to re-run tests; the targeted run was not executed. No
 
 **ARL-TEST-001 correction (test maintenance, documented before the edit):** Stage 6 implemented D9 (§7.12; D9 recorded above: Studio, Projects, Dashboard, Agents, Account primary; Checks contextual inside Studio). The stale lines in `apps/api/src/__tests__/web-studio-surfaces.test.ts` asserted the pre-D9 groups (`["studio","systems","dashboard","projects","plan"]`, a five-check ops group, `studioCheckHref`, `["agents","experts"]`) as text in `AppShell.tsx`. Replaced by assertions on the D9 contract: `AppShell.tsx` imports `NAV_GROUPS` from `@/lib/web-nav`; `lib/web-nav.ts` lists `PRIMARY_NAV_KEYS` studio, projects, dashboard, agents, settings; Checks open as `{ tab: "checks", check }` inside Studio. Test file only; no API production code. Behavior of the groups is additionally covered by `apps/web/lib/web-nav.test.ts`.
 
-### S16-007 — Code-only remediation completed (2026-09-27 11:2x); VERIFICATION PENDING
+### S16-007 — Code-only remediation completed (2026-09-27 11:2x); ARL-TEST-001 VERIFIED AND CLOSED
 
-Arlet authorized everything except running tests. **No test, type check, linter or E2E command was executed in S16-005/006/007.** Every item below is IMPLEMENTED, not VERIFIED.
+Arlet authorized everything except running tests. **No test, type check, linter or E2E command was executed in S16-005/006/007 by the agent.** ARL-TEST-001 was subsequently verified and closed by Arlet (see ARL-TEST-001 section below).
 
 | ID | Nature | Correction (final state) | File |
 | --- | --- | --- | --- |
-| ARL-TEST-001 | Test maintenance (stale source-text assertion) | The four pre-D9 lines are replaced by assertions on the D9 contract: `AppShell.tsx` imports `NAV_GROUPS` from `@/lib/web-nav` and contains no `items: [` array of its own; `lib/web-nav.ts` has `PRIMARY_NAV_KEYS` = studio, projects, dashboard, agents, settings; `ADVANCED_NAV_KEYS` = systems, plan, experts, models, integrations, partners, legalMedia; the `main` group uses the primary keys and the advanced group is `collapsedByDefault` with the advanced keys; Checks resolve to `{ tab: "checks", check }` inside Studio. Rest of the test unchanged. No API production code touched. | `apps/api/src/__tests__/web-studio-surfaces.test.ts` |
+| ARL-TEST-001 | Test maintenance (stale source-text assertion) | ✅ **VERIFIED / CLOSED** — stale assertion `expect(projectsPage).toContain("workbenchProjectHref(project.id)")` removed; comment citing §7.12 added. Vitest 11/11 passed. Committed `d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4`, pushed `40260a2..d3b3ec4 main -> main`. | `apps/api/src/__tests__/web-studio-surfaces.test.ts` |
 | ARL-E2E-005 | Test synchronization (race exposed by the §7.16 gate) | Real UI flow kept: the test waits until "Open menu" is visible (always rendered for a signed-in user on a product page), clicks it only when `aria-expanded` is not `"true"` (desktop: the button toggles the docked sidebar; narrow: it opens the drawer), then the unchanged assertions: Sign out visible → click → `/en/auth/login` with h1 "Sign in" → `/auth/me` 401. Replaces the earlier `isVisible()` check, which does not wait. Product logout code unchanged (Sign out is rendered; OBSERVED in the ARL-E2E-006 snapshot). | `e2e/stage9/auth-studio.spec.ts` |
 | ARL-E2E-006 | Product defect (pre-existing, no h1) | Contract title `variant="h4" component="h1"` (visual unchanged). Test tightened from "any h1" to the named h1 "חוזה ארכיטקטורה" (`contract.title` in he.json), so it proves the contract surface itself rendered. | `apps/web/app/[locale]/contract/page.tsx`, `e2e/stage9/product-surfaces.spec.ts` |
 | ARL-E2E-007 | Stale test locator (hidden companion-bar link matched first) | Test asserts the named h1 "Model marketplace" and the page's own visible intro `strength, weakness, and credit cost` (the phrase occurs once in `en.json`, `models.subtitle`, so the strict locator has one target). No hidden-element or "route exists" assertion. Product unchanged. | `e2e/stage9/product-surfaces.spec.ts` |
@@ -1975,16 +1975,31 @@ Arlet authorized everything except running tests. **No test, type check, linter 
 
 **Regression review of this pass (code reading, not execution):** no `any`; no assertion removed or weakened (two assertions tightened to named headings); no timeout or retry raised (the new `toBeVisible({ timeout: 20_000 })` matches the existing Sign-out wait); no mocks or fake data; no CI, API production, `packages/shared` or infrastructure change; RTL/locale behavior, Studio navigation and the auth boundary unchanged.
 
-**Verification still required (Arlet):** `pnpm exec playwright test --project=stage9 e2e/stage9/auth-studio.spec.ts e2e/stage9/product-surfaces.spec.ts` (ARL-E2E-005/006/007); `pnpm --filter @atlas/api exec vitest run src/__tests__/web-studio-surfaces.test.ts` (ARL-TEST-001); the ARL-E2E-004 command `pnpm exec playwright test e2e/critical-path.spec.ts:39 --project=chromium --repeat-each=5` (after S16-008); Web `tsc`, e2e `tsc`, ESLint on the changed files; then the two full commands in §7.16 S16-002 before any commit. Not re-run after S16-005/006: Web vitest, Web/e2e `tsc`, ESLint.
+**Verification still required (Arlet):** the ARL-E2E-004 command `pnpm exec playwright test e2e/critical-path.spec.ts:39 --project=chromium --repeat-each=5` (after S16-008); Web `tsc`, e2e `tsc`, ESLint on the changed files; then the two full commands in §7.16 S16-002 before any commit. Not re-run after S16-005/006: Web vitest, Web/e2e `tsc`, ESLint. (**ARL-TEST-001 CLOSED** — Vitest 11/11 confirmed by Arlet, commit `d3b3ec4`. ARL-E2E-005/006/007 CLOSED — confirmed by Arlet's Stage 9 33/33 run.)
 
-**Stage status:** Stage 7 stays ✅ CLOSED (local verification); §7.16 is post-closure work outside Stage 7 acceptance. **Stage 8: NOT STARTED.** **Commit: none. Push: none.**
+**Stage status:** Stage 7 stays ✅ CLOSED (local verification); §7.16 is post-closure work outside Stage 7 acceptance. **Stage 8: NOT STARTED.** **ARL-TEST-001 commit:** `d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4` ("test(api): remove stale workbenchProjectHref assertion (ARL-TEST-001)"), pushed `40260a2..d3b3ec4 main -> main` (Arlet, 2026-09-27). This is local/remote verification only; not production verification. **Stage 9 full suite (Arlet, 2026-09-27): 33/33 passed.** Stage 9 not formally closed; ARL-E2E-001 remains OPEN/INTERMITTENT.
 
 ## ARL-TEST-001 — `web-studio-surfaces.test.ts` expects nav groups inside `AppShell.tsx`
 
 **ID:** ARL-TEST-001 (stable). **Opened:** 2026-09-27, §7.16.
 **Observation:** `apps/api/src/__tests__/web-studio-surfaces.test.ts` › "keeps every existing Web nav route in AppShell PATHS" expects `AppShell.tsx` to contain `items: ["studio", "systems", "dashboard", "projects", "plan"]`. At HEAD (`26fc787`, = `origin/main`, at record time) `AppShell.tsx` contains no `items: [` line and imports `NAV_GROUPS` from `apps/web/lib/web-nav.ts` (present at HEAD). The test therefore fails at HEAD; it is not caused by §7.16. 10 of 11 tests in the file pass.
-**Classification:** **VERIFICATION / TEST-MAINTENANCE ISSUE**, not a product defect. The production code intentionally moved the navigation definition to `apps/web/lib/web-nav.ts` (`NAV_GROUPS`, imported by `AppShell.tsx`, both at HEAD); the source-text assertion still points at the old location.
-**Status:** 🟡 **CORRECTION APPLIED, NOT YET RUN** (§7.16 S16-006, authorized by Arlet's "do everything except running tests"). Earlier: not changed pending authorization.
+**Classification:** **VERIFICATION / TEST-MAINTENANCE ISSUE (stale test contract)**, not a product defect. The production code intentionally moved the navigation definition to `apps/web/lib/web-nav.ts` (`NAV_GROUPS`, imported by `AppShell.tsx`, both at HEAD); the stale source-text assertion still pointed at the old location. Additionally, the Projects page contract uses `studioProjectHref(project.id)` (Stage 6 §7.12), not the retired `workbenchProjectHref`. Production code: NO CHANGE.
+**Status:** ✅ **CLOSED / VERIFIED / COMMITTED / PUSHED** (2026-09-27)
+
+| Field | Evidence |
+| --- | --- |
+| Root cause | Stale test contract (`workbenchProjectHref` assertion retired at Stage 6 §7.12) |
+| Correction | Stale assertion removed; comment citing §7.12 added. One line changed (1 insertion, 1 deletion). |
+| File changed | `apps/api/src/__tests__/web-studio-surfaces.test.ts` |
+| Production code changed | NO |
+| Vitest (RUNTIME — local) | `pnpm --filter @atlas/api exec vitest run src/__tests__/web-studio-surfaces.test.ts` → **11/11 passed** (Arlet, 2026-09-27, Windows) |
+| Commit | `d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4` — "test(api): remove stale workbenchProjectHref assertion (ARL-TEST-001)" |
+| Push | `40260a2..d3b3ec4 main -> main` (Arlet, 2026-09-27) |
+| HEAD == origin/main | YES (`d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4`) |
+| Production verification | NOT CLAIMED — local Vitest only |
+| Protected files touched | NO (`e2e/new-surfaces.spec.ts` and `cookies.txt` preserved untouched) |
+
+**Earlier recorded status (history, do not reopen):** 🟡 CORRECTION APPLIED, NOT YET RUN (§7.16 S16-006). ARL-TEST-001 is complete. Do not recreate the stale assertion or create another remediation for this issue.
 
 ## ARL-E2E-001 — Intermittent full-suite timeout in `auth-studio.spec.ts:14` (real-form login)
 
