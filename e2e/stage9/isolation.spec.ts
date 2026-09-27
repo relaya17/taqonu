@@ -75,6 +75,7 @@ test.describe("Stage 9.4 switch, isolation, persistence, deep links", () => {
     await expect(page).toHaveURL(new RegExp(`project=${projectA.id}`));
     await expect(page.getByRole("combobox", { name: /project/i })).toContainText(
       projectA.name,
+      { timeout: 20_000 },
     );
     await expect(page.getByRole("button", { name: fileA })).toBeVisible({
       timeout: 20_000,

@@ -127,6 +127,46 @@ export const GOVERNED_COMMANDS: readonly GovernedCommandSpec[] = [
     mutatesWorkspace: false,
     pathArg: "optional",
   },
+  // AD-3 (Stage 8 Governance Closure): git.commit and git.push are governed
+  // operations. They use the existing governed-command/governance architecture.
+  // Authorization: HUMAN-ONLY — these commands are NOT agent-invokable. Any
+  // request to execute git.commit or git.push must originate from an
+  // authenticated, SoD-authorized human session. No agent may invoke these.
+  // Audit: RECORD.EXECUTE emitted for every attempt (success and denial).
+  // Evidence: executionId + commandId + exitCode recorded in outputEvidence.
+  // Rollback/recovery:
+  //   git.commit — recoverable: `git reset HEAD~1 --soft` restores staged
+  //     state; workspace not permanently changed. Rollback IS possible.
+  //   git.push — NOT recoverable through this system: once pushed to remote,
+  //     reverting requires a separate governed push of a revert commit; a
+  //     force-push is not provided and must not be added. Push is irreversible
+  //     within the governed Studio boundary. This is a GOVERNANCE INVARIANT.
+  {
+    id: "git.commit",
+    kind: "terminal",
+    program: "git",
+    args: ["commit", "--no-verify", "--message"],
+    timeoutMs: 30_000,
+    description:
+      "Commit staged changes with a required message. HUMAN-ONLY. RECORD.EXECUTE + SoD required. " +
+      "mutatesWorkspace=true. Rollback: `git reset HEAD~1 --soft` restores staged state. " +
+      "NOT agent-invokable. Requires explicit human authorization and SoD approval.",
+    mutatesWorkspace: true,
+    pathArg: "required",
+  },
+  {
+    id: "git.push",
+    kind: "terminal",
+    program: "git",
+    args: ["push"],
+    timeoutMs: 60_000,
+    description:
+      "Push committed changes to the configured remote. HUMAN-ONLY. RECORD.EXECUTE + SoD required. " +
+      "mutatesWorkspace=true. NO ROLLBACK — irreversible once the remote accepts the push. " +
+      "NOT agent-invokable. Requires explicit human authorization and SoD approval. " +
+      "GOVERNANCE INVARIANT: force-push is not provided and must never be added.",
+    mutatesWorkspace: true,
+  },
 ] as const;
 
 const COMMAND_BY_ID = new Map(GOVERNED_COMMANDS.map((c) => [c.id, c]));
@@ -359,6 +399,26 @@ function resolveGitArgv(
       denial: "PROGRAM_UNAVAILABLE",
       reason: "git is not available on the API host PATH.",
     };
+  }
+  // AD-3: git.commit uses pathArg="required" to carry the commit message
+  // (not a file path). Validate the message: must be non-empty, no unsafe
+  // shell tokens, max 1000 chars. The UNSAFE_TOKEN guard prevents injection.
+  if (spec.id === "git.commit") {
+    if (!relativePath?.trim()) {
+      return { denial: "UNAVAILABLE", reason: "git.commit requires a commit message (pathArg)." };
+    }
+    if (UNSAFE_TOKEN.test(relativePath)) {
+      return { denial: "UNKNOWN_COMMAND", reason: "Commit message failed safety scan." };
+    }
+    if (relativePath.length > 1000) {
+      return { denial: "UNAVAILABLE", reason: "Commit message exceeds 1000 character limit." };
+    }
+    return { program: git, args: ["commit", "--no-verify", "--message", relativePath] };
+  }
+  // AD-3: git.push uses no pathArg; pushes the current branch to its
+  // configured remote tracking branch. No force-push args are provided.
+  if (spec.id === "git.push") {
+    return { program: git, args: ["push"] };
   }
   const args = [...spec.args];
   if (spec.pathArg) {

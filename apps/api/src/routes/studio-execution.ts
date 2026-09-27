@@ -46,6 +46,12 @@ const commandIdSchema = z.enum([
   "git.add",
   "git.unstage",
   "git.restore",
+  // AD-3 (Stage 8 Governance Closure): git.commit and git.push are governed
+  // operations. HUMAN-ONLY. SoD required (runGovernedClaimedExecution path).
+  // git.push has no rollback — see governed-command.ts for full governance
+  // invariants. These are NOT agent-invokable.
+  "git.commit",
+  "git.push",
   "workspace.build",
   "vitest.run",
 ]);

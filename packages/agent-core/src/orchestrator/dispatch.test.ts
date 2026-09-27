@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { dispatchAgentPlan } from "./dispatch.js";
+import { resetAgentLifecycleForTests, setAgentEnabled } from "../kernel/registry-lifecycle.js";
 
 describe("dispatchAgentPlan", () => {
   it("runs every non-JUDGE step and produces a final judge decision", async () => {
@@ -86,6 +87,47 @@ describe("dispatchAgentPlan", () => {
     expect(a.traceId).not.toBe(b.traceId);
   });
 
+  it("AD-1 (REQ-8-5): a disabled catalog agent is SKIPPED with auditable claims and does not execute", async () => {
+    // 1. SECURITY is a valid registered Fabric Agent (member of FABRIC_AGENT_IDS catalog)
+    // 2. Explicitly disable it via the lifecycle overlay
+    const setResult = setAgentEnabled("SECURITY", false);
+    expect(setResult.ok).toBe(true);
+
+    // 3. Invoke dispatchAgentPlan — only SECURITY requested (+ auto-added ORCHESTRATOR)
+    const result = await dispatchAgentPlan({
+      request: "security review",
+      agentIds: ["SECURITY"],
+      runJudge: false,
+    });
+
+    // 4 + 5. The disabled agent does not execute; its run entry has SKIPPED status
+    const securityRun = result.runs.find((r) => r.agentId === "SECURITY");
+    expect(securityRun).toBeDefined();
+    expect(securityRun?.status).toBe("SKIPPED");
+
+    // 6. Required claims are present
+    expect(securityRun?.claims).toContain(
+      "registration.enforcement: agentId=SECURITY status=disabled",
+    );
+    expect(securityRun?.claims).toContain("dispatch.denied: agentId=SECURITY");
+
+    // 7. Required evidenceRefs are present
+    expect(securityRun?.evidenceRefs).toContain("denied:registry.disabled:SECURITY");
+    expect(securityRun?.evidenceRefs).toContain(
+      "audit:dispatch.registration.denied:agentId=SECURITY",
+    );
+
+    // 8. No unrelated agent was accidentally affected — all other runs must NOT be SKIPPED
+    const otherRuns = result.runs.filter((r) => r.agentId !== "SECURITY");
+    for (const run of otherRuns) {
+      expect(run.status).not.toBe("SKIPPED");
+    }
+
+    // 9. Existing enabled-state behavior is intact: SECURITY is only disabled in this test;
+    //    afterEach() calls resetAgentLifecycleForTests() to restore the default enabled state.
+    //    The remaining tests in this suite continue to see SECURITY as enabled.
+  });
+
   it("does not expose Civio-scoped knowledge to an unauthorized specialist", async () => {
     const result = await dispatchAgentPlan({
       request: "תעודת זכאות לדיור ציבורי",
@@ -104,5 +146,10 @@ describe("dispatchAgentPlan", () => {
 
     expect(legal?.claims.some((claim) => claim.includes("תעודת זכאות"))).toBe(true);
     expect(security?.claims.some((claim) => claim.includes("תעודת זכאות"))).toBe(false);
+  });
+
+  afterEach(() => {
+    // Restore default enabled state so no test bleeds lifecycle state into the next
+    resetAgentLifecycleForTests();
   });
 });

@@ -1,6 +1,23 @@
 import { test, expect } from "@playwright/test";
 import { expectNoA11yViolations } from "./axe";
 import { expectSignInRedirect } from "./signed-out";
+
+// Warm the Next.js dev server before any test in this suite fires. Without
+// this, the first navigation compiles bundles on demand and the 30 s test
+// timeout can expire before the client-side auth redirect fires. We also
+// pre-compile routes that appear later in the run (/en/workbench → /studio)
+// so the dev server does not OOM from concurrent compilations mid-suite.
+test.beforeAll(
+  async ({ browser }) => {
+    const warmRoutes = ["/en/auth/login", "/en/workbench", "/en"];
+    for (const route of warmRoutes) {
+      const page = await browser.newPage();
+      await page.goto(route, { waitUntil: "domcontentloaded" }).catch(() => {});
+      await page.close();
+    }
+  },
+  120_000,
+);
 /**
 * Manual a11y / responsive smoke checks, PLUS a real automated WCAG 2.2 AA
 * scan (axe-core) on every page this suite already visits.

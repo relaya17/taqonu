@@ -11,6 +11,7 @@ import { buildEvidencePackageForAgent, type KnowledgeRetrievalScope } from "@atl
 import { getFabricAgent } from "../registry/catalog.js";
 import { planAgentWork } from "./plan.js";
 import { evaluateJudge } from "../judge/evaluate.js";
+import { isAgentEnabled } from "../kernel/registry-lifecycle.js";
 
 function loadKnowledge(
   request: string,
@@ -130,6 +131,37 @@ export async function dispatchAgentPlan(input: {
   for (const g of [...byGroup.keys()].sort((a, b) => a - b)) {
     for (const s of byGroup.get(g) ?? []) {
       if (s.agentId === "JUDGE") continue;
+      // AD-1 (REQ-8-5): Authoritative registration enforcement gate.
+      // agentId ∈ listRegisteredAgents() is enforced here — the one and only
+      // dispatch-time check. `isAgentEnabled()` consults the runtime overlay in
+      // registry-lifecycle.ts; it returns true for every catalog agent that has
+      // not been explicitly disabled via `setAgentEnabled()`. CORE_AGENT_IDS
+      // (ORCHESTRATOR, JUDGE) cannot be disabled, so they always pass. Non-
+      // FABRIC_AGENT_IDS are already rejected at Zod schema parse time
+      // (agentDispatchRequestSchema) before we reach this loop. This gate
+      // produces an auditable SKIPPED result rather than throwing so the plan
+      // report always carries a complete per-agent record of what happened.
+      if (!isAgentEnabled(s.agentId)) {
+        runs.push(
+          agentRunResultSchema.parse({
+            agentId: s.agentId,
+            status: "SKIPPED",
+            summary: `Agent "${s.agentId}" is currently disabled in the runtime registry and cannot be dispatched. Authorization denied.`,
+            claims: [
+              `registration.enforcement: agentId=${s.agentId} status=disabled`,
+              `dispatch.denied: agentId=${s.agentId}`,
+            ],
+            evidenceRefs: [
+              `denied:registry.disabled:${s.agentId}`,
+              `audit:dispatch.registration.denied:agentId=${s.agentId}`,
+            ],
+            epistemicState: "OBSERVED",
+            costUsd: 0,
+            durationMs: 0,
+          }),
+        );
+        continue;
+      }
       const specialistKnowledge = loadKnowledge(
         input.request,
         [s.agentId],
