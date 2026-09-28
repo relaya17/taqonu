@@ -5,7 +5,7 @@ import {
   STAGE9_REQUESTER,
   STAGE9_REQUESTER_EMAIL,
 } from "./identities";
-import { stage9ApiBase } from "./local-api";
+import { stage9ApiBase, softenLoopbackSessionCookies } from "./local-api";
 import { createStage9Project } from "./projects";
 
 test.describe("Stage 9.3 auth + Studio entry + project context", () => {
@@ -60,6 +60,7 @@ test.describe("Stage 9.3 auth + Studio entry + project context", () => {
       await expect(email).toHaveValue(STAGE9_REQUESTER.email);
       await page.getByRole("button", { name: /^sign in$/i }).click();
       await page.waitForURL(/\/en\/studio(?:[/?#]|$)/, { timeout: 60_000 });
+      await softenLoopbackSessionCookies(context);
       const me = await page.context().request.get(`${stage9ApiBase(page.url())}/api/v1/auth/me`);
       expect(me.status()).toBe(200);
       const body = (await me.json()) as { user: { email: string } };
