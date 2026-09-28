@@ -271,7 +271,7 @@ export function SupervisingAgentPanel({
           )}
           <Button
             component={Link}
-            href="/memory"
+            href={`/memory${projectId ? `?project=${encodeURIComponent(projectId)}` : ""}`}
             size="small"
             variant="text"
             sx={{ mt: 0.75, px: 0 }}

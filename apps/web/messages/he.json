@@ -229,6 +229,8 @@
     "truncated": "עץ חלקי",
     "readOnly": "קריאה בלבד",
     "editable": "ניתן לעריכה",
+    "createFolder": "צור תיקייה",
+    "newFolderPlaceholder": "שם/תיקייה",
     "saveFile": "שמור קובץ",
     "moveFile": "העבר קובץ",
     "moveTo": "נתיב חדש",

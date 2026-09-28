@@ -27,13 +27,17 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Typography,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Link, usePathname, useRouter } from "@/i18n/routing";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { createStudioRunAbort } from "@/lib/studio-run-abort";
 import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
@@ -200,20 +204,62 @@ function TreeBranch({
   depth,
   selectedPath,
   onSelect,
+  onDelete,
+  onRename,
 }: {
   node: TreeNode;
   depth: number;
   selectedPath: string | null;
   onSelect: (path: string, kind: "dir" | "file") => void;
+  onDelete: (path: string, kind: "dir" | "file") => void;
+  onRename: (oldPath: string, newName: string) => void;
 }): ReactNode {
   const [open, setOpen] = useState(depth < 2);
+  const [hover, setHover] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(node.name);
+
+  const startRename = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenameValue(node.name);
+    setRenaming(true);
+  };
+
+  const commitRename = () => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== node.name) {
+      onRename(node.path, trimmed);
+    }
+    setRenaming(false);
+  };
+
   if (node.kind === "file") {
     return (
-      <ListItem disablePadding>
+      <ListItem
+        disablePadding
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        secondaryAction={
+          hover && !renaming ? (
+            <Tooltip title="Delete file">
+              <IconButton
+                size="small"
+                edge="end"
+                aria-label="delete file"
+                onClick={(e) => { e.stopPropagation(); onDelete(node.path, "file"); }}
+                sx={{ color: "rgba(220,221,225,0.45)", "&:hover": { color: "#f44336" }, mr: 0.25 }}
+              >
+                <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+              </IconButton>
+            </Tooltip>
+          ) : undefined
+        }
+      >
         <ListItemButton
           dense
           selected={selectedPath === node.path}
-          onClick={() => onSelect(node.path, "file")}
+          onClick={() => { if (!renaming) onSelect(node.path, "file"); }}
+          onDoubleClick={startRename}
           sx={{
             ps: 1.5 + depth * 1.25,
             borderRadius: 1.5,
@@ -224,30 +270,97 @@ function TreeBranch({
             },
           }}
         >
-          <ListItemText
-            primary={node.name}
-            primaryTypographyProps={{ fontSize: 13, noWrap: true }}
-          />
+          {renaming ? (
+            <TextField
+              size="small"
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+                if (e.key === "Escape") { e.stopPropagation(); setRenaming(false); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              sx={{
+                width: "100%",
+                "& .MuiInputBase-input": { fontSize: 13, py: 0.25, color: "#DCDDE1" },
+                "& .MuiOutlinedInput-root": {
+                  bgcolor: "rgba(255,255,255,0.06)",
+                  "& fieldset": { borderColor: "rgba(232,234,238,0.3)" },
+                },
+              }}
+            />
+          ) : (
+            <ListItemText
+              primary={node.name}
+              primaryTypographyProps={{ fontSize: 13, noWrap: true }}
+            />
+          )}
         </ListItemButton>
       </ListItem>
     );
   }
   return (
-    <ListItem disablePadding sx={{ display: "block" }}>
+    <ListItem
+      disablePadding
+      sx={{ display: "block" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      secondaryAction={
+        hover && depth > 0 && !renaming ? (
+          <Tooltip title="Delete folder">
+            <IconButton
+              size="small"
+              edge="end"
+              aria-label="delete folder"
+              onClick={(e) => { e.stopPropagation(); onDelete(node.path, "dir"); }}
+              sx={{ color: "rgba(220,221,225,0.45)", "&:hover": { color: "#f44336" }, mr: 0.25 }}
+            >
+              <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+        ) : undefined
+      }
+    >
       <ListItemButton
         dense
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { if (!renaming) setOpen((v) => !v); }}
+        onDoubleClick={depth > 0 ? startRename : undefined}
         sx={{ ps: 1.5 + depth * 1.25, borderRadius: 1.5, mx: 0.5, color: "#DCDDE1" }}
       >
-        <ListItemText
-          primary={`${open ? "▾" : "▸"} ${node.name || "/"}`}
-          primaryTypographyProps={{
-            fontSize: 13,
-            fontWeight: 650,
-            noWrap: true,
-          }}
-        />
+        {renaming ? (
+          <TextField
+            size="small"
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+              if (e.key === "Escape") { e.stopPropagation(); setRenaming(false); }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              width: "100%",
+              "& .MuiInputBase-input": { fontSize: 13, py: 0.25, color: "#DCDDE1", fontWeight: 650 },
+              "& .MuiOutlinedInput-root": {
+                bgcolor: "rgba(255,255,255,0.06)",
+                "& fieldset": { borderColor: "rgba(232,234,238,0.3)" },
+              },
+            }}
+          />
+        ) : (
+          <ListItemText
+            primary={`${open ? "▾" : "▸"} ${node.name || "/"}`}
+            primaryTypographyProps={{
+              fontSize: 13,
+              fontWeight: 650,
+              noWrap: true,
+            }}
+          />
+        )}
       </ListItemButton>
       <Collapse in={open} timeout="auto" unmountOnExit>
         <List dense disablePadding>
@@ -258,6 +371,8 @@ function TreeBranch({
               depth={depth + 1}
               selectedPath={selectedPath}
               onSelect={onSelect}
+              onDelete={onDelete}
+              onRename={onRename}
             />
           ))}
         </List>
@@ -583,6 +698,73 @@ export default function StudioPage() {
       });
       setMoveTo("");
       selectStudioFile(moved.to);
+      void treeQuery.refetch();
+    },
+  });
+
+  const [newFolderPath, setNewFolderPath] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+
+  const createFolder = useMutation({
+    mutationFn: () =>
+      apiPost<{ path: string }>("/api/v1/studio/folder", {
+        projectId,
+        path: newFolderPath.trim(),
+      }),
+    onSuccess: () => {
+      setNewFolderPath("");
+      setShowNewFolder(false);
+      void treeQuery.refetch();
+    },
+  });
+
+  const deleteFile = useMutation({
+    mutationFn: (path: string) =>
+      apiDelete<{ path: string }>("/api/v1/studio/file", {
+        projectId,
+        path,
+      }),
+    onSuccess: (deleted) => {
+      closeStudioFile(deleted.path);
+      void treeQuery.refetch();
+    },
+  });
+
+  const deleteFolder = useMutation({
+    mutationFn: (path: string) =>
+      apiDelete<{ path: string }>("/api/v1/studio/folder", {
+        projectId,
+        path,
+      }),
+    onSuccess: () => {
+      void treeQuery.refetch();
+    },
+  });
+
+  const renameNode = useMutation({
+    mutationFn: ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+      const parent = oldPath.includes("/")
+        ? oldPath.slice(0, oldPath.lastIndexOf("/"))
+        : "";
+      const newPath = parent ? `${parent}/${newName}` : newName;
+      return apiPost<{ from: string; to: string }>("/api/v1/studio/file/move", {
+        projectId,
+        from: oldPath,
+        to: newPath,
+      });
+    },
+    onSuccess: (moved) => {
+      setBuffers((prev) => {
+        const next = { ...prev };
+        if (moved.from in next) {
+          next[moved.to] = next[moved.from]!;
+          delete next[moved.from];
+        }
+        return next;
+      });
+      if (selectedPath === moved.from) {
+        selectStudioFile(moved.to);
+      }
       void treeQuery.refetch();
     },
   });
@@ -941,7 +1123,56 @@ export default function StudioPage() {
                 <Chip size="small" label={t("truncated")} />
               ) : null}
               <Chip size="small" variant="outlined" label={t("editable")} sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }} />
+              <Box sx={{ flexGrow: 1 }} />
+              {hasRoot ? (
+                <Tooltip title={t("createFolder")}>
+                  <IconButton
+                    size="small"
+                    aria-label={t("createFolder")}
+                    onClick={() => setShowNewFolder((v) => !v)}
+                    sx={{ color: "#8B9099", "&:hover": { color: "#DCDDE1" } }}
+                  >
+                    <CreateNewFolderIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
             </Stack>
+            {showNewFolder ? (
+              <Stack direction="row" spacing={0.75} sx={{ px: 1.5, pt: 1, pb: 0.5 }} alignItems="center">
+                <TextField
+                  size="small"
+                  fullWidth
+                  autoFocus
+                  placeholder={t("newFolderPlaceholder")}
+                  value={newFolderPath}
+                  onChange={(e) => setNewFolderPath(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newFolderPath.trim()) createFolder.mutate();
+                    if (e.key === "Escape") { setShowNewFolder(false); setNewFolderPath(""); }
+                  }}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      color: "#DCDDE1",
+                      bgcolor: "rgba(255,255,255,0.04)",
+                      "& fieldset": { borderColor: "rgba(232,234,238,0.2)" },
+                    },
+                  }}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={createFolder.isPending || !newFolderPath.trim()}
+                  onClick={() => createFolder.mutate()}
+                >
+                  {t("createFolder")}
+                </Button>
+              </Stack>
+            ) : null}
+            {createFolder.isError ? (
+              <Alert severity="error" sx={{ mx: 1.5, mb: 0.5 }}>
+                {(createFolder.error as Error).message}
+              </Alert>
+            ) : null}
             <TextField
               size="small"
               value={fileSearch}
@@ -1006,6 +1237,18 @@ export default function StudioPage() {
                   selectedPath={selectedPath}
                   onSelect={(path, kind) => {
                     if (kind === "file") selectStudioFile(path);
+                  }}
+                  onDelete={(path, kind) => {
+                    const label = kind === "file" ? "file" : "folder";
+                    if (!window.confirm(`Delete ${label}: ${path}?`)) return;
+                    if (kind === "file") {
+                      deleteFile.mutate(path);
+                    } else {
+                      deleteFolder.mutate(path);
+                    }
+                  }}
+                  onRename={(oldPath, newName) => {
+                    renameNode.mutate({ oldPath, newName });
                   }}
                 />
               </List>
