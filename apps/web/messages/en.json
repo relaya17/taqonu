@@ -484,7 +484,8 @@
       "request": "Request",
       "requestHelp": "The request is a proposal for the selected Fabric specialist. It is not applied, and the supervising agent is not the specialist.",
       "requestSent": "Request submitted. It still needs governance. Nothing was applied."
-    }
+    },
+    "correctionMode": "Correction mode — patch {patchId}… (click × to cancel)"
   },
   "contract": {
     "title": "Architecture Contract",

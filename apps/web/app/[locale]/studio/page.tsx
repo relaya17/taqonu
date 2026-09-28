@@ -1441,6 +1441,16 @@ export default function StudioPage() {
                 />
               ) : null}
 
+              {correctionForPatchId ? (
+                <Chip
+                  size="small"
+                  color="warning"
+                  label={t("correctionMode", { patchId: correctionForPatchId.slice(0, 8) })}
+                  onDelete={() => setCorrectionForPatchId(null)}
+                  sx={{ mt: 1 }}
+                />
+              ) : null}
+
               <ToggleButtonGroup
                 exclusive
                 size="small"

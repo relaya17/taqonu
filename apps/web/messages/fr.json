@@ -484,7 +484,8 @@
       "request": "Demander",
       "requestHelp": "La demande est une proposition pour le spécialiste Fabric sélectionné. Elle n’est pas appliquée, et l’agent de supervision n’est pas le spécialiste.",
       "requestSent": "Demande envoyée. Elle doit encore passer par la gouvernance. Rien n’a été appliqué."
-    }
+    },
+    "correctionMode": "Mode correction — patch {patchId}… (cliquez × pour annuler)"
   },
   "contract": {
     "title": "Contrat d’architecture",
