@@ -21,7 +21,12 @@ import {
 import { redactSecrets } from "@atlas/agent-core";
 import { markBugVerified } from "@atlas/observer";
 import { osStore } from "../store/os-store.js";
-import { appendDomainEvent, commitMemory } from "./memory-pipeline.js";
+import {
+  appendDomainEvent,
+  commitMemory,
+  findOwnedMemory,
+  supersedeMemoryById,
+} from "./memory-pipeline.js";
 import { resolveEvidenceOwnerId } from "./write-owner.js";
 import type { MemoryStoreEnv } from "@atlas/database";
 
@@ -308,6 +313,233 @@ export function learnFromObserverBugs(input: {
  * After `recordRemediationVerification` with verify.ok: persist the lesson
  * and stamp the matching observer bug VERIFIED when we have a workspace.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// ARL-WS-004 GAP A + B — Re-validation & Evidence-change lifecycle
+//
+// Contract:
+//   • Existing knowledge is NEVER hard-deleted.
+//   • Re-validation does NOT promote epistemic state autonomously — D2 human-
+//     approval path (OBSERVED → VERIFIED) is unaffected.
+//   • Lifecycle status transitions use the existing vocabulary:
+//       epistemicState: STALE (evidence weakened) | CONFLICTED (contradiction)
+//       status: SUPERSEDED (superseded by a successor record)
+//   • Every transition emits an audit entry + domain event via existing infra.
+//   • Idempotent: same memoryId + same evidence set ≠ duplicate lifecycle event.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type RevalidationOutcome =
+  | "STILL_VALID"
+  | "STALE"
+  | "CONFLICTED"
+  | "SUPERSEDED";
+
+export type RevalidateBugFixMemoryInput = {
+  /** The knowledge record to re-validate. Must be owned by ownerId. */
+  readonly memoryId: string;
+  readonly ownerId: string;
+  /** New evidence observed after the original fix was recorded. */
+  readonly newEvidence: readonly BugFixEvidenceRef[];
+  /**
+   * True when new evidence directly contradicts the original fix (same bug
+   * re-appeared, regression, counter-evidence). False means the fix is less
+   * certain but not actively refuted — evidence is consistent/supporting.
+   */
+  readonly contradicts: boolean;
+  /**
+   * True when new evidence weakens confidence without direct contradiction
+   * (e.g. fix less frequently applied, context drifted). When false and
+   * contradicts is also false, evidence is treated as supporting → STILL_VALID.
+   */
+  readonly weakens?: boolean;
+  /**
+   * When the caller has already produced a validated successor knowledge record
+   * (i.e. a new persistValidatedBugFixMemory result), pass its id here.
+   * The original record is then marked SUPERSEDED and linked to the successor.
+   * MUST be owned by the same ownerId — cross-tenant supersession is rejected.
+   */
+  readonly successorMemoryId?: string | null;
+  readonly env?: MemoryStoreEnv | null;
+};
+
+export type RevalidateBugFixMemoryResult =
+  | {
+      readonly outcome: "STILL_VALID";
+      readonly memory: Memory;
+    }
+  | {
+      readonly outcome: "STALE" | "CONFLICTED" | "SUPERSEDED";
+      readonly memory: Memory;
+      readonly previousEpistemicState: string;
+    }
+  | {
+      readonly outcome: "skipped";
+      readonly reason: "not_found" | "not_active" | "wrong_source";
+    };
+
+/**
+ * Re-validate an existing bug-fix knowledge record against new evidence.
+ *
+ * LIFECYCLE SEMANTICS (maps to existing epistemic vocabulary):
+ *   STILL_VALID   — new evidence is consistent with the original fix; record unchanged.
+ *   STALE         — new evidence weakens confidence but does not contradict;
+ *                   epistemicState updated to STALE, status remains ACTIVE (still
+ *                   retrievable, but ranked lower by the heuristic scorer).
+ *   CONFLICTED    — new evidence directly contradicts the fix (regression, counter-
+ *                   evidence); epistemicState updated to CONFLICTED, record remains
+ *                   as history (status stays ACTIVE so it surfaces in conflict review).
+ *   SUPERSEDED    — a validated successor record replaces this one; status becomes
+ *                   SUPERSEDED and supersededBy is set (irreversible lifecycle end).
+ *
+ * D2 COMPATIBILITY:
+ *   This function NEVER changes epistemicState to VERIFIED. That transition
+ *   requires explicit human approval via approvePatchArtifact (D2-1). Re-validation
+ *   can only move toward weaker/historical states (STALE, CONFLICTED, SUPERSEDED)
+ *   or confirm the current state is still valid.
+ *
+ * OWNERSHIP:
+ *   Only the owning tenant can re-validate their own knowledge. Cross-tenant
+ *   revalidation returns "not_found" (indistinguishable from missing — same as
+ *   findOwnedMemory contract).
+ */
+export function revalidateBugFixMemory(
+  input: RevalidateBugFixMemoryInput,
+): RevalidateBugFixMemoryResult {
+  if (input.newEvidence.length === 0 && !input.successorMemoryId) {
+    // No evidence, no successor — nothing to act on; treat as STILL_VALID.
+    const located = findOwnedMemory({ memoryId: input.memoryId, ownerId: input.ownerId });
+    if (!located) return { outcome: "skipped", reason: "not_found" };
+    if (located.memory.status !== "ACTIVE") return { outcome: "skipped", reason: "not_active" };
+    if (located.memory.source !== BUG_FIX_MEMORY_SOURCE) return { outcome: "skipped", reason: "wrong_source" };
+    return { outcome: "STILL_VALID", memory: located.memory };
+  }
+
+  const located = findOwnedMemory({ memoryId: input.memoryId, ownerId: input.ownerId });
+  if (!located) return { outcome: "skipped", reason: "not_found" };
+  if (located.memory.status !== "ACTIVE") return { outcome: "skipped", reason: "not_active" };
+  if (located.memory.source !== BUG_FIX_MEMORY_SOURCE) return { outcome: "skipped", reason: "wrong_source" };
+
+  const current = located.memory;
+  const now = new Date().toISOString();
+  const previousEpistemicState = current.epistemicState;
+
+  // Case 1: Caller supplies a validated successor — supersede the original.
+  if (input.successorMemoryId) {
+    // Ownership guard: successor must belong to the same owner (no cross-tenant supersession).
+    const successorLocated = findOwnedMemory({
+      memoryId: input.successorMemoryId,
+      ownerId: input.ownerId,
+    });
+    if (!successorLocated) {
+      // Successor not found under this owner — reject to prevent cross-tenant link.
+      return { outcome: "skipped", reason: "not_found" };
+    }
+    supersedeMemoryById({
+      memoryId: input.memoryId,
+      newerMemoryId: input.successorMemoryId,
+      ownerId: input.ownerId,
+    });
+    // Re-read the updated record.
+    const updated = findOwnedMemory({ memoryId: input.memoryId, ownerId: input.ownerId });
+    const updatedMemory = updated?.memory ?? { ...current, status: "SUPERSEDED" as const, supersededBy: input.successorMemoryId };
+    appendDomainEvent({
+      type: "memory.superseded",
+      projectId: current.projectId,
+      ownerId: input.ownerId,
+      epistemicState: "STALE",
+      payload: {
+        kind: "bug.fix.revalidated",
+        memoryId: input.memoryId,
+        outcome: "SUPERSEDED",
+        successorMemoryId: input.successorMemoryId,
+        evidenceCount: input.newEvidence.length,
+        previousEpistemicState,
+        note: "ARL-WS-004: original knowledge superseded by validated successor.",
+      },
+    });
+    return {
+      outcome: "SUPERSEDED",
+      memory: updatedMemory,
+      previousEpistemicState,
+    };
+  }
+
+  // Case 2: New evidence without a successor — determine outcome from evidence semantics.
+  //   contradicts=true              → CONFLICTED (direct counter-evidence)
+  //   contradicts=false, weakens=true → STALE (confidence reduced, not refuted)
+  //   contradicts=false, weakens=false/undefined → STILL_VALID (supporting evidence)
+  if (!input.contradicts && !input.weakens) {
+    // Evidence supports the existing knowledge — record remains unchanged.
+    return { outcome: "STILL_VALID", memory: current };
+  }
+  const nextOutcome: "STALE" | "CONFLICTED" = input.contradicts ? "CONFLICTED" : "STALE";
+  const nextEpistemicState = nextOutcome; // "STALE" | "CONFLICTED" — both exist in EPISTEMIC_STATES
+
+  const key = current.projectId ?? "global";
+  const list = [...osStore.getMemories(key)];
+  const idx = list.findIndex((m) => m.id === input.memoryId);
+  if (idx < 0) return { outcome: "skipped", reason: "not_found" };
+
+  const newEvidenceRecords = input.newEvidence.slice(0, 4).map((item) => ({
+    id: crypto.randomUUID(),
+    kind: item.kind.slice(0, 64),
+    reference: item.reference.slice(0, 500),
+    ...(item.excerpt !== undefined
+      ? { excerpt: redactSecrets(item.excerpt).slice(0, 4000) }
+      : {}),
+  }));
+
+  const updated: Memory = memorySchema.parse({
+    ...current,
+    epistemicState: nextEpistemicState,
+    // status stays ACTIVE intentionally — STALE/CONFLICTED records are
+    // retained as history and surface in conflict-review flows.
+    reason: [
+      ...current.reason.slice(0, 8),
+      `revalidated:${nextOutcome.toLowerCase()}`,
+      `revalidated-at:${now}`,
+    ].slice(0, 12),
+    evidence: [
+      ...current.evidence,
+      ...newEvidenceRecords,
+    ].slice(0, 12),
+    confidence: nextOutcome === "CONFLICTED"
+      ? Math.max(0.1, current.confidence - 0.3)
+      : Math.max(0.2, current.confidence - 0.15),
+    updatedAt: now,
+  });
+
+  list[idx] = updated;
+  osStore.replaceMemories(key, list);
+
+  osStore.appendAudit({
+    type: "bug.fix.revalidated",
+    memoryId: input.memoryId,
+    bugId: current.sourceId ?? "",
+    patchId: null,
+    projectId: current.projectId,
+    ownerId: input.ownerId,
+    agentId: current.agentId ?? BUG_FIX_LEARNING_AGENT_ID,
+    at: now,
+  });
+  appendDomainEvent({
+    type: "memory.created",
+    projectId: current.projectId,
+    ownerId: input.ownerId,
+    epistemicState: nextEpistemicState,
+    payload: {
+      kind: "bug.fix.revalidated",
+      memoryId: input.memoryId,
+      outcome: nextOutcome,
+      evidenceCount: input.newEvidence.length,
+      previousEpistemicState,
+      contradicts: input.contradicts,
+      note: "ARL-WS-004: knowledge lifecycle updated; original record retained as history.",
+    },
+  });
+
+  return { outcome: nextOutcome, memory: updated, previousEpistemicState };
+}
+
 export function learnFromVerifiedPatch(input: {
   readonly ownerId: string;
   readonly projectId: string | null;

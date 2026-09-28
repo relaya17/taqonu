@@ -1593,7 +1593,9 @@
     "reject": "Rejeter",
     "rejectReason": "Motif du rejet (obligatoire)",
     "rejectedBecause": "Rejeté par {by} : {reason}",
-    "approvedBy": "Approuvé par {by}"
+    "approvedBy": "Approuvé par {by}",
+    "proposeCorrection": "Proposer une correction",
+    "rejectedHistory": "Correctifs rejetés"
   },
   "gates": {
     "title": "Portes qualité",

@@ -243,18 +243,18 @@
     },
     "problems": {
       "title": "Problems",
-    "empty": "No Sentinel, Quality Gate, TypeScript, build, or governed test findings for this project.",
-    "notCompiler": "Includes TypeScript language-service diagnostics for the open file, plus Sentinel, gates, build, and tests.",
-    "proposeFix": "Propose fix",
-    "testUnavailable": "Test runner UNAVAILABLE — not PASS.",
-    "testFailed": "Governed tests failed.",
-    "source": {
-      "sentinel": "Sentinel",
-      "gate": "Quality gate",
-      "test": "Governed tests",
-      "language": "TypeScript",
-      "build": "Build"
-    }
+      "empty": "No Sentinel, Quality Gate, TypeScript, build, or governed test findings for this project.",
+      "notCompiler": "Includes TypeScript language-service diagnostics for the open file, plus Sentinel, gates, build, and tests.",
+      "proposeFix": "Propose fix",
+      "testUnavailable": "Test runner UNAVAILABLE — not PASS.",
+      "testFailed": "Governed tests failed.",
+      "source": {
+        "sentinel": "Sentinel",
+        "gate": "Quality gate",
+        "test": "Governed tests",
+        "language": "TypeScript",
+        "build": "Build"
+      }
     },
     "diff": {
       "title": "Change set",
@@ -1082,11 +1082,26 @@
       "selfBody": "Atlas audits itself (DEF-000). The same evidence rules apply to this product and to the systems you connect. There is no double standard.",
       "faqTitle": "Frequently asked questions",
       "faq": {
-        "q1": { "q": "How is Atlas different from an AI coding tool?", "a": "Writers (Cursor, Copilot, and others) stay where they are. Atlas does not replace them. It is the truth, evidence, and governance layer over what already runs." },
-        "q2": { "q": "What is a readiness audit?", "a": "Import one production system, get a verdict and an evidence report. Code is not stored by Atlas. That is the entry offer — not a usage quota." },
-        "q3": { "q": "Does Atlas keep the source code?", "a": "No. Storage is yours (local / git / Cloudflare BYO). Atlas does not train across tenants." },
-        "q4": { "q": "What happens after the audit?", "a": "You can keep the verdict and evidence, or continue with a control layer (higher usage ceilings). This page does not require an upgrade." },
-        "q5": { "q": "Can a “ready” score be trusted?", "a": "Only when evidence exists. A score without evidence coverage stays UNKNOWN or CONDITIONAL. Atlas does not invent readiness." }
+        "q1": {
+          "q": "How is Atlas different from an AI coding tool?",
+          "a": "Writers (Cursor, Copilot, and others) stay where they are. Atlas does not replace them. It is the truth, evidence, and governance layer over what already runs."
+        },
+        "q2": {
+          "q": "What is a readiness audit?",
+          "a": "Import one production system, get a verdict and an evidence report. Code is not stored by Atlas. That is the entry offer — not a usage quota."
+        },
+        "q3": {
+          "q": "Does Atlas keep the source code?",
+          "a": "No. Storage is yours (local / git / Cloudflare BYO). Atlas does not train across tenants."
+        },
+        "q4": {
+          "q": "What happens after the audit?",
+          "a": "You can keep the verdict and evidence, or continue with a control layer (higher usage ceilings). This page does not require an upgrade."
+        },
+        "q5": {
+          "q": "Can a “ready” score be trusted?",
+          "a": "Only when evidence exists. A score without evidence coverage stays UNKNOWN or CONDITIONAL. Atlas does not invent readiness."
+        }
       }
     }
   },
@@ -1578,7 +1593,9 @@
     "reject": "Reject",
     "rejectReason": "Rejection reason (required)",
     "rejectedBecause": "Rejected by {by}: {reason}",
-    "approvedBy": "Approved by {by}"
+    "approvedBy": "Approved by {by}",
+    "proposeCorrection": "Propose correction",
+    "rejectedHistory": "Rejected patches"
   },
   "gates": {
     "title": "Quality gates",

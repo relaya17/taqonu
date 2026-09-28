@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   canApplyStudioPatch,
   canApproveStudioPatch,
+  canCorrectStudioPatch,
+  canRejectStudioPatch,
   canRollbackStudioPatch,
   deskPatchVerifyPath,
   nextStudioPatchStep,
@@ -64,5 +66,44 @@ describe("studio patch workflow gates", () => {
     expect(canRollbackStudioPatch("APPROVED")).toBe(false);
     expect(canRollbackStudioPatch("APPLIED")).toBe(true);
     expect(canRollbackStudioPatch("VERIFIED")).toBe(true);
+  });
+
+  // Stage 5 (D4): correction gate — only REJECTED patches can be superseded
+  it("exposes correction action only for REJECTED patches", () => {
+    // The correction button must only appear for REJECTED
+    expect(canCorrectStudioPatch("REJECTED")).toBe(true);
+
+    // All non-REJECTED statuses must be false
+    expect(canCorrectStudioPatch("PROPOSED")).toBe(false);
+    expect(canCorrectStudioPatch("DRAFT")).toBe(false);
+    expect(canCorrectStudioPatch("EVALUATED")).toBe(false);
+    expect(canCorrectStudioPatch("AWAITING_APPROVAL")).toBe(false);
+    expect(canCorrectStudioPatch("APPROVED")).toBe(false);
+    expect(canCorrectStudioPatch("APPLIED")).toBe(false);
+    expect(canCorrectStudioPatch("VERIFIED")).toBe(false);
+    expect(canCorrectStudioPatch("ROLLED_BACK")).toBe(false);
+    expect(canCorrectStudioPatch(null)).toBe(false);
+    expect(canCorrectStudioPatch(undefined)).toBe(false);
+  });
+
+  // Stage 5 (D4): ordinary non-REJECTED patches remain unaffected by correction gate
+  it("does not affect reject gate or other gates for ordinary non-REJECTED patches", () => {
+    // canRejectStudioPatch must continue to work as before
+    expect(canRejectStudioPatch("DRAFT")).toBe(true);
+    expect(canRejectStudioPatch("PROPOSED")).toBe(true);
+    expect(canRejectStudioPatch("EVALUATED")).toBe(true);
+    expect(canRejectStudioPatch("AWAITING_APPROVAL")).toBe(true);
+    expect(canRejectStudioPatch("APPROVED")).toBe(true);
+    // APPLIED, VERIFIED, ROLLED_BACK cannot be rejected
+    expect(canRejectStudioPatch("APPLIED")).toBe(false);
+    expect(canRejectStudioPatch("VERIFIED")).toBe(false);
+    expect(canRejectStudioPatch("ROLLED_BACK")).toBe(false);
+    // REJECTED itself cannot be rejected again
+    expect(canRejectStudioPatch("REJECTED")).toBe(false);
+  });
+
+  // Stage 5 (D4): nextStudioPatchStep for REJECTED should route to review
+  it("routes REJECTED status to review step", () => {
+    expect(nextStudioPatchStep("REJECTED")).toBe("review");
   });
 });

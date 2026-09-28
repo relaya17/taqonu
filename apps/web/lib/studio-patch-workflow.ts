@@ -62,6 +62,11 @@ export function canRollbackStudioPatch(status: string | null | undefined): boole
   return status === "APPLIED" || status === "VERIFIED";
 }
 
+/** Stage 5 (D4): a correction can only be proposed for a REJECTED patch. */
+export function canCorrectStudioPatch(status: string | null | undefined): boolean {
+  return status === "REJECTED";
+}
+
 export function patchGovernedPath(
   id: string,
   action: "apply" | "rollback",

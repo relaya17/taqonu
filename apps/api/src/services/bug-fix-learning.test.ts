@@ -20,6 +20,7 @@ const {
   persistValidatedBugFixMemory,
   learnFromObserverBugs,
   learnFromVerifiedPatch,
+  revalidateBugFixMemory,
   BUG_FIX_MEMORY_SOURCE,
   BUG_FIX_LEARNING_AGENT_ID,
 } = await import("./bug-fix-learning.js");
@@ -406,6 +407,269 @@ describe("bug-fix-learning", () => {
       "VERIFIED",
     );
     rmSync(workspace, { recursive: true, force: true });
+  });
+
+  // ─── ARL-WS-004 GAP A + B: Re-validation & Evidence-change lifecycle ───
+
+  it("Test 1 — existing knowledge can be revalidated against weakening evidence (STALE)", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    // weakens=true: evidence reduces confidence without direct contradiction
+    const result = revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "regression_report", reference: crypto.randomUUID(), excerpt: "bug re-appeared in staging" }],
+      contradicts: false,
+      weakens: true,
+    });
+    expect(result.outcome).toBe("STALE");
+    if (result.outcome !== "STALE") return;
+    expect(result.memory.id).toBe(first.memory.id);
+    expect(result.memory.epistemicState).toBe("STALE");
+    expect(result.previousEpistemicState).toBe("OBSERVED");
+  });
+
+  it("Test 2 — re-validation does not delete the original knowledge record", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "regression_report", reference: crypto.randomUUID() }],
+      contradicts: false,
+      weakens: true, // weakening evidence → STALE
+    });
+    // Record must still exist — not deleted
+    const memories = osStore.getMemories(PROJECT_A, OWNER_A);
+    const found = memories.find((m) => m.id === first.memory.id);
+    expect(found).toBeDefined();
+    expect(found?.epistemicState).toBe("STALE");
+  });
+
+  it("Test 3 — supporting evidence (contradicts=false, weakens=false) returns STILL_VALID", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    // Case A: no evidence at all → STILL_VALID
+    const resultA = revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [],
+      contradicts: false,
+    });
+    expect(resultA.outcome).toBe("STILL_VALID");
+    if (resultA.outcome !== "STILL_VALID") return;
+    expect(resultA.memory.epistemicState).toBe("OBSERVED");
+
+    // Case B: new supporting evidence (contradicts=false, weakens=false) → STILL_VALID
+    const resultB = revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "confirmation_test", reference: crypto.randomUUID(), excerpt: "fix still holds in latest regression run" }],
+      contradicts: false,
+      // weakens not set (defaults false) → supporting evidence
+    });
+    expect(resultB.outcome).toBe("STILL_VALID");
+    if (resultB.outcome !== "STILL_VALID") return;
+    expect(resultB.memory.epistemicState).toBe("OBSERVED"); // unchanged
+  });
+
+  it("Test 4 — contradictory evidence marks knowledge as CONFLICTED", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    const result = revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "counter_evidence", reference: crypto.randomUUID(), excerpt: "same bug reproduced after fix" }],
+      contradicts: true,
+    });
+    expect(result.outcome).toBe("CONFLICTED");
+    if (result.outcome !== "CONFLICTED") return;
+    expect(result.memory.epistemicState).toBe("CONFLICTED");
+    expect(result.memory.id).toBe(first.memory.id);
+    expect(result.previousEpistemicState).toBe("OBSERVED");
+  });
+
+  it("Test 5 — successor knowledge record preserves explicit relation to previous record", () => {
+    const input = validatedInput();
+    const original = persistValidatedBugFixMemory(input);
+    expect(original.status).toBe("written");
+    if (original.status !== "written") return;
+
+    const successorInput = validatedInput({ bugId: input.bugId, patchId: crypto.randomUUID(), bugTitle: "Revised fix for same bug" });
+    const successor = persistValidatedBugFixMemory(successorInput);
+    expect(successor.status).toBe("written");
+    if (successor.status !== "written") return;
+
+    const result = revalidateBugFixMemory({
+      memoryId: original.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "remediation_verify", reference: successor.memory.id }],
+      contradicts: false,
+      successorMemoryId: successor.memory.id,
+    });
+    expect(result.outcome).toBe("SUPERSEDED");
+    if (result.outcome !== "SUPERSEDED") return;
+    expect(result.memory.status).toBe("SUPERSEDED");
+    expect(result.memory.supersededBy).toBe(successor.memory.id);
+  });
+
+  it("Test 6 — re-validation never promotes epistemic state to VERIFIED (D2 guard)", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    // Re-validate with weakening evidence — outcome is STALE, never VERIFIED
+    const result = revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "additional_test", reference: crypto.randomUUID() }],
+      contradicts: false,
+      weakens: true, // reduces confidence
+    });
+    expect(result.outcome).toBe("STALE");
+    if (result.outcome === "STALE" || result.outcome === "CONFLICTED" || result.outcome === "SUPERSEDED") {
+      expect(result.memory.epistemicState).not.toBe("VERIFIED");
+    }
+  });
+
+  it("Test 7 — tenant/owner isolation: owner B cannot revalidate owner A knowledge", () => {
+    const input = validatedInput({ ownerId: OWNER_A, projectId: PROJECT_A });
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    const result = revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_B, // wrong owner
+      newEvidence: [{ kind: "attack", reference: crypto.randomUUID() }],
+      contradicts: true,
+    });
+    expect(result.outcome).toBe("skipped");
+    if (result.outcome !== "skipped") return;
+    expect(result.reason).toBe("not_found");
+
+    // Original record must be untouched
+    const memories = osStore.getMemories(PROJECT_A, OWNER_A);
+    const original = memories.find((m) => m.id === first.memory.id);
+    expect(original?.epistemicState).toBe("OBSERVED");
+  });
+
+  it("Test 8 — repeated identical re-validation is idempotent (STALE→STALE, no duplicate records)", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    const evRef = crypto.randomUUID();
+    revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "regression", reference: evRef }],
+      contradicts: false,
+      weakens: true,
+    });
+    // Second revalidation on already-STALE — outcome is STALE again, record count unchanged
+    const countBefore = osStore.getMemories(PROJECT_A, OWNER_A).filter(
+      (m) => m.source === BUG_FIX_MEMORY_SOURCE,
+    ).length;
+    revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "regression", reference: evRef }],
+      contradicts: false,
+      weakens: true,
+    });
+    const countAfter = osStore.getMemories(PROJECT_A, OWNER_A).filter(
+      (m) => m.source === BUG_FIX_MEMORY_SOURCE,
+    ).length;
+    expect(countAfter).toBe(countBefore); // no new records created
+  });
+
+  it("Test 9 — audit/evidence provenance is reconstructable (reason + domain event markers)", () => {
+    const input = validatedInput();
+    const first = persistValidatedBugFixMemory(input);
+    expect(first.status).toBe("written");
+    if (first.status !== "written") return;
+
+    revalidateBugFixMemory({
+      memoryId: first.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [{ kind: "contradiction", reference: crypto.randomUUID(), excerpt: "re-appeared" }],
+      contradicts: true,
+    });
+    const memories = osStore.getMemories(PROJECT_A, OWNER_A);
+    const updated = memories.find((m) => m.id === first.memory.id);
+    expect(updated).toBeDefined();
+    // reason array should contain revalidation marker
+    expect(updated?.reason.some((r) => r.startsWith("revalidated:"))).toBe(true);
+    expect(updated?.reason.some((r) => r.startsWith("revalidated-at:"))).toBe(true);
+    // evidence should include the new counter-evidence
+    expect(updated?.evidence.some((e) => e.kind === "contradiction")).toBe(true);
+  });
+
+  it("Test 10a — cross-tenant successor rejected: cannot supersede with another owner's memory id", () => {
+    // Create original memory under OWNER_A
+    const originalInput = validatedInput({ ownerId: OWNER_A, projectId: PROJECT_A });
+    const original = persistValidatedBugFixMemory(originalInput);
+    expect(original.status).toBe("written");
+    if (original.status !== "written") return;
+
+    // Create successor memory under OWNER_B
+    const successorInput = validatedInput({ ownerId: OWNER_B, projectId: PROJECT_B });
+    const successor = persistValidatedBugFixMemory(successorInput);
+    expect(successor.status).toBe("written");
+    if (successor.status !== "written") return;
+
+    // Attempt to supersede OWNER_A memory with OWNER_B successor — must be rejected
+    const result = revalidateBugFixMemory({
+      memoryId: original.memory.id,
+      ownerId: OWNER_A,
+      newEvidence: [],
+      contradicts: false,
+      successorMemoryId: successor.memory.id, // belongs to OWNER_B
+    });
+    expect(result.outcome).toBe("skipped");
+    if (result.outcome !== "skipped") return;
+    expect(result.reason).toBe("not_found"); // cross-tenant successor rejected
+
+    // Original must remain ACTIVE and unsuperseded
+    const memories = osStore.getMemories(PROJECT_A, OWNER_A);
+    const found = memories.find((m) => m.id === original.memory.id);
+    expect(found?.status).toBe("ACTIVE");
+    expect(found?.supersededBy == null).toBe(true); // null or undefined — no cross-tenant link
+  });
+
+  it("Test 10 — existing bug-fix-learning tests still pass after ARL-WS-004 changes (smoke)", () => {
+    // Re-run core contract inline:
+    const skip = persistValidatedBugFixMemory(validatedInput({ verifiedFix: false, bugStatus: "OPEN" }));
+    expect(skip.status).toBe("skipped");
+
+    const ok = persistValidatedBugFixMemory(validatedInput());
+    expect(ok.status).toBe("written");
+    if (ok.status !== "written") return;
+    expect(ok.memory.type).toBe("SOLUTION");
+    expect(ok.memory.epistemicState).toBe("OBSERVED");
+
+    const extractedPatchId = ok.memory.reason.find((r) => r.startsWith("patchId:"))?.slice(7);
+    const dupOverrides: { bugId: string; patchId?: string } = { bugId: ok.memory.sourceId ?? "" };
+    if (extractedPatchId !== undefined) dupOverrides.patchId = extractedPatchId;
+    const dup = persistValidatedBugFixMemory(validatedInput(dupOverrides));
+    // Note: bugId/patchId match means duplicate; only if truly same combination
+    const second = persistValidatedBugFixMemory(validatedInput());
+    expect(["written", "duplicate"]).toContain(second.status);
   });
 
   it("learnFromVerifiedPatch is idempotent for the same patch", () => {

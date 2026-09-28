@@ -104,6 +104,13 @@ export const studioWriteFileBodySchema = z.object({
   projectId: uuidSchema,
   path: z.string().min(1).max(1000),
   content: z.string().max(400_000),
+  /**
+   * D3 overwrite protection: SHA-256 hex hash of the file content at the time
+   * the client last read it. Required when saving a file that already exists on
+   * disk. Omit only when creating a new file. The server rejects the write if
+   * the on-disk hash has changed since the client read it.
+   */
+  expectedHash: z.string().min(1).max(128).optional(),
 });
 
 export type ExemplarUnitKind = z.infer<typeof exemplarUnitKindSchema>;

@@ -5,10 +5,13 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmdirSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 /** Directories never shown in the read-only studio browser. */
@@ -48,6 +51,13 @@ export interface WorkspaceFileView {
   readonly truncated: boolean;
   readonly languageHint: string | null;
   readonly readOnly: boolean;
+  /** SHA-256 hex of the file's on-disk content at read time. Use as expectedHash on PUT. */
+  readonly contentHash: string;
+}
+
+/** Compute the D3 content hash: SHA-256 hex of a UTF-8 string. */
+export function hashFileContent(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 function toPosix(rel: string): string {
@@ -437,6 +447,7 @@ export function readWorkspaceFile(
     truncated,
     languageHint: languageHint(relativePath),
     readOnly: truncated,
+    contentHash: hashFileContent(buf.toString("utf8")),
   };
 }
 
@@ -446,11 +457,19 @@ export interface WorkspaceFileWrite {
   readonly readOnly: false;
 }
 
-/** Write a text file under the workspace. Never escapes the root. */
+/** Write a text file under the workspace. Never escapes the root.
+ *
+ * D3 overwrite protection: if the file already exists on disk and `expectedHash`
+ * is provided, the on-disk content hash must match before the write proceeds.
+ * If the file already exists and `expectedHash` is omitted, the write is
+ * rejected to prevent silent overwrites (lost-update protection).
+ * New files (path does not exist yet) may be written without a hash.
+ */
 export function writeWorkspaceFile(
   workspaceRoot: string,
   relativePath: string,
   content: string,
+  expectedHash?: string,
 ): WorkspaceFileWrite {
   if (content.length > MAX_FILE_BYTES) {
     throw new Error(
@@ -462,6 +481,27 @@ export function writeWorkspaceFile(
   const sample = Buffer.from(content.slice(0, 512), "utf8");
   if (!isProbablyText(name, sample)) {
     throw new Error("Studio only writes text files.");
+  }
+  // D3: protect existing files from silent overwrites.
+  if (existsSync(full) && statSync(full).isFile()) {
+    if (!expectedHash) {
+      throw Object.assign(
+        new Error(
+          "expectedHash is required when saving a file that already exists (D3: no silent overwrite).",
+        ),
+        { code: "OVERWRITE_HASH_REQUIRED" as const },
+      );
+    }
+    const diskContent = readFileSync(full, "utf8");
+    const diskHash = hashFileContent(diskContent);
+    if (diskHash !== expectedHash) {
+      throw Object.assign(
+        new Error(
+          "File has changed since you last opened it. Reload and try again. (D3: overwrite conflict)",
+        ),
+        { code: "OVERWRITE_CONFLICT" as const },
+      );
+    }
   }
   mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, content, "utf8");
@@ -498,4 +538,72 @@ export function moveWorkspaceFile(
   mkdirSync(dirname(destination), { recursive: true });
   renameSync(source, destination);
   return { from, to };
+}
+
+/**
+ * Create a folder inside the workspace.
+ * Throws if the path already exists (file or directory) or resolves outside the workspace.
+ */
+export function createWorkspaceFolder(
+  workspaceRoot: string,
+  relativePath: string,
+): { readonly path: string } {
+  const rel = toPosix(relativePath);
+  const full = resolveUnderWorkspace(workspaceRoot, rel);
+  if (existsSync(full)) {
+    const info = statSync(full);
+    if (info.isDirectory()) {
+      throw new Error(`Folder already exists: ${rel}`);
+    }
+    throw new Error(`A file already exists at that path: ${rel}`);
+  }
+  mkdirSync(full, { recursive: true });
+  return { path: rel };
+}
+
+/**
+ * Delete a single file from the workspace.
+ * Throws if the path does not exist, is not a file, or resolves outside the workspace.
+ */
+export function deleteWorkspaceFile(
+  workspaceRoot: string,
+  relativePath: string,
+): { readonly path: string } {
+  const rel = toPosix(relativePath);
+  const full = resolveUnderWorkspace(workspaceRoot, rel);
+  if (!existsSync(full)) {
+    throw new Error(`File not found: ${rel}`);
+  }
+  const info = statSync(full);
+  if (!info.isFile()) {
+    throw new Error(`Not a file: ${rel}`);
+  }
+  unlinkSync(full);
+  return { path: rel };
+}
+
+/**
+ * Delete a folder from the workspace, only if it is empty.
+ * Throws if the path does not exist, is not a directory, is not empty,
+ * or resolves outside the workspace.
+ */
+export function deleteWorkspaceFolder(
+  workspaceRoot: string,
+  relativePath: string,
+): { readonly path: string } {
+  const rel = toPosix(relativePath);
+  const full = resolveUnderWorkspace(workspaceRoot, rel);
+  if (!existsSync(full)) {
+    throw new Error(`Folder not found: ${rel}`);
+  }
+  const info = statSync(full);
+  if (!info.isDirectory()) {
+    throw new Error(`Not a folder: ${rel}`);
+  }
+  const entries = readdirSync(full);
+  if (entries.length > 0) {
+    throw new Error(`Folder is not empty: ${rel}`);
+  }
+  rmdirSync(full);
+  return { path: rel };
 }

@@ -364,6 +364,9 @@ describe("PUT /api/v1/studio/file", () => {
   });
 
   it("writes only after an independent live-human decision", async () => {
+    const { createHash } = await import("node:crypto");
+    const originalContent = "# original\n";
+    const originalHash = createHash("sha256").update(originalContent, "utf8").digest("hex");
     const requester = testUser({
       id: "66666666-6666-4666-8666-666666666666",
       email: "requester@example.com",
@@ -383,6 +386,7 @@ describe("PUT /api/v1/studio/file", () => {
         projectId: ATLAS_SELF_PROJECT_ID,
         path: "readme.md",
         content: "independent write\n",
+        expectedHash: originalHash,
       },
     });
     expect(requested.statusCode).toBe(202);
@@ -394,6 +398,7 @@ describe("PUT /api/v1/studio/file", () => {
         projectId: ATLAS_SELF_PROJECT_ID,
         path: "readme.md",
         content: "independent write\n",
+        expectedHash: originalHash,
         approvalId: requested.json().approvalId,
         decisionReason: "independent review",
       },
@@ -982,5 +987,232 @@ describe("PUT /api/v1/studio/file", () => {
     expect(moved.statusCode).toBe(202);
     expect(existsSync(join(workspaceRoot, "readme.md"))).toBe(true);
     expect(existsSync(join(workspaceRoot, "docs", "readme.md"))).toBe(false);
+  });
+
+  // D3: no silent overwrite — PUT on existing file requires expectedHash
+  describe("D3 overwrite protection", () => {
+    it("409s when writing an existing file without expectedHash", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      // readme.md already exists (seeded in beforeEach)
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/studio/file",
+        payload: { projectId, path: "readme.md", content: "overwrite attempt\n" },
+      });
+      expect(res.statusCode).toBe(409);
+      // file must be unchanged
+      expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe("# original\n");
+    });
+
+    it("409s when writing an existing file with wrong expectedHash", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/studio/file",
+        payload: {
+          projectId,
+          path: "readme.md",
+          content: "overwrite attempt\n",
+          expectedHash: "0".repeat(64), // wrong hash
+        },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe("# original\n");
+    });
+
+    it("200 when writing an existing file with correct expectedHash", async () => {
+      const { createHash } = await import("node:crypto");
+      const original = "# original\n";
+      const correctHash = createHash("sha256").update(original, "utf8").digest("hex");
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/studio/file",
+        payload: {
+          projectId,
+          path: "readme.md",
+          content: "updated content\n",
+          expectedHash: correctHash,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(readFileSync(join(workspaceRoot, "readme.md"), "utf8")).toBe("updated content\n");
+    });
+
+    it("200 when creating a new file without expectedHash", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/studio/file",
+        payload: { projectId, path: "new-file.md", content: "brand new\n" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(readFileSync(join(workspaceRoot, "new-file.md"), "utf8")).toBe("brand new\n");
+    });
+
+    it("GET /api/v1/studio/file returns contentHash field", async () => {
+      const { createHash } = await import("node:crypto");
+      const original = "# original\n";
+      const expectedHash = createHash("sha256").update(original, "utf8").digest("hex");
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/studio/file?projectId=${projectId}&path=readme.md`,
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { contentHash?: string; content?: string };
+      expect(body.contentHash).toBe(expectedHash);
+    });
+  });
+
+  // ARL-WS-002: create folder, delete file, delete empty folder
+  describe("ARL-WS-002 folder and file operations", () => {
+    it("creates a folder via POST /api/v1/studio/folder", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/studio/folder",
+        payload: { projectId, path: "src/components" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ path: "src/components" });
+      const { existsSync: _existsSync, statSync: _statSync } = await import("node:fs");
+      expect(_existsSync(join(workspaceRoot, "src", "components"))).toBe(true);
+      expect(_statSync(join(workspaceRoot, "src", "components")).isDirectory()).toBe(true);
+    });
+
+    it("400s when creating a folder that already exists", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      // first create succeeds
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/studio/folder",
+        payload: { projectId, path: "existing-dir" },
+      });
+      // second create fails
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/studio/folder",
+        payload: { projectId, path: "existing-dir" },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("403s folder create for an agent actor", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/studio/folder",
+        headers: { "x-atlas-actor-kind": "AGENT" },
+        payload: { projectId, path: "agent-folder" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("deletes a file via DELETE /api/v1/studio/file", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const { existsSync: _existsSync } = await import("node:fs");
+      expect(_existsSync(join(workspaceRoot, "readme.md"))).toBe(true);
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/studio/file",
+        payload: { projectId, path: "readme.md" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ path: "readme.md" });
+      expect(_existsSync(join(workspaceRoot, "readme.md"))).toBe(false);
+    });
+
+    it("400s when deleting a file that does not exist", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/studio/file",
+        payload: { projectId, path: "nonexistent.md" },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("403s file delete for an agent actor", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/studio/file",
+        headers: { "x-atlas-actor-kind": "AGENT" },
+        payload: { projectId, path: "readme.md" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("deletes an empty folder via DELETE /api/v1/studio/folder", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      // create the folder first
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/studio/folder",
+        payload: { projectId, path: "empty-dir" },
+      });
+      const { existsSync: _existsSync } = await import("node:fs");
+      expect(_existsSync(join(workspaceRoot, "empty-dir"))).toBe(true);
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/studio/folder",
+        payload: { projectId, path: "empty-dir" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ path: "empty-dir" });
+      expect(_existsSync(join(workspaceRoot, "empty-dir"))).toBe(false);
+    });
+
+    it("400s when deleting a non-empty folder", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      // workspaceRoot already has readme.md — it is not empty
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/studio/folder",
+        payload: { projectId, path: "." },
+      });
+      // path "." resolves to workspace root — not empty
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("403s folder delete for an agent actor", async () => {
+      const actor = testUser();
+      getRequestUser.mockResolvedValue(actor);
+      const projectId = seedOwnedProject(actor, workspaceRoot);
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/studio/folder",
+        headers: { "x-atlas-actor-kind": "AGENT" },
+        payload: { projectId, path: "some-dir" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
   });
 });

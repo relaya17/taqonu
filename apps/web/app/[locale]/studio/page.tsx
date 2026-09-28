@@ -329,6 +329,9 @@ export default function StudioPage() {
   const [replaceText, setReplaceText] = useState("");
   const [replaceNote, setReplaceNote] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
+  // Stage 5 (D4): correction flow — when set, the next propose will include
+  // supersedesPatchId referencing the REJECTED patch being corrected.
+  const [correctionForPatchId, setCorrectionForPatchId] = useState<string | null>(null);
   const [intent, setIntent] = useState<StudioIntent>("propose");
   const [modeAsk, setModeAsk] = useState<(typeof ASK_MODES)[number]>("fix");
   const [buffers, setBuffers] = useState<Record<string, StudioFileBuffer>>({});
@@ -607,6 +610,8 @@ export default function StudioPage() {
           mode: modeAsk,
           instruction,
           ...(selectedFindingId ? { findingId: selectedFindingId } : {}),
+          // Stage 5 (D4): attach supersedesPatchId when correcting a rejected patch
+          ...(correctionForPatchId ? { supersedesPatchId: correctionForPatchId } : {}),
         },
         { signal: runAbort.start() },
       ),
@@ -614,6 +619,8 @@ export default function StudioPage() {
       if (projectId && data.patch?.id) {
         void queryClient.invalidateQueries({ queryKey: ["patches", projectId] });
       }
+      // Stage 5 (D4): clear correction context after the patch is created
+      setCorrectionForPatchId(null);
     },
   });
 
@@ -1603,6 +1610,12 @@ export default function StudioPage() {
                 });
                 void fileQuery.refetch();
                 void treeQuery.refetch();
+              }}
+              onCorrect={(rejectedPatchId) => {
+                // Stage 5 (D4): store the rejected patch ID so the next
+                // propose call will include supersedesPatchId.
+                setCorrectionForPatchId(rejectedPatchId);
+                setIntent("propose");
               }}
             />
 

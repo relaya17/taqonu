@@ -11,6 +11,7 @@ import {
   STUDIO_PATCH_STEPS,
   canApplyStudioPatch,
   canApproveStudioPatch,
+  canCorrectStudioPatch,
   canRejectStudioPatch,
   canRollbackStudioPatch,
   canVerifyStudioPatch,
@@ -56,11 +57,14 @@ export function StudioPatchWorkflow({
   workspaceRoot,
   focusPatchId,
   onVerified,
+  onCorrect,
 }: {
   projectId: string;
   workspaceRoot: string | null | undefined;
   focusPatchId: string | null;
   onVerified?: () => void;
+  /** Called when the user wants to create a correction patch for a REJECTED patch. */
+  onCorrect?: (rejectedPatchId: string) => void;
 }) {
   const t = useTranslations("studio");
   const tPatches = useTranslations("patches");
@@ -358,12 +362,25 @@ export function StudioPatchWorkflow({
             </Typography>
           ) : null}
           {focused.rejection ? (
-            <Alert severity="warning" sx={{ mt: 1 }}>
-              {tPatches("rejectedBecause", {
-                by: focused.rejection.by,
-                reason: focused.rejection.reason,
-              })}
-            </Alert>
+            <>
+              <Alert severity="warning" sx={{ mt: 1 }}>
+                {tPatches("rejectedBecause", {
+                  by: focused.rejection.by,
+                  reason: focused.rejection.reason,
+                })}
+              </Alert>
+              {onCorrect ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  sx={{ mt: 1 }}
+                  onClick={() => onCorrect(focused.id)}
+                  aria-label={tPatches("proposeCorrection")}
+                >
+                  {tPatches("proposeCorrection")}
+                </Button>
+              ) : null}
+            </>
           ) : null}
           {focused.evaluationSummary ? (
             <Typography variant="caption" display="block" sx={{ mt: 0.5, color: "#8B9099" }}>
@@ -522,6 +539,52 @@ export function StudioPatchWorkflow({
           </Stack>
         </Box>
       )}
+
+      {/* Stage 5 (D4): rejected patch history — always visible when patches exist */}
+      {items.filter((p) => p.status === "REJECTED").length > 0 ? (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2" sx={{ color: "#8B9099", mb: 1 }}>
+            {tPatches("rejectedHistory")}
+          </Typography>
+          <Stack spacing={1}>
+            {items
+              .filter((p) => p.status === "REJECTED")
+              .map((p) => (
+                <Box
+                  key={p.id}
+                  sx={{
+                    p: 1.5,
+                    border: "1px solid rgba(232,234,238,0.12)",
+                    borderRadius: 2,
+                    bgcolor: "rgba(255,100,60,0.05)",
+                  }}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Chip size="small" label="REJECTED" color="error" variant="outlined" />
+                    <Typography variant="body2" sx={{ color: "#DCDDE1", flex: 1, minWidth: 0 }}>
+                      {p.title}
+                    </Typography>
+                    {onCorrect && canCorrectStudioPatch(p.status) ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => onCorrect(p.id)}
+                        aria-label={tPatches("proposeCorrection")}
+                      >
+                        {tPatches("proposeCorrection")}
+                      </Button>
+                    ) : null}
+                  </Stack>
+                  {p.rejection ? (
+                    <Typography variant="caption" display="block" sx={{ mt: 0.5, color: "#e57373" }}>
+                      {p.rejection.reason}
+                    </Typography>
+                  ) : null}
+                </Box>
+              ))}
+          </Stack>
+        </Box>
+      ) : null}
     </Box>
   );
 }
