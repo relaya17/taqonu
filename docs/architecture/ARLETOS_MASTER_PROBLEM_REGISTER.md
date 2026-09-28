@@ -3771,6 +3771,7 @@ That work is Stage 12. Stage 12 cannot begin until:
 *Cloud clone only — Arlet must commit on Windows authoritative repo: `git add docs/architecture/ARLETOS_MASTER_PROBLEM_REGISTER.md` then commit*
 
 
+
 ---
 
 ## Q. STAGE 8 GOVERNANCE CLOSURE — 2026-09-27
@@ -4792,4 +4793,95 @@ Branch: `main`
 
 *Final closure recorded by Claude Sonnet 4.6 · 2026-09-27*
 
+
+
+---
+
+## Q-U. STAGE 8 FINAL CLOSURE — REQ-8-5 RUNTIME VERIFICATION (2026-09-27)
+
+### REQ-8-5 — RUNTIME VERIFIED ✓
+
+**Test:** `packages/agent-core/src/orchestrator/dispatch.test.ts`
+**Test name:** `AD-1 (REQ-8-5): a disabled catalog agent is SKIPPED with auditable claims and does not execute`
+**Windows execution:** 2026-09-27 18:27 (taqonu-main, vitest v3.2.7)
+**Result:** PASSED — 9 tests | 9 passed (full regression clean)
+
+**Production gate added to `dispatch.ts`:**
+- Import: `import { isAgentEnabled } from "../kernel/registry-lifecycle.js"`
+- Gate at dispatch loop: `if (!isAgentEnabled(s.agentId))` → pushes SKIPPED AgentRunResult, continues
+- No `osStore.appendAudit()` added (requirement ambiguous — SKIPPED result with claims/evidenceRefs is the auditable contract)
+
+**All 9 assertions verified:**
+1. SECURITY is a valid registered Fabric Agent (FABRIC_AGENT_IDS catalog) ✓
+2. Explicitly disabled via `setAgentEnabled("SECURITY", false)` → `ok: true` ✓
+3. `dispatchAgentPlan()` invoked ✓
+4. Disabled agent does not execute (stub not called) ✓
+5. Result contains `status: "SKIPPED"` ✓
+6. Claims present: `registration.enforcement: agentId=SECURITY status=disabled`, `dispatch.denied: agentId=SECURITY` ✓
+7. evidenceRefs present: `denied:registry.disabled:SECURITY`, `audit:dispatch.registration.denied:agentId=SECURITY` ✓
+8. No unrelated agent accidentally affected ✓
+9. `afterEach(() => resetAgentLifecycleForTests())` restores enabled state — no bleed ✓
+
+### STAGE 8 FINAL 13-REQ MATRIX
+
+| Requirement | Status                         |
+|-------------|--------------------------------|
+| REQ-8-1     | VERIFIED                       |
+| REQ-8-2     | VERIFIED                       |
+| REQ-8-3     | VERIFIED                       |
+| REQ-8-4     | VERIFIED                       |
+| REQ-8-5     | VERIFIED (runtime 2026-09-27)  |
+| REQ-8-6     | VERIFIED                       |
+| REQ-8-7     | VERIFIED                       |
+| REQ-8-8     | VERIFIED (Windows 1876/1876)   |
+| REQ-8-9     | VERIFIED (Stage 8 patch scope) |
+| REQ-8-10    | VERIFIED                       |
+| REQ-8-11    | VERIFIED                       |
+| REQ-8-12    | VERIFIED                       |
+| REQ-8-13    | VERIFIED (21/21 Golden Loop)   |
+
+**REQ-8-9 scope clarification (recorded):**
+- Stage 8 scope: patch lifecycle correlationId/causationId = satisfied
+- Studio terminal correlation/causation enrichment = FOLLOW-ON / FUTURE GOVERNANCE ENHANCEMENT (not a Stage 8 blocker)
+
+**REQ-8-10 evidence reconstruction (recorded):**
+- WHO/WHAT/AUTHORIZATION/RESULT/AUDIT/EVIDENCE reconstructable via osStore audit + executionId join
+- Terminal result is not the canonical governance record
+
+**REQ-8-13 browser E2E (recorded):**
+- stage5-golden-loop.test.ts 21/21 PASSED is contractually sufficient
+- Browser E2E not required for Stage 8 closure; future browser-level coverage remains a follow-on
+
+### STAGE 8 EXIT GATE
+
+```
+Stage 8 = CLOSED — ALL EXIT CRITERIA VERIFIED
+```
+
+All exit conditions met:
+- REQ-8-5 targeted verification passed (Windows runtime, 2026-09-27)
+- REQ-8-8 verified (1876/1876)
+- REQ-8-9 scope explicitly reconciled
+- REQ-8-10 evidence reconstruction proven
+- REQ-8-13 verified per integration evidence contract
+- No unresolved Stage 8 blocker remains
+- No requirement silently weakened
+- Protected files untouched (e2e/new-surfaces.spec.ts, cookies.txt)
+
+### STAGE 12
+
+```
+Stage 12 = NOT STARTED / BLOCKED
+```
+
+Until Arlet separately authorizes moving to it.
+
+### GIT / COMMIT STATUS
+
+```
+Commit = NOT AUTHORIZED
+Push   = NOT AUTHORIZED
+```
+
+*Stage 8 closure documented by Claude Sonnet 4.6 · 2026-09-27*
 
