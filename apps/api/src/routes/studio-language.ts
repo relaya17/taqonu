@@ -176,7 +176,7 @@ export async function registerStudioLanguageRoutes(app: FastifyInstance): Promis
     for (const [rel, fileEdits] of byPath) {
       const current = readWorkspaceFile(root, rel);
       const next = applyStudioLanguageEdits(current.content, fileEdits, rel);
-      writeWorkspaceFile(root, rel, next);
+      writeWorkspaceFile(root, rel, next, current.contentHash);
       written.push(rel);
     }
     osStore.appendAudit({

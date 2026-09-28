@@ -113,6 +113,45 @@ describe("workspace-browser", () => {
     rmSync(outside, { recursive: true, force: true });
   });
 
+  // D3 overwrite protection — Tests A / B / C / D (2026-09-28)
+  describe("D3 overwrite protection", () => {
+    it("Test A — CREATE: new file without expectedHash succeeds", () => {
+      const root = mkdtempSync(join(tmpdir(), "atlas-d3-"));
+      const result = writeWorkspaceFile(root, "new-file.ts", "const x = 1;\n");
+      expect(result.path).toBe("new-file.ts");
+      expect(readWorkspaceFile(root, "new-file.ts").content).toContain("const x = 1");
+    });
+
+    it("Test B — MATCHING HASH: existing file with correct expectedHash succeeds", () => {
+      const root = mkdtempSync(join(tmpdir(), "atlas-d3-"));
+      writeWorkspaceFile(root, "existing.ts", "const a = 1;\n");
+      const view = readWorkspaceFile(root, "existing.ts");
+      const result = writeWorkspaceFile(root, "existing.ts", "const a = 2;\n", view.contentHash);
+      expect(result.path).toBe("existing.ts");
+      expect(readWorkspaceFile(root, "existing.ts").content).toContain("const a = 2");
+    });
+
+    it("Test C — STALE HASH: existing file with wrong expectedHash throws OVERWRITE_CONFLICT", () => {
+      const root = mkdtempSync(join(tmpdir(), "atlas-d3-"));
+      writeWorkspaceFile(root, "existing.ts", "const a = 1;\n");
+      expect(() =>
+        writeWorkspaceFile(root, "existing.ts", "const a = 2;\n", "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"),
+      ).toThrow(expect.objectContaining({ code: "OVERWRITE_CONFLICT" }));
+      // original content unchanged
+      expect(readWorkspaceFile(root, "existing.ts").content).toContain("const a = 1");
+    });
+
+    it("Test D — MISSING HASH: existing file without expectedHash throws OVERWRITE_HASH_REQUIRED", () => {
+      const root = mkdtempSync(join(tmpdir(), "atlas-d3-"));
+      writeWorkspaceFile(root, "existing.ts", "const a = 1;\n");
+      expect(() =>
+        writeWorkspaceFile(root, "existing.ts", "const a = 2;\n"),
+      ).toThrow(expect.objectContaining({ code: "OVERWRITE_HASH_REQUIRED" }));
+      // original content unchanged
+      expect(readWorkspaceFile(root, "existing.ts").content).toContain("const a = 1");
+    });
+  });
+
   it("searches file contents with a budget and redacts secret-like lines", () => {
     const root = mkdtempSync(join(tmpdir(), "atlas-studio-search-"));
     writeFileSync(join(root, "readme.md"), "hello unique-token-xyz\n");

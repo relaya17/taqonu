@@ -39,17 +39,23 @@ const attentionBodySchema = z.object({
   eventId: z.string().trim().min(1).max(128).optional(),
   decision: z.string().trim().min(1).max(64).optional(),
   risk: z.string().trim().min(1).max(64).optional(),
+  /** Studio file context: relative path of the currently open file, forwarded as-is for PSA context */
+  contextPath: z.string().trim().min(1).max(4096).optional(),
 });
 
 const explainBodySchema = z.object({
   eventId: z.string().trim().min(1).max(128).optional(),
   processId: z.string().trim().min(1).max(128).optional(),
+  /** Studio file context: relative path of the currently open file */
+  contextPath: z.string().trim().min(1).max(4096).optional(),
 });
 
 const coordinateBodySchema = z.object({
   request: z.string().trim().min(1).max(8000),
   projectId: z.string().uuid().nullable().optional(),
   agentIds: z.array(fabricAgentIdSchema).min(1).max(8).optional(),
+  /** Studio file context: relative path of the currently open file */
+  contextPath: z.string().trim().min(1).max(4096).optional(),
 });
 
 export async function registerPersonalSupervisingAgentRoutes(
@@ -99,8 +105,11 @@ export async function registerPersonalSupervisingAgentRoutes(
   app.post(`${PERSONAL_SUPERVISING_AGENT_PATH}/recommend`, async (request) => {
     const user = await requireSignedInForWrite(app, request);
     const body = attentionBodySchema.parse(request.body ?? {});
+    const reason = body.contextPath
+      ? `[Studio file: ${body.contextPath}]\n${body.reason}`
+      : body.reason;
     return await recommendFromPsa(user.id, {
-      reason: body.reason,
+      reason,
       severity: body.severity,
       ...(body.applicationId ? { applicationId: body.applicationId } : {}),
       ...(body.processId ? { processId: body.processId } : {}),
@@ -113,8 +122,11 @@ export async function registerPersonalSupervisingAgentRoutes(
   app.post(`${PERSONAL_SUPERVISING_AGENT_PATH}/escalate`, async (request) => {
     const user = await requireSignedInForWrite(app, request);
     const body = attentionBodySchema.parse(request.body ?? {});
+    const reason = body.contextPath
+      ? `[Studio file: ${body.contextPath}]\n${body.reason}`
+      : body.reason;
     return await escalateFromPsa(user.id, {
-      reason: body.reason,
+      reason,
       severity: body.severity,
       ...(body.applicationId ? { applicationId: body.applicationId } : {}),
       ...(body.processId ? { processId: body.processId } : {}),
@@ -127,8 +139,11 @@ export async function registerPersonalSupervisingAgentRoutes(
   app.post(`${PERSONAL_SUPERVISING_AGENT_PATH}/coordinate`, async (request) => {
     const user = await requireSignedInForWrite(app, request);
     const body = coordinateBodySchema.parse(request.body ?? {});
+    const requestWithContext = body.contextPath
+      ? `[Studio file: ${body.contextPath}]\n${body.request}`
+      : body.request;
     return await coordinateSpecialists(user.id, {
-      request: body.request,
+      request: requestWithContext,
       projectId: body.projectId ?? null,
       ...(body.agentIds ? { agentIds: body.agentIds } : {}),
     });

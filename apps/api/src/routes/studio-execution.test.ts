@@ -379,4 +379,63 @@ describe("governed Studio terminal / tests / extensions", () => {
     });
     expect(res.statusCode).toBe(409);
   });
+
+  // D5 git authorization regression — Tests R1 / R2 (2026-09-28)
+  describe("D5 git authorization — unauthorized git.commit and git.push", () => {
+    it("D5-R1 — git.commit without second-identity authorization returns 202 APPROVAL_REQUIRED and does NOT execute", async () => {
+      const root = mkdtempSync(join(tmpdir(), "atlas-d5-"));
+      dirs.push(root);
+      const projectId = seedOwnedProject(requester, root);
+      getRequestUser.mockResolvedValue(requester);
+
+      // Attempt git.commit without providing any authorization (no decide-and-execute).
+      // git.commit requires relativePath (the commit message) to pass schema validation
+      // so the request reaches the governance gate rather than being rejected at schema.
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${projectId}/studio/terminal`,
+        payload: { commandId: "git.commit", relativePath: "chore: test commit" },
+      });
+
+      // Must be blocked — governance requires second-identity authorization
+      expect(res.statusCode).toBe(202);
+      const body = res.json() as { status: string; approvalId: string };
+      expect(body.status).toBe("APPROVAL_REQUIRED");
+
+      // Git operation must NOT have executed: last-run is still NOT_RUN
+      const last = await app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${projectId}/studio/executions/last`,
+      });
+      expect(last.statusCode).toBe(200);
+      expect(last.json()).toMatchObject({ status: "NOT_RUN", result: null });
+    });
+
+    it("D5-R2 — git.push without second-identity authorization returns 202 APPROVAL_REQUIRED and does NOT execute", async () => {
+      const root = mkdtempSync(join(tmpdir(), "atlas-d5-"));
+      dirs.push(root);
+      const projectId = seedOwnedProject(requester, root);
+      getRequestUser.mockResolvedValue(requester);
+
+      // Attempt git.push without providing any authorization (no decide-and-execute)
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${projectId}/studio/terminal`,
+        payload: { commandId: "git.push" },
+      });
+
+      // Must be blocked — governance requires second-identity authorization
+      expect(res.statusCode).toBe(202);
+      const body = res.json() as { status: string; approvalId: string };
+      expect(body.status).toBe("APPROVAL_REQUIRED");
+
+      // Git operation must NOT have executed: last-run is still NOT_RUN
+      const last = await app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${projectId}/studio/executions/last`,
+      });
+      expect(last.statusCode).toBe(200);
+      expect(last.json()).toMatchObject({ status: "NOT_RUN", result: null });
+    });
+  });
 });
