@@ -775,6 +775,52 @@ NO CODE CHANGES — NO IMPLEMENTATION — STOP
 
 **Root cause שנחשף בדיבוג:** `@atlas/shared` dist לא הכיל `expectedHash` עד build — ה-Zod parse strip אותו בשקט. נפתר ב-`pnpm --filter @atlas/shared build` + `pnpm --filter @atlas/code-intelligence build`.
 
+### 4.2.2 D3 WORKSPACE-REPLACE FIX (2026-09-28)
+**סטטוס:** ✅ IMPLEMENTED — committed `26c6bf7` (pushed to GitHub)
+
+**בעיה שאובחנה:**
+`applyWorkspaceReplace` (packages/code-intelligence/src/workspace-replace.ts:183) קראה ל-`writeWorkspaceFile(workspaceRoot, path, next)` ללא `expectedHash`. כיוון ש-`writeWorkspaceFile` מחייב `expectedHash` לקבצים קיימים (D3 guard), כל replace על קובץ קיים זרק `OVERWRITE_HASH_REQUIRED`.
+
+**תיקון:**
+- שורה 183: שונה ל-`writeWorkspaceFile(workspaceRoot, path, next, view.contentHash)`
+- `view` מגיע מ-`readWorkspaceFile()` שכבר מחשב `contentHash` (SHA-256)
+- D3 overwrite protection עכשיו חל גם על workspace replace
+
+**ראיות:**
+| בדיקה | תוצאה |
+|---|---|
+| workspace-replace.test.ts 2/2 | PASS ✅ |
+| studio-language.test.ts (replace route) | PASS ✅ |
+| CI על 593f0dd (לפני fix) | FAIL — OVERWRITE_HASH_REQUIRED |
+| CI על 26c6bf7 (אחרי fix) | ממתין |
+
+### 4.2.3 STAGE 5 D2 TEST FIXTURES (2026-09-28)
+**סטטוס:** ✅ IMPLEMENTED — committed `26c6bf7`
+
+**בעיה שאובחנה:**
+Guardian (Stage 5 D2-2 gate) דורש `supporting.length > 0` (לפחות fact אחד עם `overlapCount >= 1`) כדי להחזיר CONSISTENT. ללא apps/ facts — verdict=UNKNOWN → UNVERIFIED → BLOCKED → patch=null.
+
+**tokenizer issue:** regex `/[^a-z0-9./@_-]+/` שומר מקף `-`. לכן `"test-app"` → token `"test-app"`, לא `"test"`. דרוש app name ללא מקפים.
+
+**שלוש fixture corrections:**
+
+| קובץ | Fixture שנוסף | Keyword | Haystack match |
+|------|--------------|---------|----------------|
+| `apps/api/src/routes/code.test.ts` | `apps/test/index.ts` | `"test"` | `"update test.txt with a safe comment"` ✅ |
+| `apps/api/src/routes/studio-remediation-truth.test.ts` | `apps/aws/index.ts` | `"aws"` | `"Remove the hard-coded AWS access key assignment."` ✅ |
+| `e2e/stage9/projects.ts` | `apps/hello/index.ts` | `"hello"` | `"hello.ts: change the greeting export comment"` ✅ |
+
+**ראיות unit:**
+| בדיקה | תוצאה |
+|---|---|
+| code.test.ts 35/35 | PASS ✅ |
+| studio-remediation-truth.test.ts 6/6 | PASS ✅ |
+| workspace-replace.test.ts 2/2 | PASS ✅ |
+| studio-language.test.ts 3/3 | PASS ✅ |
+| סה"כ 46/46 | PASS ✅ |
+
+**E2E (apps/hello fixture):** UNVERIFIED — ממתין ל-CI על `26c6bf7`.
+
 ### 4.3 D4 — מדיניות Patch Rejection (מה שנשאר)
 **מה אושר ב-Stage 5:** reason mandatory, actor+timestamp+audit, REJECTED is terminal, correction = new patch עם `supersedesPatchId`.  
 **מה עדיין חסר:** אימות runtime של הזרימה, UI ל-rejected patches history.

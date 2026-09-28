@@ -304,6 +304,32 @@ Update 2026-09-28 (ARL-WS-005 implementation pass): CORRECT / RE-RUN / DIAGNOSE 
 - Update 2026-09-27 (§7.13 final closure pass): contrast, More `aria-expanded`, RTL overlap and authenticated mobile drawer VERIFIED locally by executable tests. Visible-focus paint: fixed and probe-measured (S7-003), but UNVERIFIED — no existing executable coverage. Unauthenticated hamburger fixme DEFERRED. ARL-WS-006 stays OPEN for visible-focus paint.
 - Update 2026-09-27 (§7.13 S7-C final test closure): visible-focus paint now has permanent executable coverage, `e2e/stage9/a11y-studio.spec.ts:103` (outline present, ≥ 3:1 against `#2A303A`, painted), plus the mobile drawer focus trap `:176`; both pass (file run 7/7). ARL-WS-006 CLOSED locally for Stage 7 scope; the unauthenticated hamburger fixme stays DEFERRED; CI not re-run.
 
+### D3 WORKSPACE-REPLACE FIX + STAGE 5 D2 TEST FIXTURES (2026-09-28)
+
+**Commit:** `26c6bf7` (pushed to GitHub `relaya17/taqonu` main, 2026-09-28)  
+**CI status:** ממתין לתוצאות על `26c6bf7`
+
+#### D3 — workspace-replace now passes expectedHash
+
+`applyWorkspaceReplace` (packages/code-intelligence/src/workspace-replace.ts:183) קראה ל-`writeWorkspaceFile` ללא `expectedHash`. תוצאה: כל replace על קובץ קיים זרק `OVERWRITE_HASH_REQUIRED` ונכשל.
+
+תיקון: העברת `view.contentHash` כפרמטר רביעי. `view` מגיע מ-`readWorkspaceFile()` שכבר מחשב SHA-256.
+
+D3 overwrite protection עכשיו חל גם על workspace replace.
+
+#### D2 Test Fixtures — three corrections
+
+Stage 5 D2-2 gate דורש Guardian CONSISTENT (supporting.length > 0) כדי לאפשר proposal. tokenizer שומר מקף: `"test-app"` → token `"test-app"` ≠ `"test"`. דרוש app name ללא מקפים.
+
+| קובץ | Fixture | Keyword | Haystack |
+|------|---------|---------|---------|
+| `code.test.ts` | `apps/test/` | `"test"` | `"update test.txt with a safe comment"` |
+| `studio-remediation-truth.test.ts` | `apps/aws/` | `"aws"` | `"Remove the hard-coded AWS access key assignment."` |
+| `e2e/stage9/projects.ts` | `apps/hello/` | `"hello"` | `"hello.ts: change the greeting export comment"` |
+
+**Unit test evidence (pre-push):** 46/46 PASS  
+**E2E fixture (apps/hello):** UNVERIFIED — ממתין ל-CI
+
 ### ARL-WS-007 — Commit / push policy
 
 No `git.commit` or `git.push` in the governed Git catalog. FD calls this intentional, but FD is direction only.
