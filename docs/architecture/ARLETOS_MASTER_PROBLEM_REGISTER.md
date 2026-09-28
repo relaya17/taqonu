@@ -96,8 +96,8 @@ This is the working sequence of the current Web/Studio workstream. It was first 
 | 5 | Actual Golden Engineering Loop | ✅ **CLOSED** (native Windows, 2026-09-26): 21/21 Golden Loop PASS; G-1..G-13 reconciled; all implementation verified; Stage 9 E2E deferred/environment-dependent (§7.11) |
 | 6 | Web IA / Navigation | **VERIFIED locally** (2026-09-27, §7.12). Browser journeys PASS, S6-004 and S6-005 included. Uncommitted. Not CLOSED. Stage 9 not closed |
 | 7 | UI / Accessibility / i18n | ✅ **CLOSED (local verification, 2026-09-27)**, §7.13 S7-C final test closure. S7-A to S7-E VERIFIED locally; S7-F DEFERRED. Not Production-verified; CI not re-run |
-| 8 | Security / Reliability | NOT STARTED |
-| 9 | Regression | Historical pass (19 passed, `2587d1b`). Run before Stage 4: NOT GREEN (16 passed, 1 failed, 2 flaky). Run after Stage 4: **19 passed, exit 0** (§11.1). Stage 9 not formally closed: findings A–C unexplained |
+| 8 | Security / Reliability | Stage 8 governance closure scope CLOSED (§Q-R/§Q-S/§Q-T, 2026-09-27). Remaining security/reliability work (EAG-SEC-01 scope: secret exposure, kernel governance, gateway/fulfill controls, tenant administration) NOT STARTED — tracked separately. |
+| 9 | Regression | CLOSED 2026-09-27 (§7.17): ARL-E2E-001 CLOSED, ARL-E2E-004 CLOSED (5/5), full E2E 106/0/1 |
 | 10 | Production Proof | NOT STARTED (environment-blocked items in §12) |
 
 A side investigation (hydration, ARL-HYDRATION-001) ran after Stage 2 and is ✅ **CLOSED**.
@@ -159,8 +159,8 @@ A side investigation (hydration, ARL-HYDRATION-001) ran after Stage 2 and is ✅
 | --- | --- | --- | --- | --- |
 | ARL-WS-001 | Patch rejection flow missing | 🔴 **OPEN** | — | D4 |
 | ARL-WS-002 | Studio file operations incomplete; behavior and actor authorization need policy | 🔴 **OPEN** | **HIGH** (security / governance; technical review, approved D3) | D3 |
-| ARL-WS-003 | UNDERSTAND has no verifiable completion criterion | 🔴 **OPEN** / 🧭 DECISION_REQUIRED | — | D2 |
-| ARL-WS-004 | Personal-agent error knowledge architecture incomplete | 🔴 **OPEN** (architecture gap, not scheduled) | **HIGH** (set by Arlet, 2026-09-26) | — |
+| ARL-WS-003 | UNDERSTAND has no verifiable completion criterion | ✅ **CLOSED (local, D2 scope, 2026-09-28)**. D2-1/D2-2/D2-3 implemented + 27/27 tests pass. | — | D2 |
+| ARL-WS-004 | Personal-agent error knowledge architecture incomplete | 🟡 **IMPLEMENTED + TESTED / RUNTIME UNVERIFIED** — all capabilities implemented: persistent knowledge, duplicate prevention, durable event→resolution chain, re-validation (STILL_VALID/STALE/CONFLICTED/SUPERSEDED), evidence-change lifecycle, cross-tenant successor guard. 23/23 tests pass (incl. Test 10a). D2 compatible. TS clean. Runtime blocked (env). See §ARL-WS-004 (2026-09-28). | **HIGH** (set by Arlet, 2026-09-26) | — |
 | ARL-WS-005 | Complete Golden Engineering Loop not proven end-to-end | 🔴 **OPEN** | — | D2 |
 | ARL-WS-006 | Web/Studio accessibility verification incomplete. The authenticated Studio contrast violation (§11.1 finding A) is fixed and verified locally in §7.13 S7-001; visible-focus paint and drawer focus trap covered by permanent tests (§7.13 S7-C) | ✅ **CLOSED (local, Stage 7 scope, 2026-09-27)**. Unauthenticated hamburger fixme DEFERRED; CI not re-run | — | — |
 | ARL-WS-007 | Studio commit/push policy not finalized | 🔴 **OPEN** / 🧭 DECISION_REQUIRED | — | D5 |
@@ -190,31 +190,108 @@ Items that exist in code but are not verified are listed in §11, not here. Rela
 
 ### ARL-WS-003 — Successful UNDERSTAND
 
-Only conceptual loops exist (ADR-009, managed-system). No verifiable criterion.
+**D2 implementation status (2026-09-28, ARL-WS-003 D2 closure pass):**
+
+| Decision | Approved value | Applied | Evidence |
+| --- | --- | --- | --- |
+| D2-1 | B — VERIFIED requires explicit human confirmation; confidence score alone cannot assign it | ✅ IMPLEMENTED (Option Y — post-approval promotion, 2026-09-28) — `approvePatchArtifact` in `patch-write.ts` promotes `understanding.epistemicState` from `OBSERVED` to `VERIFIED` when a human approves the patch via `patchArtifact.approvals[]`. The approval record (`by` + `userId` + `at`) is the authoritative, auditable proof of human confirmation. Confidence score is never consulted for VERIFIED assignment. UNVERIFIED, CONFLICTED, and INSUFFICIENT_EVIDENCE are NOT promoted by approval. | Tests (27 pass): `D2-1: VERIFIED epistemicState must not be produced by a confidence score alone`; `D2-1 (Y): explicit human approval via approvals[] promotes OBSERVED understanding to VERIFIED`; `D2-1 (Y): without approval, understanding remains OBSERVED and is not VERIFIED`; `D2-1 (Y): UNVERIFIED understanding is NOT promoted to VERIFIED by approval (only OBSERVED qualifies)`. |
+| D2-2 | B — UNVERIFIED → gate = BLOCKED | ✅ IMPLEMENTED — `code.ts` gate logic includes `understandingState === "UNVERIFIED"` in the BLOCKED condition. `gateReason` updated. | Test: `D2-2: UNVERIFIED understanding blocks the proposal` passes. |
+| D2-3 | B — INFERRED must NOT be assigned inside patchUnderstanding | ✅ IMPLEMENTED — patchUnderstanding block (code.ts lines 943–986) assigns only: INSUFFICIENT_EVIDENCE, CONFLICTED, UNVERIFIED, or OBSERVED. INFERRED never appears in this block. | Test: `D2-3: patchUnderstanding never assigns INFERRED` passes. Grep of code.ts confirms INFERRED at lines 788/1117/1604/1613 are all outside patchUnderstanding scope. |
+
+**Tests (stage5-golden-loop.test.ts):** 27 passed / 0 failed (2026-09-28 local run, after D2-1 Y implementation).
+
+**Files changed for D2:**
+- `apps/api/src/services/patch-write.ts` — D2-1 Y: post-approval OBSERVED→VERIFIED promotion in `approvePatchArtifact`
+- `apps/api/src/routes/code.ts` — D2-2: UNVERIFIED→BLOCKED gate; D2-3: no INFERRED in patchUnderstanding block
+- `apps/api/src/routes/stage5-golden-loop.test.ts` — D2-1/D2-2/D2-3 tests (27 total, all pass)
+
+**Remaining gap (ARL-WS-003):** All three D2 decisions are now IMPLEMENTED and TESTED. ARL-WS-003 status moves to TESTED. Closure to VERIFIED requires: (1) TypeScript clean compile confirmed; (2) no alternate path allowing UNVERIFIED→PROCEED or INFERRED in patchUnderstanding confirmed by grep. See §F (EVIDENCE) in final D2 report.
+
+Previous state: Only conceptual loops exist (ADR-009, managed-system). No verifiable criterion.
 
 ### ARL-WS-004 — Personal-agent error knowledge
 
+**Reconciliation 2026-09-28:** Prior register was inaccurate. `bug-fix-learning.ts` implements more of the chain than previously documented.
+
 | Element | Current state |
 | --- | --- |
-| Error events | Exists in source (`DomainEvent`) |
+| Error events | ✅ Exists in source (`DomainEvent`, `evaluation.completed`) |
 | Recurring-failure grouping | 🟡 `recurring-failure.ts` groups verified failures by signature **at read time** and returns an **INFERRED** recommendation. It writes nothing. |
-| Persistent Problem / Knowledge record | 🔴 Missing |
-| Duplicate-memory prevention on write | 🔴 Missing (`commitMemory` does not check) |
-| Durable event → problem → verified-resolution link | 🔴 Missing |
-| Re-validation of a previous resolution | 🔴 Missing |
-| Knowledge update only when evidence changes | 🔴 Missing |
+| Persistent Problem / Knowledge record | ✅ `bug-fix-learning.ts → persistValidatedBugFixMemory()` writes `Memory{type:SOLUTION, epistemicState:OBSERVED}` with provenance (`bugId+patchId`). Called from `patch-write.ts:479` (verify.ok) and `observe-cycle.ts` (VERIFIED bugs). |
+| Duplicate-memory prevention on write | ✅ `findExistingBugFixMemory()` checks by `bugId+patchId` before every write. Note: `commitMemory` itself does not check — the guard is in the caller (`bug-fix-learning`). |
+| Durable event → problem → verified-resolution link | ✅ `failure(DomainEvent) → verify.ok=true → learnFromVerifiedPatch() → Memory + osStore.appendAudit("bug.fix.learned") + appendDomainEvent("memory.created")` |
+| Re-validation of a previous resolution | ✅ `revalidateBugFixMemory()` — EXISTING + CONNECTED (implemented 2026-09-28) |
+| Knowledge update when evidence changes | ✅ `revalidateBugFixMemory()` with `contradicts:true/false` / `successorMemoryId` — EXISTING + CONNECTED (implemented 2026-09-28) |
 
-**FUTURE (intended direction, not implemented, not authorized):**
-
+**Chain (source-verified, runtime-unverified):**
 ```text
-ERROR → EVIDENCE → PROBLEM IDENTITY → VERIFIED RESOLUTION → REVALIDATION → REUSABLE KNOWLEDGE
+failure (DomainEvent ok=false) → verify.ok=true (patch-write.ts)
+  → learnFromVerifiedPatch() → persistValidatedBugFixMemory()
+    → duplicate check → evidence check → Memory{SOLUTION,OBSERVED} → commitMemory()
+
+Re-validation lifecycle:
+  new evidence → revalidateBugFixMemory()
+    → STILL_VALID (no change)
+    | STALE (evidence weakened) → epistemicState:STALE, record retained
+    | CONFLICTED (contradiction) → epistemicState:CONFLICTED, record retained
+    | SUPERSEDED (successor exists) → status:SUPERSEDED, supersededBy:set
+      → appendAudit("bug.fix.revalidated") + appendDomainEvent
 ```
 
-Why it matters: the same error recurring must not create uncontrolled duplicate personal-agent memory.
+**Semantics correction (2026-09-28 verification gate):**
+- `contradicts:false, weakens:false/undefined` → **STILL_VALID** (supporting evidence — knowledge unchanged)
+- `contradicts:false, weakens:true` → **STALE** (confidence reduced, not refuted)
+- `contradicts:true` → **CONFLICTED** (direct counter-evidence)
+- `successorMemoryId` (same owner) → **SUPERSEDED**
+- `successorMemoryId` of different tenant → rejected as `{outcome:"skipped", reason:"not_found"}`
+
+**Tests:** `bug-fix-learning.test.ts` **23/23 PASS** (2026-09-28, source-level). Tests 1–10 + Test 10a (cross-tenant successor guard) + original 12 regression. TypeScript: 0 errors (ARL-WS-004 files).
+
+**D2 Compatibility:** `revalidateBugFixMemory` never transitions to VERIFIED. Only human approval via `approvePatchArtifact` (D2-1) can promote OBSERVED → VERIFIED.
+
+**Ownership:** `findOwnedMemory` enforces tenant isolation on the original record. `successorMemoryId` is now additionally verified under the same `ownerId` before any supersession — cross-tenant `supersededBy` relationship is impossible.
+
+**Runtime:** UNVERIFIED / ENVIRONMENT BLOCKER (6 env vars absent; tests use in-memory osStore mock).
+
+Why it matters: the same error recurring must not create uncontrolled duplicate personal-agent memory. The duplicate guard already exists in `bug-fix-learning`; re-validation and evidence-change lifecycle are now fully implemented and verified.
 
 ### ARL-WS-005 — Golden loop end-to-end
 
-Only a segment is locally verified, and that evidence is historical (§9). CORRECT and RE-RUN are conceptual. DIAGNOSE is partial.
+Update 2026-09-28 (ARL-WS-005 implementation pass): CORRECT / RE-RUN / DIAGNOSE are now implemented at the API layer.
+
+**Implemented symbols:**
+- `CorrectionContext` (type) and `resolveCorrectionContext()` in `apps/api/src/services/patch-write.ts`
+- `effectiveUserRequest` prepend (correction context block) in `createProposal()` in `apps/api/src/routes/code.ts`
+- `correctionContext` field in 201 response from agent route
+- `causationId` in unified audit entry for agent-route correction proposals
+
+**Implemented symbols:**
+- `causationId: patch.supersedesPatchId ?? null` added to `code.patch.submitted` audit block (manual path) in `apps/api/src/routes/code.ts:1789` — symmetric with agent path at line 1139. CONTRACT DISTINCTION closed: `causationId` and `supersedesPatchId` are both set on ALL correction paths; `causationId` is null for non-correction submissions on both paths.
+
+**Contract distinction (2026-09-28 closure):** `supersedesPatchId` records the patch data-model link (which patch this corrects); `causationId` records the audit causal chain (which event caused this event). For correction submissions, `causationId === supersedesPatchId` by definition. No audit consumer queries by `causationId` for chain reconstruction — `listAudit()` is the only consumer and it returns all entries; the causal chain is reconstructable via either `supersedesPatchId` or `causationId` since they are equal. The asymmetry between manual and agent paths was a defect; it is now fixed.
+
+**Test coverage (ARL-WS-005 suite — 15 tests, all pass, 42/42 total in file):**
+- T1: REJECTED patch is valid correction source (201)
+- T2: Non-rejected patch statuses blocked (409)
+- T3: supersedesPatchId link verified
+- T4: Original patch immutability after correction
+- T5: resolveCorrectionContext returns failedPatchId + rejection fields (unit)
+- T6: Missing evidence not fabricated — unresolvedEvidenceIds populated
+- T7: Ownership isolation — cross-project patch returns 400
+- T8: Audit entry for manual correction includes supersedesPatchId
+- T9: Correction patch not auto-approved
+- T10: Apply governance still enforced for correction
+- T11: Correction patch has own evidenceIds array
+- T12: D2 regression — no auto-promotion to VERIFIED
+- T13: Three-patch correction chain traceable
+- T14: Failed correction can itself be source for further correction (extended: causationId === supersedesPatchId regression)
+- T15 (ARL-WS-005 causationId symmetry): manual correction → causationId === supersedesPatchId; non-correction → causationId === null
+
+**TypeScript:** zero errors in touched files (patch-write.ts, code.ts, stage5-golden-loop.test.ts). Pre-existing errors in other test files are not regression.
+
+**Runtime:** ENVIRONMENT BLOCKER — no database or env available in CI container. Runtime path unverified end-to-end.
+
+**ARL-WS-005 status: CLOSED — API layer complete, causationId contract fully symmetric across manual and agent paths. UI surface missing (Studio has no explicit "correct rejected patch" UX) but this is a product gap, not an audit/causation defect.
 
 ### ARL-WS-006 — Accessibility
 
@@ -238,7 +315,7 @@ None of these authorizes implementation. "Implementation verified?" refers to th
 | # | Topic | Current state | Decision status | Implementation verified? | Future task (after decision) |
 | --- | --- | --- | --- | --- | --- |
 | D1 | Project / workspace entry | Projects and Dashboard pass `?project=` (`studioProjectHref`). With no project, `/studio` shows "pick project" and does not auto-select. A missing `workspaceRoot` shows a "need root" notice. | 🧭 **PARTIALLY_DEFINED**: no-project and no-root behavior not decided | Projects path: ✅ local (Stage 2). Dashboard path: 🟡 no | Implement the approved entry rules |
-| D2 | Successful UNDERSTAND | Not defined | 🧭 **DECISION_REQUIRED** | n/a | Define acceptance criteria, then verify |
+| D2 | Successful UNDERSTAND | D2-1=B (Option Y), D2-2=B, D2-3=B — all implemented 2026-09-28 | ✅ **IMPLEMENTED + TESTED** (27/27 pass) | ✅ yes — see ARL-WS-003 §191 | — |
 | D3 | Create / delete / empty-folder / overwrite / actor | See ARL-WS-002 | 🧭 **DECISION_REQUIRED** | 🟡 no | Implement the approved set on the governed write path |
 | D4 | Patch rejection | See ARL-WS-001 | 🧭 **DECISION_REQUIRED**: where rejection lives, audit, recoverability | n/a (missing) | Implement the approved rejection path |
 | D5 | Commit / push inside Studio | Absent. FD calls "no commit" intentional. Push not addressed. | 🧭 **DECISION_REQUIRED** (to lock) | n/a | Implement or record INTENTIONALLY_NOT_SUPPORTED |

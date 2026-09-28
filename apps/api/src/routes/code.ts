@@ -28,6 +28,9 @@ import {
   searchWorkspaceFiles,
   writeWorkspaceFile,
   moveWorkspaceFile,
+  createWorkspaceFolder,
+  deleteWorkspaceFile,
+  deleteWorkspaceFolder,
 } from "@atlas/code-intelligence";
 import { z } from "zod";
 import { isAgentActorRequest } from "../services/studio-actor.js";
@@ -66,6 +69,7 @@ import {
   patchArtifactHash,
   rejectPatchArtifact,
   resolveApplyWorkspaceRoot,
+  resolveCorrectionContext,
   verifyGovernedCodePatch,
 } from "../services/patch-write.js";
 import { createApprovalRequest } from "../services/approvals.js";
@@ -117,6 +121,8 @@ const proposeBody = z.object({
   title: z.string().max(200).optional(),
   focusPath: z.string().min(1).max(1000).optional(),
   findingId: z.string().min(1).max(200).optional(),
+  // Stage 5 (D4): correction — references the REJECTED patch this proposal supersedes
+  supersedesPatchId: z.string().uuid().optional(),
 });
 
 export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
@@ -239,6 +245,8 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           .default("fix"),
         instruction: z.string().min(3).max(4000),
         findingId: z.string().min(1).max(200).optional(),
+        // Stage 5 (D4): correction — references the REJECTED patch this proposal supersedes
+        supersedesPatchId: z.string().uuid().optional(),
       })
       .parse(request.body);
 
@@ -251,6 +259,23 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         "VALIDATION_ERROR",
         "Studio ask-agent requires a local workspaceRoot on the API host.",
       );
+    }
+
+    // Stage 5 (D4): validate the superseded patch before running the agent
+    if (body.supersedesPatchId && body.projectId) {
+      const rejected = osStore.getPatch(body.supersedesPatchId);
+      if (!rejected || rejected.projectId !== body.projectId) {
+        throw new AtlasError("VALIDATION_ERROR", "Superseded patch not found in this project", {
+          statusCode: 400,
+        });
+      }
+      if (rejected.status !== "REJECTED") {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "Only a REJECTED patch can be superseded by a correction",
+          { statusCode: 409 },
+        );
+      }
     }
 
     const focus = body.path?.trim()
@@ -267,6 +292,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
           : `Studio · ${body.mode}`,
         ...(body.path?.trim() ? { focusPath: body.path.trim() } : {}),
         ...(body.findingId?.trim() ? { findingId: body.findingId.trim() } : {}),
+        ...(body.supersedesPatchId ? { supersedesPatchId: body.supersedesPatchId } : {}),
       },
       reply,
       request,
@@ -300,7 +326,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const persistStudioWrite = () => {
-      const written = writeWorkspaceFile(root, body.path, body.content);
+      const written = writeWorkspaceFile(root, body.path, body.content, body.expectedHash);
       const now = new Date().toISOString();
       osStore.appendAudit({
         type: "studio.file.written",
@@ -466,6 +492,14 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     try {
       return persistStudioWrite();
     } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "OVERWRITE_HASH_REQUIRED" || code === "OVERWRITE_CONFLICT") {
+        throw new AtlasError(
+          "CONFLICT",
+          error instanceof Error ? error.message : "Overwrite conflict",
+          { statusCode: 409 },
+        );
+      }
       throw new AtlasError(
         "VALIDATION_ERROR",
         error instanceof Error ? error.message : "Failed to save file",
@@ -594,6 +628,139 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // ── Studio: create folder ────────────────────────────────────────────────
+  app.post("/api/v1/studio/folder", async (request, reply) => {
+    if (isAgentActorRequest(request.headers as Record<string, unknown>)) {
+      throw new AtlasError("FORBIDDEN", "Studio folder create is human-only.", {
+        statusCode: 403,
+      });
+    }
+    const body = z
+      .object({
+        projectId: z.string().uuid(),
+        path: z.string().trim().min(1).max(500),
+      })
+      .parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    const root = osStore.getWorkspaceRoot(body.projectId);
+    if (!root || !existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot before creating a folder in Studio.",
+        { statusCode: 400 },
+      );
+    }
+    try {
+      const created = createWorkspaceFolder(root, body.path);
+      osStore.appendAudit({
+        type: "studio.folder.created",
+        projectId: body.projectId,
+        path: created.path,
+        by: user.id,
+        at: new Date().toISOString(),
+      });
+      return reply.status(200).send({ path: created.path });
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to create folder",
+        { statusCode: 400 },
+      );
+    }
+  });
+
+  // ── Studio: delete file ──────────────────────────────────────────────────
+  app.delete("/api/v1/studio/file", async (request, reply) => {
+    if (isAgentActorRequest(request.headers as Record<string, unknown>)) {
+      throw new AtlasError("FORBIDDEN", "Studio file delete is human-only.", {
+        statusCode: 403,
+      });
+    }
+    const body = z
+      .object({
+        projectId: z.string().uuid(),
+        path: z.string().trim().min(1).max(500),
+      })
+      .parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    const root = osStore.getWorkspaceRoot(body.projectId);
+    if (!root || !existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot before deleting a file in Studio.",
+        { statusCode: 400 },
+      );
+    }
+    if (isAtlasSelfStudioProject(body.projectId)) {
+      const denied = atlasSelfStudioWriteDeniedReason(body.path);
+      if (denied) {
+        throw new AtlasError(
+          "FORBIDDEN",
+          "Atlas-self Studio delete blocked by self-modification boundary",
+          { statusCode: 403 },
+        );
+      }
+    }
+    try {
+      const deleted = deleteWorkspaceFile(root, body.path);
+      osStore.appendAudit({
+        type: "studio.file.deleted",
+        projectId: body.projectId,
+        path: deleted.path,
+        by: user.id,
+        at: new Date().toISOString(),
+      });
+      return reply.status(200).send({ path: deleted.path });
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to delete file",
+        { statusCode: 400 },
+      );
+    }
+  });
+
+  // ── Studio: delete empty folder ──────────────────────────────────────────
+  app.delete("/api/v1/studio/folder", async (request, reply) => {
+    if (isAgentActorRequest(request.headers as Record<string, unknown>)) {
+      throw new AtlasError("FORBIDDEN", "Studio folder delete is human-only.", {
+        statusCode: 403,
+      });
+    }
+    const body = z
+      .object({
+        projectId: z.string().uuid(),
+        path: z.string().trim().min(1).max(500),
+      })
+      .parse(request.body);
+    const user = await assertProjectWriteAccess(app, request, body.projectId);
+    const root = osStore.getWorkspaceRoot(body.projectId);
+    if (!root || !existsSync(root)) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        "Link a local workspaceRoot before deleting a folder in Studio.",
+        { statusCode: 400 },
+      );
+    }
+    try {
+      const deleted = deleteWorkspaceFolder(root, body.path);
+      osStore.appendAudit({
+        type: "studio.folder.deleted",
+        projectId: body.projectId,
+        path: deleted.path,
+        by: user.id,
+        at: new Date().toISOString(),
+      });
+      return reply.status(200).send({ path: deleted.path });
+    } catch (error) {
+      throw new AtlasError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "Failed to delete folder",
+        { statusCode: 400 },
+      );
+    }
+  });
+
   async function requireControlPlaneWorkspace(request: FastifyRequest): Promise<void> {
     const user = await requireUser(app, request);
     if (!isControlPlaneRole(user.role)) {
@@ -666,6 +833,59 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       await requireControlPlaneWorkspace(request);
     }
 
+    // ARL-WS-005 (CORRECT / DIAGNOSE): when this proposal corrects a rejected
+    // patch, resolve the failure context and prepend it to the userRequest so
+    // the engineering agent understands what was tried before and why it
+    // failed. The context is clearly labelled as prior-attempt observations —
+    // never injected as new agent conclusions, never promoting epistemic state.
+    let correctionContextBlock = "";
+    let correctionContext = null;
+    if (body.supersedesPatchId && body.projectId) {
+      correctionContext = resolveCorrectionContext({
+        supersedesPatchId: body.supersedesPatchId,
+        projectId: body.projectId,
+      });
+      if (!correctionContext) {
+        throw new AtlasError(
+          "VALIDATION_ERROR",
+          "Superseded patch not found in this project",
+          { statusCode: 400 },
+        );
+      }
+      // Build the context block. Separated clearly from the user's new request.
+      const evidenceSummary =
+        correctionContext.evidence.length > 0
+          ? correctionContext.evidence
+              .map((e) => `  [${e.epistemicState}] ${e.source}: ${e.excerpt.slice(0, 400)}`)
+              .join("\n")
+          : "  (no evidence records resolved)";
+      const unresolvedNote =
+        correctionContext.unresolvedEvidenceIds.length > 0
+          ? `\n  Unresolved evidence IDs: ${correctionContext.unresolvedEvidenceIds.join(", ")}`
+          : "";
+      const understandingNote = correctionContext.understanding
+        ? `Prior understanding: ${correctionContext.understanding.epistemicState} (gate: ${correctionContext.understanding.gate}). ${correctionContext.understanding.gateReason}`
+        : "Prior understanding: not recorded";
+      correctionContextBlock = [
+        "=== CORRECTION CONTEXT (recorded facts from prior attempt — not new agent conclusions) ===",
+        `Failed patch: ${correctionContext.failedPatchId}`,
+        `Previous title: ${correctionContext.previousTitle}`,
+        `Previous reason: ${correctionContext.previousReason}`,
+        `Previous files: ${correctionContext.previousFilePaths.join(", ")}`,
+        `Rejection by: ${correctionContext.rejection.by} at ${correctionContext.rejection.at}`,
+        `Rejection reason: ${correctionContext.rejection.reason}`,
+        understandingNote,
+        "Prior evidence:",
+        evidenceSummary + unresolvedNote,
+        "=== END CORRECTION CONTEXT — new request follows ===",
+        "",
+      ].join("\n");
+    }
+
+    const effectiveUserRequest = correctionContextBlock
+      ? `${correctionContextBlock}${body.userRequest}`
+      : body.userRequest;
+
     let memoryItems: MemoryContextItem[] = [];
     const ownerId = user.id;
     try {
@@ -694,7 +914,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     const proposal = proposePatch({
       workspaceRoot,
       mode: body.mode as EngineeringAgentMode,
-      userRequest: body.userRequest,
+      userRequest: effectiveUserRequest,
       ...(body.title ? { title: body.title } : {}),
       ...(body.focusPath ? { focusPath: body.focusPath } : {}),
       ...(memoryItems.length > 0 ? { memoryContext: { items: memoryItems } } : {}),
@@ -789,7 +1009,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     } else if (guardianEvaluation.verdict === "UNKNOWN") {
       understandingState = "UNVERIFIED";
       gateReason =
-        "Targets observed; no project fact confirms or contradicts the request. Proceeding as UNVERIFIED.";
+        "Targets observed; no project fact confirms or contradicts the request. UNVERIFIED understanding is blocked: explicit human confirmation is required to proceed.";
     } else {
       understandingState = "OBSERVED";
       gateReason = "Targets observed and consistent with observed project facts.";
@@ -813,7 +1033,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       memoryIdsUsed: memoryItems.map((item) => item.id).slice(0, 50),
       epistemicState: understandingState,
       gate:
-        understandingState === "INSUFFICIENT_EVIDENCE" || understandingState === "CONFLICTED"
+        understandingState === "INSUFFICIENT_EVIDENCE" ||
+        understandingState === "CONFLICTED" ||
+        understandingState === "UNVERIFIED"
           ? "BLOCKED"
           : "PROCEED",
       gateReason: gateReason.slice(0, 1000),
@@ -885,6 +1107,7 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         .join("\n")
         .slice(0, 4000),
       ...(remediationTarget ? { remediationTarget } : {}),
+      ...(body.supersedesPatchId ? { supersedesPatchId: body.supersedesPatchId } : {}),
       approvals: [],
       appliedAt: null,
       verifiedAt: null,
@@ -908,12 +1131,19 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       onBehalfOfUserId: user.id,
       patchId: patch.id,
       correlationId: patch.id,
+      // ARL-WS-005 (AUDIT/CAUSATION): when this proposal corrects a rejected
+      // patch, the causationId references the rejected patch's id. This makes
+      // the causal relationship "correction caused by rejection" explicit in
+      // the audit record without introducing a new audit architecture.
+      // causationId = null for non-correction proposals (existing behavior).
+      ...(patch.supersedesPatchId ? { causationId: patch.supersedesPatchId } : {}),
       understandingId: understanding.id,
       understandingState: understanding.epistemicState,
       mode: patch.mode,
       risk: patch.risk,
       findingId: patch.remediationTarget?.findingId ?? null,
       guardianVerdict: guardianEvaluation.verdict,
+      supersedesPatchId: patch.supersedesPatchId ?? null,
       at: now,
     });
     return reply.status(201).send({
@@ -925,6 +1155,9 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       modelInvoked: false,
       guardianEvaluation,
       understanding,
+      // ARL-WS-005: expose resolved correction context in the response so
+      // callers can confirm what failure context was supplied to the agent.
+      ...(correctionContext ? { correctionContext } : {}),
       note: "Patch proposed by CODE_ENGINEER heuristic (not an LLM). Approve then Apply (ADR-015). Not applied yet. Not Truth.",
     });
   }
@@ -1550,6 +1783,12 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
       onBehalfOfUserId: user.id,
       patchId: patch.id,
       correlationId: patch.id,
+      // ARL-WS-005 (AUDIT/CAUSATION): symmetric with the agent path
+      // (code.patch.proposed). When this manual submission corrects a rejected
+      // patch, causationId references the rejected patch's id — identical
+      // semantics to the agent correction path at line 1139.
+      // causationId = null for non-correction submissions.
+      causationId: patch.supersedesPatchId ?? null,
       supersedesPatchId: patch.supersedesPatchId ?? null,
       projectId: patch.projectId ?? null,
       at: new Date().toISOString(),

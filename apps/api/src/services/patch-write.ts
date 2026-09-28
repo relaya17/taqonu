@@ -324,10 +324,24 @@ export function approvePatchArtifact(
   // PatchArtifact-local decision (status + approvals[]), nothing more. A
   // real `ApprovalRequest`/claim, decided by a different identity, is
   // obtained at apply time instead -- see `code.ts`'s apply route.
+  // D2-1 (approved): explicit human approval promotes understanding to VERIFIED.
+  // Only OBSERVED understanding is eligible — CONFLICTED, INSUFFICIENT_EVIDENCE,
+  // and UNVERIFIED must not be silently promoted to VERIFIED by approval alone.
+  // The approval record (by + userId + at) is the auditable proof of human confirmation.
+  const promotedUnderstanding =
+    existing.understanding?.epistemicState === "OBSERVED"
+      ? {
+          ...existing.understanding,
+          epistemicState: "VERIFIED" as const,
+          gateReason: `Understanding promoted to VERIFIED by explicit human approval from ${input.approvedBy} (userId: ${input.userId}) at ${now}.`,
+        }
+      : existing.understanding;
+
   const patch = patchArtifactSchema.parse({
     ...existing,
     status: "APPROVED",
     approvals: [...existing.approvals, approval],
+    understanding: promotedUnderstanding,
     updatedAt: now,
   });
   osStore.upsertPatch(patch);
@@ -864,4 +878,151 @@ export function applyApprovedPatch(input: {
   }
 
   return { patch, apply: result, verify };
+}
+
+// ---------------------------------------------------------------------------
+// ARL-WS-005: CORRECT / RE-RUN / DIAGNOSE — correction context resolver
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured context resolved from a REJECTED patch, supplied to the
+ * correcting engineering agent so it understands what the previous attempt
+ * tried, why it was rejected, what the prior understanding was, and what
+ * evidence (if any) was collected.
+ *
+ * This is observation-only: no epistemic promotion, no fabrication.
+ * The agent must treat these as recorded facts from a prior attempt, not as
+ * newly generated conclusions.
+ */
+export type CorrectionContext = {
+  /** The id of the REJECTED patch being corrected. */
+  readonly failedPatchId: string;
+  /**
+   * The terminal rejection record — who rejected it, when, and why.
+   * Always present when the patch is REJECTED.
+   */
+  readonly rejection: {
+    readonly by: string;
+    readonly userId: string;
+    readonly at: string;
+    readonly reason: string;
+  };
+  /**
+   * The D2 Understanding captured when the patch was originally proposed.
+   * May be absent for patches that pre-date D2 or were submitted directly.
+   */
+  readonly understanding: PatchArtifact["understanding"] | null;
+  /**
+   * Evidence records resolved from the rejected patch's `evidenceIds[]`.
+   * Only records that can be located in the store are included; missing
+   * ones are omitted rather than fabricated.
+   */
+  readonly evidence: ReadonlyArray<{
+    readonly id: string;
+    readonly source: string;
+    readonly excerpt: string;
+    readonly epistemicState: string;
+    readonly confidence: number;
+    readonly observedAt: string;
+  }>;
+  /**
+   * The ids that were listed on the rejected patch but could not be
+   * resolved. Preserved explicitly so callers know the absence is genuine
+   * rather than an oversight.
+   */
+  readonly unresolvedEvidenceIds: readonly string[];
+  /**
+   * What the rejected patch was trying to change. Provided so the correcting
+   * agent understands the original intent without re-reading the full patch.
+   */
+  readonly previousTitle: string;
+  readonly previousReason: string;
+  readonly previousFilePaths: readonly string[];
+};
+
+/**
+ * ARL-WS-005 (CORRECT / DIAGNOSE): resolve the failure context from a
+ * rejected patch before constructing a correction.
+ *
+ * Enforces:
+ *  - Ownership / project boundary (no cross-tenant context leak).
+ *  - Status guard: only a REJECTED patch may be the source of a correction.
+ *  - No evidence fabrication: only resolvable records are included.
+ *  - No epistemic promotion: all facts are recorded as-observed.
+ *
+ * Returns `null` when the patch is not found (indistinguishable from
+ * access-denied, consistent with `findOwnedMemory` behavior).
+ *
+ * Throws `AtlasError("CONFLICT")` when the patch exists in the project
+ * but is not REJECTED, so callers can surface the lifecycle error.
+ */
+export function resolveCorrectionContext(input: {
+  /** The id of the patch that is being corrected. */
+  readonly supersedesPatchId: string;
+  /** The projectId of the correction — must match the rejected patch. */
+  readonly projectId: string;
+}): CorrectionContext | null {
+  const rejected = osStore.getPatch(input.supersedesPatchId);
+
+  // Not found or cross-project: return null (consistent with ownership isolation).
+  if (!rejected || rejected.projectId !== input.projectId) {
+    return null;
+  }
+
+  // Exists in project but not REJECTED: surface the lifecycle conflict.
+  if (rejected.status !== "REJECTED") {
+    throw new AtlasError(
+      "CONFLICT",
+      `Cannot correct patch in status ${rejected.status} — only a REJECTED patch can be superseded`,
+      { statusCode: 409 },
+    );
+  }
+
+  // rejection is always set when status === "REJECTED" (enforced by rejectPatchArtifact).
+  // The null-coalesce below satisfies TypeScript while being unreachable at runtime.
+  const rejection = rejected.rejection ?? {
+    by: "unknown",
+    userId: "unknown",
+    at: rejected.updatedAt,
+    reason: "(rejection record unavailable)",
+  };
+
+  // Resolve evidence without fabrication — include only what the store holds.
+  const evidenceMutable: Array<{
+    id: string;
+    source: string;
+    excerpt: string;
+    epistemicState: string;
+    confidence: number;
+    observedAt: string;
+  }> = [];
+  const unresolvedEvidenceIds: string[] = [];
+
+  for (const evidenceId of rejected.evidenceIds) {
+    const record = osStore.findEvidenceById(evidenceId);
+    if (record) {
+      evidenceMutable.push({
+        id: record.id,
+        source: record.source,
+        excerpt: (record.excerpt ?? "").slice(0, 2000),
+        epistemicState: record.epistemicState,
+        confidence: record.confidence,
+        observedAt: record.observedAt,
+      });
+    } else {
+      unresolvedEvidenceIds.push(evidenceId);
+    }
+  }
+  const evidence: CorrectionContext["evidence"] = evidenceMutable;
+
+  return {
+    failedPatchId: rejected.id,
+    rejection,
+    understanding: rejected.understanding ?? null,
+    evidence,
+    unresolvedEvidenceIds,
+    previousTitle: rejected.title,
+    previousReason: rejected.reason,
+    previousFilePaths: rejected.filesChanged.map((f) => f.path),
+  };
 }
