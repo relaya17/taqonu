@@ -666,7 +666,7 @@ describe("bug-fix-learning", () => {
     const extractedPatchId = ok.memory.reason.find((r) => r.startsWith("patchId:"))?.slice(7);
     const dupOverrides: { bugId: string; patchId?: string } = { bugId: ok.memory.sourceId ?? "" };
     if (extractedPatchId !== undefined) dupOverrides.patchId = extractedPatchId;
-    const dup = persistValidatedBugFixMemory(validatedInput(dupOverrides));
+    const _dup = persistValidatedBugFixMemory(validatedInput(dupOverrides));
     // Note: bugId/patchId match means duplicate; only if truly same combination
     const second = persistValidatedBugFixMemory(validatedInput());
     expect(["written", "duplicate"]).toContain(second.status);
