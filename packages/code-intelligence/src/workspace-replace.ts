@@ -180,7 +180,7 @@ export function applyWorkspaceReplace(
     }
     const replacements = view.content.split(needle).length - 1;
     const next = view.content.split(needle).join(replacement);
-    const result = writeWorkspaceFile(workspaceRoot, path, next);
+    const result = writeWorkspaceFile(workspaceRoot, path, next, view.contentHash);
     written.push({ path: result.path, bytes: result.bytes, replacements });
   }
   return { written, skipped };

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -154,6 +154,16 @@ describe("secret finding remediation truth", () => {
     writeFileSync(
       join(workspaceRoot, "leaked-credential.ts"),
       `export const accessKeyId = '${AWS}';\n`,
+      "utf8",
+    );
+    // Stage 5 (D2): Guardian requires CONSISTENT knowledge facts to allow
+    // proposal creation. Seed an apps/ entry whose name, without hyphens, is
+    // a single token that appears in the instruction haystack.
+    // "aws" (3 chars, not in STOP) matches "Remove the hard-coded AWS access key assignment."
+    mkdirSync(join(workspaceRoot, "apps", "aws"), { recursive: true });
+    writeFileSync(
+      join(workspaceRoot, "apps", "aws", "index.ts"),
+      "// placeholder\n",
       "utf8",
     );
   });

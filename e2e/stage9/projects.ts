@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -58,6 +58,12 @@ export async function createMarkerWorkspace(input: {
 }): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "atlas-stage9-"));
   await writeFile(join(root, input.fileName), input.contents, "utf8");
+  // Stage 5 (D2): Guardian requires CONSISTENT knowledge facts to allow
+  // proposal creation. Seed an apps/ entry whose name is a single token
+  // (no hyphens) that appears in the patch-flow userRequest.
+  // "hello" (5 chars, not in STOP) matches "hello.ts: change the greeting export comment".
+  await mkdir(join(root, "apps", "hello"), { recursive: true });
+  await writeFile(join(root, "apps", "hello", "index.ts"), "// placeholder\n", "utf8");
   return root;
 }
 

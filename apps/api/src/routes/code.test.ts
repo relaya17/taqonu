@@ -1351,6 +1351,13 @@ describe("POST /api/v1/code/patch proposal binds workspace and requires identity
   it("Stage 4 D-C: a CODE_ENGINEER proposal is audited as AGENT acting on behalf of the requesting user", async () => {
     const owner = testUser();
     const projectId = makeOwnedProject(owner);
+    // Stage 5 (D2): Guardian needs at least one CONSISTENT knowledge fact to
+    // allow proposal creation. Seed the workspace with an apps/ entry whose
+    // name overlaps with the userRequest keywords ("update", "test", "comment").
+    // "test" (no hyphen) becomes keyword "test"; haystack "update test.txt with a safe comment"
+    // includes "test" → overlapCount >= 1 → Guardian returns CONSISTENT.
+    mkdirSync(join(workspaceRoot, "apps", "test"), { recursive: true });
+    writeFileSync(join(workspaceRoot, "apps", "test", "index.ts"), "// placeholder\n", "utf8");
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/code/patch",
