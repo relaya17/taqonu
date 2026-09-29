@@ -102,6 +102,79 @@ export async function lookupControlPlaneAgentRuntimeStatus(
   }
 }
 
+// ── Registration check ──────────────────────────────────────────────────
+
+export type ControlPlaneRegistrationStatus =
+  | "CONTROL_REGISTERED"
+  | "CONTROL_NOT_REGISTERED"
+  | "CONTROL_REVOKED"
+  | "CONTROL_UNREACHABLE"
+  | "CONTROL_UNKNOWN";
+
+export type ControlPlaneAgentRegistrationLookup =
+  | { readonly configured: false }
+  | {
+      readonly configured: true;
+      readonly registered: boolean;
+      readonly status: ControlPlaneRegistrationStatus;
+    };
+
+/**
+ * Check whether an agent (fabric or PSA) is registered in Control Plane.
+ * Uses the new /api/v1/agents/:id/registration endpoint.
+ * 404 → CONTROL_NOT_REGISTERED (not ACTIVE — unlike the legacy status endpoint).
+ * Network failure → CONTROL_UNREACHABLE.
+ * URL not configured → { configured: false }.
+ */
+export async function checkControlPlaneAgentRegistration(
+  agentId: string,
+  ownerId?: string | null,
+): Promise<ControlPlaneAgentRegistrationLookup> {
+  const base = controlPlaneUrl();
+  if (!base) return { configured: false };
+  const token = controlPlaneToken();
+  if (!token) {
+    return { configured: true, registered: false, status: "CONTROL_UNREACHABLE" };
+  }
+  try {
+    assertEgressAllowed({
+      dataClass: classifyKind("agent_trace"),
+      destination: "atlas_internal",
+      operation: "TELEMETRY",
+      purpose: "control-plane.agent-registration-check",
+    });
+  } catch {
+    return { configured: true, registered: false, status: "CONTROL_UNREACHABLE" };
+  }
+  try {
+    const query = ownerId ? `?ownerId=${encodeURIComponent(ownerId)}` : "";
+    const response = await safeOutboundFetch(
+      `${base}/api/v1/agents/${encodeURIComponent(agentId)}/registration${query}`,
+      {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    if (response.status === 404) {
+      return { configured: true, registered: false, status: "CONTROL_NOT_REGISTERED" };
+    }
+    if (!response.ok) {
+      return { configured: true, registered: false, status: "CONTROL_UNKNOWN" };
+    }
+    const body = (await response.json()) as { status?: string; registered?: boolean };
+    const regStatus = body.status as ControlPlaneRegistrationStatus | undefined;
+    if (regStatus === "CONTROL_REGISTERED") {
+      return { configured: true, registered: true, status: "CONTROL_REGISTERED" };
+    }
+    if (regStatus === "CONTROL_REVOKED") {
+      return { configured: true, registered: false, status: "CONTROL_REVOKED" };
+    }
+    return { configured: true, registered: false, status: "CONTROL_UNKNOWN" };
+  } catch {
+    return { configured: true, registered: false, status: "CONTROL_UNREACHABLE" };
+  }
+}
+
 /**
  * Application → Control Plane: forward selected domain events through the
  * Atlas Gateway. Fail-open — tenant work must not break if :3100 is down.

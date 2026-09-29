@@ -4,6 +4,10 @@ import {
   listRegisteredAgents,
   getRegisteredAgent,
   getRegistryStats,
+  registerAgentInControl,
+  getAgentRegistration,
+  listAgentRegistrations,
+  type RegisterAgentInControlParams,
 } from "../services/agent-registry.js";
 import {
   applyAtlasSelfAgentControl,
@@ -207,6 +211,70 @@ export function createApiRouter(): Router {
 
   router.get("/api/v1/agents", (_req, res) => {
     json(res, listRegisteredAgents());
+  });
+
+  // ── Dynamic Registration Endpoints ────────────────────────────────────
+
+  router.post("/api/v1/agents/register", async (req, res) => {
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      json(res, { error: "invalid json" }, 400);
+      return;
+    }
+    const b = body as Record<string, unknown>;
+    const agentId = typeof b["agentId"] === "string" ? b["agentId"] : null;
+    const registrationSource = typeof b["registrationSource"] === "string"
+      ? b["registrationSource"]
+      : null;
+    const evidence = typeof b["evidence"] === "string" ? b["evidence"] : null;
+    const registeredBy = typeof b["registeredBy"] === "string" ? b["registeredBy"] : null;
+
+    if (!agentId || !registrationSource || !evidence || !registeredBy) {
+      json(res, { error: "agentId, registrationSource, evidence, registeredBy are required" }, 400);
+      return;
+    }
+
+    const validSources = ["STATIC_CATALOG", "DYNAMIC_API", "PSA_OWNER"];
+    if (!validSources.includes(registrationSource)) {
+      json(res, { error: `registrationSource must be one of: ${validSources.join(", ")}` }, 400);
+      return;
+    }
+
+    const ownerId = typeof b["ownerId"] === "string" ? b["ownerId"] : null;
+
+    const params: RegisterAgentInControlParams = {
+      agentId,
+      registrationSource: registrationSource as RegisterAgentInControlParams["registrationSource"],
+      ownerId,
+      evidence,
+      registeredBy,
+    };
+
+    const record = registerAgentInControl(params);
+    json(res, record, 200);
+  });
+
+  router.get("/api/v1/agents/:id/registration", (req, res, params) => {
+    const agentId = params["id"];
+    if (!agentId) {
+      json(res, { error: "Agent ID required" }, 400);
+      return;
+    }
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const ownerId = url.searchParams.get("ownerId") ?? null;
+
+    const registration = getAgentRegistration(agentId, ownerId);
+    if (!registration) {
+      json(res, { registered: false, status: "CONTROL_NOT_REGISTERED" }, 404);
+      return;
+    }
+    json(res, registration);
+  });
+
+  router.get("/api/v1/agents/registrations", (_req, res) => {
+    json(res, listAgentRegistrations());
   });
 
   router.get("/api/v1/agent-profiles", (_req, res) => {

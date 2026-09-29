@@ -229,6 +229,87 @@ export function resetAgentRuntimeForTests(): void {
   runtimeStatus.clear();
 }
 
+// ── Dynamic Control Registration ─────────────────────────────────────────
+
+export type ControlRegistrationSource =
+  | "STATIC_CATALOG"
+  | "DYNAMIC_API"
+  | "PSA_OWNER";
+
+export type ControlRegistrationStatus =
+  | "CONTROL_REGISTERED"
+  | "CONTROL_REVOKED"
+  | "CONTROL_SUSPENDED";
+
+export interface ControlAgentRegistration {
+  readonly agentId: string;
+  readonly registrationSource: ControlRegistrationSource;
+  readonly ownerId: string | null;
+  readonly registeredAt: string;
+  readonly registeredBy: string;
+  readonly evidence: string;
+  readonly status: ControlRegistrationStatus;
+  readonly idempotencyKey: string;
+}
+
+export interface RegisterAgentInControlParams {
+  readonly agentId: string;
+  readonly registrationSource: ControlRegistrationSource;
+  readonly ownerId?: string | null;
+  readonly evidence: string;
+  readonly registeredBy: string;
+}
+
+/**
+ * In-process store for dynamic registrations. Durable across requests
+ * within a server lifetime (survives multiple HTTP calls in the same process).
+ */
+const dynamicRegistrations = new Map<string, ControlAgentRegistration>();
+
+function buildIdempotencyKey(agentId: string, ownerId: string | null | undefined): string {
+  return ownerId ? `${agentId}::owner::${ownerId}` : agentId;
+}
+
+export function registerAgentInControl(
+  params: RegisterAgentInControlParams,
+): ControlAgentRegistration {
+  const ownerId = params.ownerId ?? null;
+  const idempotencyKey = buildIdempotencyKey(params.agentId, ownerId);
+
+  const existing = dynamicRegistrations.get(idempotencyKey);
+  if (existing) return existing;
+
+  const record: ControlAgentRegistration = {
+    agentId: params.agentId,
+    registrationSource: params.registrationSource,
+    ownerId,
+    registeredAt: new Date().toISOString(),
+    registeredBy: params.registeredBy,
+    evidence: params.evidence,
+    status: "CONTROL_REGISTERED",
+    idempotencyKey,
+  };
+
+  dynamicRegistrations.set(idempotencyKey, record);
+  return record;
+}
+
+export function getAgentRegistration(
+  agentId: string,
+  ownerId?: string | null,
+): ControlAgentRegistration | undefined {
+  const key = buildIdempotencyKey(agentId, ownerId ?? null);
+  return dynamicRegistrations.get(key);
+}
+
+export function listAgentRegistrations(): readonly ControlAgentRegistration[] {
+  return [...dynamicRegistrations.values()];
+}
+
+export function clearDynamicRegistrationsForTests(): void {
+  dynamicRegistrations.clear();
+}
+
 export function getAgentCapabilities(agentId: string): readonly AgentCapability[] {
   return getRegisteredAgent(agentId)?.capabilities ?? [];
 }

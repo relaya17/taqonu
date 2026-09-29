@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { planAgentWork } from "@atlas/agent-core";
 import { safeOutboundFetch } from "@atlas/shared/node";
+import { registerPsaWithControl } from "./control-plane-registration.js";
 import {
   createDatabaseClients,
   isLiveSupabase,
@@ -390,6 +391,12 @@ export async function ensurePersonalSupervisingAgent(input: {
     tenantId: scope.tenantId,
     extra: { tenantId: scope.tenantId, applicationIds: scope.applicationIds },
   });
+
+  // Register PSA with Control Plane (idempotent, fail-open)
+  void registerPsaWithControl(input.ownerId).catch(() => {
+    // Control Plane unavailable — PSA creation is not blocked
+  });
+
   return record;
 }
 

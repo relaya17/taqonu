@@ -27,7 +27,10 @@ import {
 } from "@atlas/agent-core";
 import { appendUnifiedAuditEntry } from "../services/audit-log.js";
 import { dispatchAgentAction } from "../services/agent-dispatch-guard.js";
-import { lookupControlPlaneAgentRuntimeStatus } from "../services/control-plane-bridge.js";
+import {
+  lookupControlPlaneAgentRuntimeStatus,
+  checkControlPlaneAgentRegistration,
+} from "../services/control-plane-bridge.js";
 import { getDurableAgentRuntimeStatus } from "../services/agent-runtime-controls.js";
 import {
   getKnowledgeCorpusPersistPath,
@@ -213,6 +216,9 @@ export async function registerAgentFabricRoutes(
     // ownerId.
     const user = await requireSignedInForWrite(app, request);
     const body = agentDispatchRequestSchema.parse(request.body);
+    // Governance visibility: tracks agents found not-registered in Control
+    // during this dispatch. Local to the handler — not stored on `request`.
+    const controlNotRegisteredAgents = new Set<string>();
 
     // ENTITY-LEVEL gate, independent of the ROLE-LEVEL WRITE check above.
     // Unlike /api/v1/agents/plan, this route actually dispatches agents
@@ -328,6 +334,23 @@ export async function registerAgentFabricRoutes(
           combinedRuntimeStatus = overlayPresent
             ? combineAgentRuntimeStatus(durableStatus, fromLookup)
             : undefined;
+
+          // Governance visibility: check registration status (fail-open)
+          try {
+            const regLookup = await checkControlPlaneAgentRegistration(agentId);
+            if (
+              regLookup.configured &&
+              !regLookup.registered &&
+              regLookup.status === "CONTROL_NOT_REGISTERED"
+            ) {
+              // Attach governance metadata — does NOT block dispatch (fail-open)
+              // The controlPlaneRegistered:false flag surfaces in the response
+              // so callers can observe which agents lack a formal registration record.
+              controlNotRegisteredAgents.add(agentId);
+            }
+          } catch {
+            // fail-open: registration check never blocks dispatch
+          }
         }
 
         // Gate check before calling the specialist — CASE.EXECUTE for security
@@ -529,9 +552,17 @@ export async function registerAgentFabricRoutes(
         },
       },
     });
+    // Governance visibility: collect registration state for dispatched agents
+    const registrationStates: Record<string, boolean> = {};
+    for (const aid of controlNotRegisteredAgents) {
+      registrationStates[aid] = false;
+    }
+    const hasUnregistered = controlNotRegisteredAgents.size > 0;
+
     return reply.status(201).send({
       ...result,
       memoryContext,
+      ...(hasUnregistered ? { controlPlaneRegistered: false, registrationStates } : {}),
     });
   });
 
