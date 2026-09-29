@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import { createRequestHandler } from "./http.js";
 import { startPeriodicSync, stopPeriodicSync } from "./services/audit-sync.js";
+import { initDynamicRegistrationCache } from "./services/agent-registry.js";
+import { closeRegistrationStore } from "./services/registration-store.js";
 
 /**
  * Atlas Control Plane — governance, oversight, and AI agent management.
@@ -23,6 +25,7 @@ const server = createServer(handleControlPlaneRequest);
 function shutdown(signal: string): void {
   console.log(`[control-plane] ${signal} — closing`);
   stopPeriodicSync();
+  closeRegistrationStore();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 }
@@ -30,6 +33,10 @@ function shutdown(signal: string): void {
 // Vercel invokes the exported handler per request. Binding a port inside a
 // serverless function never gets a listener and stalls the invocation.
 if (!process.env["VERCEL"]) {
+  // GAP-PERSIST: hydrate in-process registration cache from persistent SQLite store.
+  // Throws if DB cannot be opened — process must not start with a false-empty registry.
+  initDynamicRegistrationCache();
+
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 

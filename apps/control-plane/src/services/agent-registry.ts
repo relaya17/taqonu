@@ -260,53 +260,124 @@ export interface RegisterAgentInControlParams {
   readonly registeredBy: string;
 }
 
+import {
+  openRegistrationStore,
+  persistRegistration,
+  loadRegistrationByKey,
+  loadAllRegistrations,
+  clearRegistrationStoreForTests as storeClearForTests,
+} from "./registration-store.js";
+
 /**
- * In-process store for dynamic registrations. Durable across requests
- * within a server lifetime (survives multiple HTTP calls in the same process).
+ * In-process read-cache for dynamic registrations.
+ *
+ * IMPORTANT: This Map is a cache ONLY. SQLite (registration-store.ts) is the
+ * persistent source of truth. On startup, call initDynamicRegistrationCache()
+ * to hydrate this Map from the DB.
+ *
+ * Write invariant: SQLite is written BEFORE the Map is updated.
+ * A SQLite failure throws — the Map is never updated on failure.
+ *
+ * Read invariant: getAgentRegistration and listAgentRegistrations read from
+ * SQLite directly. The Map is used only as a fast-path for registerAgentInControl
+ * (to skip a redundant INSERT on repeated calls in the same process lifetime).
  */
 const dynamicRegistrations = new Map<string, ControlAgentRegistration>();
 
-function buildIdempotencyKey(agentId: string, ownerId: string | null | undefined): string {
+export function buildIdempotencyKey(agentId: string, ownerId: string | null | undefined): string {
   return ownerId ? `${agentId}::owner::${ownerId}` : agentId;
 }
 
+/**
+ * Hydrate the in-process cache from the persistent store.
+ *
+ * Must be called at Control Plane startup, before serving requests.
+ * Throws if the DB cannot be opened — do not swallow this error.
+ * Safe to call on every restart (idempotent).
+ */
+export function initDynamicRegistrationCache(): void {
+  const persisted = openRegistrationStore(); // throws if DB cannot open
+  dynamicRegistrations.clear();
+  for (const record of persisted) {
+    dynamicRegistrations.set(record.idempotencyKey, record);
+  }
+}
+
+/**
+ * Register an agent in Control.
+ *
+ * Write order:
+ *   1. Persist to SQLite — throws on any DB failure.
+ *   2. Update in-process cache ONLY after successful persist.
+ *
+ * Idempotency: if idempotencyKey already exists in SQLite, the existing record
+ * is returned unchanged. Duplicate calls within the same process hit the Map
+ * fast path without a DB round-trip. Duplicate calls across restarts hit SQLite's
+ * INSERT OR IGNORE and return the original record.
+ */
 export function registerAgentInControl(
   params: RegisterAgentInControlParams,
 ): ControlAgentRegistration {
   const ownerId = params.ownerId ?? null;
   const idempotencyKey = buildIdempotencyKey(params.agentId, ownerId);
 
-  const existing = dynamicRegistrations.get(idempotencyKey);
-  if (existing) return existing;
+  // In-process fast path: cache hit after this process already registered it.
+  // The cache is populated only after a successful SQLite write, so a cache hit
+  // guarantees the record is also in SQLite.
+  const cached = dynamicRegistrations.get(idempotencyKey);
+  if (cached) return cached;
 
-  const record: ControlAgentRegistration = {
-    agentId: params.agentId,
-    registrationSource: params.registrationSource,
-    ownerId,
-    registeredAt: new Date().toISOString(),
-    registeredBy: params.registeredBy,
-    evidence: params.evidence,
-    status: "CONTROL_REGISTERED",
-    idempotencyKey,
-  };
+  // Persist to SQLite first — throws on DB error. Map is not updated on failure.
+  const record = persistRegistration({ ...params, idempotencyKey });
 
+  // Only update cache after confirmed successful persist.
   dynamicRegistrations.set(idempotencyKey, record);
   return record;
 }
 
+/**
+ * Get a single registration.
+ *
+ * Reads from SQLite — the persistent source of truth.
+ * Returns undefined only when the key genuinely does not exist in SQLite.
+ * Throws on any DB error — never returns undefined to mask a failure.
+ */
 export function getAgentRegistration(
   agentId: string,
   ownerId?: string | null,
 ): ControlAgentRegistration | undefined {
   const key = buildIdempotencyKey(agentId, ownerId ?? null);
-  return dynamicRegistrations.get(key);
+  return loadRegistrationByKey(key); // throws on DB error
 }
 
+/**
+ * List all registrations.
+ *
+ * Always reads from SQLite — the persistent source of truth.
+ * Throws on SQLite failure.
+ */
 export function listAgentRegistrations(): readonly ControlAgentRegistration[] {
-  return [...dynamicRegistrations.values()];
+  return loadAllRegistrations(); // throws on DB error
 }
 
+/**
+ * Clear registrations — for tests ONLY.
+ * Clears both the SQLite table and the in-process cache.
+ * Never call in production code.
+ */
 export function clearDynamicRegistrationsForTests(): void {
+  storeClearForTests();
+  dynamicRegistrations.clear();
+}
+
+/**
+ * Clear only the in-process Map — for restart simulation tests ONLY.
+ * Does NOT touch the SQLite DB file. Use this when simulating a process
+ * restart where the DB data must survive (the singleton is already closed
+ * by closeRegistrationStoreForTests before calling this).
+ * Never call in production code.
+ */
+export function clearRegistrationCacheOnlyForTests(): void {
   dynamicRegistrations.clear();
 }
 

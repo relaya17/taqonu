@@ -36,3 +36,6 @@ workspace-packages.json
 # Internal IP / algorithm records — never publish the recipe
 docs/confidential/
 **/*CONFIDENTIAL*
+
+# Control Plane local registration database — never commit the live registry
+apps/control-plane/control-plane-registrations.db
