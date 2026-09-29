@@ -1472,4 +1472,123 @@ ps aux | grep node → no Control Plane or API processes running
 
 ---
 
+## 33. GAP-RESOURCE — AI Resource Efficiency, Automation & Cost-Control Verification
+
+**Recorded:** 2026-09-29
+
+**Status:** 🔶 BASELINE PARTIALLY VERIFIED (Stage 1–3 COMPLETE: Stage 1–2 audit-only, Stage 3 controlled baseline measurement executed 2026-09-29). Remediation (Stage 4+) is NOT started. Do not read this section as a closed gap, and do not upgrade this status to VERIFIED / COMPLETE / CLOSED / PRODUCTION VERIFIED — R1 and R3 live-provider paths remain environment-blocked and R5 production-scale write amplification remains unmeasured.
+
+### 33.1 Purpose
+
+Evidence-first verification of whether Atlas/ArletOS uses AI, compute, database, network, and automation resources in a controlled, efficient, measurable way. The goal of this section is to prove or disprove efficiency with evidence — an agent claim (a cache exists, a limiter exists) is never accepted as verification on its own. Standard: `Implementation → Execution → Measurement → Evidence`.
+
+### 33.2 Scope
+
+AI/LLM invocations, agent orchestration/dispatch, automation (background workers, polling, scheduled jobs), caching and reuse, context size sent to agents, database access, network/API calls, compute/runtime lifecycle, cost controls, and failure amplification. Out of scope for this section: redesigning Atlas/Studio/Control, new product features, database migration, provider replacement, speculative caching, or optimizing for benchmark numbers alone.
+
+**Scope note:** this document's own header states it is the authoritative Control remediation register, scoped to Control governance. GAP-RESOURCE spans Fabric agent dispatch, LLM providers, and the worker queue — areas broader than Control's declared ownership boundary. It is recorded here per explicit owner direction rather than as a Control-governance claim.
+
+### 33.3 Existing Controls (Stage 1 audit — read-only, no code modified)
+
+| Mechanism | File | What it bounds |
+| --------- | ---- | --------------- |
+| LLM call dedup cache | `packages/agent-core/src/providers/llm.ts` | 45s TTL (`DEDUP_TTL_MS`), 200-entry cap (`MAX_DEDUP_CACHE_ENTRIES`), keyed on `(provider, model, normalized messages)` |
+| Rolling per-model cost/latency/error tracker | `packages/agent-core/src/providers/llm.ts` | Fixed 20-call ring buffer per model id (`ROLLING_WINDOW_SIZE`), no persistence across restarts |
+| Provider call retry/backoff | `packages/agent-core/src/providers/llm.ts` | `MAX_PROVIDER_CALL_ATTEMPTS=3`, `RETRY_DELAY_BASE_MS=50`, `RETRY_DELAY_CAP_MS=1000` |
+| Worker job retry/backoff | `apps/worker/src/index.ts` | `MAX_JOB_ATTEMPTS=3`, exponential `backoffMs = 1000 * 2^(retryCount-1)` |
+| Worker durable queue | `apps/worker/src/queue-persistence.ts` | Crash-recovery JSON file, atomic rename-based write; full-file rewrite on every job state change (see §33.6) |
+| Kill switches (category circuit breaker) | `packages/agent-core/src/policies/kill-switches.ts`, `apps/api/src/services/kill-switch-runtime.ts` | `agentDispatch` / `payments` / `webhooksInbound` / `webhooksOutbound` / `aiWorkers`; env-baseline ∪ durable runtime override, checked before dispatch |
+| Delegation hop cap | `packages/shared/src/constants/operating-cycle.ts` | `MAX_DELEGATION_HOP_COUNT=10` — bounds agent A→B→C recursion |
+| Global HTTP rate limit | `apps/api/src/create-app.ts` | `@fastify/rate-limit`, 300 req/min |
+| Auth-endpoint rate limit | `apps/api/src/services/auth-rate-limit.ts` | In-process sliding window per key; opportunistic cleanup at 5,000 buckets |
+| Agent memory/plan budgets | `apps/api/src/routes/agent-fabric.ts` | `AGENT_MEMORY_BUDGET=12`; per-request `budgetUsd`/`maxAgents` on `planAgentWork` |
+| In-process event bus dedup | `packages/agent-core/src/events/event-bus.ts` | `seenEventIds` prevents re-dispatch of the same `event.id` |
+| Periodic CP→API audit sync | `apps/control-plane/src/services/audit-sync.ts` | 30s interval; errors swallowed, retried next tick only |
+| Verified-knowledge refresh interval | `apps/api/src/services/verified-knowledge-refresh.ts` | 24h interval (`KNOWLEDGE_REFRESH_INTERVAL_MS`) |
+
+### 33.4 Observable Metrics (measurable now, Stage 2 classification)
+
+| Metric | Source | Notes |
+| ------ | ------ | ----- |
+| LLM call count / latency / rolling cost per model | `getModelRollingStats()` / `getAllModelRollingStats()` (`llm.ts`) | In-process only, 20-call window, resets on restart |
+| HTTP request duration | `atlasMetrics` (`http_request_duration_ms`) | Ring buffer (cap 2000) + durable NDJSON tail; Prometheus-exported |
+| Agent run duration | `atlasMetrics` (`agent_run_duration`) | Recorded at plan/dispatch call sites |
+| Memory retrieval hit rate | `atlasMetrics` (`retrieval_hit_rate`) | Recorded at plan/dispatch call sites |
+
+### 33.5 Partially Observable Metrics
+
+| Metric | Limitation |
+| ------ | ---------- |
+| LLM dedup cache hit rate | `LlmCallResult.cacheHit` exists per call; nothing aggregates it into a hit-rate metric |
+| Worker queue depth / age / retry history | `getQueueStats()` gives a point-in-time snapshot only; no historical time series |
+
+### 33.6 Non-Observable Metrics (explicit gaps — never inferred as zero)
+
+- Per-agent token consumption — **NOT OBSERVABLE**
+- Per-project token consumption — **NOT OBSERVABLE**
+- DB / file-store query count and latency (SQLite registration store, worker queue JSON file) — **NOT OBSERVABLE**
+- Kill-switch activation history (frequency, duration over time) — **NOT OBSERVABLE**
+- Cross-call retry/failure amplification (retry storms spanning multiple call sites) — **NOT OBSERVABLE**
+- Live paid-provider (Anthropic/OpenAI/Gemini) network token/cost usage — **NOT OBSERVABLE** (ENVIRONMENT-BLOCKED: no provider credentials in this environment; not a product failure)
+- Live LLM-backed specialist dispatch cost (Sentinel/CODE_ENGINEER/RESEARCHER via a real provider) — **NOT OBSERVABLE** (ENVIRONMENT-BLOCKED: requires a running API server + provider credentials, not exercised in Stage 3)
+- Production-scale worker-queue write-amplification impact — **NOT OBSERVABLE this pass** (see §33.7 RES-CANDIDATE-1 — risk identified, not yet measured)
+- Historical (time-series) queue depth/age — **NOT OBSERVABLE** (only point-in-time `getQueueStats()` snapshots exist)
+
+### 33.7 Known Risks / Gaps (identified, not yet measured)
+
+- **RES-CANDIDATE-1 — Worker queue full-file JSON rewrite:** `queue-persistence.ts` rewrites the entire queue file on every enqueue/state change. Classification: **RISK IDENTIFIED, NOT YET MEASURED** — do not claim inefficiency until Stage 3 measures it under a representative job volume.
+- **RES-CANDIDATE-2 — No per-agent/per-project cost-budget enforcement:** `maxCostUsd` exists on the Fabric catalog definition and rolling cost stats exist per model, but no call site was found that denies dispatch for exceeding a cost budget. Classification: **NOT FOUND** (absence of enforcement, not a measured failure).
+
+### 33.8 Stage 3 — Controlled Baseline Evidence (executed 2026-09-29)
+
+Method: existing, unmodified test files exercised against the real production code paths (`packages/agent-core/src/providers/llm.test.ts`, `packages/agent-core/src/orchestrator/dispatch.test.ts`, `apps/worker/src/index.test.ts`, `apps/worker/src/queue-persistence.test.ts`). No source file, test file, or configuration was changed to produce this evidence. Where a genuine live/paid-provider call would be required, this is recorded as ENVIRONMENT-BLOCKED / NOT OBSERVABLE, never estimated.
+
+**R1 — Simple LLM request — PARTIALLY VERIFIED**
+Verified: `context-echo-free` genuine (non-mocked) execution; zero token/cost usage is genuine for this provider (never calls a billed API); no errors; 1–7ms harness timing; provider parsing/token-cost math independently verified through `AnthropicProvider`/`OpenAiCompatibleProvider`/`GeminiProvider` tests (mocked transport only).
+Not verified: live paid-provider network execution; real production token consumption; real paid-provider cost.
+Classification: **ENVIRONMENT-BLOCKED / NOT OBSERVABLE** — no provider credentials are available in the current environment. Not a product failure.
+
+**R2 — Identical repeated request / dedup — VERIFIED**
+Evidence: 2 logical calls → 1 actual provider call, 1 cache miss, 1 cache hit; identical result (`usage` deep-equal) returned from cache; a different message correctly bypasses dedup (2/2 provider calls); a different model correctly bypasses dedup (2/2 provider calls); TTL expiry (46s > 45s `DEDUP_TTL_MS`) correctly bypasses dedup (2/2 provider calls); a cache hit does not double-record rolling model cost statistics (`sampleSize === 1` after 2 identical calls).
+Conclusion: **Deduplication is empirically verified under its designed conditions.**
+
+**R3 — Agent dispatch — PARTIALLY VERIFIED**
+Verified: dispatch executes (`dispatchAgentPlan`); the stub specialist path genuinely has zero provider cost (`costUsd === 0` for every run, no provider ever called); a supplied specialist cost (`0.0042`) is preserved unchanged through the run record; the disabled-agent gate (AD-1) prevents specialist execution while keeping audit claims/evidenceRefs present; all 8 `dispatch.test.ts` cases passed, including the Civio-scope knowledge-isolation path.
+Not verified: live LLM-backed Sentinel/CODE_ENGINEER/RESEARCHER dispatch; real provider cost attribution through the live specialist path.
+Classification: **ENVIRONMENT-BLOCKED / NOT OBSERVABLE** — requires a running API server + provider credentials, not exercised this pass. Do not call the live path broken.
+
+**R4 — Controlled failure/retry — VERIFIED**
+Provider layer: a transient `fetch failed` retries and succeeds (2 calls); a transient 503 retries and succeeds (2 calls); a 401 does not retry (1 call); `MAX_PROVIDER_CALL_ATTEMPTS=3` is the observed ceiling; the final error surfaces to the caller after exhaustion; `completeWithFreeFallback` falls through to the free provider instead of throwing; retry delay stays ≤1000ms even at attempt 10 with maximum jitter.
+Worker layer: a transient job failure retries and succeeds (`processJobMock` called exactly 2 times, zero error logs); a permanently-failing job reaches `MAX_JOB_ATTEMPTS=3`, is dead-lettered, and is dropped from the queue (`queueLength()→0`, exactly 1 `error` log, exactly 2 `warn` logs) — verified in isolation (see F3).
+Conclusion: **Retry behavior is empirically bounded at both provider and worker layers.**
+
+**R5 — Queue behavior — PARTIALLY VERIFIED**
+Verified: empty-queue state is genuinely zero (`getQueueStats()`); persistence to disk with atomic rename (zero leftover `.tmp` files); reload returns the persisted job; the same job id upserts instead of duplicating (exactly 1 row on disk after 2 persists with different `retryCount`); `RUNNING` jobs recover to `PENDING` after reload; `cleanupOldJobs` keeps active jobs + newest terminal jobs and discards the rest; a corrupt queue file fails safely to an empty queue rather than crashing.
+Not yet measured: production-scale full-file rewrite / write-amplification impact under a representative job volume; historical (time-series) queue depth/age.
+Classification: **RISK IDENTIFIED, NOT YET MEASURED** for the write-amplification question — do not describe the full-file rewrite as a confirmed performance defect.
+
+**F3 — Cross-file test isolation (verification/test-infrastructure finding, separate from the R1–R5 results above)**
+Observed: running `apps/worker/src/index.test.ts` together with the other 3 Stage-3 test files in one `vitest` invocation produced 2 failures (a timeout and a call-count mismatch); running `apps/worker/src/index.test.ts` alone reproduces 5/5 passes; the failure does not reproduce in isolation.
+Classification: **VERIFICATION / TEST-INFRASTRUCTURE ISSUE.** Not a production defect — not fixed during Stage 3; no test, timer, retry, or timeout was modified to hide it. Recorded as a remediation candidate only (§33.10).
+
+### 33.9 Verification Criteria
+
+Evidence classes follow the same vocabulary already defined at the top of this document (`IMPLEMENTED + TESTED`, `VERIFIED LOCAL`, `ENVIRONMENT BLOCKED`, etc.). Per-scenario classification is recorded in §33.8 above: R2 and R4 are VERIFIED; R1, R3, and R5 are PARTIALLY VERIFIED (each with an explicit, named limitation, never inferred). GAP-RESOURCE as a whole remains **BASELINE PARTIALLY VERIFIED** — not VERIFIED, COMPLETE, CLOSED, or PRODUCTION VERIFIED.
+
+### 33.10 Remediation Status
+
+Not started. The following are candidates only — none implemented, none authorized under Stage 3:
+
+1. Investigate F3 (cross-file test isolation in `apps/worker/src/index.test.ts`).
+2. Measure `queue-persistence.ts` full-file-rewrite cost at a representative job volume (RES-CANDIDATE-1).
+3. Consider an aggregate dedup-cache hit-rate telemetry metric (currently only a per-call boolean).
+4. Establish real per-agent/per-project token and cost attribution before any budget-enforcement work is considered (RES-CANDIDATE-2).
+5. Perform a controlled live-provider measurement pass when a legitimate low-cost/rate-limited provider credential and a running API environment are available (resolves R1/R3 ENVIRONMENT-BLOCKED status).
+
+### 33.11 Final Closure Criteria
+
+GAP-RESOURCE may only be marked VERIFIED when every condition in the originating audit specification's own Definition of Done is met (repository audit complete, telemetry evaluated, representative workloads measured, confirmed resource behavior evidenced, known waste identified or reasonably ruled out, automation and runaway protections verified where applicable, required remediation completed, before/after measurements exist for claimed optimizations, regression tests pass, type checking passes, `git diff --check` passes, no unrelated scope introduced, this document reflects the verified state, remaining limitations explicitly recorded). This section is not that state today — it records Stage 1–3 audit and controlled-baseline findings only. Current status: **BASELINE PARTIALLY VERIFIED**, not VERIFIED/COMPLETE/CLOSED/PRODUCTION VERIFIED.
+
+---
+
 *End of Master Plan. Update this file after every task, gap, correction, or blocker change.*
