@@ -1296,4 +1296,180 @@ The unquantified savings result is an evidence boundary, not a new engineering g
 
 ---
 
+---
+
+## 32. GAP-PERSIST + GAP-GATE — Control Registration Durability and Authorization Gate
+
+**Recorded:** 2026-09-29 | **Session:** `session_011uFzz6ugdabrSwHivkdfg6`
+
+---
+
+### GAP-PERSIST
+
+**Objective:** Make Control Agent Registration (`ControlAgentRegistration`) durable across Control Plane restarts. Replace volatile in-process `Map` with SQLite persistence using Node 22 built-in `node:sqlite`.
+
+**Status:** ✅ CLOSED / VERIFIED — `IMPLEMENTED + TESTED (local)`
+
+**Implementation files:**
+
+| File | Change |
+| ---- | ------ |
+| `apps/control-plane/src/services/registration-store.ts` | NEW — SQLite persistent store (singleton `DatabaseSync`; schema via `CREATE TABLE IF NOT EXISTS`; `INSERT OR IGNORE` idempotency; all failures throw) |
+| `apps/control-plane/src/services/agent-registry.ts` | MODIFIED — `dynamicRegistrations` Map is cache only; SQLite = source of truth; `getAgentRegistration`/`listAgentRegistrations` read from SQLite; added `clearRegistrationCacheOnlyForTests()` |
+| `apps/control-plane/src/server.ts` | MODIFIED — `initDynamicRegistrationCache()` before `server.listen()`; `closeRegistrationStore()` on SIGTERM/SIGINT |
+| `apps/control-plane/src/__tests__/registration-persistence.test.ts` | NEW — 15 persistence + restart simulation + DB failure tests |
+| `.gitignore` | MODIFIED — added `apps/control-plane/control-plane-registrations.db` (the runtime artifact created by registration persistence) |
+
+**Authorization chain invariants (GAP-PERSIST):**
+
+- SQLite written FIRST; in-process Map updated ONLY after successful persist.
+- DB failure throws — never silently returns empty state.
+- `initDynamicRegistrationCache()` hydrates Map from SQLite at startup; throws if DB cannot open.
+- `getAgentRegistration` / `listAgentRegistrations` always read from SQLite.
+- `CONTROL_PLANE_DB_PATH` env var controls DB location (production: persistent volume path).
+- Default: `./control-plane-registrations.db` (relative to `process.cwd()`).
+
+**DB artifact:** `apps/control-plane/control-plane-registrations.db` — added to `.gitignore` (2026-09-29). Never commit.
+
+**Test evidence (local):**
+
+```
+Test Files: 29 passed (29)
+Tests:      343 passed (343)
+TypeScript: 0 errors
+```
+
+**Test evidence (Windows, independent verification):**
+
+```
+registration-persistence.test.ts: 15/15 PASS
+Full Control Plane regression:     343/343 PASS
+TSC:                                PASS
+git diff --check:                   PASS
+```
+
+**Production verified:** NO — Control Plane (:3100) not running in cloud environment. ENVIRONMENT BLOCKER.
+
+**Live verification:** NOT PERFORMED — see §32.3 (ENVIRONMENT BLOCKER).
+
+---
+
+### GAP-GATE
+
+**Objective:** Convert `controlPlaneRegistered: false` from observational/fail-open telemetry to a hard authorization gate. An agent may be dispatched ONLY when its Control registration is valid. Fail-closed: Control unavailability = DENY.
+
+**Status:** ✅ CLOSED / VERIFIED — `IMPLEMENTED + TESTED (local)` | Live verification: ENVIRONMENT BLOCKER
+
+**Implementation files:**
+
+| File | Change |
+| ---- | ------ |
+| `apps/api/src/routes/agent-fabric.ts` | MODIFIED — replaced fail-open try/catch block (lines ~339–353) with fail-closed gate; removed `controlNotRegisteredAgents` Set |
+| `apps/api/src/routes/agent-fabric.test.ts` | MODIFIED — added `checkControlPlaneAgentRegistration` mock to `control-plane-bridge.js` vi.mock; added describe block "GAP-GATE: Control Registration Authorization Gate" (11 tests) |
+
+**Authorization decision flow (post-GAP-GATE):**
+
+```
+POST /api/v1/agents/dispatch
+  ↓
+requireSignedInForWrite (session auth)
+  ↓
+authorizeEntityAction("CONFIGURATION", "EXECUTE") → 403 if denied
+  ↓
+dispatchAgentPlan → specialistOverride (SECURITY/LEGAL_MEDIA_COMMS/CODE_ENGINEER/RESEARCHER):
+  1. getDurableAgentRuntimeStatus
+  2. lookupControlPlaneAgentRuntimeStatus
+  3. combineAgentRuntimeStatus
+  4. *** GAP-GATE: checkControlPlaneAgentRegistration(agentId, user.id) ***
+       configured: false           → SKIPPED (CONTROL_UNREACHABLE: URL not configured)
+       catch (any error)           → SKIPPED (CONTROL_UNREACHABLE: Control check failed)
+       status !== CONTROL_REGISTERED → SKIPPED (status name)
+       status === CONTROL_REGISTERED → continue
+  5. dispatchAgentAction (CASE.EXECUTE) — SKIPPED if denied (SECURITY/LEGAL only)
+  6. run specialist
+```
+
+**Denial semantics:**
+
+| Condition | Result |
+| --------- | ------ |
+| `CONTROL_REGISTERED` | ALLOW — dispatch continues |
+| `CONTROL_NOT_REGISTERED` | DENY — SKIPPED(`CONTROL_NOT_REGISTERED`) |
+| `CONTROL_REVOKED` | DENY — SKIPPED(`CONTROL_REVOKED`) |
+| `CONTROL_UNREACHABLE` | DENY — SKIPPED(`CONTROL_UNREACHABLE`) |
+| `configured: false` | DENY — SKIPPED(`CONTROL_UNREACHABLE: Control Plane URL not configured`) |
+| `checkControlPlaneAgentRegistration` throws | DENY — SKIPPED(`CONTROL_UNREACHABLE: Control check failed`) |
+| `isAgentEnabled` / durable runtime DISABLED | DENY — via existing `dispatchAgentAction` gate (fires after GAP-GATE) |
+| Not in `FABRIC_AGENT_IDS` | DENY — 400 (existing gate, fires before GAP-GATE) |
+
+**GAP-GATE tests added (11 cases):**
+
+| # | Test | Asserts |
+| - | ---- | ------- |
+| 1 | registered + valid + enabled → ALLOW | `run.status === "COMPLETED"` (not SKIPPED) |
+| 2 | unregistered → DENY | `run.status === "SKIPPED"`, `summary` matches `CONTROL_NOT_REGISTERED` |
+| 3 | inactive/revoked → DENY | `run.status === "SKIPPED"`, `summary` matches `CONTROL_REVOKED` |
+| 4 | Control unavailable (CONTROL_UNREACHABLE) → DENY | `run.status === "SKIPPED"`, `summary` matches `CONTROL_UNREACHABLE` |
+| 5 | Control not configured → DENY | `run.status === "SKIPPED"`, `summary` matches `CONTROL_UNREACHABLE` |
+| 6 | PSA owner matches → ALLOW | `run.status === "COMPLETED"`, called with `user.id` |
+| 7 | PSA owner mismatch → DENY | `run.status === "SKIPPED"` |
+| 8 | disabled Fabric + valid Control → DENY | `run.status === "SKIPPED"` (dispatchAgentAction DENIED) |
+| 9 | unknown/non-Fabric agent → DENY | 400 or SKIPPED |
+| 10 | Control throws → no fall-through | `run.status === "SKIPPED"`, specialist never called |
+| 11 | existing CONFIGURATION.EXECUTE denial → 403 | 403 FORBIDDEN (pre-existing gate preserved) |
+
+**Test evidence (local):**
+
+```
+Test Files: 1 passed (1)
+Tests:      48 passed (48)  (37 pre-existing + 11 GAP-GATE)
+TypeScript: 0 new errors in agent-fabric.ts / agent-fabric.test.ts
+```
+
+**Existing protections:**
+- ✅ `FABRIC_AGENT_IDS` — not modified
+- ✅ `isAgentEnabled` / durable runtime status — not modified
+- ✅ `authorizeEntityAction` Policy Engine — not modified
+- ✅ `dispatchAgentAction` (CASE.EXECUTE) — not modified
+- ✅ GAP-PERSIST (343/343) — no regression
+
+**Not committed / not pushed.** Uncommitted changes are expected and authorized per directive. Do not commit without separate authorization.
+
+---
+
+### 32.3 Live Control Verification
+
+**Status:** ⛔ ENVIRONMENT BLOCKER
+
+**Attempted:** 2026-09-29 from cloud container.
+
+**Evidence:**
+
+```
+curl -sv --max-time 3 http://127.0.0.1:3100/api/v1/status
+→ connect to 127.0.0.1 port 3100 failed: Connection refused
+
+curl -sv --max-time 3 http://127.0.0.1:4000/api/v1/status
+→ connect to 127.0.0.1 port 4000 failed: Connection refused
+
+ps aux | grep node → no Control Plane or API processes running
+```
+
+**Classification:** ENVIRONMENT BLOCKER — Control Plane (:3100) and Atlas API (:4000) are not running in this cloud container. The live Windows environment is not reachable from here. Live verification requires running both servers locally on the Windows machine where `ATLAS_CONTROL_PLANE_URL=http://127.0.0.1:3100` is accessible.
+
+**Live verification not performed:**
+
+| Verification | Status |
+| ------------ | ------ |
+| Control Plane status endpoint | ⛔ ENVIRONMENT BLOCKER |
+| `/api/v1/agents/:id/registration` API | ⛔ ENVIRONMENT BLOCKER |
+| Positive dispatch (CONTROL_REGISTERED → allowed) | ⛔ ENVIRONMENT BLOCKER |
+| Negative dispatch (unregistered → denied) | ⛔ ENVIRONMENT BLOCKER |
+| Negative dispatch (Control unavailable → denied) | ⛔ ENVIRONMENT BLOCKER |
+| Negative dispatch (owner mismatch → denied) | ⛔ ENVIRONMENT BLOCKER |
+
+**Next action for live verification (separate authorization required):** Start Control Plane (`pnpm --filter @atlas/control-plane dev`) and API (`pnpm --filter @atlas/api dev`) on the Windows machine, register/unregister agents, then issue dispatch requests to prove positive and negative paths against the live gate.
+
+---
+
 *End of Master Plan. Update this file after every task, gap, correction, or blocker change.*
