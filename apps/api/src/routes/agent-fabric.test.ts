@@ -83,6 +83,22 @@ vi.mock("../services/agent-dispatch-guard.js", async (importOriginal) => {
   };
 });
 
+// GAP-GATE: mock for checkControlPlaneAgentRegistration.
+// Default: returns CONTROL_REGISTERED (allow) so all pre-existing tests keep
+// passing. Individual GAP-GATE tests override this per-test.
+const checkControlPlaneAgentRegistration = vi.fn();
+
+vi.mock("../services/control-plane-bridge.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/control-plane-bridge.js")>();
+  return {
+    ...actual,
+    checkControlPlaneAgentRegistration: (
+      ...args: Parameters<typeof actual.checkControlPlaneAgentRegistration>
+    ) => checkControlPlaneAgentRegistration(...args) ?? actual.checkControlPlaneAgentRegistration(...args),
+  };
+});
+
 // The real `runSecuritySpecialistViaSentinel` needs a real workspace root
 // (`osStore.getWorkspaceRoot`) to do anything — spying (not replacing) it
 // lets the "reaches the real specialist" test assert it was actually
@@ -224,6 +240,14 @@ beforeEach(() => {
   runSecuritySpecialistViaSentinel.mockReturnValue(undefined);
   completeWithFreeFallback.mockReset();
   completeWithFreeFallback.mockReturnValue(undefined);
+  // GAP-GATE: default to CONTROL_REGISTERED so all pre-existing tests pass
+  // unmodified. Individual GAP-GATE tests override this below.
+  checkControlPlaneAgentRegistration.mockReset();
+  checkControlPlaneAgentRegistration.mockResolvedValue({
+    configured: true,
+    registered: true,
+    status: "CONTROL_REGISTERED",
+  });
   // Fresh, empty durable Runtime Control store per test — see the import
   // block comment above. An agent with no seeded record resolves to
   // "no overlay" (undefined), matching pre-Decision-B behavior exactly, so
@@ -1001,6 +1025,217 @@ describe("POST /api/v1/judge/evaluate", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().decision).toBe("APPROVE");
+  });
+});
+
+describe("GAP-GATE: Control Registration Authorization Gate", () => {
+  // Helper: dispatch a single agent and return the response
+  async function dispatchAgent(agentId: string) {
+    return app.inject({
+      method: "POST",
+      url: "/api/v1/agents/dispatch",
+      payload: { request: "test request for gap-gate", agentIds: [agentId] },
+    });
+  }
+
+  it("1. registered + valid + enabled → ALLOW: CONTROL_REGISTERED does not produce SKIPPED", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: true,
+      status: "CONTROL_REGISTERED",
+    });
+    // SECURITY needs dispatchAgentAction to ALLOW
+    dispatchAgentAction.mockReturnValue({
+      decision: "ALLOWED",
+      score: 5,
+      bucket: "AUTO",
+      auditId: "audit-gap-1",
+    });
+    runSecuritySpecialistViaSentinel.mockReturnValue({
+      agentId: "SECURITY",
+      status: "COMPLETED",
+      summary: "gap-gate allow test",
+      claims: [],
+      evidenceRefs: [],
+      epistemicState: "OBSERVED",
+      costUsd: 0,
+      durationMs: 1,
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).not.toBe("SKIPPED");
+    expect(run.status).toBe("COMPLETED");
+  });
+
+  it("2. unregistered agent → DENY: CONTROL_NOT_REGISTERED yields SKIPPED with reason", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: false,
+      status: "CONTROL_NOT_REGISTERED",
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(run.epistemicState).toBe("UNKNOWN");
+    expect(run.summary).toMatch(/CONTROL_NOT_REGISTERED/);
+  });
+
+  it("3. inactive/revoked registration → DENY: CONTROL_REVOKED yields SKIPPED", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: false,
+      status: "CONTROL_REVOKED",
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(run.summary).toMatch(/CONTROL_REVOKED/);
+  });
+
+  it("4. Control Plane unavailable (CONTROL_UNREACHABLE) → DENY: yields SKIPPED", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: false,
+      status: "CONTROL_UNREACHABLE",
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(run.summary).toMatch(/CONTROL_UNREACHABLE/);
+  });
+
+  it("5. Control Plane not configured → DENY: configured:false yields SKIPPED", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({ configured: false });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(run.summary).toMatch(/CONTROL_UNREACHABLE/);
+  });
+
+  it("6. PSA owner matches → ALLOW: registered with matching ownerId allows dispatch", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: true,
+      status: "CONTROL_REGISTERED",
+    });
+    dispatchAgentAction.mockReturnValue({
+      decision: "ALLOWED",
+      score: 5,
+      bucket: "AUTO",
+      auditId: "audit-gap-6",
+    });
+    runSecuritySpecialistViaSentinel.mockReturnValue({
+      agentId: "SECURITY",
+      status: "COMPLETED",
+      summary: "PSA owner match test",
+      claims: [],
+      evidenceRefs: [],
+      epistemicState: "OBSERVED",
+      costUsd: 0,
+      durationMs: 1,
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("COMPLETED");
+    // Verify ownerId (OWNER_A.id) was passed to the registration check
+    expect(checkControlPlaneAgentRegistration).toHaveBeenCalledWith(
+      "SECURITY",
+      OWNER_A.id,
+    );
+  });
+
+  it("7. PSA owner mismatch → DENY: NOT_REGISTERED for mismatched ownerId yields SKIPPED", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: false,
+      status: "CONTROL_NOT_REGISTERED",
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(run.summary).toMatch(/CONTROL_NOT_REGISTERED/);
+  });
+
+  it("8. disabled Fabric agent + valid Control registration → DENY: runtime DISABLED blocks before dispatch", async () => {
+    checkControlPlaneAgentRegistration.mockResolvedValue({
+      configured: true,
+      registered: true,
+      status: "CONTROL_REGISTERED",
+    });
+    // dispatchAgentAction denies because agent is DISABLED
+    dispatchAgentAction.mockReturnValue({
+      decision: "DENIED",
+      reason: "agent runtime status DISABLED is non-executable",
+    });
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(runSecuritySpecialistViaSentinel).not.toHaveBeenCalled();
+  });
+
+  it("9. unknown/non-Fabric agent → 400 or SKIPPED (not in FABRIC_AGENT_IDS)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/dispatch",
+      payload: { request: "test request", agentIds: ["NONEXISTENT_AGENT_XYZ"] },
+    });
+    // Either 400 (invalid agentId) or 201 with no run for the unknown agent
+    expect([400, 201]).toContain(res.statusCode);
+    if (res.statusCode === 201) {
+      const runs = res.json().runs;
+      const run = runs.find((r: { agentId: string }) => r.agentId === "NONEXISTENT_AGENT_XYZ");
+      // Either no run at all, or a SKIPPED run
+      if (run) {
+        expect(run.status).toBe("SKIPPED");
+      }
+    }
+  });
+
+  it("10. Control registration failure cannot fall through to dispatch — throws → SKIPPED", async () => {
+    checkControlPlaneAgentRegistration.mockRejectedValue(
+      new Error("Simulated network failure in control-plane-bridge"),
+    );
+
+    const res = await dispatchAgent("SECURITY");
+    expect(res.statusCode).toBe(201);
+    const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
+    expect(run.status).toBe("SKIPPED");
+    expect(run.summary).toMatch(/CONTROL_UNREACHABLE/);
+    // The real specialist was never called
+    expect(runSecuritySpecialistViaSentinel).not.toHaveBeenCalled();
+  });
+
+  it("11. existing dispatch protections remain active — CONFIGURATION.EXECUTE denial still returns 403", async () => {
+    // The authorizeEntityAction denial fires BEFORE specialistOverride,
+    // so GAP-GATE never even runs — the 403 from the top-level gate is enough.
+    authorizeEntityAction.mockReturnValue({
+      decision: "DENIED",
+      reason: "regression: top-level gate still fires",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agents/dispatch",
+      payload: { request: "fix the login bug" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("FORBIDDEN");
   });
 });
 

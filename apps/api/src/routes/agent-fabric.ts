@@ -216,9 +216,6 @@ export async function registerAgentFabricRoutes(
     // ownerId.
     const user = await requireSignedInForWrite(app, request);
     const body = agentDispatchRequestSchema.parse(request.body);
-    // Governance visibility: tracks agents found not-registered in Control
-    // during this dispatch. Local to the handler — not stored on `request`.
-    const controlNotRegisteredAgents = new Set<string>();
 
     // ENTITY-LEVEL gate, independent of the ROLE-LEVEL WRITE check above.
     // Unlike /api/v1/agents/plan, this route actually dispatches agents
@@ -335,22 +332,52 @@ export async function registerAgentFabricRoutes(
             ? combineAgentRuntimeStatus(durableStatus, fromLookup)
             : undefined;
 
-          // Governance visibility: check registration status (fail-open)
+          // GAP-GATE: Registration check — fail-closed. A non-registered,
+          // revoked, or unreachable Control Plane result blocks dispatch.
+          // Only CONTROL_REGISTERED status allows the run to proceed.
+          let regLookup: Awaited<ReturnType<typeof checkControlPlaneAgentRegistration>>;
           try {
-            const regLookup = await checkControlPlaneAgentRegistration(agentId);
-            if (
-              regLookup.configured &&
-              !regLookup.registered &&
-              regLookup.status === "CONTROL_NOT_REGISTERED"
-            ) {
-              // Attach governance metadata — does NOT block dispatch (fail-open)
-              // The controlPlaneRegistered:false flag surfaces in the response
-              // so callers can observe which agents lack a formal registration record.
-              controlNotRegisteredAgents.add(agentId);
-            }
+            regLookup = await checkControlPlaneAgentRegistration(agentId, user.id);
           } catch {
-            // fail-open: registration check never blocks dispatch
+            const reason = "CONTROL_UNREACHABLE: Control check failed";
+            return {
+              agentId,
+              status: "SKIPPED" as const,
+              summary: reason,
+              claims: [`${agentId}: ${reason}`],
+              evidenceRefs: [],
+              epistemicState: "UNKNOWN" as const,
+              costUsd: 0,
+              durationMs: 0,
+            };
           }
+          if (!regLookup.configured) {
+            const reason = "CONTROL_UNREACHABLE: Control Plane URL not configured";
+            return {
+              agentId,
+              status: "SKIPPED" as const,
+              summary: reason,
+              claims: [`${agentId}: ${reason}`],
+              evidenceRefs: [],
+              epistemicState: "UNKNOWN" as const,
+              costUsd: 0,
+              durationMs: 0,
+            };
+          }
+          if (regLookup.status !== "CONTROL_REGISTERED") {
+            const reason = regLookup.status;
+            return {
+              agentId,
+              status: "SKIPPED" as const,
+              summary: reason,
+              claims: [`${agentId}: ${reason}`],
+              evidenceRefs: [],
+              epistemicState: "UNKNOWN" as const,
+              costUsd: 0,
+              durationMs: 0,
+            };
+          }
+          // CONTROL_REGISTERED — allow dispatch to continue.
         }
 
         // Gate check before calling the specialist — CASE.EXECUTE for security
@@ -552,17 +579,9 @@ export async function registerAgentFabricRoutes(
         },
       },
     });
-    // Governance visibility: collect registration state for dispatched agents
-    const registrationStates: Record<string, boolean> = {};
-    for (const aid of controlNotRegisteredAgents) {
-      registrationStates[aid] = false;
-    }
-    const hasUnregistered = controlNotRegisteredAgents.size > 0;
-
     return reply.status(201).send({
       ...result,
       memoryContext,
-      ...(hasUnregistered ? { controlPlaneRegistered: false, registrationStates } : {}),
     });
   });
 
