@@ -83,6 +83,7 @@ import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
 import { registerEventRules } from "./services/event-rules.js";
 import { registerControlPlaneBridge } from "./services/control-plane-bridge.js";
+import { registerSpecialistAgentsWithControl } from "./services/control-plane-registration.js";
 import { ensureDevLocalPortfolioLink } from "./services/dev-local-bootstrap.js";
 import { ensureDevLocalUser } from "./services/auth-store.js";
 import { registerFilesystemTools, registerAnalyzeRepoTool } from "@atlas/agent-core";
@@ -140,6 +141,31 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
 
   registerEventRules();
   registerControlPlaneBridge();
+
+  // GAP-BOOTSTRAP: register fabric specialist agents with Control Plane at startup.
+  // Fail-open — Control Plane may not be configured in all environments.
+  // Idempotent — safe to call on every server restart.
+  void registerSpecialistAgentsWithControl()
+    .then((results) => {
+      const registered = results.filter((r) => r.registered).map((r) => r.agentId);
+      const skipped = results
+        .filter((r) => !r.registered)
+        .map((r) => r.agentId);
+      logger.info("control_plane_bootstrap_complete", {
+        registered,
+        skipped,
+        note:
+          skipped.length > 0
+            ? "Control Plane not configured or unreachable — dispatch continues in fail-open mode"
+            : "All specialist agents registered with Control Plane",
+      });
+    })
+    .catch((err) => {
+      logger.warn("control_plane_bootstrap_failed", {
+        message: err instanceof Error ? err.message : "unknown error",
+        note: "Specialist agent registration skipped — server continues in fail-open mode",
+      });
+    });
 
   osStore.ensureLoaded();
   const hydrate = await hydrateOsStoreFromCloudIfEmpty(env, {

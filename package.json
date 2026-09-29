@@ -38,7 +38,8 @@
     "production:live-proof": "tsx scripts/production-live-proof.ts",
     "private-plane:start": "node scripts/start-private-plane.mjs",
     "environment:gate": "tsx scripts/environment-gate.ts",
-    "production:publish-guard": "tsx scripts/production-publish-guard.ts"
+    "production:publish-guard": "tsx scripts/production-publish-guard.ts",
+    "i18n:validate": "tsx scripts/validate-i18n.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

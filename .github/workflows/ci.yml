@@ -29,6 +29,8 @@ jobs:
         run: pnpm exec turbo run build --filter=@atlas/api...
       - name: Unit tests
         run: pnpm test:unit
+      - name: i18n parity check
+        run: pnpm i18n:validate
       - name: Lint
         run: pnpm exec eslint packages apps --max-warnings 0
       - name: Atlas CI eval gate (blocking)

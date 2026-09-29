@@ -174,6 +174,8 @@
     "truncated": "شجرة جزئية",
     "readOnly": "للقراءة فقط",
     "editable": "قابل للتحرير",
+    "createFolder": "إنشاء مجلد",
+    "newFolderPlaceholder": "مجلد/اسم",
     "saveFile": "حفظ الملف",
     "moveFile": "انقل الملف",
     "moveTo": "مسار جديد",
