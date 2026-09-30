@@ -81,6 +81,8 @@ export const agentRunResultSchema = z.object({
   epistemicState: epistemicStateSchema,
   costUsd: z.number(),
   durationMs: z.number().int(),
+  /** GAP-APP-04 execution join key — same value as the corresponding audit entry's `input.executionId`, when one exists. */
+  executionId: uuidSchema.optional(),
 });
 
 export const judgeDecisionSchema = z.enum([

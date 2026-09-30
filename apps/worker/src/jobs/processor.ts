@@ -5,6 +5,7 @@ export type WorkerJobKind =
   | "github.initial_sync"
   | "github.webhook_ingest"
   | "state.reconcile"
+  // GAP-APP-02: intentionally inert placeholders, not implemented, no callers enqueue them yet — see the fallthrough in processJob().
   | "embeddings.generate"
   | "memory.extract";
 
@@ -49,6 +50,11 @@ export function processJob(
     };
   }
 
+  // Deliberate no-op for every other declared kind, including the
+  // GAP-APP-02 placeholders ("embeddings.generate"/"memory.extract") —
+  // reserved for a possible future async entry point to the existing
+  // packages/embeddings / MEMORY_EXTRACTION capabilities, not currently
+  // wired. This is intentional, not a missing implementation.
   logger.info("job_acknowledged", { jobId: job.id, kind: job.kind });
   return { ok: true, detail: `acknowledged:${job.kind}` };
 }

@@ -85,6 +85,8 @@ export interface SubmitAgentProposalOptions {
   readonly requestId?: string;
   /** Stage 4 (D-C): audit id of the record that caused this proposal. */
   readonly causationId?: string;
+  /** GAP-APP-04 execution join key — same value the caller puts on its own `AgentRunResult.executionId`, so the two records are mechanically joinable. */
+  readonly executionId?: string;
   /**
    * Stage 4 attribution (D-C, approved 2026-09-26): the server-derived agent
    * that actually submits this proposal (e.g. `psa:<owner>`). When set, the
@@ -205,6 +207,7 @@ export async function submitAgentProposal(
       // an unverifiable one without re-running anything.
       verificationVerdict: verification.verdict,
       verificationRationale: verification.rationale,
+      ...(options.executionId !== undefined ? { executionId: options.executionId } : {}),
     },
     confidence: parsed.confidence,
     evidenceCount: parsed.evidence.length,

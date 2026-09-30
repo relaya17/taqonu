@@ -107,6 +107,8 @@ export async function runProposalBackedSpecialist(
   const def = getFabricAgent(config.agentId);
   const started = Date.now();
   const projectId = input.projectId ?? null;
+  // GAP-APP-04 execution join key: one id per proposal-backed execution, carried on every AgentRunResult return path and on the audit entry submitAgentProposal writes.
+  const executionId = crypto.randomUUID();
 
   const generated = await generateSpecialistProposalViaLlm({
     agentId: config.agentId,
@@ -143,6 +145,7 @@ export async function runProposalBackedSpecialist(
       epistemicState: "UNVERIFIED",
       costUsd: generated.usage.costUsd,
       durationMs: Math.max(1, Date.now() - started),
+      executionId,
     });
   }
 
@@ -190,6 +193,7 @@ export async function runProposalBackedSpecialist(
       delegationHopCount: input.delegationHopCount ?? 1,
       ...(agentRuntimeStatus !== undefined ? { agentRuntimeStatus } : {}),
       ...(input.requestId !== undefined ? { requestId: input.requestId } : {}),
+      executionId,
     });
   } catch (error) {
     return agentRunResultSchema.parse({
@@ -201,6 +205,7 @@ export async function runProposalBackedSpecialist(
       epistemicState: "UNKNOWN",
       costUsd: generated.usage.costUsd,
       durationMs: Math.max(1, Date.now() - started),
+      executionId,
     });
   }
 
@@ -214,6 +219,7 @@ export async function runProposalBackedSpecialist(
       epistemicState: "UNKNOWN",
       costUsd: generated.usage.costUsd,
       durationMs: Math.max(1, Date.now() - started),
+      executionId,
     });
   }
 
@@ -231,6 +237,7 @@ export async function runProposalBackedSpecialist(
       epistemicState: "UNKNOWN",
       costUsd: generated.usage.costUsd,
       durationMs: Math.max(1, Date.now() - started),
+      executionId,
     });
   }
 
@@ -247,5 +254,6 @@ export async function runProposalBackedSpecialist(
     epistemicState: "PROPOSED",
     costUsd: generated.usage.costUsd,
     durationMs: Math.max(1, Date.now() - started),
+    executionId,
   });
 }

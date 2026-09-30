@@ -142,6 +142,38 @@ describe("proposal-first fabric specialists (real gate + real audit log)", () =>
     expect(run?.durationMs).toBeGreaterThan(0);
   });
 
+  // GAP-APP-04 execution join proof: AgentRunResult.executionId and the
+  // corresponding audit entry's input.executionId must be the same value,
+  // for the same proposal-backed dispatch. This proves only the structural
+  // join — not real provider billing, monetary savings, or a production
+  // baseline.
+  it("CODE_ENGINEER: AgentRunResult.executionId equals the audit entry's input.executionId, and taskId is still present", async () => {
+    stubProviderReply(proposalJson("RECORD", "CREATE"));
+
+    const run = await runCodeEngineerSpecialistViaLlm({
+      request: "logout leaves the session cookie set",
+      projectId: PROJECT_ID,
+      ownerId: OWNER_ID,
+      env: OPENAI_ENV,
+    });
+
+    expect(run).not.toBeNull();
+    expect(run?.executionId).toBeTruthy();
+
+    const entry = listUnifiedAuditEntries().find(
+      (e) => e.type === "agent-fabric.dispatch.code-engineer",
+    );
+    expect(entry).toBeDefined();
+    if (!entry) throw new Error("expected a code-engineer dispatch audit entry");
+
+    const input = entry.input as Record<string, unknown>;
+    expect(input.executionId).toBeTruthy();
+    expect(input.executionId).toBe(run?.executionId);
+    // Existing taskId relationship (§33.15.A) is unaffected by the new field.
+    expect(typeof input.taskId).toBe("string");
+    expect((input.taskId as string).length).toBeGreaterThan(0);
+  });
+
   it("RESEARCHER: proposes DOCUMENT.READ and the hop floor still requires approval", async () => {
     stubProviderReply(proposalJson("DOCUMENT", "READ"));
 

@@ -1267,6 +1267,132 @@ Cost attribution is implemented and tested; cost-savings impact remains unquanti
 | Model/token/cost attribution | Implemented + tested |
 | Measured cost reduction | NOT QUANTIFIED |
 
+### 30.1 Evidence Matrix — 7-Layer Framework (recorded 2026-09-29)
+
+**Purpose:** apply one consistent evidence-grading framework across both existing cost-related sections of this document — this section (§29/§30, Control's oversight of **external connected applications** via `applicationId`) and §33 GAP-RESOURCE (Atlas's **own internal** Fabric-agent AI usage) — so a savings claim is never asserted without naming exactly which of 7 layers supports it, and exactly which layer is missing when it cannot be asserted.
+
+**The 7 layers (every claim below is checked against all 7):**
+1. **Attribution** — is the AI action unambiguously joined to Application → Project → Task → Agent → Model?
+2. **Actual usage** — real input/output/total tokens, calls, retries, cache/dedup, tools, retrieval — not estimated.
+3. **Actual cost** — from a real provider-reported figure, or calculated from real usage × a real price, or merely estimated.
+4. **Baseline** — a defined, reproducible reference to compare against (not a marketing number).
+5. **Outcome** — did the task actually succeed? A resource reduction that did not achieve the task is not a proven business saving.
+6. **Reproducibility** — can an independent reader rerun the same measurement and reach the same number?
+7. **Longitudinal evidence** — can this be accumulated over time, per application, without mixing applications together?
+
+**Evidence grades used below (exactly as defined by the operator):** `VERIFIED` (real measurement + real source data + reproducible calculation) · `CALCULATED` (real data, but the value is a derived calculation) · `ESTIMATED` (based on a defined baseline/price-list/assumption) · `OBSERVED` (seen in practice, not yet sufficient to prove savings) · `INFERRED` (conclusion from code structure alone) · `UNVERIFIED` (insufficient evidence).
+
+**Evidence Matrix:**
+
+| Claim | Application | Source | Measurement | Baseline | Outcome | Reproducible | Evidence Grade |
+| ----- | ----------- | ------ | ------------ | -------- | ------- | -------------- | ---------------- |
+| Attribution (applicationId → task correlation) | CaseFlow (external, `applicationId`-scoped) | §29.B — one real hop: `executionId`/`decisionId`/`requestId`/operation `caseflow.openai.chat` | Correlation chain present for exactly 1 recorded hop | N/A | N/A | Audit record is inspectable — YES, for that one hop | **VERIFIED (single instance, n=1 — not general/production coverage)** |
+| Cost-attribution field capability (`actualCost`/`currency`) | Any connected application (schema-level) | `packages/shared/src/platform/application-execution-report.ts` (R14/CTRL-020) | Field exists, optional, supplied-only; schema + unit tests pass | N/A | N/A | Schema/tests are inspectable — YES | **INFERRED** — the capability to carry a real cost value is code-confirmed; whether any connected application has ever actually populated it in a live report is not confirmed by evidence gathered |
+| Task/execution outcome | CaseFlow | §29.B (`execution: SUCCESS`) | Categorical (succeeded) | N/A | SUCCESS | YES, for that one hop | **OBSERVED (single instance)** |
+| Calls avoided (exact-match dedup) | Atlas-internal (Fabric/LLM layer — see cross-reference below; **not** an `applicationId`-scoped external application) | §33.8 R2 / `packages/agent-core/src/providers/llm.test.ts` | 2 logical calls → 1 real provider call, 1 cache hit, 3 negative controls correct | "2 calls without the cache" (demonstrated by the negative-control tests themselves) | Cached response identical to the original (`usage` deep-equal) — task outcome preserved | YES — `pnpm vitest run packages/agent-core/src/providers/llm.test.ts` reproduces the exact same call counts | **VERIFIED** |
+| Tokens "saved" by the avoided call | Atlas-internal | Same dedup test — mocked provider fixture (`input_tokens:100`, `output_tokens:50`) | 150 tokens not resent, in that test | Test fixture only — **not real production traffic** | N/A | YES (deterministic fixture) | **CALCULATED** — real formula, but the input token count is a test fixture, not measured production usage |
+| Cost "saved" by the avoided call (worked example) | Atlas-internal | `MODEL_PRICING_USD_PER_1M_TOKENS` (real vendor list price) applied to the fixture's 150 tokens | (100/1e6×$3)+(50/1e6×$15) ≈ **$0.00105, if** those exact tokens were real production traffic | "1 fewer provider call" | N/A | YES (deterministic formula) | **ESTIMATED** — real price table, hypothetical (test-fixture-scale) input; explicitly **not** a verified production dollar saving |
+| Money saved in live production (either application) | CaseFlow or Atlas-internal | — | No live token/cost telemetry exists for either | No baseline exists for either | — | — | **UNVERIFIED** — no real production usage/cost data and no baseline exist for any application today |
+| Longitudinal, per-application accumulation without mixing | CaseFlow and Atlas-internal | — | No time-series store exists for either (§33.5/§33.6; §29 records single instances only) | — | — | — | **UNVERIFIED** |
+
+**Headline conclusions (exactly the distinction the operator asked to preserve):**
+- **CaseFlow (external, `applicationId`-scoped):** attribution and one successful-outcome instance are **VERIFIED**, but **usage savings are not measured and monetary savings are NOT YET VERIFIED** — no populated cost figure was observed for that hop, and no baseline exists to compare against.
+- **Atlas-internal Fabric/LLM layer:** call-avoidance is **VERIFIED** (real, reproducible). **Token/cost savings are ESTIMATED at test-fixture scale only** — they are **NOT YET VERIFIED** as a real production dollar figure, because no live provider telemetry or baseline exists.
+- **No claim of quantified monetary savings is made for either application.** This matches, rather than contradicts, §30's own pre-existing conclusion (`Measured cost reduction: NOT QUANTIFIED`) and §33's Stage 3–5 conclusions (`BASELINE PARTIALLY VERIFIED`, `SAVING NOT QUANTIFIED`) — this matrix is a reconciliation of both, not a new or competing claim.
+
+**Cross-reference:** this matrix draws its "Atlas-internal" rows from §33 GAP-RESOURCE and its "CaseFlow" rows from §29 above — see §33's own scope note for why these are two distinct `application` concepts (external connected applications vs. Atlas's own Fabric dispatch) that must not be aggregated together.
+
+### 30.2 Application Inventory — Stage 1 Reconciliation (recorded 2026-09-29)
+
+**Purpose:** before any Application-level AI usage/cost/savings claim can be graded (§30.1), this records exactly which Applications exist in the repository and their current evidence state. Evidence classification uses exactly these 9 states: `VERIFIED EMPIRICALLY` · `IMPLEMENTED + TESTED` · `CALCULABLE FROM REAL DATA` · `OBSERVED BUT NOT FULLY ATTRIBUTED` · `INFERRED FROM CODE` · `ESTIMATED` · `MISSING` · `BLOCKED` · `UNKNOWN`. Do not read absence of a found AI path as a defect — several rows below are intentional (e.g. Control Plane) or simply not yet reconciled (e.g. `@atlas/worker`'s declared-but-unconfirmed job kinds).
+
+**A. Atlas's own internal apps (`apps/*`)**
+
+| Application | AI execution path | Attribution | Usage | Cost | Outcome | Baseline |
+| ----------- | ------------------ | ------------ | ----- | ---- | ------- | -------- |
+| `@atlas/api` | `VERIFIED EMPIRICALLY` — `routes/agent-fabric.ts`, `services/llm-specialist-proposal.ts`, `providers/llm.ts` (dispatch/dedup/retry all exercised by existing tests, §33.8) | `VERIFIED EMPIRICALLY` for `ownerId`/`projectId` (unified audit); `taskId` `VERIFIED EMPIRICALLY` for the proposal-backed path only (§33.15.A) | `CALCULABLE FROM REAL DATA` when a real provider call occurs; `UNKNOWN` for any live call (no credentials this session) | Stub path: `VERIFIED EMPIRICALLY` (`$0`, code-level — no provider is ever called). Proposal-backed path: `IMPLEMENTED + TESTED` mechanism; live figure `MISSING` | `VERIFIED EMPIRICALLY` — `AgentRunResult.status` (COMPLETED/SKIPPED/NEEDS_EVIDENCE/FAILED) | `MISSING` (repo-wide, all Applications) |
+| `@atlas/web` (Studio) | `MISSING` — confirmed client/HTTP-consumer only (`agents/page.tsx`, `ChatPanel.tsx` call into `@atlas/api`); no AI provider usage is claimed merely from its existence | N/A | N/A | N/A | N/A | N/A |
+| `@atlas/admin` | `MISSING` — zero matches for agent-fabric/dispatch/llm/genius this session (confirmed absence, not unexamined) | N/A | N/A | N/A | N/A | N/A |
+| `@atlas/control-plane` | `MISSING` — by explicit design (`fabric-projection.ts`: "NOT an execution registry"); Control is not the current implementation focus | N/A | N/A | N/A | N/A | N/A |
+| `@atlas/worker` | `OBSERVED BUT NOT FULLY ATTRIBUTED` (**GAP-APP-02**) — `embeddings.generate`/`memory.extract` are declared `WorkerJobKind` values; `processor.ts` only implements `state.reconcile`, other kinds fall through to a generic `job_acknowledged` stub. Whether these kinds are planned-but-unwired or intentionally inert is **not resolved by existing source evidence** — recorded as unresolved, not claimed as dead code or as AI usage | N/A | N/A | N/A | N/A | N/A |
+
+**B. External connected applications (`applicationId`-scoped, §4.1)**
+
+| `applicationId` | AI execution (Atlas visibility) | Attribution | Usage | Cost | Outcome |
+| ---------------- | -------------------------------- | ------------ | ----- | ---- | ------- |
+| `def-000` (Atlas-self) | Same as `@atlas/api` row above | Same | Same | Same | Same |
+| `caseflow` | `VERIFIED EMPIRICALLY` for exactly **one** hop (§29.B, LOCAL RUNTIME VERIFIED, n=1) — not generalized to all CaseFlow traffic | `VERIFIED EMPIRICALLY` for that one hop only | `MISSING` (fields are optional/supplied-only; not confirmed populated in the recorded hop) | `MISSING` (**GAP-APP-03** — `actualCost` not confirmed populated) | `VERIFIED EMPIRICALLY` — `execution: SUCCESS` for that one hop |
+| `civio` | `INFERRED FROM CODE` (Gemini FAQ path referenced in §5/§6 G4) — preflight-level only | `IMPLEMENTED + TESTED` (schema) | `UNKNOWN` | `UNKNOWN` | `UNKNOWN` |
+| `hotelos` | `INFERRED FROM CODE` (`agent.cio`) | `IMPLEMENTED + TESTED` (schema) | `BLOCKED` (connector env absent, R15) | `BLOCKED` | `BLOCKED` |
+| `brokeros` | `INFERRED FROM CODE` (Gemini JSON) | `IMPLEMENTED + TESTED` (schema) | `BLOCKED` (vitest tooling absent, §16) | `BLOCKED` | `BLOCKED` |
+| `lexstudy` | `UNKNOWN` | `UNKNOWN` | `BLOCKED` (repo NOT ACCESSIBLE) | `BLOCKED` | `BLOCKED` |
+| `vantera` | `UNKNOWN` | `UNKNOWN` | `BLOCKED` (repo NOT ACCESSIBLE) | `BLOCKED` | `BLOCKED` |
+
+**Evidence boundary (explicit, per the master protocol's correction in §7 of the requesting brief):** no valid baseline currently exists for any Application, therefore monetary savings cannot currently be quantified for any Application. This is not a claim that baseline design is impossible — only that it has not yet been done, and no further quantification work is justified until it is.
+
+**Do not generalize:** CaseFlow's one verified hop does not prove any other Application. `@atlas/api`'s dedup/retry evidence does not prove any external Application's behavior. Neither direction of generalization is supported by evidence gathered in Stages 1–5 or this reconciliation.
+
+### 30.3 MASTER EVIDENCE & AI SAVINGS WORK PROTOCOL — 10-Stage Ledger Closure (recorded 2026-09-29)
+
+**Purpose:** §30.2 above is this protocol's own Stage 1 (Existing System Reconciliation). Stages 2–10 were executed in a separate, later reconciliation pass and reported in full at the time, but were never persisted into this document until now. This subsection is that persistence — a consolidated closure record, not a re-derivation. It reuses, and does not duplicate or contradict, the evidence already recorded in §29/§30/§30.1/§30.2/§33.
+
+**Stage 2 — Actual AI Usage & Cost Proof.** `costUsd` computation (`computeCostUsd`, `llm.ts`) is `CALCULABLE FROM REAL DATA` whenever a real provider call occurs; no live provider call was exercised anywhere in this protocol (no credentials in this environment). No provider billing/invoice evidence exists anywhere in the repository. Mocked/fixture transport (all of RES-001's token/cost figures) is not production usage and is never presented as such. Attribution/usage gaps: `AgentRunResult` carries `costUsd`/`durationMs`/`status` but no `taskId`; the audit entry for the proposal-backed dispatch path (`agent-proposal.ts`) carries `taskId`/`projectId`/`agentId` but no `costUsd` — two separate records, no persisted join key. Production monetary savings are therefore not proven for any mechanism.
+
+**Stage 3 — Application Attribution.** Chain evaluated: `Application → Project → Task/Request → Execution → Agent → Provider/Model → Usage → Cost → Outcome`. Internal (`@atlas/api`, proposal-backed): `projectId`/`taskId`/`agentId` verified on the audit entry; `executionId`/provider/model/usage/cost/outcome verified only on the separate `AgentRunResult` — **chain break confirmed between the audit entry and the cost-bearing result, no stored join key.** External (`applicationId`-scoped, e.g. CaseFlow): all fields (`applicationId`/`tenantId`/`projectId`/`decisionId`/`requestId`/`executionId`/optional provider/model/tokens/`modelCallCount`/`retries`/`actualCost`/`currency`/`executionStatus`) co-locate on **one** schema record (`applicationExecutionReportRequestSchema`) and this record is spread verbatim into the hash-chained audit payload when supplied — **structurally, the external chain does not break; evidentially, no application (including CaseFlow) is confirmed to have ever populated the optional usage/cost fields** (GAP-APP-03). CaseFlow's one hop (§29.B) itself could not be independently re-verified in this environment this session — its exact IDs match no fixture, and `.atlas/audit/audit.ndjson` is gitignored/absent from the working tree.
+
+**Stage 4 — Baseline Definition.** No general production monetary baseline exists for any Application. Of the four candidate baseline methods evaluated (matched control, historical, deterministic replay, counterfactual calculation), only matched control (Candidate A) has real supporting evidence, and only within R2/R4's exact tested conditions — it does not generalize to any other request, task, or Application. Deterministic replay (the R2/R4 test fixtures themselves) is explicitly not production baseline evidence. No request/workload-comparability taxonomy exists (the `operationClass` enum that does exist classifies governance risk, not cost comparability — a distinct purpose). Production traffic variance is not represented anywhere in the evidence base. **Status: `INSUFFICIENT_EVIDENCE` for any general Application-level monetary baseline.**
+
+**Stage 5 — Resource Savings Proof.**
+- RES-001 (LLM dedup): **`VERIFIED`** — one provider call avoided in the exact tested repeated-request condition (§33.8 R2). The 50% test-case call reduction is not generalized to production traffic.
+- RES-002/RES-003 (bounded retry): **`VERIFIED`** as a bounding/ceiling behavior (§33.8 R4) — not represented as proven monetary savings; no "unbounded retry" comparison was ever run (correctly, since that would require disabling a production safety mechanism).
+- RES-007 (queue write amplification): **`VERIFIED`** as a measured cost (BENCH-QUEUE-001, §33.15.D — real, executed, single-machine/single-run) — not a saving, since no after-remediation design exists to compare against.
+- RES-018 (prefix caching), RES-019 (model routing enforcement), RES-020 (progressive tool disclosure), RES-021 (duplicate retrieval): existing §33.13/§33.15 statuses preserved unchanged; resource behavior (where code-trace-confirmed) is kept explicitly separate from monetary savings evidence, which does not exist for any of the four.
+
+**Stage 6 — Monetary Savings Proof.** **No mechanism and no Application has `VERIFIED` or `CALCULABLE FROM REAL DATA` monetary savings.** RES-001's $0.00105 figure is `ESTIMATED`, fixture-scale, worked-example only — not production spend. No live provider usage was recorded anywhere in this protocol. No provider billing/invoice evidence exists. No production monetary baseline exists (Stage 4). RES-002/003 remains bounded retry behavior, not proven avoided monetary cost. RES-007 remains a measured cost, not a saving. RES-018–021 remain `INSUFFICIENT_EVIDENCE` for monetary impact. The `ACTUAL` / `CALCULATED` / `ESTIMATED` / `MISSING` / `BLOCKED` / `INSUFFICIENT_EVIDENCE` distinction is preserved exactly, per mechanism, without weakening.
+
+**Stage 7 — Successful Outcome Guardrail.** No automatic, code-enforced successful-outcome guardrail exists anywhere in the codebase — every guardrail check performed across this protocol was manual reconciliation by report authors, not a runtime gate. Outcome-relevant fields that do exist: `AgentRunResult.status` (`COMPLETED`/`SKIPPED`/`FAILED`/`NEEDS_EVIDENCE`), `executionStatus` (`SUCCESS`/`FAILURE`), and `ProposalVerificationVerdict` (`VERIFIED`/`FAILED`/`INCONCLUSIVE`, `verify-proposal.ts`) — a distinct axis from `epistemicState` (evidentiary confidence) and from terminal status (task completion). RES-001 has the strongest outcome evidence of any mechanism — a real output-equivalence check (cached-response `usage` deep-equal to the original), not merely a terminal-status check. No other mechanism has general output-equivalence evidence. **Classification: `OBSERVED BUT NOT FULLY ATTRIBUTED`.** No universal automated outcome guardrail is claimed.
+
+**Stage 8 — Longitudinal Measurement.** A durable, append-only historical store exists (`.atlas/metrics/metrics.ndjson`, backing `atlasMetrics`) for a closed set of exactly 10 non-cost metric names (`agent_run_duration`, `tool_failure_rate`, `retrieval_hit_rate`, `memory_write_rate`, `web_verification_rate`, `citation_rate`, `hallucination_eval_rate`, `patch_apply_rate`, `github_webhook_rate`, `http_request_duration_ms`). It does **not** contain any cost, token, dedup-hit-rate, or queue-depth value — extending it to cover these would be an implementation change, not performed here. The in-process rolling ring buffer is not, and was not, treated as longitudinal history in any prior stage. **Cost/savings longitudinal measurement remains `MISSING`, for every mechanism and every Application.**
+
+**Stage 9 — Reproducibility & Auditability.** R2/R4 (§33.8) are deterministic test fixtures, reproducible within their exact documented conditions — not production evidence. BENCH-QUEUE-001 (§33.15.D) remains single-machine/single-run evidence, not independently reproduced. Live provider credentials remain unavailable in this environment. RES-023/F3 (cross-file test isolation) remains an unresolved verification-infrastructure issue. The audit-log hash-chain (`verifyAuditLogChainAt`, `audit-log.ts`) and the metrics-durability mechanism (`metrics-log.ts`) were re-executed during final reconciliation of this protocol: `audit-log.test.ts` 15/15 PASS, `metrics-log.test.ts` 2/2 PASS, combined 17/17 PASS. **This is a verification upgrade to the evidentiary basis of an already-existing mechanism — it is not an implementation change, and no production-wide reproducibility is claimed.**
+
+**Stage 10 — Customer-Claim Readiness.** No production monetary savings claim is currently supported, for any Application. No percentage or dollar savings figure is supported for customer-facing use. The evidence supports only two narrow, mechanism-scoped internal claims: exact-condition LLM-call deduplication (RES-001), and bounded retry behavior (RES-002/003) — neither may be broadened into a general customer savings claim, and no marketing language is derived from either here.
+
+**Consolidated 10-stage status table:**
+
+| Stage | Status | Core conclusion |
+| ----- | -------- | ------------------ |
+| 1 | `VERIFIED` | Existing system reconciled (§30.2) |
+| 2 | COMPLETE / evidence-bounded | Usage/cost mechanism established; no live provider usage recorded |
+| 3 | COMPLETE / evidence-bounded | Attribution chain mapped; internal chain-break and external population gap both identified |
+| 4 | COMPLETE / `INSUFFICIENT_EVIDENCE` for general baseline | No production monetary baseline exists |
+| 5 | COMPLETE | Narrow resource savings verified (RES-001/002/003/007); no monetary conversion |
+| 6 | COMPLETE | No `VERIFIED`/`CALCULABLE` monetary savings for any mechanism or Application |
+| 7 | COMPLETE / `OBSERVED BUT NOT FULLY ATTRIBUTED` | No automatic outcome guardrail exists |
+| 8 | COMPLETE / `MISSING` for cost-savings longitudinal data | Historical metric mechanism exists; cost/savings history absent |
+| 9 | COMPLETE / `VERIFIED` for the re-executed audit/metrics mechanism | 17/17 audit-log + metrics tests pass |
+| 10 | COMPLETE / evidence-bounded | No customer-facing monetary savings claim is supported |
+
+**Locked conclusions preserved unchanged by this closure (unchanged from Stages 1–6, reconfirmed, not re-argued):** no production monetary savings proven; RES-001's $0.00105 is fixture-scale `ESTIMATED` only; RES-002/003 is bounded retry, not proven monetary savings; RES-007 is measured cost, not proven saving; RES-018–021 have no proven monetary savings; Atlas-internal evidence is not generalized to external Applications; CaseFlow remains its own evidence scope; no live provider usage was recorded; no provider billing/invoice evidence exists; no production monetary baseline exists; deterministic test evidence is not production evidence; no customer-facing percentage/dollar savings claim is established.
+
+**Protocol status:** `10-STAGE MASTER EVIDENCE & AI SAVINGS WORK PROTOCOL — LEDGER CLOSED.` This closure is a documentation record of already-completed, already-reported evidence work. It authorizes nothing further — no baseline implementation, no telemetry, no instrumentation, no remediation, no Stage 11.
+
+### 30.4 GAP-APP-02 / GAP-APP-04 / GAP-APP-05 — Approved Technical Decisions + Minimum Implementation (recorded 2026-09-29)
+
+**Purpose:** following the post-closure Implementation Readiness audit and Decision Gate (both chat-only, not persisted separately), the owner authorized the agent to resolve three specific technical/design ambiguities and implement the smallest additive foundation supporting them. This subsection records the three decisions and the resulting minimal implementation — it does not reopen or reweight any Stage 1–10 conclusion above.
+
+**GAP-APP-05 (workload identity) — decided:** canonical workload identity = `(applicationId, projectId, operationLabel, provider, model)`, a derived tuple, not a new persisted field. `operationLabel` reuses the existing external `operation` string (external path) and the existing `routeLabel` (internal path, e.g. `"agent-fabric.dispatch.code-engineer"`) — no new field was added. Tool/retrieval/retry/cache-state remain explicitly excluded from the identity (post-hoc filters, not taxonomy components). **No taxonomy was implemented** — this is a derivation rule only.
+
+**GAP-APP-04 (task→execution→cost→outcome join) — decided and implemented:** canonical measurement boundary = `executionId`. Implemented as one additive optional field:
+- `executionId: uuidSchema.optional()` added to `agentRunResultSchema` (`packages/shared/src/schemas/agent-fabric.schema.ts`).
+- `executionId?: string` added to `SubmitAgentProposalOptions` and threaded into the `dispatchAgentAction` audit `input` object (`apps/api/src/services/agent-proposal.ts`), alongside the existing `taskId`.
+- `runProposalBackedSpecialist` (`apps/api/src/services/llm-specialist-run.ts`) mints one `executionId` (`crypto.randomUUID()`, the existing repository convention) per execution and carries it on all 5 `AgentRunResult` return paths and into the `submitAgentProposal` call on every path that reaches the gate.
+- Join proof: `apps/api/src/services/code-engineer-dispatch.test.ts` — a new test asserts `AgentRunResult.executionId === auditEntry.input.executionId` for a real proposal-backed dispatch (real audit log, real gate, only `fetch` stubbed). **This proves only the structural execution join** — not real provider billing, monetary savings, a production baseline, or external-Application attribution. The external-application schema already had this join structurally (§30.2/§30.3) and required no change.
+
+**GAP-APP-02 (`embeddings.generate`/`memory.extract`) — decided:** **Classification B — intentionally inert.** No embedding-generation or memory-extraction behavior was implemented; no caller was added. A code comment now marks both `WorkerJobKind` values and the generic fallthrough in `processJob()` (`apps/worker/src/jobs/processor.ts`) as deliberate, documented placeholders reserved for a possible future async entry point to the existing `packages/embeddings` / `MEMORY_EXTRACTION` capabilities — not a defect.
+
+**Explicitly not implemented by this work (unchanged, per every locked conclusion above):** real provider usage, real billing, monetary savings calculation, production baseline collection, longitudinal cost storage, RES-023/F3, external Application changes, Control changes, new database tables/measurement entities, new telemetry architecture, model-routing implementation, prefix caching, or any change to `apps/worker/src/queue-persistence.ts` (pre-existing Stage 6.1 WIP, untouched).
+
 ---
 
 ## 31. Final status language
@@ -1476,7 +1602,19 @@ ps aux | grep node → no Control Plane or API processes running
 
 **Recorded:** 2026-09-29
 
-**Status:** 🔶 BASELINE PARTIALLY VERIFIED (Stage 1–3 COMPLETE: Stage 1–2 audit-only, Stage 3 controlled baseline measurement executed 2026-09-29). Remediation (Stage 4+) is NOT started. Do not read this section as a closed gap, and do not upgrade this status to VERIFIED / COMPLETE / CLOSED / PRODUCTION VERIFIED — R1 and R3 live-provider paths remain environment-blocked and R5 production-scale write amplification remains unmeasured.
+**Status:** 🔶 Per-stage status (kept explicitly separate — do not merge these into one claim):
+
+| Stage | Status |
+| ----- | ------ |
+| Stage 1 — Repository/architecture audit | COMPLETE |
+| Stage 2 — Telemetry/observability audit | COMPLETE |
+| Stage 2.5 — Source-of-truth placement | COMPLETE |
+| Stage 3 — Controlled baseline measurement | **BASELINE PARTIALLY VERIFIED** |
+| Stage 4 — Gap/waste classification + deep research/benchmark | **DEEP RESEARCH + GAP ANALYSIS COMPLETE** (analysis only — this is not a production-efficiency proof; it does not upgrade Stage 3's status) |
+| Stage 5 — Targeted benchmarks + evidence-driven remediation design | **TARGETED BENCHMARKS COMPLETE / REMEDIATION DESIGN ONLY** (one real executed benchmark — queue write amplification; remaining candidates code-trace-confirmed or explicitly BENCHMARK BLOCKED/NOT OBSERVABLE; no implementation) |
+| Stage 6 — Implementation | **NOT STARTED** |
+
+Do not read this section as a closed gap. Do not upgrade any of the above to VERIFIED / COMPLETE / CLOSED / PRODUCTION VERIFIED for the underlying resource-efficiency claim — R1 and R3 live-provider paths remain environment-blocked, R5 production-scale write amplification remains unmeasured, and Stage 4's research/gap-analysis completeness does not imply that ArletOS's production resource usage has been proven efficient.
 
 ### 33.1 Purpose
 
@@ -1486,7 +1624,7 @@ Evidence-first verification of whether Atlas/ArletOS uses AI, compute, database,
 
 AI/LLM invocations, agent orchestration/dispatch, automation (background workers, polling, scheduled jobs), caching and reuse, context size sent to agents, database access, network/API calls, compute/runtime lifecycle, cost controls, and failure amplification. Out of scope for this section: redesigning Atlas/Studio/Control, new product features, database migration, provider replacement, speculative caching, or optimizing for benchmark numbers alone.
 
-**Scope note:** this document's own header states it is the authoritative Control remediation register, scoped to Control governance. GAP-RESOURCE spans Fabric agent dispatch, LLM providers, and the worker queue — areas broader than Control's declared ownership boundary. It is recorded here per explicit owner direction rather than as a Control-governance claim.
+**Scope note:** this document's own header states it is the authoritative Control remediation register, scoped to Control governance. GAP-RESOURCE spans Fabric agent dispatch, LLM providers, and the worker queue — areas broader than Control's declared ownership boundary. It is recorded here per explicit owner direction rather than as a Control-governance claim. **See also §29/§30** (Control Outcome / Cost Efficiency Evidence, 2026-09-23), which covers cost attribution for **external connected applications** (`applicationId`-scoped, e.g. CaseFlow) — a distinct data path from this section's Atlas-**internal** Fabric dispatch usage. §30.1's Evidence Matrix (2026-09-29) reconciles both.
 
 ### 33.3 Existing Controls (Stage 1 audit — read-only, no code modified)
 
@@ -1577,17 +1715,499 @@ Evidence classes follow the same vocabulary already defined at the top of this d
 
 ### 33.10 Remediation Status
 
-Not started. The following are candidates only — none implemented, none authorized under Stage 3:
+Not started. See §33.12 (Stage 4 Gap/Waste Register) for the classified candidate list. No item below has been implemented or authorized.
 
-1. Investigate F3 (cross-file test isolation in `apps/worker/src/index.test.ts`).
-2. Measure `queue-persistence.ts` full-file-rewrite cost at a representative job volume (RES-CANDIDATE-1).
-3. Consider an aggregate dedup-cache hit-rate telemetry metric (currently only a per-call boolean).
-4. Establish real per-agent/per-project token and cost attribution before any budget-enforcement work is considered (RES-CANDIDATE-2).
-5. Perform a controlled live-provider measurement pass when a legitimate low-cost/rate-limited provider credential and a running API environment are available (resolves R1/R3 ENVIRONMENT-BLOCKED status).
+### 33.12 Stage 4 — Gap / Waste Register (analysis only, executed 2026-09-29)
 
-### 33.11 Final Closure Criteria
+Classification of every finding recorded in §33.3–§33.8, using only Stage 1–3 evidence already collected. No new measurement was performed for Stage 4. No finding already established (§33.8) is reclassified here — this register only sorts existing evidence into a waste/gap register per the audit's own §15 classification scheme.
 
-GAP-RESOURCE may only be marked VERIFIED when every condition in the originating audit specification's own Definition of Done is met (repository audit complete, telemetry evaluated, representative workloads measured, confirmed resource behavior evidenced, known waste identified or reasonably ruled out, automation and runaway protections verified where applicable, required remediation completed, before/after measurements exist for claimed optimizations, regression tests pass, type checking passes, `git diff --check` passes, no unrelated scope introduced, this document reflects the verified state, remaining limitations explicitly recorded). This section is not that state today — it records Stage 1–3 audit and controlled-baseline findings only. Current status: **BASELINE PARTIALLY VERIFIED**, not VERIFIED/COMPLETE/CLOSED/PRODUCTION VERIFIED.
+| ID | Area | Current behavior | Evidence | Classification | Demonstrated impact | Missing evidence | Measurement required? | Remediation justified now? | Proposed next step |
+| -- | ---- | ----------------- | -------- | -------------- | -------------------- | ----------------- | ---------------------- | ---------------------------- | -------------------- |
+| RES-001 | AI/LLM | LLM call dedup cache serves a repeated identical call from cache instead of re-invoking the provider | R2 (§33.8): 2 logical calls → 1 provider call, 1 hit, 3 negative controls correct | VERIFIED / WORKING | Yes — 50% call reduction demonstrated for the exact repeated-call case | None | No | No — already working | None; no action |
+| RES-002 | AI/LLM | Provider call retry stops after 3 attempts, backoff capped ≤1000ms, non-retryable 4xx fails fast | R4 (§33.8) | VERIFIED / WORKING | Yes — bounded retry demonstrated, no runaway | None | No | No | None; no action |
+| RES-003 | Automation | Worker job retry stops after `MAX_JOB_ATTEMPTS=3`, permanently-failing jobs are dead-lettered and dropped | R4 (§33.8) | VERIFIED / WORKING | Yes — bounded retry demonstrated at the worker layer | None | No | No | None; no action |
+| RES-004 | AI/Cost | Stub specialist path never calls a provider; `costUsd` is genuinely 0, not a placeholder | R3 (§33.8) | VERIFIED / WORKING | Yes | None | No | No | None; no action |
+| RES-005 | AI/Cost | A real specialist's supplied cost is preserved unchanged through the dispatch run record | R3 (§33.8) | VERIFIED / WORKING | Yes | None | No | No | None; no action |
+| RES-006 | Database/Persistence | Worker queue persists atomically, upserts by job id, recovers `RUNNING`→`PENDING`, cleans up terminal jobs, fails safe on a corrupt file | R5 (§33.8) | VERIFIED / WORKING | Yes | None | No | No | None; no action |
+| RES-007 | Database/Persistence | `queue-persistence.ts` rewrites the entire queue file on every enqueue/state change | §33.3, §33.7 (RES-CANDIDATE-1) | RISK REQUIRING MEASUREMENT | Suspected only — no representative-volume timing collected | Write latency / CPU under realistic job counts (e.g. 1k/10k rows) | Yes | Not yet — no measured cost to justify a redesign | Run a representative-volume timing measurement before considering any persistence-strategy change |
+| RES-008 | Cost Control / Governance | `maxCostUsd` exists per Fabric agent catalog entry and rolling per-model cost stats exist, but no call site denies dispatch for exceeding a cost budget | Stage 1 audit (§33.3, §33.7 RES-CANDIDATE-2) — absence confirmed by repository search, not a runtime test | REAL CONTROL / OBSERVABILITY GAP | Suspected only — no incident or overspend demonstrated; this is an absent control, not a proven failure | A concrete per-agent/per-project cost-attribution mechanism (RES-012) must exist before enforcement can be designed | Yes (needs RES-012 first) | Not yet — no attribution data exists to enforce against | Design cost attribution (RES-012) before any budget-enforcement work |
+| RES-009 | AI/Cost | Live paid-provider (Anthropic/OpenAI/Gemini) network call was not exercised | R1 (§33.8) | ENVIRONMENT-BLOCKED | N/A — blocked, not measured | Provider credentials + network egress in a controlled low-cost environment | Yes, when credentials are available | No — cannot remediate an unmeasured environment gap | Schedule a controlled live-provider pass under RES-CANDIDATE-5 when authorized |
+| RES-010 | AI/Agent Orchestration | Live LLM-backed specialist dispatch (Sentinel/CODE_ENGINEER/RESEARCHER) was not exercised | R3 (§33.8) | ENVIRONMENT-BLOCKED | N/A — blocked, not measured | Running API server + provider credentials | Yes, when environment is available | No | Schedule alongside RES-009 |
+| RES-011 | Observability | Queue depth/age telemetry is a point-in-time snapshot only; no historical series exists | §33.5, R5 (§33.8) | REAL OBSERVABILITY GAP / NOT OBSERVABLE | Suspected only — no incident traced to this gap | A time-series store or periodic snapshot log for queue stats | Only if this becomes operationally needed | No — no demonstrated need yet | Defer; revisit if queue-related incidents occur |
+| RES-012 | Observability / Cost | No per-agent or per-project token/cost attribution exists anywhere in the codebase | §33.6 | REAL OBSERVABILITY GAP / NOT OBSERVABLE | Suspected only — this blocks RES-008 but no cost incident is demonstrated | Token/cost tagging at the call site, threaded to agentId/projectId | Yes — prerequisite for RES-008 | No — instrumentation design work, not a code defect fix | Design instrumentation before any budget-enforcement work |
+| RES-013 | Database | No query-count/latency instrumentation exists on the SQLite registration store or the worker queue JSON file | §33.6 | REAL OBSERVABILITY GAP / NOT OBSERVABLE | Suspected only — no slow-query incident demonstrated | Timing wrapper around file/DB I/O | Only if an incident or RES-007 measurement shows a need | No | Defer; consider only if RES-007 measurement shows a real bottleneck |
+| RES-014 | Observability / Governance | Kill-switch activation is queryable as current state only; no time-series of activation history exists | §33.6 | REAL OBSERVABILITY GAP / NOT OBSERVABLE | Suspected only — minor, no incident demonstrated | Activation/deactivation event log | No — low priority | No | Defer |
+| RES-015 | Automation / Reliability | No mechanism aggregates retries across call sites to detect cross-call retry/failure amplification (e.g. a provider retry storm compounding with a worker retry storm) | §33.6 | REAL OBSERVABILITY GAP / NOT OBSERVABLE | Suspected only — each layer's retry is individually bounded (RES-002/RES-003) and no cross-layer amplification incident is demonstrated | A correlated view across provider-call and job-retry logs | Only if a real incident suggests compounding retries | No | Defer; RES-002+RES-003 already bound each layer independently |
+| RES-016 | Observability | `LlmCallResult.cacheHit` exists per call but nothing aggregates it into a hit-rate metric | §33.5 | REAL OBSERVABILITY GAP (minor) | No — dedup itself is already proven working (RES-001); this is a missing dashboard metric, not a functional gap | An aggregation of `cacheHit` into `atlasMetrics` | No — optional | No | Optional low-effort addition; not required for GAP-RESOURCE closure |
+| RES-017 | Governance / Cost Control | Kill switches, global/auth rate limits, delegation hop cap, and agent memory/plan budgets are implemented and each has its own pre-existing test file (e.g. `kill-switches.test.ts`) | Stage 1 audit (§33.3) — code + existing test files; **not re-executed as part of the Stage 3 R1–R5 baseline** | NOT A PROBLEM / NO ACTION REQUIRED | Yes, per each mechanism's own existing test suite (not re-verified this session) | None for GAP-RESOURCE purposes | No | No | None; out of GAP-RESOURCE scope — these are pre-existing, independently tested controls |
+| RES-F3 | Verification / Test Infrastructure | Running `apps/worker/src/index.test.ts` together with 3 other files in one `vitest` invocation produced 2 failures; the same file passes 5/5 in isolation | F3 (§33.8) | VERIFICATION / TEST-INFRASTRUCTURE ISSUE | Yes — reproducible test-isolation defect, but explicitly not a production defect | Root cause (likely module-level `queue` array or fake-timer state shared across files in the same vitest worker) | Yes — needs a root-cause investigation, not a guess-fix | Not yet — root cause not established | Investigate root cause under a dedicated test-infrastructure task, separate from any production remediation |
+
+**Functional summary (per the audit's required questions):**
+- **What does the system currently do?** — See "Current behavior" column per row; no finding above describes new system behavior beyond what §33.3/§33.8 already recorded.
+- **What evidence proves it?** — See "Evidence" column; all evidence is Stage 1 (static code audit) or Stage 3 (real, unmodified test execution) — nothing in this register is inferred or estimated.
+- **Is there measurable waste?** — Only RES-007 (queue full-file rewrite) is a candidate for waste, and it remains unmeasured — no row in this register claims demonstrated waste.
+- **Category per row:** AI usage (RES-001, 002, 004, 005, 009, 010), automation (RES-003, 015), observability (RES-011–014, 016), governance/cost control (RES-008, 017), database (RES-006, 007, 013), verification (RES-F3).
+- **Demonstrated vs. suspected impact:** RES-001–006 are demonstrated (VERIFIED). RES-007, 008, 011–016 are suspected only — explicitly not escalated to "confirmed waste" without measurement, per the audit's own rule against inferring impact from absent telemetry.
+- **Fixable now vs. needs measurement first:** RES-001–006 need no fix (already correct). RES-007, 008, 012 explicitly require measurement/design work before any remediation is justified. RES-009/010 require an available environment, not a code fix. RES-F3 requires root-cause investigation before any test change.
+
+### 33.13 Stage 4 Deep Research + Benchmark (executed 2026-09-29)
+
+**Methodology limitation, stated up front:** this environment has no live web-search tool — only direct URL fetch. Two real, current (fetched 2026-09-29), stable vendor sources were retrieved in full for prompt/context caching (§33.13.A). The remaining 23 research topics in the requesting spec (semantic caching beyond exact-match, model routing literature, multi-agent coordination overhead, retrieval efficiency, etc.) were **not independently verified against a live external source this pass** — no arXiv ID or third-party benchmark URL was guessed or fabricated, per the "do not generate or guess URLs" safety rule. Where general software-engineering knowledge is used below without a fetched citation, it is explicitly labeled "engineering judgment, not a cited source" and is never presented as a measured external benchmark.
+
+#### A. External research evidence — EXTERNAL / VENDOR DOCUMENTATION ONLY (not an ArletOS benchmark)
+
+**Explicit discipline:** every number in the table below is a vendor-reported figure from the vendor's own documentation, fetched directly (no search engine, no third-party aggregator). These are **external reference points only**. No claim is made, implied, or should be inferred that ArletOS achieves, could achieve, or has been measured against, any percentage below. Any figure not directly present in the fetched page text is marked UNVERIFIED rather than restated from memory.
+
+| # | Source | Date fetched | Mechanism | Vendor-reported measurement | Workload/context | Limitation | Relevance to ArletOS |
+| - | ------ | ------------ | --------- | ------------------------------ | ------------------ | ----------- | ----------------------- |
+| 1 | Anthropic, "Prompt caching" (platform.claude.com/docs) | 2026-09-29 | Cache prefix (tools→system→messages) written once, read on subsequent matching requests within a 5-min (or 1h) TTL | Cache reads billed at 0.1× base input price (0.025×–0.05× on some models); cache writes 1.25×–2× base | Vendor-documented pricing table, not an independent benchmark | Vendor-published, not third-party peer-reviewed; no ArletOS-specific measurement | ArletOS's own LLM dedup cache (`llm.ts`, 45s TTL) is a narrower, exact-match variant of the same idea — full prefix caching (partial-prefix reuse across non-identical prompts) does not exist in ArletOS |
+| 2 | OpenAI, "Prompt caching" (developers.openai.com/api/docs) | 2026-09-29 | Implicit/explicit cache breakpoints on prompt prefix; KV-state reuse | Cache reads at 0.1× input rate; vendor examples report ~70% (single-turn judge) and >90% (multi-turn agent) token cache-hit rates in their own illustrative deployments | Vendor-documented examples, explicitly labeled "illustrative," not audited | Same caveat as above — vendor's own numbers, not independently reproduced | Confirms the pattern ("cache the growing/append-only prefix, not just exact repeats") is the more mature technique vendors report — ArletOS's dedup cache only catches byte-identical repeats, not growing-conversation reuse |
+
+**Conclusion from A (external reference only — no ArletOS inference):** the *concept* of prompt/context caching is documented by two primary vendors with real, vendor-reported (not third-party-audited, not ArletOS-measured) numbers. ArletOS implements a materially narrower version of the same underlying idea (exact-match, short-TTL dedup, not prefix/KV caching). This is recorded as an architectural reference point only — see RES-018, classified as a **POTENTIAL SAVING**, not a proven one; ArletOS is not claimed to be capable of, or in need of, the vendor-reported percentages above.
+
+#### B. Reference Efficiency Model (synthesis — Part B, no external citation required)
+
+| Category | What should be measured | What should be controlled | Waste indicator | Healthy indicator | Evidence required |
+| -------- | ------------------------ | --------------------------- | ----------------- | -------------------- | -------------------- |
+| A. Token efficiency | tokens/request, tokens/successful task | max tokens/request, prefix reuse | repeated identical prefixes reprocessed every call | rising cache-hit ratio over time | token usage log with cache-hit flag |
+| B. Context efficiency | context size sent to model/agent | context budget, truncation policy | context grows unbounded across turns | context size stable or bounded per turn | context-size metric per call |
+| C. Tool efficiency | tool calls/task, duplicate tool calls | tool-call budget/session | same tool+args called >1x with no state change | tool calls monotonically necessary | tool-call log with args hash |
+| D. Model efficiency | model tier chosen vs. task complexity | routing policy consulted at call time | cheap task on expensive model (or vice versa causing retries) | tier matches complexity; demotion on cost/error drift | routed model id logged alongside actual provider call |
+| E. Agent orchestration efficiency | agent count/task, redundant specialist dispatch | max agents/plan, budget | 2 agents doing overlapping work with no distinct evidence requirement | each agent's evidenceRequirements are disjoint/complementary | plan diff across agents |
+| F. Retrieval/memory efficiency | retrieval calls/task, hit rate | retrieval budget, embedding cache | same query embedded repeatedly | embeddings cached/reused across calls with unchanged corpus | embedding cache hit log |
+| G. Queue/background efficiency | job count, retry count, queue age | max retries, backoff cap | jobs looping without termination | bounded retries, dead-letter on exhaustion | queue stats + retry log |
+| H. Network efficiency | outbound calls/task, duplicate requests | timeout, dedup | identical request fired twice concurrently | single in-flight request per key | request log with dedup key |
+| I. Database efficiency | queries/task, query latency | connection/query budget | N+1 query pattern | O(1) or O(log n) queries per task | query count instrumentation |
+| J. Retry/failure efficiency | retries/task, backoff growth | max attempts, backoff cap | retries growing unbounded or retrying non-transient errors | bounded, error-class-aware retry | retry log with error classification |
+| K. Cost attribution | cost/agent, cost/project, cost/user | attribution key present on every billed call | cost recorded with no owner | every billed call attributable to agent+project+user | billing record schema |
+| L. Budget enforcement | requests denied for exceeding budget | budget check before dispatch | budget field exists but nothing reads it before executing | dispatch denied when budget exceeded, with audit entry | denial log referencing the budget check |
+| M. Observability | token/cost/latency exposed via metrics/dashboard | persisted, queryable metrics | metrics exist only as fire-and-forget counters | metrics queryable historically, not just in-process | metrics store + query endpoint |
+| N. Cost per successful outcome | cost ÷ successful completions | none directly — a derived ratio | numerator (cost) tracked, denominator (success) not correlated | cost and outcome joined on the same task id | task id present on both cost and outcome records |
+
+#### C. Deep ArletOS Audit — corrections and additions to §33.3 (traced execution paths, not keyword search)
+
+This subsection **corrects and extends** §33.3 based on deeper tracing this pass. Nothing in §33.1–§33.12 is invalidated; these are additions.
+
+1. **Generic response cache — previously missed.** [apps/api/src/services/response-cache.ts](apps/api/src/services/response-cache.ts): a real LRU+TTL `ResponseCache` class with hit/miss/eviction stats, exposed via `readCache` singleton and a `cached()` helper. **On the production path:** confirmed consumer at [apps/api/src/routes/performance.ts](apps/api/src/routes/performance.ts) (`readCache.stats()`, `readCache.clear()`). §33.3 previously stated "no HTTP/DB response cache found elsewhere" — **that statement is corrected here**: a generic cache exists and is wired to at least the performance-stats route. Whether any *expensive read* route actually calls `cached()` to wrap its own query (as opposed to just exposing the cache's stats) was not separately traced this pass — **BENCHMARK REQUIRED** to confirm real hit traffic vs. an unused/idle cache instance.
+2. **Model routing by task complexity — exists, tested, cost-aware, but NOT proven wired to actual model selection.** [packages/agent-core/src/router/genius.ts](packages/agent-core/src/router/genius.ts)'s `geniusRoute()` computes a real `modelHint` (`cheap`/`strong`/`vision`/`local`/`multi+human`) from the request text, and demotes `strong`→`cheap` using **real rolling cost/error stats** from `getAllModelRollingStats()` (not a hypothetical — `genius.test.ts` has 17 real assertions against injected stats). Call sites confirmed: `kernel/task-plan.ts`, `orchestrator/plan.ts`, `kernel/evaluation.ts`. **Gap:** grepping every use of `modelHint` across `apps/api/src` found only an unrelated field of the same name (`catalog.modelHint` in `routes/agent.ts`/`routes/conversation.ts`, a static per-catalog-entry model string for a different, marketplace-style feature) — **no call site was found that reads `AgentPlan.modelHint`/`TaskPlan.modelHint` (the genius.ts routing decision) and uses it to select which provider/model `llm.ts` actually calls** for a dispatched specialist. The routing decision is computed, tested, and returned to the API caller as metadata (`routerHints`) — but is **not demonstrated to be enforced** at the point where a real LLM call happens. This is exactly the audit's own warning: "has a router" ≠ "routes."
+3. **Tool-call runtime — real timeout cancellation, no session-wide tool-call budget found.** [packages/agent-core/src/tools/runtime.ts](packages/agent-core/src/tools/runtime.ts)'s `executeTool()` enforces per-tool policy timeouts with a real `AbortController` (cancels in-flight work, not just the wait — confirmed by the function's own design-rule comment and `withTimeout()` implementation). **Not found:** any counter or budget limiting the *number* of tool calls within a single agent run/session — each call is independently policy-checked, but nothing aggregates or caps call count across a run. Classification: absence confirmed by trace, not merely by keyword miss.
+4. **No progressive/conditional tool-schema disclosure found.** Every registered tool's schema (via `registerTool`/`getToolPolicy`) is a fixed, statically-defined policy; no mechanism was found that reduces which tool schemas are sent to a model based on task type — this differs from the vendor pattern documented in §33.13.A (OpenAI's `tools-tool-search` `defer_loading` progressive tool disclosure). Absence confirmed by trace of `packages/agent-core/src/policies/tool-policies.ts` and `runtime.ts`; not re-verified against every route.
+5. **Duplicate-work detection exists for governed tool execution, not for agent dispatch.** [apps/api/src/services/governed-execution.ts](apps/api/src/services/governed-execution.ts) has real idempotency: same `idempotencyKey` + same `artifactHash` replays the prior durable outcome instead of re-executing (`claimDurableGovernedExecution`, `governedIdempotency` Map + durable file fallback). This is a genuine "duplicate work detection" control — but it is scoped to the governed **tool-execution** layer, not to agent **dispatch** (`dispatchAgentPlan`) or to specialist LLM calls beyond the exact-match dedup cache already documented in §33.3.
+6. **Semantic (non-exact-match) caching: NOT FOUND.** No embedding-similarity-threshold cache was found outside the embeddings package's own per-document `embedding` field reuse in `hybrid-rag.ts` (which reuses a **document's own precomputed embedding** when dimensions match — a legitimate optimization, but it caches *document* embeddings, not *query results* or *LLM responses* by semantic similarity). No semantic response cache exists.
+
+#### D. Resource Flow Traces (R1–R10)
+
+Method: R1, R2, R4 reuse the exact Stage 3 evidence already recorded in §33.8 (re-traced here in the R1–R10 template only — not re-measured). R3, R5 extend §33.8 with the newly-found mechanisms above. R6–R10 are traced by code inspection this pass; where no test exercises them, they are marked `BENCHMARK REQUIRED` rather than measured.
+
+| Scenario | Agent decision | Model/provider | Context assembled | Token usage | Tool calls | Retrieval calls | DB calls | Retries | Cache hit/miss | Agent count | Duration | Cost | Outcome | Duplicated work? | Evidence |
+| -------- | ---------------- | ----------------- | -------------------- | -------------- | ------------ | ------------------ | ---------- | --------- | ------------------ | -------------- | ---------- | ------ | --------- | -------------------- | ---------- |
+| R1 simple request | stub or free provider | `context-echo-free` | none beyond message list | 0 (genuine) | 0 | 0 | 0 | 0 | N/A | 1 | 1–7ms (harness) | $0 | COMPLETED | No | §33.8 R1 |
+| R2 repeated identical | dedup cache | same as R1's provider under test | identical | NOT OBSERVABLE (real provider) | 0 | 0 | 0 | 0 | 1 hit / 1 miss | 1 | test-harness only | $0 (mocked) | COMPLETED (from cache) | **No — cache prevented it** | §33.8 R2 |
+| R3 agent dispatch (stub) | `dispatchAgentPlan` | none (stub path) | plan + knowledge package (≤12 items, `AGENT_MEMORY_BUDGET`) | 0 (genuine, stub never calls a provider) | 0 | 1 (`loadKnowledge`/`buildEvidencePackageForAgent`) | NOT OBSERVABLE (in-memory osStore) | 0 | N/A | 2+ (Orchestrator+specialist(s)) | test-harness ms | $0 | COMPLETED/SKIPPED per gate | No | §33.8 R3, dispatch.test.ts |
+| R4 retry/failure | provider retry / worker retry | mocked transport | same request replayed | NOT OBSERVABLE (mocked) | 0 | 0 | 0 | 1–2 (bounded at 3) | N/A | 1 | test-harness ms | $0 (mocked) | success-after-retry or dead-letter | No — bounded | §33.8 R4 |
+| R5 multi-step engineering task | ORCHESTRATOR → specialists → JUDGE | mixed (stub + possible override) | per-specialist knowledge package, isolated per agent | NOT OBSERVABLE (would need live specialist) | NOT OBSERVABLE | 1 per specialist (isolated context, confirmed by `dispatch.ts`'s per-step `loadKnowledge` call) | NOT OBSERVABLE | 0 in stub path | N/A | up to `maxAgents` (default 5) | NOT OBSERVABLE (no live run this pass) | NOT OBSERVABLE | NOT OBSERVABLE | **BENCHMARK REQUIRED** — no live multi-specialist run executed this pass | code trace only, `dispatch.ts` |
+| R6 tool-heavy task | agent calls multiple tools via `executeTool` | N/A (tool layer, not LLM) | N/A | N/A | NOT OBSERVABLE (no session-wide counter exists to read — see §33.13.C.3) | N/A | N/A | 0 per call (tool runtime has no its own retry) | N/A | 1+ | per-tool `timeoutMs` bound (policy-defined) | N/A | OK/DENIED/TIMEOUT/ERROR per call | **BENCHMARK REQUIRED** — no test exercises >1 tool call in one session to observe count | `runtime.ts` trace only |
+| R7 failed task with retries | same as R4 | — | — | — | — | — | — | bounded at `MAX_PROVIDER_CALL_ATTEMPTS`/`MAX_JOB_ATTEMPTS` = 3 | — | — | — | — | success-after-retry or dead-letter, verified | No | §33.8 R4 (same mechanism, duplicate scenario per spec's own R4/R7 overlap) |
+| R8 repeated task after prior success | dedup cache (LLM) / governed-execution idempotency (tool) | — | identical | — | — | — | — | 0 | hit (LLM dedup within 45s) or replay (governed-execution idempotency, no TTL bound — see §33.13.C.5) | — | — | — | replayed, not re-executed | **No — by design** | §33.8 R2 (LLM layer); `governed-execution.ts` (tool layer, code trace only, not re-executed this pass) |
+| R9 retrieval/memory task | `buildMemoryContext` / `buildEvidencePackageForAgent` | N/A | memory items ≤ budget (12 default), knowledge hits ≤ `maxItems` (12 in `dispatch.ts`'s `loadKnowledge`) | N/A | 0 | 1+ (per specialist, no cross-specialist retrieval cache found) | NOT OBSERVABLE (osStore in-memory reads) | 0 | N/A (no semantic cache exists — §33.13.C.6) | N/A | NOT OBSERVABLE | N/A | items returned or `INSUFFICIENT_EVIDENCE` | **Possible** — each specialist in a multi-specialist dispatch re-runs its own `loadKnowledge` call over the same corpus with no shared-result cache across specialists in the same request (`dispatch.ts`'s per-step call) — **RISK, NOT YET MEASURED** | `dispatch.ts` trace |
+| R10 background/queue execution | worker `runOnce` loop | N/A | N/A | N/A | N/A | N/A | file read/write per state change (`queue-persistence.ts`) | bounded at `MAX_JOB_ATTEMPTS`=3 | N/A | N/A | 2s poll interval (not event-driven) | N/A | COMPLETED/FAILED/dead-lettered | No | §33.8 R5 |
+
+**Honesty note on R5–R6, R9:** these three rows contain real code-trace evidence (file:line level) but **no live/test execution this pass** — they are correctly marked `BENCHMARK REQUIRED`, not `VERIFIED`, per the audit's own rule against inferring measurement from static inspection alone.
+
+#### E. Benchmark Results (deterministic, local, this pass)
+
+Only R2 and R4 (§33.8) constitute real controlled benchmarks executed this pass — reused here, not re-run, per your instruction not to rerun the suite unnecessarily:
+
+| Benchmark | With mechanism | Without mechanism | Real reduction |
+| --------- | ---------------- | -------------------- | ----------------- |
+| Repeated identical LLM call, cache vs. no cache (R2) | 1 provider call for 2 logical requests | 2 provider calls for 2 logical requests (negative-control tests: different message/model/expired TTL) | **50% call reduction demonstrated for the exact repeated-call case** — not extrapolated to other patterns |
+| Transient failure, retry vs. no retry (R4) | Recovers on attempt 2/3, 1 final provider call avoided being a hard failure | N/A (retry is the only path tested; no "retry disabled" comparison run) | Retry converts a would-be hard failure into a success within 2 attempts — no comparison run without retry was performed (would require disabling a production safety mechanism, out of Stage 4 scope) |
+
+The following requested comparisons were **not executed** this pass (all require either code paths not yet exercised in a benchmark harness, or a load-volume that this audit's boundary — "no config changes, no new instrumentation" — does not permit setting up from scratch):
+
+| Requested benchmark | Status | Reason |
+| ---------------------- | -------- | -------- |
+| Different context sizes | BENCHMARK REQUIRED | No harness varies context size and measures token/latency deltas |
+| Different tool counts | BENCHMARK REQUIRED | No session-wide tool-call counter exists to measure against (§33.13.C.3) |
+| Queue at representative volumes | BENCHMARK REQUIRED | Same gap as §33.7 RES-007 — unchanged this pass |
+| Repeated retrieval | BENCHMARK REQUIRED | No cross-specialist retrieval cache exists to benchmark (§33.13.D R9) |
+| Agent count changes | BENCHMARK REQUIRED | No harness measures cost/duration vs. `maxAgents` |
+| Context-heavy vs. minimal-context execution | BENCHMARK REQUIRED | Same as "different context sizes" |
+| Repeated task after prior successful execution (tool layer) | BENCHMARK REQUIRED | `governed-execution.ts` idempotency replay exists in code (§33.13.C.5) but was not exercised in a fresh benchmark this pass |
+
+#### F. Cost Per Successful Task — telemetry gap analysis
+
+ArletOS **cannot currently compute** cost-per-successful-task, tokens-per-successful-task, tool-calls-per-successful-task, retries-per-successful-task, or time-per-successful-task **automatically**, because:
+- `costUsd` is recorded per agent run (`AgentRunResult.costUsd`) but is not joined to a persisted "task id" that also carries a success/failure outcome across retries.
+- `getModelRollingStats()` aggregates by model, not by task.
+- `atlasMetrics` records `agent_run_duration` but not a task-outcome-correlated id.
+- No table or log joins {cost, tokens, tool calls, retries, duration} to a single task id and its final success/failure state.
+
+**Missing telemetry, precisely:** a per-task identifier propagated through dispatch → provider calls → tool calls → judge decision → final outcome, with cost/token/retry/duration accumulated against that one id and a boolean/enum success field recorded at the end. **Classification: NOT_OBSERVABLE.** This is an instrumentation design gap, not a defect — per your Part J boundary, no instrumentation is added in this stage.
+
+**First-class future measurement target (not implemented now):** a mature resource-efficiency system should associate, where technically possible, a single `task_id` with: agent/project identity, tokens, provider/model, tool calls, retrieval calls, retries, duration, cost, and final outcome. The objective this enables, once real, is:
+
+$$\text{Resource Consumed} \div \text{Successful Outcome}$$
+
+This ratio is recorded here as a target definition only. It is not computed, estimated, or approximated anywhere in this document — doing so without the underlying join would be exactly the kind of fabricated evidence this audit exists to prevent.
+
+#### G. Waste Detection Findings (Part G patterns, evidence-checked)
+
+| Waste pattern | Found? | Evidence | Classification |
+| --------------- | -------- | ---------- | ----------------- |
+| Duplicate LLM calls | Prevented by dedup cache within 45s (§33.8 R2) | Real test evidence | VERIFIED_EFFICIENT (within TTL window only) |
+| Duplicate tool calls | Not measured — no session-wide call counter exists | §33.13.C.3 | NOT_OBSERVABLE |
+| Duplicate retrieval | Suspected — each specialist in one dispatch re-runs its own knowledge load over the same corpus | §33.13.D R9 | RISK_NOT_YET_MEASURED |
+| Duplicate file reads | Not traced this pass | — | NOT_OBSERVABLE |
+| Unnecessarily large context | Not measured — `AGENT_MEMORY_BUDGET`/`maxItems` caps exist (12 each) but nothing measures whether a smaller context would suffice | §33.3 | RISK_NOT_YET_MEASURED |
+| Unnecessary history | Not traced (no multi-turn conversation flow exercised this pass) | — | NOT_OBSERVABLE |
+| Unnecessary tool schemas | No progressive disclosure exists — every schema always sent | §33.13.C.4 | GAP_CONFIRMED (absence confirmed; cost impact not measured) |
+| Unnecessary specialist agents | `geniusRoute` selects specialists by keyword match; over-triggering not measured | `genius.ts` | RISK_NOT_YET_MEASURED |
+| Excessive orchestration | ORCHESTRATOR + JUDGE always wrap specialist dispatch — by design, not measured as waste | `plan.ts`/`dispatch.ts` | NOT_APPLICABLE (documented design, not a defect) |
+| Retry storms | Bounded at both layers (§33.8 R4) | Real test evidence | VERIFIED_CONTROL |
+| Repeated failed work | Dead-lettered after 3 attempts, not retried indefinitely | §33.8 R4 | VERIFIED_CONTROL |
+| Lack of early stopping | Tool timeout cancels real work via AbortController (§33.13.C.3); no equivalent "stop the whole dispatch early" on judge rejection was traced | `runtime.ts`; dispatch flow not traced further | RISK_NOT_YET_MEASURED |
+| Full-file persistence rewrites | Confirmed present (worker queue) | §33.7 RES-007 | RISK_NOT_YET_MEASURED (unchanged) |
+| Unnecessary background polling | Worker polls every 2s regardless of queue emptiness (`worker_idle` log path exists, meaning empty-poll is a known, logged no-op, not a silent one) | `apps/worker/src/index.ts` | GAP_CONFIRMED (polling, not event-driven) — impact not measured (2s interval, low overhead suspected but not benchmarked) |
+| Redundant network requests | Global rate limit (300/min) and auth sliding window exist; no evidence of actual redundant requests in production | §33.3 | NOT_APPLICABLE (control exists; no waste demonstrated) |
+| Redundant DB reads | Not traced this pass beyond registration store (already N/A pattern, single-key reads) | GAP-PERSIST work (§32) | NOT_APPLICABLE for the traced subsystem |
+| Unbounded resource growth | Dedup cache capped (200 entries); rolling stats capped (20/model); queue cleanup keeps bounded terminal set | §33.3 | VERIFIED_CONTROL |
+| Missing budgets | No per-agent/per-project cost-budget enforcement (unchanged from §33.7 RES-008) | §33.7 | GAP_CONFIRMED |
+| Missing attribution | No per-agent/per-project token/cost attribution (unchanged from §33.6) | §33.6 | GAP_CONFIRMED |
+| Missing observability | No historical queue telemetry, no cache hit-rate aggregation (unchanged from §33.5/§33.6) | §33.5/§33.6 | GAP_CONFIRMED |
+| Work repeated after prior successful result | Governed-execution idempotency replay exists in code (§33.13.C.5); dispatch-level (agent) equivalent does not | code trace | VERIFIED_CONTROL (tool layer) / GAP_CONFIRMED (dispatch layer) |
+
+#### H. Stage 4 Deep Gap Register — RES-018 through RES-023 (final, complete fields; IDs continue from §33.12's RES-0xx)
+
+Each entry below carries every required field. Saving type uses exactly one of: **PROVEN SAVING** (measured, before/after) · **POTENTIAL SAVING** (plausible, unmeasured) · **UNPROVEN / BENCHMARK REQUIRED** (specific benchmark identified, not yet run) · **NOT OBSERVABLE** (no instrumentation exists to measure it at all).
+
+---
+
+**RES-018 — Token/Context efficiency**
+- Current ArletOS behavior: exact-match, short-TTL (45s) whole-prompt dedup cache only (`llm.ts`).
+- Repository evidence: `packages/agent-core/src/providers/llm.ts` (`DEDUP_TTL_MS`, `MAX_DEDUP_CACHE_ENTRIES`); R2 (§33.8) proves the exact-match path works.
+- External reference: §33.13.A rows 1–2 (Anthropic/OpenAI prompt-caching docs) — **EXTERNAL / VENDOR DOCUMENTATION, not an ArletOS measurement.**
+- Measured evidence: R2 dedup behavior VERIFIED (§33.8). Prefix/KV-style caching itself is NOT implemented, so it has no ArletOS measurement.
+- Classification: GAP_CONFIRMED (absence of prefix/KV caching, confirmed by code trace) — the existing exact-match cache remains VERIFIED_EFFICIENT within its own scope.
+- Confidence: High (ArletOS code traced directly; vendor docs fetched directly).
+- Demonstrated impact: None for prefix caching (not implemented). Exact-match cache impact is demonstrated separately under RES-001.
+- Saving type: **POTENTIAL SAVING** — plausible if ArletOS's dispatch pattern included growing multi-turn conversations; ArletOS's current pattern is mostly single-turn per specialist call, so applicability itself is unconfirmed.
+- Benchmark required?: Yes — first confirm whether any real ArletOS workload has a growing, reusable prefix before benchmarking a caching strategy for it.
+- Observability limitation: No telemetry currently distinguishes single-turn vs. multi-turn specialist calls to even identify candidate workloads.
+- Safety/correctness risk: Low — additive; would not change existing exact-match dedup behavior.
+- Recommended next investigation: Determine whether any current specialist dispatch path sends multi-turn conversation history (not just single-turn requests) before evaluating prefix caching.
+- Remediation candidate (Stage 5, not implemented): investigate prefix/context caching applicability.
+
+---
+
+**RES-019 — Model efficiency (routing decision vs. enforcement)**
+- Current ArletOS behavior: `geniusRoute()` computes a cost-aware `cheap`/`strong`/`vision`/`local`/`multi+human` routing decision with real demotion logic driven by rolling cost/error stats.
+- Repository evidence: `packages/agent-core/src/router/genius.ts`, `genius.test.ts` (17 real assertions), called from `kernel/task-plan.ts`, `orchestrator/plan.ts`, `kernel/evaluation.ts`. Exhaustive grep of `modelHint` usage across `apps/api/src` found **no call site that reads the genius.ts routing decision and uses it to select the actual provider/model** for a dispatched specialist (the only other `modelHint` usage found, `catalog.modelHint` in `routes/agent.ts`/`routes/conversation.ts`, is an unrelated marketplace-catalog field).
+- External reference: none (routing-by-complexity is general engineering practice, not a cited source).
+- Measured evidence: routing decision computed and unit-tested; **enforcement at the real model-selection call site is NOT observed to exist.**
+- Classification: GAP_CONFIRMED — "decision exists" ≠ "decision controls runtime model selection." Kept as this exact distinction, per your instruction.
+- Confidence: High (confirmed by exhaustive grep, not a sampled search).
+- Demonstrated impact: None — a routing decision that is computed but never consulted at the call site saves nothing by construction.
+- Saving type: **UNPROVEN / BENCHMARK REQUIRED** — wiring it would only produce a saving if "cheap" tier calls are in fact cheaper for the tasks currently routed to "strong," which has not been measured.
+- Benchmark required?: Yes — confirm whether `security-sentinel-dispatch.ts`, `code-engineer-dispatch.ts`, or `research-analyst-dispatch.ts` read `modelHint` before calling `llm.ts` (not confirmed either way beyond the `apps/api/src` grep already performed).
+- Observability limitation: No log currently records "routed model" vs. "actually invoked model" side by side, so even after wiring, verifying enforcement would need new instrumentation.
+- Safety/correctness risk: Low — tracing the gap is read-only; wiring it later (Stage 5) would need care not to downgrade a specialist that requires "strong" for correctness (e.g., SECURITY), which `geniusRoute` already protects against via its `multi+human`/`vision`/`local` demotion exemptions.
+- Recommended next investigation: Read the three specialist-dispatch files named above end-to-end to confirm whether they consume `modelHint` at all before calling `llm.ts`.
+- Remediation candidate (Stage 5, not implemented): wire `modelHint` into specialist LLM provider selection, only after the investigation above confirms it is genuinely missing end-to-end.
+
+---
+
+**RES-020 — Tool efficiency (progressive disclosure)**
+- Current ArletOS behavior: every registered tool's schema is static; no progressive/conditional disclosure based on task type.
+- Repository evidence: `packages/agent-core/src/policies/tool-policies.ts`, `packages/agent-core/src/tools/runtime.ts` — absence confirmed by trace.
+- External reference: §33.13.A context — OpenAI's `tools-tool-search` `defer_loading` feature is a real, vendor-documented progressive-disclosure mechanism (referenced during research; not separately fetched as a dedicated source this pass — treat as **UNVERIFIED** beyond the general existence of the feature name seen in the OpenAI prompt-caching page's cross-references).
+- Measured evidence: absence confirmed by trace only; no benchmark run.
+- Classification: GAP_CONFIRMED (absence confirmed) — impact not measured.
+- Confidence: Medium — absence is confirmed, but ArletOS's current tool count is small relative to what motivates this vendor feature at scale, so relevance is uncertain.
+- Demonstrated impact: None demonstrated.
+- Saving type: **POTENTIAL SAVING** — likely small at ArletOS's current tool-catalog size; unquantified.
+- Benchmark required?: Only if the tool catalog grows materially — no benchmark justified at current scale.
+- Observability limitation: No metric tracks tool-schema token cost per request today.
+- Safety/correctness risk: Low.
+- Recommended next investigation: Re-assess only if the tool catalog size increases significantly.
+- Remediation candidate (Stage 5, not implemented): none — low priority given current scale.
+
+---
+
+**RES-021 — Retrieval efficiency (duplicate per-specialist retrieval)**
+- Current ArletOS behavior: each specialist in a multi-specialist dispatch independently calls `loadKnowledge` over the same corpus.
+- Repository evidence: `packages/agent-core/src/orchestrator/dispatch.ts`'s per-step `loadKnowledge` call (one call per specialist, no shared result across specialists in the same request).
+- External reference: none (engineering judgment, not a cited source).
+- Measured evidence: **not measured** — code trace only, no live multi-specialist dispatch executed this pass.
+- Classification: **RISK_NOT_YET_MEASURED / BENCHMARK_REQUIRED.** Must remain in this state unless actual measured duplication evidence exists — per your explicit instruction, this is not escalated to WASTE_CONFIRMED.
+- Confidence: Medium — the code pattern (N specialists → N `loadKnowledge` calls) is confirmed by direct trace; whether this is measurably wasteful (vs. cheap in-memory lookups) is not confirmed.
+- Demonstrated impact: None demonstrated.
+- Saving type: **UNPROVEN / BENCHMARK REQUIRED.**
+- Benchmark required?: Yes — run a real 3+ specialist dispatch and count/measure retrieval calls and their latency.
+- Observability limitation: No per-dispatch retrieval-call counter exists to read without adding instrumentation.
+- Safety/correctness risk: Low — sharing a read-only retrieval result across specialists in one dispatch would not change correctness if implemented carefully later.
+- Recommended next investigation: Benchmark a 3+ specialist dispatch and count retrieval calls before any caching change.
+- Remediation candidate (Stage 5, not implemented): cache the per-request knowledge package once per dispatch, reuse across specialists with identical query text — **only after the benchmark above, not before.**
+
+---
+
+**RES-022 — Automation efficiency (worker polling)**
+- Current ArletOS behavior: worker polls every 2s unconditionally; logs `worker_idle` on an empty queue (a known, logged no-op, not silent).
+- Repository evidence: `apps/worker/src/index.ts`.
+- External reference: none (engineering judgment, not a cited source).
+- Measured evidence: presence confirmed; CPU/wake overhead **not benchmarked**.
+- Classification: GAP_CONFIRMED (polling rather than event-driven) — impact not measured.
+- Confidence: Medium.
+- Demonstrated impact: None demonstrated — low overhead is suspected (polling an in-memory array), not measured.
+- Saving type: **NOT OBSERVABLE** for actual overhead (no CPU/wake measurement exists); replacing polling is explicitly **NOT recommended** without first measuring real waste, per your own instruction not to replace polling "simply because it sounds better."
+- Benchmark required?: Only if CPU/wake overhead is shown to matter at representative idle time.
+- Observability limitation: No CPU/wake-cycle metric exists for the worker process.
+- Safety/correctness risk: Low to change, but replacing polling without measurement carries an unjustified-refactor risk per the audit's own boundary rules.
+- Recommended next investigation: Measure CPU/wake overhead under representative idle time before considering any change.
+- Remediation candidate (Stage 5, not implemented): none recommended at this time — explicitly classified as **E — no demonstrated benefit** in §33.13.I.
+
+---
+
+**RES-023 — Verification infrastructure (= RES-F3, §33.12, restated here for register completeness)**
+- Current ArletOS behavior: `apps/worker/src/index.test.ts` passes 5/5 in isolation; the same file combined with 3 other Stage-3 test files in one `vitest` invocation produced 2 failures (a timeout and a call-count mismatch).
+- Repository evidence: `apps/worker/src/index.test.ts` (test file itself; not modified).
+- External reference: none.
+- Measured evidence: real, reproduced twice (combined run vs. isolated run) this pass.
+- Classification: **VERIFICATION_INFRASTRUCTURE** — explicitly not a production defect, not fixed this pass, no test/timer/retry/timeout modified to hide it.
+- Confidence: High (directly reproduced).
+- Demonstrated impact: Reproducible test-isolation defect; zero production-code impact (the underlying retry/backoff logic itself passed 5/5 in isolation).
+- Saving type: **NOT APPLICABLE** (this is a verification-infrastructure finding, not a resource-efficiency finding).
+- Benchmark required?: No — a root-cause investigation is needed, not a benchmark.
+- Observability limitation: N/A.
+- Safety/correctness risk: N/A for production; a real risk to *trusting CI results* if unresolved (a flaky suite can mask a real regression).
+- Recommended next investigation: root-cause the module-level `queue` array / fake-timer interaction across files sharing a vitest worker.
+- Remediation candidate (Stage 5, not implemented): investigate and fix test isolation, separate from any production remediation.
+
+---
+
+#### I. Prioritization by Evidence (Part I — not opinion-ranked)
+
+- **A — measurable saving already demonstrated:** RES-001 (LLM dedup cache, R2), RES-002/RES-003 (bounded retry, R4). These are the only items with a real before/after measurement in this audit.
+- **B — strong evidence of likely saving, benchmark still required:** RES-021 (duplicate per-specialist retrieval in one dispatch — code-trace confirmed, not yet benchmarked), RES-007 (queue full-file rewrite — confirmed present, impact unmeasured).
+- **C — observability gap preventing measurement:** RES-012 (no per-agent/per-project token attribution), Part F (cost-per-successful-task unmeasurable), RES-011/013/014/015/016 (§33.12).
+- **D — architectural possibility with insufficient evidence:** RES-018 (prefix/KV caching — real vendor mechanism, but ArletOS's mostly-single-turn dispatch pattern may not benefit; needs usage-pattern evidence before design), RES-019 (wiring `modelHint` to real model selection — plausible saving, but the actual cost delta of "cheap" vs. "strong" tier for ArletOS's real workloads is not measured), RES-020 (progressive tool disclosure — vendor-documented benefit at vendor's scale, ArletOS's tool count may be too small to matter).
+- **E — no demonstrated benefit:** RES-022 (replacing polling with event-driven wake) — explicitly not recommended without first measuring whether the current 2s poll creates real, measurable waste, per your own instruction not to replace polling "simply because it sounds better."
+
+#### K. Functional Savings View — where ArletOS can potentially save resources
+
+Per-category classification, using exactly: **PROVEN** · **MEASURED BUT NOT SIGNIFICANT** · **POTENTIAL** · **NOT OBSERVABLE** · **NOT APPLICABLE**.
+
+| Category | Classification | Basis |
+| -------- | --------------- | ------ |
+| LLM calls | **PROVEN** | Dedup cache demonstrably avoids 1 of 2 identical calls (R2, §33.8) |
+| Input tokens | **NOT OBSERVABLE** | No token-level metric exists per call in this environment (no live provider); provider-level token math is verified only via mocked-transport tests |
+| Repeated context processing | **POTENTIAL** | Prefix/KV caching (RES-018) is a real vendor mechanism ArletOS does not implement; applicability to ArletOS's mostly-single-turn pattern is unconfirmed |
+| Tool calls | **NOT OBSERVABLE** | No session-wide tool-call counter exists (§33.13.C.3) |
+| Retrieval work | **POTENTIAL** | RES-021 — duplicate per-specialist retrieval is code-trace-confirmed, not yet benchmarked |
+| Specialist duplication | **NOT OBSERVABLE** | `geniusRoute` specialist-selection over-triggering was not measured this pass |
+| Retries | **MEASURED BUT NOT SIGNIFICANT** | Both provider and worker retry are already bounded and verified (R4, §33.8) — no further saving identified beyond what already exists |
+| Model cost | **POTENTIAL** | RES-019 — a cost-aware routing decision exists but is not proven wired to actual model selection; saving is conditional on that wiring and on real cost deltas, neither measured |
+| Queue/background work | **POTENTIAL** | RES-007 — full-file rewrite confirmed present, production-scale impact unmeasured |
+| DB operations | **NOT OBSERVABLE** | No query-count/latency instrumentation exists (RES-013, §33.12) |
+| Network calls | **NOT APPLICABLE** | Rate limits and auth sliding window already bound this; no waste demonstrated to reduce further |
+| Execution time | **NOT OBSERVABLE** | `agent_run_duration` exists but is not joined to a per-task outcome (Part F/§33.13.F) to identify where time is actually wasted vs. necessary |
+
+#### L. Stage 5 Boundary — explicit, not started
+
+**STAGE 5 — NOT STARTED.** The following are candidates only, listed for future authorization — none implemented, none authorized, none scheduled by this document:
+
+1. Enforce the `modelHint` routing decision at the actual specialist model-selection call site (RES-019) — only after confirming end-to-end absence.
+2. Benchmark duplicate per-specialist retrieval in a real multi-specialist dispatch (RES-021).
+3. Benchmark queue full-file write amplification at representative job volume (RES-007).
+4. Add task-level resource attribution (`task_id` joining cost/tokens/tool calls/retrieval/retries/duration/outcome) — prerequisite for Part F/§33.13.F's cost-per-successful-outcome target and for RES-008/RES-012 budget enforcement.
+5. Add a session-wide tool-call budget/counter (currently absent, §33.13.C.3).
+6. Investigate prefix/context caching applicability (RES-018) — only after confirming a real multi-turn workload pattern exists.
+7. Improve aggregate dedup-cache hit-rate telemetry (RES-016, §33.12).
+8. Investigate the F3/RES-023 cross-file test-isolation defect.
+
+None of the above may begin without separate, explicit authorization for Stage 5.
+
+#### J. Verification (Part L — complete, not deferred)
+
+```
+git status --short
+ M docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md
+
+git diff --check
+(no output — clean)
+
+git diff --stat
+ docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md | 341 +++++++++++++++++++++-
+ 1 file changed, 332 insertions(+), 9 deletions(-)
+```
+
+- **Exact files changed:** `docs/architecture/CONTROL_10_OF_10_MASTER_PLAN.md` — the only file in the working tree (`git status --short` shows exactly one line).
+- **Exact section changed:** `## 33. GAP-RESOURCE` only — every hunk in `git diff` falls inside this section (status line, §33.13.A, §33.13.H, new §33.13.K/L, §33.13.J itself). No other numbered section (1–32, 33.1–33.12 content, 34+) was touched.
+- **Production code changed:** NO.
+- **Test code changed:** NO.
+- **Configuration changed:** NO.
+- **Dependencies changed:** NO.
+- **Anything staged:** NO.
+- **Anything committed:** NO.
+- **Anything pushed:** NO.
+- **Scope confirmation:** the expected scope was documentation-only, confined to Section 33 — confirmed exactly that; nothing outside it changed.
+
+### 33.15 Stage 5 — Targeted Benchmarks + Evidence-Driven Remediation Design (executed 2026-09-29)
+
+**Method:** one real, executed, repeated-run benchmark (queue write amplification) using a temporary harness that imported the real, unmodified `apps/worker/src/queue-persistence.ts` module — the harness itself lived outside the repository (OS temp directory), was never staged, committed, or part of production/test scope, and was deleted after use. All other candidates below are either resolved by exhaustive code trace (deterministic, not requiring execution) or explicitly marked `BENCHMARK BLOCKED` / `NOT OBSERVABLE` where live execution would require a production change or unavailable credentials.
+
+#### 33.15.A Corrected finding — task-level attribution is partially real (correction to §33.13.F)
+
+Deeper trace this pass found that §33.13.F's blanket "cannot compute cost-per-task" statement was **incomplete** for one path. [apps/api/src/services/llm-specialist-proposal.ts](apps/api/src/services/llm-specialist-proposal.ts) and [apps/api/src/services/llm-specialist-run.ts](apps/api/src/services/llm-specialist-run.ts) (the real LLM-backed proposal path for `CODE_ENGINEER`/`RESEARCHER`) carry an optional `taskId` end-to-end and return the **real metered** `LlmUsage` (`costUsd`, token counts) for the call actually placed — not a placeholder. This is genuine, code-confirmed task-level cost attribution for that one path.
+
+**What is still missing (unchanged from §33.13.F):** this `taskId` + cost pair is not joined, in one durable record, to tool calls, retrieval calls, retries, total duration, or the final judge/audit outcome. The correction narrows the gap; it does not close it. Classification: **OBSERVABILITY_GAP** (narrower than previously stated) rather than a blanket `NOT_OBSERVABLE` for this one path's cost/taskId pair specifically.
+
+#### 33.15.B RES-019 — Model routing enforcement
+
+- **Investigation performed:** exhaustive grep of `modelHint`/`LLM_PROVIDER`/`completeStrict`/`completeWithFreeFallback`/`createLlmProvider` across the three concrete specialist dispatch files: `apps/api/src/services/security-sentinel-dispatch.ts`, `code-engineer-dispatch.ts`, `research-analyst-dispatch.ts` — **zero matches in all three.**
+- **Finding:** the real LLM-backed specialist path (via `llm-specialist-proposal.ts`) calls `completeWithFreeFallback` directly with a caller-supplied `env` (defaults to the free offline provider) — it does **not** consult `geniusRoute()`'s `modelHint` at all. This confirms, definitively rather than by absence-of-evidence, that `modelHint` does not control runtime model selection anywhere in the current dispatch path.
+- **Scenario A (current runtime selection):** confirmed — provider/model is selected solely by `env`/`LlmEnv` (caller-supplied credentials/config), never by the computed routing decision.
+- **Scenario B (routing decision actually enforced, isolated benchmark):** **BENCHMARK BLOCKED — PRODUCTION CHANGE REQUIRED.** Constructing a real A/B cost/latency/outcome comparison requires either (a) modifying production code to wire `modelHint` into provider selection (forbidden this stage) or (b) a live provider credential to run two real model tiers side by side (environment-blocked, unchanged from Stage 3/4). No fabricated numbers are substituted for this comparison.
+- **Conclusion:** the question "is `modelHint` enforced?" is answered with certainty (**NO**). The question "would enforcing it save resources without correctness loss?" remains **BENCHMARK BLOCKED**, not answered, and not assumed.
+
+#### 33.15.C RES-021 — Duplicate per-specialist retrieval
+
+- **Investigation performed:** structural (not timing) analysis of `packages/agent-core/src/orchestrator/dispatch.ts`. The retrieval-call count for a dispatch selecting N specialists is **deterministic from the loop structure, not data-dependent**: exactly 1 combined call (`loadKnowledge` over all selected agents) plus exactly N per-specialist calls (`loadKnowledge` again, scoped to one agent) — **N+1 total calls to the same underlying `buildEvidencePackageForAgent` function over the same corpus**, for any dispatch selecting N specialists.
+- **Repository evidence:** `dispatch.ts`'s top-level `loadKnowledge(input.request, selected.map(...))` call, followed by a per-step `loadKnowledge(input.request, [s.agentId], ...)` call inside the `for` loop.
+- **Live timing benchmark:** **not executed this pass** (would require constructing a full Fabric catalog + knowledge corpus fixture — judged out of proportion to the value given the count is already deterministic from code structure, not uncertain).
+- **Memory/governance guardrail check:** the proposed reuse (share the top-level combined result across specialists instead of re-querying per-specialist) does not touch `retrievalScope`/`requestingAgentIds` — per-specialist scoping is a parameter to the *query*, not a separate memory store, so sharing a result computed with the *same* scope parameters would not cross any tenant/personal-memory boundary. **No design below grants specialist agents access to personal/user memory they do not already have; it only proposes reusing an already-computed, already-scoped result.**
+- **Classification:** count is **repository-evidence-confirmed (deterministic)**; resource *impact* remains **BENCHMARK REQUIRED** (in-memory corpus lookups may be cheap; not measured).
+
+#### 33.15.D RES-007 — Queue write amplification (real, executed benchmark)
+
+**Benchmark ID:** BENCH-QUEUE-001
+**Objective:** determine whether `queue-persistence.ts`'s full-file rewrite creates measurable resource cost at realistic scale.
+**Workload:** sequential `persistJob()` calls building up a queue from empty to N pending jobs, N ∈ {10, 100, 1,000, 5,000, 10,000}.
+**Environment:** local Windows dev machine, Node v22.23.2, `tsx` v4.23.12, cold filesystem cache per run, single-threaded, no other load.
+**Configuration:** real, unmodified `apps/worker/src/queue-persistence.ts` imported directly via dynamic `import()` from a temporary harness outside the repository; `setQueuePathForTests()` redirected each size to its own temp file.
+**Input:** minimal `state.reconcile` job records (`payload: {}`), one unique `id` per index.
+**Execution count:** 1 run per size (sequential, not parallelized) — repeated-run averaging across multiple trials was **not** performed this pass (time-boxed); the reported numbers are single-run wall-clock, explicitly not claimed as statistically stable across repeated trials.
+**Control condition:** N=10 (smallest size, baseline per-write cost).
+**Comparison condition:** N=100 / 1,000 / 5,000 / 10,000 (same code path, larger accumulated file).
+**Metrics:** total duration, average ms/write, final file size, total writes, leftover `.tmp` files (atomicity check), `getQueueStats().total` (correctness check).
+
+**Raw observations:**
+
+| N | Total duration | Avg ms/write | Final file size | Leftover `.tmp` | Stats total (correctness) |
+| - | --------------- | -------------- | ------------------ | ------------------ | ---------------------------- |
+| 10 | 24.43 ms | 2.4429 ms | 2,179 bytes | 0 | 10 ✓ |
+| 100 | 293.46 ms | 2.9346 ms | 21,169 bytes | 0 | 100 ✓ |
+| 1,000 | 4,483.88 ms | 4.4839 ms | 211,969 bytes | 0 | 1,000 ✓ |
+| 5,000 | 45,202.43 ms | 9.0405 ms | 1,063,969 bytes | 0 | 5,000 ✓ |
+| 10,000 | 155,346.56 ms | 15.5347 ms | 2,128,969 bytes | 0 | 10,000 ✓ |
+
+**Result:** average cost per write grows **6.4×** from N=10 to N=10,000 (2.44ms → 15.53ms), and total duration grows **~6,360×** for a 1,000× increase in N (24.43ms → 155,346.56ms) — far worse than linear scaling (which would predict ~24.4 seconds at N=10,000, not 155 seconds). This is consistent with the suspected O(n²) total-cost pattern from a full-file rewrite on every write (each of N writes re-serializes and re-writes all jobs accumulated so far). **Correctness and atomicity held at every size** — no leftover `.tmp` files, and `getQueueStats().total` matched the expected count exactly at every N.
+**Limitations:** single run per size (no repeated-trial averaging/variance); local dev machine only (not representative of a production disk/filesystem); measures `persistJob` in isolation, not interleaved with real job processing (`runOnce`) or concurrent enqueue/dequeue traffic; does not measure CPU or memory directly (only wall-clock and file size).
+**Conclusion:** the full-file rewrite pattern **is now a measured, real cost**, not merely a suspected one, **at queue depths of thousands of jobs** — this is a genuine escalation from `RISK_NOT_YET_MEASURED` to a **MEASURED SAVING OPPORTUNITY**, bounded by the limitations above (single-machine, single-run). At the depths ArletOS's worker currently expects (per its own `cleanupOldJobs(100)` default retention and 2-worker-job-kind catalog), sustained queue depths in the thousands may be uncommon — this benchmark does not establish that ArletOS *currently* reaches that depth in production, only that *if it does*, the cost is real and superlinear.
+
+#### 33.15.E Context/token efficiency
+
+- Per-call budgets (`AGENT_MEMORY_BUDGET=12`, `maxItems=12` in `dispatch.ts`'s `loadKnowledge`) are real, code-confirmed caps (§33.3) — re-confirmed, not re-benchmarked this pass.
+- **New finding:** [packages/agent-core/src/security/prompt-layers.ts](packages/agent-core/src/security/prompt-layers.ts)'s `buildLayeredSystemPrompt()` emits its `instructions` argument "byte-for-byte, never wrapped or scanned." In `llm-specialist-proposal.ts`, `instructions` is built from the specialist's static catalog entry (`getFabricAgent(agentId)`) plus a fixed output contract — **both are constant for a given `agentId` across every call**, independent of the per-request `request` text (which goes into `untrustedBlocks` instead). This is a genuine, code-confirmed **repeated, identical prefix per specialist** — exactly the pattern the external vendor documentation (§33.13.A) describes prefix/KV caching as targeting.
+- Real input/output token counts remain **NOT OBSERVABLE** without a live paid-provider call (unchanged, environment-blocked).
+- **Effect on RES-018:** this finding upgrades RES-018 from "uncertain applicability" to **a confirmed repeated-prefix candidate** — see §33.15.G below.
+
+#### 33.15.F Tool-call efficiency
+
+Unchanged from Stage 4 (§33.13.C.3): no session-wide tool-call counter/budget exists; `executeTool()` has no built-in deduplication for an identical `(toolName, args)` pair called twice in the same session — each call is independently policy-checked and executed. **Not benchmarked this pass** (would require a live multi-tool-call session; judged lower priority than the queue benchmark given the time budget). Classification unchanged: `GAP_CONFIRMED` (absence), impact `NOT_OBSERVABLE`.
+
+#### 33.15.G Prefix/KV caching — revised decision
+
+Per §33.15.E's new finding, revise the Stage 4 (§33.13.H, RES-018) decision:
+- **Repeated system context:** confirmed — per-specialist `instructions` block is identical across calls (code trace, this pass).
+- **Repeated project/conversation context:** not confirmed — ArletOS's proposal-backed specialist calls appear to be single-turn per dispatch (no multi-turn message history construction was found in `llm-specialist-proposal.ts`).
+- **Repeated tool definitions:** not separately traced this pass.
+- **Decision: BENCHMARK REQUIRED** (upgraded from "architectural possibility with insufficient evidence" in Stage 4) — the repeated-prefix pattern is now code-confirmed for the specialist `instructions` block specifically; whether the actual size of that stable prefix is large enough, and called frequently enough, to justify prefix caching (which requires a live paid provider supporting it) remains unmeasured. Vendor-reported percentages (§33.13.A) are external reference only and are not transferred to ArletOS.
+
+#### 33.15.H Failure amplification
+
+Re-examined via code trace (not re-executed — Stage 3's R4 evidence already proved each layer is independently bounded): the provider-layer retry (`llm.ts`, ≤3 attempts) and the worker-layer retry (`index.ts`, ≤3 attempts) are **separate call stacks that do not call into each other** — a provider retry exhausting does not trigger a worker-level retry of the same unit of work, and vice versa, based on the traced code paths. No compounding/amplification path was found. **Classification: NO ACTION JUSTIFIED** — existing bounded-retry controls (RES-002/RES-003) are preserved unchanged, per your explicit instruction not to modify retry policy.
+
+#### 33.15.I Savings summary — proven vs. potential vs. unproven
+
+| Finding | Saving type | Basis |
+| ------- | ------------ | ------- |
+| RES-001 (LLM dedup) | **PROVEN SAVING** (unchanged from Stage 3/4) | R2, §33.8 |
+| RES-002/RES-003 (bounded retry) | **MEASURED SAVING** (failure→success conversion, not a token/cost saving) | R4, §33.8 |
+| RES-007 (queue write amplification) | **MEASURED SAVING OPPORTUNITY** (escalated this stage) | §33.15.D, real executed benchmark |
+| RES-019 (model routing enforcement) | **SAVING NOT QUANTIFIED** — enforcement absence is proven; resulting saving is BENCHMARK BLOCKED | §33.15.B |
+| RES-021 (duplicate retrieval) | **SAVING NOT QUANTIFIED** — call-count duplication is proven (N+1, deterministic); resource impact is BENCHMARK REQUIRED | §33.15.C |
+| RES-018 (prefix caching) | **POTENTIAL SAVING** — repeated-prefix pattern now confirmed; magnitude BENCHMARK REQUIRED | §33.15.E/G |
+| RES-020 (progressive tool disclosure) | **POTENTIAL SAVING**, low confidence at current scale (unchanged from Stage 4) | §33.13.H |
+
+No production-wide percentage is claimed for any row above. Where a percentage exists (RES-007's per-write growth ratios), it is scoped explicitly to the benchmarked machine/run count and not extrapolated to production traffic.
+
+#### 33.15.J Remediation Designs (proposals only — nothing implemented)
+
+**Design 1 — Queue persistence: bounded append instead of full-file rewrite (addresses RES-007)**
+- Problem: `persistJob()` rewrites the entire queue file on every call; measured cost grows superlinearly with pending-job count (§33.15.D).
+- Evidence: BENCH-QUEUE-001 (this stage).
+- Expected resource benefit: reduced write cost at high queue depth (magnitude depends on final design — e.g., append-only log + periodic compaction, or an indexed on-disk structure).
+- Expected correctness impact: must preserve exact current guarantees — atomic durability, crash recovery (`loadPendingJobs`'s `RUNNING`→`PENDING` reset), upsert-by-id semantics, and `cleanupOldJobs`'s terminal-job retention.
+- Security impact: none anticipated — same trust boundary (local file, single worker process).
+- Memory-isolation impact: none — this is job-queue persistence, unrelated to agent/personal memory.
+- Implementation boundary: `apps/worker/src/queue-persistence.ts` only; `apps/worker/src/index.ts` should not need behavioral changes if the public function signatures (`persistJob`, `loadPendingJobs`, `markJobRunning/Completed/Failed`, `updateJobRetry`, `getQueueStats`, `cleanupOldJobs`) are preserved.
+- Affected files/modules: `apps/worker/src/queue-persistence.ts`, `apps/worker/src/queue-persistence.test.ts` (existing tests must continue to pass unmodified in behavior, only extended if new cases are needed).
+- Tests required: all existing `queue-persistence.test.ts` cases (10, per Stage 3) must still pass; new cases for the append/compaction boundary; a repeated, multi-trial version of BENCH-QUEUE-001 to prove the new design's growth curve is materially better.
+- Benchmark required after implementation: re-run BENCH-QUEUE-001 (multi-trial this time) and compare growth curves before/after.
+- Rollback strategy: keep the current full-rewrite function available behind a flag/branch until the new design's multi-trial benchmark and full test suite are both green; revert is a single-file change.
+- Observability required: none additional strictly required, though a write-duration metric would make future regressions visible.
+- Success criteria: growth curve materially closer to linear than the measured ~6,360×/1,000× ratio; all existing tests green; no change to on-disk schema visible to other processes without a migration path.
+
+**Design 2 — Task-level resource attribution (addresses Part F / §33.13.F / §33.15.A)**
+- Problem: no single record joins task_id + agent/project + tokens + provider/model + tool calls + retrieval + retries + duration + cost + final outcome.
+- Evidence: §33.15.A (taskId + cost already exist for one path; nothing joins the rest).
+- Expected resource benefit: enables future cost-per-successful-outcome measurement (not a direct saving itself — an observability prerequisite).
+- Expected correctness impact: none if purely additive (new field(s) on existing records).
+- Security impact: must not leak cross-tenant data — any new join key must respect existing `ownerId`/`projectId` scoping already enforced elsewhere.
+- Memory-isolation impact: none if scoped correctly.
+- Implementation boundary: likely `apps/api/src/services/llm-specialist-run.ts`, `agent-proposal.ts`, `audit-log.ts`, and `atlasMetrics` — exact boundary needs its own design pass, not decided here.
+- Affected files/modules: TBD at design time; out of scope to enumerate precisely without further investigation.
+- Tests required: TBD.
+- Benchmark required after implementation: verify a real task's full resource record can be reconstructed end-to-end.
+- Rollback strategy: additive fields, revertible without data loss to existing consumers.
+- Observability required: this design *is* the observability improvement.
+- Success criteria: at least one real dispatch's cost/tokens/tool-calls/retries/duration/outcome can be joined on a single task_id.
+
+#### 33.15.K Stage 5 Decision Register
+
+| ID | Opportunity | Baseline | Evidence | Measured Saving | Quality Impact | Decision |
+| -- | ------------ | ---------- | ---------- | ------------------ | ---------------- | ---------- |
+| RES-007 | Queue write-amplification reduction | Full-file rewrite, O(n²)-consistent measured growth | BENCH-QUEUE-001 (real, executed) | Measured cost growth confirmed (6.4×/1,000× per-write, ~6,360×/1,000× total) — saving from a redesign not yet measured (no "after" design exists) | None expected if durability/atomicity/upsert semantics preserved (explicit design constraint) | **BENCHMARK MORE** — design proposed (§33.15.J Design 1); build + re-benchmark before implementation approval |
+| RES-019 | Wire `modelHint` to real model selection | Confirmed NOT wired (3/3 dispatch files checked) | Exhaustive grep, this stage | Not quantifiable — Scenario B is BENCHMARK BLOCKED | Risk: could downgrade a specialist that needs "strong" tier for correctness if wired carelessly | **OBSERVABILITY REQUIRED** — need routed-vs-actual-model logging before any wiring change can be evaluated |
+| RES-021 | Shared retrieval across specialists in one dispatch | N+1 calls confirmed (deterministic) for N specialists | Code trace, this stage | Not quantified — impact of in-memory corpus lookups unmeasured | None expected (read-only result reuse; same scope) | **BENCHMARK MORE** — measure real latency/count in a live multi-specialist dispatch before designing reuse |
+| RES-018 | Prefix/KV caching for per-specialist stable instructions | Repeated identical prefix confirmed (code trace) | `prompt-layers.ts` + `llm-specialist-proposal.ts` trace, this stage | Not quantified — magnitude requires a live paid provider | None expected if implemented as a pure additive cache header | **BENCHMARK MORE** — needs a live-provider pass to quantify (ENVIRONMENT BLOCKED until credentials available) |
+| RES-020 | Progressive tool-schema disclosure | Static, always-sent schemas | Code trace, Stage 4 | Not quantified; likely small at current tool count | None expected | **NO ACTION** — insufficient scale to justify investigation now |
+| Task-level attribution | Join task_id+cost+tokens+tools+retrieval+retries+duration+outcome | Partial (taskId+cost exist for one path only) | §33.15.A, this stage | N/A — observability prerequisite, not a direct saving | None if additive | **OBSERVABILITY REQUIRED** — design proposed (§33.15.J Design 2) |
+| RES-F3 / RES-023 | Fix cross-file test isolation | 5/5 pass isolated, 2/57 fail combined | §33.8/§33.12, unchanged | N/A (test infra, not resource) | Risk to CI trust if unresolved | **BENCHMARK MORE** — needs root-cause investigation, not a resource-efficiency decision |
+
+#### 33.15.L Blocked measurements and limitations
+
+- **BENCHMARK BLOCKED — PRODUCTION CHANGE REQUIRED:** RES-019 Scenario B (real routing-enforced A/B comparison) — would require either a production wiring change or live provider credentials, both out of Stage 5's boundary.
+- **ENVIRONMENT BLOCKED:** RES-018's magnitude (needs a live paid provider supporting prefix caching); RES-009/RES-010 (unchanged from Stage 3/4, no provider credentials in this environment).
+- **Not executed by choice (time-boxed, not blocked):** RES-021 live timing benchmark (count is already deterministic from code structure); RES-020 tool-schema token-cost measurement (judged low value at current scale).
+- **Limitation on BENCH-QUEUE-001:** single run per size, one machine — a production capacity-planning decision should not rely on this benchmark alone without repeated-trial validation.
+
+### 33.16 Stage 6 Boundary
+
+**STAGE 6 — IMPLEMENTATION NOT STARTED.** Only the following are candidates, none implemented, none authorized:
+1. Design 1 (§33.15.J) — queue persistence redesign — pending a repeated-trial "after" benchmark before approval, per the Decision Register's `BENCHMARK MORE` verdict.
+2. Design 2 (§33.15.J) — task-level resource attribution — pending its own design pass (`OBSERVABILITY REQUIRED`).
+3. Root-cause investigation of RES-F3/RES-023 test isolation.
+4. RES-021 live multi-specialist retrieval benchmark (before any reuse design).
+5. RES-018 live-provider prefix-caching magnitude benchmark (environment-blocked until credentials are available).
+6. RES-019 routed-vs-actual-model observability logging (before any wiring decision).
+
+No item above may begin without separate, explicit Stage 6 authorization.
+
+### 33.17 Final Closure Criteria (renumbered from former §33.11 / §33.14)
+
+GAP-RESOURCE may only be marked VERIFIED when every condition in the originating audit specification's own Definition of Done is met (repository audit complete, telemetry evaluated, representative workloads measured, confirmed resource behavior evidenced, known waste identified or reasonably ruled out, automation and runaway protections verified where applicable, required remediation completed, before/after measurements exist for claimed optimizations, regression tests pass, type checking passes, `git diff --check` passes, no unrelated scope introduced, this document reflects the verified state, remaining limitations explicitly recorded). This section is not that state today — it records Stage 1–5 audit, controlled-baseline, deep-research, and targeted-benchmark findings only. Current status: **BASELINE PARTIALLY VERIFIED** (Stage 3), **DEEP RESEARCH + GAP ANALYSIS COMPLETE** (Stage 4), **TARGETED BENCHMARKS COMPLETE / REMEDIATION DESIGN ONLY** (Stage 5) — not VERIFIED/COMPLETE/CLOSED/PRODUCTION VERIFIED as a whole.
 
 ---
 
