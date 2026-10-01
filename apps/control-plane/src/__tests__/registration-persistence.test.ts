@@ -31,7 +31,6 @@ import {
   persistRegistration,
   loadRegistrationByKey,
   loadAllRegistrations,
-  clearRegistrationStoreForTests,
   closeRegistrationStoreForTests,
 } from "../services/registration-store.js";
 
