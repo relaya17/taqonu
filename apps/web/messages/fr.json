@@ -212,7 +212,7 @@
     "boundFinding": "Constat lié pour Proposer",
     "continuity": {
       "title": "Actuellement dans ce projet",
-      "help": "Dernier correctif, dernière exécution gouvernée et coût enregistré du projet depuis Atlas — ni un score de Vérité, ni du Contrôle.",
+      "help": "Dernier changement, dernière exécution et coût enregistré.",
       "patch": "Correctif",
       "noPatch": "Aucun correctif pour l’instant",
       "noRun": "Aucune exécution gouvernée pour l’instant",
@@ -222,13 +222,13 @@
     },
     "git": {
       "title": "Statut Git",
-      "help": "Sortie porcelain en lecture seule issue de la commande gouvernée git.status. L’actualisation nécessite toujours une seconde identité. Studio ne crée jamais de commits ici.",
+      "help": "Changements dans le dossier de travail. L’actualisation exige une seconde identité. Studio ne crée jamais de commit ici.",
       "empty": "Aucun résultat git.status gouverné pour l’instant. Demandez-en un pour lister les fichiers modifiés.",
       "request": "Demander le statut Git",
       "requesting": "Demande d’approbation…",
       "notTruth": "Le statut Git est une preuve de l’espace de travail, pas un verdict de Vérité.",
       "exitCode": "code de sortie {code}",
-      "clean": "Arbre de travail propre (porcelain vide).",
+      "clean": "Aucun changement",
       "requestBranch": "Demander la branche",
       "requestDiff": "Demander le diff",
       "branch": "Branche",
@@ -245,7 +245,7 @@
     },
     "problems": {
       "title": "Problèmes",
-      "empty": "Aucun constat Sentinel, contrôle qualité, TypeScript, build ou test gouverné pour ce projet.",
+      "empty": "Aucun problème dans ce projet.",
       "notCompiler": "Inclut les diagnostics du service de langage TypeScript pour le fichier ouvert, ainsi que Sentinel, les contrôles, le build et les tests.",
       "proposeFix": "Proposer un correctif",
       "testUnavailable": "Exécuteur de tests UNAVAILABLE — pas PASS.",
@@ -276,7 +276,7 @@
       "diagnose": "Diagnostiquer",
       "review": "Revoir"
     },
-    "askTitle": "CODE_ENGINEER — correctif gouverné",
+    "askTitle": "Demander un changement à l’agent",
     "askHelp": "Il s’agit du spécialiste en ingénierie de Fabric, pas de votre agent de supervision personnel. Il propose un correctif. Vous approuvez, puis appliquez. Les rappels et résumés écrivent uniquement dans la mémoire d’Atlas.",
     "engineerRole": "CODE_ENGINEER",
     "engineerNotPsa": "Pas le PSA. Les correctifs nécessitent toujours Approuver → Appliquer par un humain.",
@@ -487,7 +487,24 @@
       "requestHelp": "La demande est une proposition pour le spécialiste Fabric sélectionné. Elle n’est pas appliquée, et l’agent de supervision n’est pas le spécialiste.",
       "requestSent": "Demande envoyée. Elle doit encore passer par la gouvernance. Rien n’a été appliqué."
     },
-    "correctionMode": "Mode correction — patch {patchId}… (cliquez × pour annuler)"
+    "correctionMode": "Mode correction — patch {patchId}… (cliquez × pour annuler)",
+    "governanceShort": "L’agent propose · vous approuvez · alors seulement le disque est modifié",
+    "governanceDetails": "Détails",
+    "governanceHide": "Masquer",
+    "emptyTitle": "Ouvrez un projet pour commencer",
+    "editorTools": "Outils",
+    "bottomPanel": "Panneau inférieur",
+    "sidePanel": "Panneau de l’agent",
+    "aboutAgent": "À propos de l’agent",
+    "statusNoProject": "Aucun projet ouvert",
+    "unsavedCount": "{count} non enregistré(s)",
+    "side": {
+      "agent": "Agent",
+      "chat": "Discussion",
+      "patches": "Changements proposés",
+      "psa": "Agent personnel",
+      "more": "Plus"
+    }
   },
   "contract": {
     "title": "Contrat d’architecture",

@@ -212,7 +212,7 @@
     "boundFinding": "Finding bound for Propose",
     "continuity": {
       "title": "Now in this project",
-      "help": "Last Patch, last governed run, and recorded project cost from Atlas — not a Truth score, not Control.",
+      "help": "Last change, last run and recorded cost.",
       "patch": "Patch",
       "noPatch": "No Patch yet",
       "noRun": "No governed run yet",
@@ -222,13 +222,13 @@
     },
     "git": {
       "title": "Git status",
-      "help": "Read-only porcelain from the governed git.status command. Refresh still requires a second identity. Studio never creates commits here.",
+      "help": "Changes in the workspace folder. Refreshing needs a second identity. Studio never creates commits here.",
       "empty": "No governed git.status result yet. Request one to list changed files.",
       "request": "Request git status",
       "requesting": "Requesting approval…",
       "notTruth": "Git status is workspace evidence, not a Truth verdict.",
       "exitCode": "exit {code}",
-      "clean": "Working tree clean (porcelain empty).",
+      "clean": "No changes",
       "requestBranch": "Request branch",
       "requestDiff": "Request diff",
       "branch": "Branch",
@@ -245,7 +245,7 @@
     },
     "problems": {
       "title": "Problems",
-      "empty": "No Sentinel, Quality Gate, TypeScript, build, or governed test findings for this project.",
+      "empty": "No problems in this project.",
       "notCompiler": "Includes TypeScript language-service diagnostics for the open file, plus Sentinel, gates, build, and tests.",
       "proposeFix": "Propose fix",
       "testUnavailable": "Test runner UNAVAILABLE — not PASS.",
@@ -276,7 +276,7 @@
       "diagnose": "Diagnose",
       "review": "Review"
     },
-    "askTitle": "CODE_ENGINEER — governed patch",
+    "askTitle": "Ask the agent for a change",
     "askHelp": "This is the Fabric engineering specialist, not your Personal Supervising Agent. It proposes a Patch. You Approve, then Apply. Reminders and summaries write Atlas memory only.",
     "engineerRole": "CODE_ENGINEER",
     "engineerNotPsa": "Not the PSA. Patches still need human Approve → Apply.",
@@ -487,7 +487,24 @@
       "requestHelp": "The request is a proposal for the selected Fabric specialist. It is not applied, and the supervising agent is not the specialist.",
       "requestSent": "Request submitted. It still needs governance. Nothing was applied."
     },
-    "correctionMode": "Correction mode — patch {patchId}… (click × to cancel)"
+    "correctionMode": "Correction mode — patch {patchId}… (click × to cancel)",
+    "governanceShort": "The agent proposes · you approve · only then is anything written to disk",
+    "governanceDetails": "Details",
+    "governanceHide": "Hide",
+    "emptyTitle": "Open a project to start",
+    "editorTools": "Tools",
+    "bottomPanel": "Bottom panel",
+    "sidePanel": "Agent panel",
+    "aboutAgent": "About the agent",
+    "statusNoProject": "No project open",
+    "unsavedCount": "{count} unsaved",
+    "side": {
+      "agent": "Agent",
+      "chat": "Chat",
+      "patches": "Proposed changes",
+      "psa": "Personal agent",
+      "more": "More"
+    }
   },
   "contract": {
     "title": "Architecture Contract",

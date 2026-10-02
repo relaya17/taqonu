@@ -180,6 +180,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isMarketing = isMarketingShellPath(pathname);
   const isStudioWorkspace =
     pathname === PATHS.studio || pathname.startsWith(`${PATHS.studio}/`);
+  // Studio is a full-width workspace: the product sidebar starts collapsed
+  // there (the menu button still opens it).
+  useEffect(() => {
+    if (isStudioWorkspace) setNavCollapsed(true);
+  }, [isStudioWorkspace]);
   const showUpgradeCta = planQuery.data?.tier === "free";
   // Product nav (Studio / Checks / Systems) is signed-in only. Do not
   // default it open on /welcome or /auth — a signed-out visitor must not
@@ -877,16 +882,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           noPadding={isStudioWorkspace}
           sx={{
             mb: { xs: 2, md: 3 },
-            bgcolor: mode === "dark" ? "rgba(42, 48, 58, 0.6)" : "rgba(250, 250, 250, 0.66)",
-            backdropFilter: "blur(18px) saturate(1.15)",
-            WebkitBackdropFilter: "blur(18px) saturate(1.15)",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: isStudioWorkspace ? { xs: 1, md: 2 } : 2,
+            ...(isStudioWorkspace
+              ? {}
+              : {
+                  bgcolor: mode === "dark" ? "rgba(42, 48, 58, 0.6)" : "rgba(250, 250, 250, 0.66)",
+                  backdropFilter: "blur(18px) saturate(1.15)",
+                  WebkitBackdropFilter: "blur(18px) saturate(1.15)",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 2,
+                }),
             textAlign: "start",
             minWidth: 0,
-            px: isStudioWorkspace ? { xs: 1.5, sm: 2, md: 2.5 } : undefined,
-            py: isStudioWorkspace ? { xs: 1.5, sm: 2 } : undefined,
           }}
         >
           {pageBody}

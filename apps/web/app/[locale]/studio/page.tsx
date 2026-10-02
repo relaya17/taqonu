@@ -30,6 +30,7 @@ import {
   IconButton,
   Tooltip,
 } from "@mui/material";
+import { ThemeProvider, useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -41,6 +42,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { createStudioRunAbort } from "@/lib/studio-run-abort";
 import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import { createAtlasTheme } from "@/styles/theme";
 import { ChatPanel } from "@/components/studio/ChatPanel";
 import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
 import { ObserverPanel } from "@/components/studio/ObserverPanel";
@@ -64,7 +66,6 @@ import type { StudioProblem } from "@/lib/studio-problems";
 import { studioProblemRemediationId } from "@/lib/studio-problems";
 import {
   STUDIO_CHECK_IDS,
-  STUDIO_TABS,
   STUDIO_FILE_ACTIONS,
   buildStudioSearch,
   isStudioCheckId,
@@ -549,8 +550,8 @@ export default function StudioPage() {
   }, []);
 
   // Studio-only dark surface — does not flip the rest of the app.
-  const panelBorder = "1px solid rgba(232,234,238,0.12)";
-  const panelBg = "rgba(28,31,38,0.92)";
+  const panelBorder = "1px solid #262930";
+  const panelBg = "#181A1F";
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -872,168 +873,235 @@ export default function StudioPage() {
           ? t(intent === "remind" ? "remindSaved" : "summarySaved")
           : null;
 
+  // Workspace layout (VS Code–style). The top bar holds the four rooms;
+  // Agent chat lives in the side panel and the terminal in the bottom panel,
+  // so the legacy `?tab=chat` / `?tab=pty` deep links still land there.
+  const workspaceTab: "files" | "run" | "cloud" | "checks" =
+    tab === "chat" || tab === "pty" ? "files" : tab;
+  const [sidePanel, setSidePanel] = useState<
+    "agent" | "chat" | "patches" | "psa" | "more"
+  >(tab === "chat" ? "chat" : "agent");
+  const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal" | "git">(
+    tab === "pty" ? "terminal" : "problems",
+  );
+  useEffect(() => {
+    if (tab === "chat") setSidePanel("chat");
+    if (tab === "pty") setBottomPanel("terminal");
+  }, [tab]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editorToolsOpen, setEditorToolsOpen] = useState(false);
+
+  const openSidePanel = (next: typeof sidePanel) => {
+    setSidePanel(next);
+    if (next === "chat") selectTab("chat");
+    else if (tab === "chat") selectTab("files");
+  };
+  const openBottomPanel = (next: typeof bottomPanel) => {
+    setBottomPanel(next);
+    if (next === "terminal") selectTab("pty");
+    else if (tab === "pty") selectTab("files");
+  };
+  const dirtyCount = Object.values(buffers).filter((b) => studioBufferIsDirty(b)).length;
+
+  // Studio is a dark workspace regardless of the site theme, so every panel
+  // inside it (Problems, Git, PSA, Checks) renders with dark inputs and text.
+  const outerTheme = useTheme();
+  const studioTheme = useMemo(
+    () => createAtlasTheme(outerTheme.direction, "dark"),
+    [outerTheme.direction],
+  );
+  const ink = "#D4D6DB";
+  const inkStrong = "#EEF0F3";
+  const muted = "#8B9099";
+  const chromeBg = "#101216";
+  const editorBg = "#1B1D22";
+  const fieldSx = {
+    "& .MuiOutlinedInput-root": {
+      color: ink,
+      bgcolor: chromeBg,
+      "& fieldset": { borderColor: "rgba(232,234,238,0.16)" },
+    },
+    "& .MuiInputLabel-root": { color: muted },
+  } as const;
+  const tabsSx = (height: number) =>
+    ({
+      minHeight: height,
+      "& .MuiTab-root": {
+        color: muted,
+        minHeight: height,
+        minWidth: 0,
+        px: 1.5,
+        textTransform: "none",
+        fontSize: 13,
+      },
+      "& .Mui-selected": { color: `${inkStrong} !important` },
+      "& .MuiTabs-indicator": { bgcolor: "#4C8DFF" },
+    }) as const;
+  const pickProjectState = (
+    <Stack
+      spacing={1.5}
+      alignItems="center"
+      justifyContent="center"
+      sx={{ py: { xs: 6, md: 10 }, px: 2, textAlign: "center", color: muted }}
+    >
+      <Typography sx={{ color: inkStrong, fontWeight: 600, fontSize: 16 }}>
+        {t("emptyTitle")}
+      </Typography>
+      <Typography variant="body2" sx={{ maxWidth: 380, color: muted }}>
+        {shouldShowStudioEmptyProjects({
+          isError: projectsQuery.isError,
+          isLoading: projectsQuery.isLoading,
+          projectId,
+          projectCount: projects.length,
+        })
+          ? t("noProjects")
+          : t("pickProject")}
+      </Typography>
+      <Button component={Link} href="/projects" variant="outlined" size="small">
+        {t("goProjects")}
+      </Button>
+    </Stack>
+  );
+
   return (
+    <ThemeProvider theme={studioTheme}>
     <Box
       sx={{
-        mx: 0,
-        px: 0,
-        py: { xs: 0.5, md: 1 },
-        minHeight: "70vh",
-        borderRadius: { xs: 0, md: 3 },
-        color: "#DCDDE1",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: { md: "calc(100vh - 150px)" },
+        borderRadius: { xs: 1, md: 2 },
+        border: panelBorder,
+        overflow: "hidden",
+        color: ink,
         textAlign: "start",
-        background: `
-          radial-gradient(900px 420px at 8% -10%, rgba(154,158,168,0.16), transparent 55%),
-          linear-gradient(165deg, #12141A 0%, #16191F 50%, #1C1F26 100%)
-        `,
+        bgcolor: "#15171C",
       }}
     >
-    <Stack spacing={2.5} sx={{ maxWidth: 1240, width: "100%", minWidth: 0, mx: "auto" }}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        alignItems={{ sm: "flex-start" }}
-        justifyContent="flex-start"
+      <Box
+        component="header"
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 1.25,
+          px: { xs: 1.5, md: 2 },
+          py: 1,
+          bgcolor: chromeBg,
+          borderBottom: panelBorder,
+        }}
       >
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="h1"
-            sx={{ fontSize: { xs: "1.75rem", md: "2.35rem" }, color: "#EEEEF0" }}
+        <Typography
+          variant="h1"
+          sx={{ fontSize: 15, fontWeight: 600, color: inkStrong, m: 0, textAlign: "start" }}
+        >
+          {t("title")}
+        </Typography>
+        <TextField
+          select
+          size="small"
+          label={t("project")}
+          value={projectId}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (
+              anyStudioBufferDirty(buffersRef.current) &&
+              !window.confirm(t("unsavedConfirm"))
+            ) {
+              return;
+            }
+            setProjectId(id);
+            setSelectedPath(null);
+            setSelectedFindingId(null);
+            setOpenFiles([]);
+            setBuffers({});
+            setDiskChangedPath(null);
+            propose.reset();
+            saveNote.reset();
+            router.replace(
+              `${pathname}${buildStudioSearch({
+                tab,
+                check: checksTab,
+                projectId: id,
+              })}`,
+            );
+          }}
+          title={t("projectHelp")}
+          sx={{ minWidth: 200, maxWidth: 320, ...fieldSx }}
+        >
+          {projectId && !projects.some((p) => p.id === projectId) ? (
+            <MenuItem value={projectId}>
+              {projectsQuery.isPending ? t("loadingProjects") : projectId}
+            </MenuItem>
+          ) : null}
+          {projects.map((p) => (
+            <MenuItem key={p.id} value={p.id}>
+              {p.name}
+              {p.workspaceRoot ? "" : ` (${t("noRoot")})`}
+            </MenuItem>
+          ))}
+        </TextField>
+        {projectId ? (
+          <Button
+            component={Link}
+            href={`/projects/${projectId}/state`}
+            size="small"
+            sx={{ color: muted, textTransform: "none" }}
           >
-            {t("title")}
+            {t("projectState")}
+          </Button>
+        ) : null}
+        <Box sx={{ flex: 1 }} />
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ color: muted, fontSize: 12.5 }}>
+          <Typography component="span" sx={{ fontSize: 12.5, color: muted }}>
+            {t("governanceShort")}
           </Typography>
-          <Typography sx={{ mt: 1, maxWidth: 640, color: "rgba(154,163,178,0.95)" }}>
+          <Button
+            size="small"
+            onClick={() => setDetailsOpen((v) => !v)}
+            aria-expanded={detailsOpen}
+            sx={{ textTransform: "none", minWidth: 0, fontSize: 12.5 }}
+          >
+            {detailsOpen ? t("governanceHide") : t("governanceDetails")}
+          </Button>
+        </Stack>
+      </Box>
+
+      <Collapse in={detailsOpen} unmountOnExit>
+        <Box sx={{ px: { xs: 1.5, md: 2 }, py: 1.5, bgcolor: chromeBg, borderBottom: panelBorder }}>
+          <Typography variant="body2" sx={{ color: ink, maxWidth: 820 }}>
             {t("subtitle")}
           </Typography>
+          <Typography variant="body2" sx={{ color: muted, mt: 0.75, maxWidth: 820 }}>
+            {t("agentPolicy")}
+          </Typography>
+          <Typography variant="caption" sx={{ color: muted, display: "block", mt: 0.75 }}>
+            {t("projectHelp")}
+          </Typography>
+          {projectId && hasRoot ? (
+            <Box sx={{ mt: 1.5, maxWidth: 820 }}>
+              <LinkWorkspaceRoot
+                projectId={projectId}
+                currentRoot={selectedProject?.workspaceRoot}
+                compact
+              />
+            </Box>
+          ) : null}
         </Box>
-      </Stack>
+      </Collapse>
 
-      <Alert
-        severity="info"
-        sx={{
-          borderRadius: 2,
-          bgcolor: "rgba(154,158,168,0.08)",
-          color: "#DCDDE1",
-          "& .MuiAlert-icon": { color: "#9A9EA8" },
-        }}
-      >
-        {t("agentPolicy")}
-      </Alert>
-
-      <TextField
-        select
-        label={t("project")}
-        value={projectId}
-        onChange={(e) => {
-          const id = e.target.value;
-          if (
-            anyStudioBufferDirty(buffersRef.current) &&
-            !window.confirm(t("unsavedConfirm"))
-          ) {
-            return;
-          }
-          setProjectId(id);
-          setSelectedPath(null);
-          setSelectedFindingId(null);
-          setOpenFiles([]);
-          setBuffers({});
-          setDiskChangedPath(null);
-          propose.reset();
-          saveNote.reset();
-          router.replace(
-            `${pathname}${buildStudioSearch({
-              tab,
-              check: checksTab,
-              projectId: id,
-            })}`,
-          );
-        }}
-        helperText={t("projectHelp")}
-        sx={{
-          maxWidth: 480,
-          "& .MuiOutlinedInput-root": {
-            color: "#DCDDE1",
-            bgcolor: "rgba(255,255,255,0.04)",
-            "& fieldset": { borderColor: "rgba(232,234,238,0.2)" },
-          },
-          "& .MuiInputLabel-root": { color: "rgba(232,234,238,0.7)" },
-          "& .MuiFormHelperText-root": { color: "#8B9099" },
-        }}
-      >
-        {projectId && !projects.some((p) => p.id === projectId) ? (
-          <MenuItem value={projectId}>
-            {projectsQuery.isPending ? t("loadingProjects") : projectId}
-          </MenuItem>
-        ) : null}
-        {projects.map((p) => (
-          <MenuItem key={p.id} value={p.id}>
-            {p.name}
-            {p.workspaceRoot ? "" : ` (${t("noRoot")})`}
-          </MenuItem>
-        ))}
-      </TextField>
-
-      {projectId ? (
-        <Button
-          component={Link}
-          href={`/projects/${projectId}/state`}
-          size="small"
-          sx={{ alignSelf: { sm: "center" }, color: "#9A9EA8" }}
-        >
-          {t("projectState")}
-        </Button>
-      ) : null}
-
-      {projectId ? (
-        <LinkWorkspaceRoot
-          projectId={projectId}
-          currentRoot={selectedProject?.workspaceRoot}
-          compact
-        />
-      ) : null}
-
-      {shouldShowStudioNeedRoot({
-        isError: projectsQuery.isError,
-        projectId,
-        hasWorkspaceRoot: hasRoot,
-      }) ? (
-        <Alert severity="warning">
-          {t("needRoot")}{" "}
-          <Link href="/projects">{t("goProjects")}</Link>
-        </Alert>
-      ) : null}
-
-      {projectId ? (
-        <StudioContinuity
-          projectId={projectId}
-          boundFindingId={selectedFindingId}
-        />
-      ) : null}
-
-      {projectsQuery.isError ? (
-        <Alert severity="error">
-          {(projectsQuery.error as Error).message}
-        </Alert>
-      ) : null}
-
-      {shouldShowStudioEmptyProjects({
-        isError: projectsQuery.isError,
-        isLoading: projectsQuery.isLoading,
-        projectId,
-        projectCount: projects.length,
-      }) ? (
-        <Alert severity="info">
-          {t("noProjects")}{" "}
-          <Link href="/projects">{t("goProjects")}</Link>
-        </Alert>
-      ) : null}
-
-      {!projectId && !projectsQuery.isLoading && projects.length > 0 ? (
-        <Alert severity="info">{t("pickProject")}</Alert>
+      {projectId && !hasRoot && !projectsQuery.isLoading ? (
+        <Box sx={{ px: { xs: 1.5, md: 2 }, py: 1.5, borderBottom: panelBorder }}>
+          <LinkWorkspaceRoot
+            projectId={projectId}
+            currentRoot={selectedProject?.workspaceRoot}
+            compact
+          />
+        </Box>
       ) : null}
 
       <Tabs
-        value={tab}
+        value={workspaceTab}
         onChange={(_, v: StudioTab) => selectTab(v)}
         selectionFollowsFocus
         aria-label={t("title")}
@@ -1048,18 +1116,13 @@ export default function StudioPage() {
         scrollButtons="auto"
         allowScrollButtonsMobile
         sx={{
+          ...tabsSx(40),
+          px: { xs: 0.5, md: 1 },
+          bgcolor: chromeBg,
           borderBottom: panelBorder,
-          minHeight: 44,
-          "& .MuiTab-root": {
-            color: "rgba(232,234,238,0.65)",
-            minHeight: 44,
-            textTransform: "none",
-          },
-          "& .Mui-selected": { color: "#EEEEF0 !important" },
-          "& .MuiTabs-indicator": { bgcolor: "#9A9EA8" },
         }}
       >
-        {STUDIO_TABS.map((id) => (
+        {(["files", "run", "cloud", "checks"] as const).map((id) => (
           <Tab
             key={id}
             value={id}
@@ -1075,31 +1138,70 @@ export default function StudioPage() {
         ))}
       </Tabs>
 
-      {tab === "files" ? (
+      {projectsQuery.isError ? (
+        <Alert severity="error" sx={{ m: 1.5 }}>
+          {(projectsQuery.error as Error).message}
+        </Alert>
+      ) : null}
+
+      {shouldShowStudioNeedRoot({
+        isError: projectsQuery.isError,
+        projectId,
+        hasWorkspaceRoot: hasRoot,
+      }) ? (
+        <Alert severity="warning" sx={{ m: 1.5 }}>
+          {t("needRoot")}{" "}
+          <Link href="/projects">{t("goProjects")}</Link>
+        </Alert>
+      ) : null}
+
+      <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {workspaceTab === "files" ? (
         <>
       {treeQuery.isError ? (
-        <Alert severity="error">{(treeQuery.error as Error).message}</Alert>
+        <Alert severity="error" sx={{ m: 1.5 }}>{(treeQuery.error as Error).message}</Alert>
       ) : null}
+
+      {!projectId ? pickProjectState : null}
 
       {projectId ? (
         <Box
           sx={{
+            // Fixed height on desktop so the editor scrolls inside its pane
+            // (flex: 1 would let the grid grow to the file's full length).
+            flex: { xs: 1, lg: "none" },
+            minHeight: { xs: 0, lg: 600 },
             display: "grid",
-            gap: 2,
-            gridTemplateColumns: { xs: "1fr", md: "300px 1fr" },
-            alignItems: "stretch",
-            minHeight: { md: 560 },
+            gridTemplateColumns: {
+              xs: "minmax(0, 1fr)",
+              md: "240px minmax(0, 1fr)",
+              lg: "260px minmax(0, 1fr) 360px",
+            },
+            gridTemplateRows: {
+              xs: "auto",
+              md: "minmax(420px, 1fr) 240px auto",
+              lg: "minmax(0, 1fr) 240px",
+            },
+            gridTemplateAreas: {
+              xs: '"tree" "editor" "bottom" "side"',
+              md: '"tree editor" "tree bottom" "side side"',
+              lg: '"tree editor side" "tree bottom side"',
+            },
+            height: { lg: "calc(100vh - 250px)" },
           }}
         >
-          <Stack spacing={2} sx={{ minWidth: 0 }}>
           <Box
+            component="aside"
+            aria-label={t("tree")}
             sx={{
-              border: panelBorder,
-              borderRadius: 3,
+              gridArea: "tree",
+              minWidth: 0,
+              minHeight: 0,
               overflow: "auto",
-              maxHeight: { xs: 300, md: 680 },
+              maxHeight: { xs: 320, md: "none" },
               bgcolor: panelBg,
-              boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
+              borderInlineEnd: { md: panelBorder },
+              borderBottom: { xs: panelBorder, md: "none" },
             }}
           >
             <Stack
@@ -1108,21 +1210,22 @@ export default function StudioPage() {
               alignItems="center"
               sx={{
                 px: 1.5,
-                py: 1.25,
-                borderBottom: panelBorder,
+                py: 1,
                 position: "sticky",
                 top: 0,
                 bgcolor: panelBg,
                 zIndex: 1,
               }}
             >
-              <Typography variant="subtitle2" fontWeight={700} sx={{ color: "#DCDDE1" }}>
+              <Typography
+                variant="subtitle2"
+                sx={{ color: muted, fontSize: 11.5, fontWeight: 600, letterSpacing: "0.04em" }}
+              >
                 {t("tree")}
               </Typography>
               {treeQuery.data?.truncated ? (
                 <Chip size="small" label={t("truncated")} />
               ) : null}
-              <Chip size="small" variant="outlined" label={t("editable")} sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }} />
               <Box sx={{ flexGrow: 1 }} />
               {hasRoot ? (
                 <Tooltip title={t("createFolder")}>
@@ -1130,7 +1233,7 @@ export default function StudioPage() {
                     size="small"
                     aria-label={t("createFolder")}
                     onClick={() => setShowNewFolder((v) => !v)}
-                    sx={{ color: "#8B9099", "&:hover": { color: "#DCDDE1" } }}
+                    sx={{ color: muted, "&:hover": { color: ink } }}
                   >
                     <CreateNewFolderIcon fontSize="small" />
                   </IconButton>
@@ -1138,7 +1241,7 @@ export default function StudioPage() {
               ) : null}
             </Stack>
             {showNewFolder ? (
-              <Stack direction="row" spacing={0.75} sx={{ px: 1.5, pt: 1, pb: 0.5 }} alignItems="center">
+              <Stack direction="row" spacing={0.75} sx={{ px: 1.5, pb: 0.5 }} alignItems="center">
                 <TextField
                   size="small"
                   fullWidth
@@ -1150,13 +1253,7 @@ export default function StudioPage() {
                     if (e.key === "Enter" && newFolderPath.trim()) createFolder.mutate();
                     if (e.key === "Escape") { setShowNewFolder(false); setNewFolderPath(""); }
                   }}
-                  sx={{
-                    "& .MuiOutlinedInput-root": {
-                      color: "#DCDDE1",
-                      bgcolor: "rgba(255,255,255,0.04)",
-                      "& fieldset": { borderColor: "rgba(232,234,238,0.2)" },
-                    },
-                  }}
+                  sx={fieldSx}
                 />
                 <Button
                   size="small"
@@ -1173,23 +1270,17 @@ export default function StudioPage() {
                 {(createFolder.error as Error).message}
               </Alert>
             ) : null}
-            <TextField
-              size="small"
-              value={fileSearch}
-              onChange={(e) => setFileSearch(e.target.value)}
-              placeholder={t("searchPlaceholder")}
-              inputProps={{ "aria-label": t("search") }}
-              sx={{
-                mx: 1.5,
-                mt: 1,
-                mb: 0.5,
-                "& .MuiOutlinedInput-root": {
-                  color: "#DCDDE1",
-                  bgcolor: "rgba(255,255,255,0.04)",
-                  "& fieldset": { borderColor: "rgba(232,234,238,0.2)" },
-                },
-              }}
-            />
+            <Box sx={{ px: 1.25, pb: 0.5 }}>
+              <TextField
+                size="small"
+                fullWidth
+                value={fileSearch}
+                onChange={(e) => setFileSearch(e.target.value)}
+                placeholder={t("searchPlaceholder")}
+                inputProps={{ "aria-label": t("search") }}
+                sx={fieldSx}
+              />
+            </Box>
             {trimmedSearch.length >= 2 ? (
               <Box sx={{ px: 0.5, pb: 1 }}>
                 {searchQuery.isError ? (
@@ -1205,32 +1296,32 @@ export default function StudioPage() {
                     <ListItem key={`${hit.path}:${hit.line}:${hit.preview}`} disablePadding>
                       <ListItemButton
                         onClick={() => selectStudioFile(hit.path, hit.line)}
-                        sx={{ color: "#DCDDE1", borderRadius: 1 }}
+                        sx={{ color: ink, borderRadius: 1 }}
                       >
                         <ListItemText
                           primary={hit.path}
                           secondary={`${hit.line}: ${hit.preview}`}
                           primaryTypographyProps={{ noWrap: true, fontSize: "0.8rem" }}
-                          secondaryTypographyProps={{ noWrap: true, color: "#8B9099" }}
+                          secondaryTypographyProps={{ noWrap: true, color: muted }}
                         />
                       </ListItemButton>
                     </ListItem>
                   ))}
                 </List>
                 {searchQuery.isLoading ? (
-                  <Typography variant="caption" sx={{ px: 1.5, color: "#8B9099" }}>
+                  <Typography variant="caption" sx={{ px: 1.5, color: muted }}>
                     {t("searchLoading")}
                   </Typography>
                 ) : null}
                 {searchQuery.isSuccess && (searchQuery.data?.items.length ?? 0) === 0 ? (
-                  <Typography variant="caption" sx={{ px: 1.5, color: "#8B9099" }}>
+                  <Typography variant="caption" sx={{ px: 1.5, color: muted }}>
                     {t("searchEmpty")}
                   </Typography>
                 ) : null}
               </Box>
             ) : null}
             {treeQuery.data ? (
-              <List dense disablePadding sx={{ py: 0.75 }}>
+              <List dense disablePadding sx={{ py: 0.5 }}>
                 <TreeBranch
                   node={treeQuery.data.tree}
                   depth={0}
@@ -1253,37 +1344,36 @@ export default function StudioPage() {
                 />
               </List>
             ) : (
-              <Typography variant="body2" sx={{ p: 2, color: "#8B9099" }}>
+              <Typography variant="body2" sx={{ p: 2, color: muted }}>
                 {treeQuery.isLoading ? t("loadingTree") : t("emptyTree")}
               </Typography>
             )}
           </Box>
-          </Stack>
 
-          <Stack spacing={2} sx={{ minWidth: 0 }}>
-            <Box
-              sx={{
-                border: panelBorder,
-                borderRadius: 3,
-                overflow: "hidden",
-                flex: 1,
-                minHeight: 300,
-                display: "flex",
-                flexDirection: "column",
-                bgcolor: panelBg,
-                boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
-              }}
-            >
+          <Box
+            sx={{
+              gridArea: "editor",
+              minWidth: 0,
+              minHeight: { xs: 360, md: 0 },
+              display: "flex",
+              flexDirection: "column",
+              bgcolor: editorBg,
+              overflow: "hidden",
+            }}
+          >
               {openFiles.length > 0 ? (
                 <Stack
                   direction="row"
-                  spacing={0.75}
-                  flexWrap="wrap"
-                  useFlexGap
+                  spacing={0}
                   role="tablist"
                   aria-label={t("openFiles")}
                   onKeyDown={onOpenFilesKeyDown}
-                  sx={{ px: 1.5, pt: 1, borderBottom: panelBorder }}
+                  sx={{
+                    bgcolor: "#15171C",
+                    borderBottom: panelBorder,
+                    overflowX: "auto",
+                    flexShrink: 0,
+                  }}
                 >
                   {openFiles.map((path, index) => (
                     <Chip
@@ -1294,8 +1384,6 @@ export default function StudioPage() {
                       aria-controls={editorPanelId}
                       tabIndex={index === focusableOpenIndex ? 0 : -1}
                       size="small"
-                      color={path === selectedPath ? "primary" : "default"}
-                      variant={path === selectedPath ? "filled" : "outlined"}
                       label={`${studioFileBaseName(path)}${
                         studioBufferIsDirty(buffers[path]) ? " •" : ""
                       }`}
@@ -1307,8 +1395,15 @@ export default function StudioPage() {
                       }
                       sx={{
                         maxWidth: 220,
-                        color: "#DCDDE1",
-                        borderColor: "rgba(232,234,238,0.25)",
+                        height: 36,
+                        borderRadius: 0,
+                        color: path === selectedPath ? inkStrong : muted,
+                        bgcolor: path === selectedPath ? editorBg : "transparent",
+                        borderTop: path === selectedPath ? "2px solid #4C8DFF" : "2px solid transparent",
+                        borderInlineEnd: panelBorder,
+                        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                        fontSize: 12.5,
+                        "& .MuiChip-deleteIcon": { color: muted },
                       }}
                     />
                   ))}
@@ -1326,38 +1421,47 @@ export default function StudioPage() {
                   direction="row"
                   spacing={1}
                   alignItems="center"
-                  sx={{ px: 1.5, py: 1.25, borderBottom: panelBorder }}
+                  sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder, flexShrink: 0 }}
                 >
                   <Typography
-                    variant="subtitle2"
-                    fontWeight={700}
+                    variant="caption"
                     noWrap
-                    sx={{ flex: 1 }}
+                    dir="ltr"
+                    aria-label={t("breadcrumbs")}
+                    sx={{
+                      flex: 1,
+                      color: muted,
+                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      textAlign: "left",
+                    }}
                   >
-                    {selectedPath ?? t("pickFile")}
+                    {crumbs.length > 0 ? crumbs.join(" › ") : t("pickFile")}
                   </Typography>
                   {fileQuery.data?.languageHint ? (
+                    <Typography variant="caption" sx={{ color: muted, px: 1 }}>
+                      {fileQuery.data.languageHint}
+                    </Typography>
+                  ) : null}
+                  {fileQuery.data?.truncated || isDirty ? (
                     <Chip
                       size="small"
-                      variant="outlined"
-                      label={fileQuery.data.languageHint}
-                      sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.25)" }}
+                      label={fileQuery.data?.truncated ? t("fileTruncated") : t("dirty")}
+                      sx={{ height: 22 }}
                     />
                   ) : null}
-                  <Chip
-                    size="small"
-                    label={
-                      fileQuery.data?.truncated
-                        ? t("fileTruncated")
-                        : isDirty
-                          ? t("dirty")
-                          : t("editable")
-                    }
-                  />
                   <Button
                     size="small"
-                    variant="outlined"
+                    onClick={() => setEditorToolsOpen((v) => !v)}
+                    aria-expanded={editorToolsOpen}
+                    disabled={!selectedPath}
+                    sx={{ textTransform: "none", minWidth: 0 }}
+                  >
+                    {t("editorTools")}
+                  </Button>
+                  <Button
+                    size="small"
                     disabled={!selectedPath || fileQuery.isFetching}
+                    sx={{ textTransform: "none", minWidth: 0 }}
                     onClick={() => {
                       if (
                         isDirty &&
@@ -1391,146 +1495,139 @@ export default function StudioPage() {
                       !isDirty
                     }
                     onClick={() => saveFile.mutate()}
+                    sx={{ textTransform: "none" }}
                   >
                     {saveFile.isPending ? t("asking") : t("saveFile")}
                   </Button>
                 </Stack>
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  alignItems="center"
-                  flexWrap="wrap"
-                  useFlexGap
-                  sx={{ px: 1.5, py: 1, borderBottom: panelBorder }}
-                >
-                  <TextField
-                    size="small"
-                    label={t("moveTo")}
-                    value={moveTo}
-                    onChange={(event) => setMoveTo(event.target.value)}
-                    sx={{ minWidth: 180, flex: 1 }}
-                  />
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={
-                      moveFile.isPending ||
-                      !selectedPath ||
-                      moveTo.trim().length === 0 ||
-                      moveTo.trim() === selectedPath
-                    }
-                    onClick={() => {
-                      if (isDirty && !window.confirm(t("unsavedConfirm"))) return;
-                      moveFile.mutate();
-                    }}
-                  >
-                    {t("moveFile")}
-                  </Button>
-                </Stack>
+                <Collapse in={editorToolsOpen && Boolean(selectedPath)} unmountOnExit>
+                  <Box sx={{ borderBottom: panelBorder }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      flexWrap="wrap"
+                      useFlexGap
+                      sx={{ px: 1.5, py: 1 }}
+                    >
+                      <TextField
+                        size="small"
+                        label={t("moveTo")}
+                        value={moveTo}
+                        onChange={(event) => setMoveTo(event.target.value)}
+                        sx={{ minWidth: 180, flex: 1, ...fieldSx }}
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={
+                          moveFile.isPending ||
+                          !selectedPath ||
+                          moveTo.trim().length === 0 ||
+                          moveTo.trim() === selectedPath
+                        }
+                        onClick={() => {
+                          if (isDirty && !window.confirm(t("unsavedConfirm"))) return;
+                          moveFile.mutate();
+                        }}
+                      >
+                        {t("moveFile")}
+                      </Button>
+                    </Stack>
+                    {selectedPath && fileQuery.data && !fileQuery.data.readOnly ? (
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        flexWrap="wrap"
+                        useFlexGap
+                        sx={{ px: 1.5, pb: 1 }}
+                      >
+                        <TextField
+                          size="small"
+                          label={t("findInFile")}
+                          value={findText}
+                          onChange={(event) => {
+                            setFindText(event.target.value);
+                            setReplaceNote(null);
+                          }}
+                          sx={{ minWidth: 140, flex: 1, ...fieldSx }}
+                        />
+                        <TextField
+                          size="small"
+                          label={t("replaceInFile")}
+                          value={replaceText}
+                          onChange={(event) => {
+                            setReplaceText(event.target.value);
+                            setReplaceNote(null);
+                          }}
+                          sx={{ minWidth: 140, flex: 1, ...fieldSx }}
+                        />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={!findText || Boolean(fileQuery.data.truncated)}
+                          onClick={() => applyBufferReplace("one")}
+                          aria-label={t("replaceOne")}
+                        >
+                          {t("replaceOne")}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={!findText || Boolean(fileQuery.data.truncated)}
+                          onClick={() => applyBufferReplace("all")}
+                          aria-label={t("replaceAll")}
+                        >
+                          {t("replaceAll")}
+                        </Button>
+                      </Stack>
+                    ) : null}
+                    {replaceNote ? (
+                      <Typography variant="caption" sx={{ px: 1.5, pb: 1, display: "block", color: muted }}>
+                        {replaceNote}
+                      </Typography>
+                    ) : null}
+                    {selectedPath && fileQuery.data && /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/i.test(selectedPath) ? (
+                      <StudioLanguageBar
+                        projectId={projectId}
+                        path={selectedPath}
+                        content={currentBuffer?.draft ?? fileQuery.data.content}
+                        onOpen={(path, line) => selectStudioFile(path, line)}
+                      />
+                    ) : null}
+                    {outline.length > 0 ? (
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        flexWrap="wrap"
+                        useFlexGap
+                        aria-label={t("outline")}
+                        sx={{ px: 1.5, pb: 1 }}
+                      >
+                        {outline.slice(0, 16).map((symbol) => (
+                          <Chip
+                            key={`${symbol.kind}:${symbol.name}:${symbol.line}`}
+                            size="small"
+                            variant="outlined"
+                            label={`${symbol.name}:${symbol.line}`}
+                            onClick={() => setRevealLine(symbol.line)}
+                            aria-label={`${symbol.kind} ${symbol.name}`}
+                            sx={{ color: ink, borderColor: "rgba(232,234,238,0.2)" }}
+                          />
+                        ))}
+                      </Stack>
+                    ) : selectedPath && fileQuery.data ? (
+                      <Typography variant="caption" sx={{ px: 1.5, pb: 1, display: "block", color: muted }}>
+                        {t("outlineEmpty")}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                </Collapse>
                 {moveFile.isError ? (
                   <Alert severity="warning" sx={{ mx: 1.5, mt: 1 }}>
                     {(moveFile.error as Error).message}
                   </Alert>
-                ) : null}
-                {selectedPath && fileQuery.data && !fileQuery.data.readOnly ? (
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="center"
-                    flexWrap="wrap"
-                    useFlexGap
-                    sx={{ px: 1.5, py: 1, borderBottom: panelBorder }}
-                  >
-                    <TextField
-                      size="small"
-                      label={t("findInFile")}
-                      value={findText}
-                      onChange={(event) => {
-                        setFindText(event.target.value);
-                        setReplaceNote(null);
-                      }}
-                      sx={{ minWidth: 140, flex: 1 }}
-                    />
-                    <TextField
-                      size="small"
-                      label={t("replaceInFile")}
-                      value={replaceText}
-                      onChange={(event) => {
-                        setReplaceText(event.target.value);
-                        setReplaceNote(null);
-                      }}
-                      sx={{ minWidth: 140, flex: 1 }}
-                    />
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      disabled={!findText || Boolean(fileQuery.data.truncated)}
-                      onClick={() => applyBufferReplace("one")}
-                      aria-label={t("replaceOne")}
-                    >
-                      {t("replaceOne")}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      disabled={!findText || Boolean(fileQuery.data.truncated)}
-                      onClick={() => applyBufferReplace("all")}
-                      aria-label={t("replaceAll")}
-                    >
-                      {t("replaceAll")}
-                    </Button>
-                  </Stack>
-                ) : null}
-                {replaceNote ? (
-                  <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
-                    {replaceNote}
-                  </Typography>
-                ) : null}
-                {crumbs.length > 0 ? (
-                  <Stack
-                    direction="row"
-                    spacing={0.5}
-                    alignItems="center"
-                    flexWrap="wrap"
-                    useFlexGap
-                    aria-label={t("breadcrumbs")}
-                    sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
-                  >
-                    {crumbs.map((crumb, index) => (
-                      <Chip
-                        key={`${crumb}-${index}`}
-                        size="small"
-                        variant="outlined"
-                        label={crumb}
-                        sx={{ color: "#8B9099", borderColor: "rgba(232,234,238,0.2)" }}
-                      />
-                    ))}
-                  </Stack>
-                ) : null}
-                {outline.length > 0 ? (
-                  <Stack
-                    direction="row"
-                    spacing={0.5}
-                    flexWrap="wrap"
-                    useFlexGap
-                    aria-label={t("outline")}
-                    sx={{ px: 1.5, py: 0.75, borderBottom: panelBorder }}
-                  >
-                    {outline.slice(0, 16).map((symbol) => (
-                      <Chip
-                        key={`${symbol.kind}:${symbol.name}:${symbol.line}`}
-                        size="small"
-                        label={`${symbol.name}:${symbol.line}`}
-                        onClick={() => setRevealLine(symbol.line)}
-                        aria-label={`${symbol.kind} ${symbol.name}`}
-                        sx={{ color: "#DCDDE1", borderColor: "rgba(232,234,238,0.25)" }}
-                      />
-                    ))}
-                  </Stack>
-                ) : selectedPath && fileQuery.data ? (
-                  <Typography variant="caption" sx={{ px: 1.5, py: 0.5, color: "#8B9099" }}>
-                    {t("outlineEmpty")}
-                  </Typography>
                 ) : null}
                 {fileQuery.isError ? (
                   <Alert severity="warning" sx={{ m: 1.5 }}>
@@ -1542,24 +1639,17 @@ export default function StudioPage() {
                     {(saveFile.error as Error).message}
                   </Alert>
                 ) : null}
-                {saveFile.isSuccess ? (
-                  <Alert severity="success" sx={{ m: 1.5 }}>
+                {saveFile.isSuccess && !isDirty ? (
+                  <Typography variant="caption" role="status" sx={{ px: 1.5, pt: 0.75, color: "#6FBF73" }}>
                     {t("savedFile")}
-                  </Alert>
-                ) : null}
-                {selectedPath && fileQuery.data && /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/i.test(selectedPath) ? (
-                  <StudioLanguageBar
-                    projectId={projectId}
-                    path={selectedPath}
-                    content={currentBuffer?.draft ?? fileQuery.data.content}
-                    onOpen={(path, line) => selectStudioFile(path, line)}
-                  />
+                  </Typography>
                 ) : null}
                 {diskChangedPath && diskChangedPath === selectedPath ? (
                   <Alert severity="warning" sx={{ m: 1.5 }}>
                     {t("diskChanged")}
                   </Alert>
                 ) : null}
+                <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
                 {fileQuery.data ? (
                   <StudioCodeEditor
                     value={currentBuffer?.draft ?? fileQuery.data.content}
@@ -1585,51 +1675,116 @@ export default function StudioPage() {
                     revealLine={revealLine}
                   />
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ p: 2.5 }}>
-                    {selectedPath && fileQuery.isLoading
-                      ? t("loadingFile")
-                      : t("viewerHint")}
-                  </Typography>
+                  <Stack alignItems="center" justifyContent="center" sx={{ height: "100%", minHeight: 240, p: 3 }}>
+                    <Typography variant="body2" sx={{ color: muted, textAlign: "center" }}>
+                      {selectedPath && fileQuery.isLoading
+                        ? t("loadingFile")
+                        : t("viewerHint")}
+                    </Typography>
+                  </Stack>
                 )}
+                </Box>
               </Box>
-            </Box>
+          </Box>
 
-            <StudioProblemsPanel
-              projectId={projectId}
-              enabled={Boolean(projectId)}
-              filePath={selectedPath}
-              fileContent={currentBuffer?.draft ?? fileQuery.data?.content ?? null}
-              onOpenFile={(path, line) => {
-                selectStudioFile(path, line);
-              }}
-              onProposeFix={(problem: StudioProblem) => {
-                const findingId = studioProblemRemediationId(problem);
-                if (findingId) setSelectedFindingId(findingId);
-                if (problem.file) selectStudioFile(problem.file, problem.line);
-                if (problem.source === "sentinel") setModeAsk("secure");
-                setIntent("propose");
-              }}
-            />
-
-            <StudioGitStatus
-              projectId={projectId}
-              onOpenFile={(path) => selectStudioFile(path)}
-            />
-
-            <SupervisingAgentPanel projectId={projectId} />
-
-            <Box
-              sx={{
-                border: panelBorder,
-                borderRadius: 3,
-                p: 2.25,
-                bgcolor: panelBg,
-                boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
-              }}
+          <Box
+            component="section"
+            aria-label={t("bottomPanel")}
+            sx={{
+              gridArea: "bottom",
+              minWidth: 0,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              bgcolor: "#15171C",
+              borderTop: panelBorder,
+            }}
+          >
+            <Tabs
+              value={bottomPanel}
+              onChange={(_, v: typeof bottomPanel) => openBottomPanel(v)}
+              aria-label={t("bottomPanel")}
+              variant="scrollable"
+              scrollButtons={false}
+              sx={{ ...tabsSx(34), px: 0.5, flexShrink: 0 }}
             >
+              <Tab value="problems" label={t("problems.title")} />
+              <Tab value="terminal" label={t("tab.pty")} />
+              <Tab value="git" label={t("git.title")} />
+            </Tabs>
+            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1, pb: 1 }}>
+              {bottomPanel === "problems" ? (
+                <StudioProblemsPanel
+                  projectId={projectId}
+                  enabled={Boolean(projectId)}
+                  filePath={selectedPath}
+                  fileContent={currentBuffer?.draft ?? fileQuery.data?.content ?? null}
+                  onOpenFile={(path, line) => {
+                    selectStudioFile(path, line);
+                  }}
+                  onProposeFix={(problem: StudioProblem) => {
+                    const findingId = studioProblemRemediationId(problem);
+                    if (findingId) setSelectedFindingId(findingId);
+                    if (problem.file) selectStudioFile(problem.file, problem.line);
+                    if (problem.source === "sentinel") setModeAsk("secure");
+                    setIntent("propose");
+                    setSidePanel("agent");
+                  }}
+                />
+              ) : null}
+              {bottomPanel === "terminal" ? (
+                <StudioPtyTerminal projectId={projectId} />
+              ) : null}
+              {bottomPanel === "git" ? (
+                <StudioGitStatus
+                  projectId={projectId}
+                  onOpenFile={(path) => selectStudioFile(path)}
+                />
+              ) : null}
+            </Box>
+          </Box>
+
+          <Box
+            component="aside"
+            aria-label={t("sidePanel")}
+            sx={{
+              gridArea: "side",
+              minWidth: 0,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              bgcolor: panelBg,
+              borderInlineStart: { lg: panelBorder },
+              borderTop: { xs: panelBorder, lg: "none" },
+            }}
+          >
+            <Tabs
+              value={sidePanel}
+              onChange={(_, v: typeof sidePanel) => openSidePanel(v)}
+              aria-label={t("sidePanel")}
+              variant="scrollable"
+              scrollButtons={false}
+              sx={{ ...tabsSx(38), px: 0.5, borderBottom: panelBorder, flexShrink: 0 }}
+            >
+              <Tab value="agent" label={t("side.agent")} />
+              <Tab value="chat" label={t("side.chat")} />
+              <Tab
+                value="patches"
+                label={
+                  propose.data?.patch ? `${t("side.patches")} •` : t("side.patches")
+                }
+              />
+              <Tab value="psa" label={t("side.psa")} />
+              <Tab value="more" label={t("side.more")} />
+            </Tabs>
+            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.75 }}>
+            {sidePanel === "psa" ? <SupervisingAgentPanel projectId={projectId} /> : null}
+
+            {sidePanel === "agent" ? (
+            <Box>
               <Stack
                 direction="row"
-                spacing={1}
+                spacing={0.75}
                 flexWrap="wrap"
                 useFlexGap
                 aria-label={t("fileActions")}
@@ -1640,6 +1795,7 @@ export default function StudioPage() {
                     size="small"
                     variant="outlined"
                     disabled={!selectedPath}
+                    title={t("fileActionsHelp")}
                     onClick={() => {
                       if (!selectedPath) return;
                       setIntent("propose");
@@ -1650,29 +1806,20 @@ export default function StudioPage() {
                       runLoop.reset();
                       saveNote.reset();
                     }}
+                    sx={{ borderRadius: 4, textTransform: "none" }}
                   >
                     {t(`fileAction.${action}`)}
                   </Button>
                 ))}
-                <Button size="small" variant="text" onClick={() => selectTab("run")}>
+                <Button size="small" variant="text" onClick={() => selectTab("run")} sx={{ textTransform: "none" }}>
                   {t("tab.run")}
                 </Button>
-                <Button size="small" variant="text" onClick={() => selectTab("checks")}>
+                <Button size="small" variant="text" onClick={() => selectTab("checks")} sx={{ textTransform: "none" }}>
                   {t("tab.checks")}
                 </Button>
               </Stack>
-              <Typography variant="caption" sx={{ color: "#8B9099", display: "block", mt: 0.75 }}>
-                {t("fileActionsHelp")}
-              </Typography>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 1.5 }}>
-                <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>{t("askTitle")}</Typography>
-                <Chip size="small" label={t("engineerRole")} />
-              </Stack>
-              <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
-                {t("askHelp")}
-              </Typography>
-              <Typography variant="caption" sx={{ color: "#8B9099", display: "block", mt: 0.5 }}>
-                {t("engineerNotPsa")}
+              <Typography sx={{ mt: 1.75, fontWeight: 600, color: inkStrong, fontSize: 14 }}>
+                {t("askTitle")}
               </Typography>
               {selectedFindingId ? (
                 <Chip
@@ -1706,7 +1853,13 @@ export default function StudioPage() {
                     saveNote.reset();
                   }
                 }}
-                sx={{ mt: 1.75, flexWrap: "wrap", gap: 0.5 }}
+                sx={{
+                  mt: 1.25,
+                  flexWrap: "wrap",
+                  gap: 0.5,
+                  "& .MuiToggleButton-root": { color: muted, textTransform: "none", py: 0.25 },
+                  "& .Mui-selected": { color: `${inkStrong} !important` },
+                }}
                 aria-label={t("intentLabel")}
               >
                 <ToggleButton value="propose">{t("intentPropose")}</ToggleButton>
@@ -1715,15 +1868,11 @@ export default function StudioPage() {
                 <ToggleButton value="summary">{t("intentSummary")}</ToggleButton>
               </ToggleButtonGroup>
 
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+              <Typography variant="caption" display="block" sx={{ mt: 0.75, color: muted }}>
                 {t(`intentHelp.${intent}`)}
               </Typography>
 
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1.5}
-                sx={{ mt: 1.75 }}
-              >
+              <Stack spacing={1.25} sx={{ mt: 1.5 }}>
                 {intent === "propose" || intent === "loop" ? (
                   <TextField
                     select
@@ -1733,7 +1882,7 @@ export default function StudioPage() {
                     onChange={(e) =>
                       setModeAsk(e.target.value as (typeof ASK_MODES)[number])
                     }
-                    sx={{ minWidth: 160 }}
+                    sx={fieldSx}
                   >
                     {ASK_MODES.map((m) => (
                       <MenuItem key={m} value={m}>
@@ -1745,8 +1894,8 @@ export default function StudioPage() {
                 <TextField
                   size="small"
                   fullWidth
-                  multiline={intent !== "propose" && intent !== "loop"}
-                  minRows={intent === "propose" || intent === "loop" ? 1 : 2}
+                  multiline
+                  minRows={3}
                   label={
                     intent === "propose" || intent === "loop"
                       ? t("instruction")
@@ -1763,40 +1912,43 @@ export default function StudioPage() {
                         ? t("remindPlaceholder")
                         : t("summaryPlaceholder")
                   }
+                  sx={fieldSx}
                 />
-                <Button
-                  variant="contained"
-                  disabled={
-                    busy ||
-                    instruction.trim().length < 3 ||
-                    (intent === "loop" && !hasRoot)
-                  }
-                  onClick={submit}
-                  sx={{ whiteSpace: "nowrap", alignSelf: { sm: "flex-start" } }}
-                >
-                  {busy
-                    ? intent === "loop"
-                      ? t("loopRunning")
-                      : t("asking")
-                    : intent === "propose"
-                      ? t("ask")
-                      : intent === "loop"
-                        ? t("runLoop")
-                        : intent === "remind"
-                          ? t("saveRemind")
-                          : t("saveSummary")}
-                </Button>
-                {(intent === "propose" || intent === "loop") &&
-                (propose.isPending || runLoop.isPending) ? (
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  {(intent === "propose" || intent === "loop") &&
+                  (propose.isPending || runLoop.isPending) ? (
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => runAbort.cancel()}
+                      sx={{ whiteSpace: "nowrap", textTransform: "none" }}
+                    >
+                      {t("cancelRun")}
+                    </Button>
+                  ) : null}
                   <Button
-                    variant="outlined"
-                    color="warning"
-                    onClick={() => runAbort.cancel()}
-                    sx={{ whiteSpace: "nowrap", alignSelf: { sm: "flex-start" } }}
+                    variant="contained"
+                    disabled={
+                      busy ||
+                      instruction.trim().length < 3 ||
+                      (intent === "loop" && !hasRoot)
+                    }
+                    onClick={submit}
+                    sx={{ whiteSpace: "nowrap", textTransform: "none" }}
                   >
-                    {t("cancelRun")}
+                    {busy
+                      ? intent === "loop"
+                        ? t("loopRunning")
+                        : t("asking")
+                      : intent === "propose"
+                        ? t("ask")
+                        : intent === "loop"
+                          ? t("runLoop")
+                          : intent === "remind"
+                            ? t("saveRemind")
+                            : t("saveSummary")}
                   </Button>
-                ) : null}
+                </Stack>
               </Stack>
 
               {(propose.isError || runLoop.isError || saveNote.isError) &&
@@ -1825,6 +1977,17 @@ export default function StudioPage() {
                   {intent === "propose" && typeof propose.data?.memoryUsed === "number"
                     ? ` (${t("memoryHint")}: ${propose.data.memoryUsed})`
                     : null}
+                  {intent === "propose" && propose.data?.patch ? (
+                    <Box sx={{ mt: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setSidePanel("patches")}
+                      >
+                        {t("side.patches")}
+                      </Button>
+                    </Box>
+                  ) : null}
                   {intent !== "propose" && intent !== "loop" ? (
                     <Box sx={{ mt: 1 }}>
                       <Button
@@ -1846,52 +2009,56 @@ export default function StudioPage() {
                 />
               ) : null}
             </Box>
+            ) : null}
 
-            <StudioPatchWorkflow
-              projectId={projectId}
-              workspaceRoot={selectedProject?.workspaceRoot}
-              focusPatchId={propose.data?.patch?.id ?? runLoop.data?.patchId ?? null}
-              onVerified={() => {
-                void queryClient.invalidateQueries({ queryKey: ["studio-file"] });
-                void queryClient.invalidateQueries({ queryKey: ["studio-tree"] });
-                void queryClient.invalidateQueries({ queryKey: ["studio-search"] });
-                void queryClient.invalidateQueries({
-                  queryKey: ["studio-problems-sentinel"],
-                });
-                void queryClient.invalidateQueries({
-                  queryKey: ["studio-problems-gates"],
-                });
-                void fileQuery.refetch();
-                void treeQuery.refetch();
-              }}
-              onCorrect={(rejectedPatchId) => {
-                // Stage 5 (D4): store the rejected patch ID so the next
-                // propose call will include supersedesPatchId.
-                setCorrectionForPatchId(rejectedPatchId);
-                setIntent("propose");
-              }}
-            />
+            {sidePanel === "chat" ? (
+              <ChatPanel projectId={projectId} selectedPath={selectedPath} embedded />
+            ) : null}
 
-            <Box
-              sx={{
-                border: panelBorder,
-                borderRadius: 3,
-                p: 2.25,
-                bgcolor: panelBg,
-                boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
-              }}
-            >
-              <Typography fontWeight={700} sx={{ color: "#DCDDE1" }}>
+            <Box sx={{ display: sidePanel === "patches" ? "block" : "none" }}>
+              <Stack spacing={1.5}>
+                <StudioContinuity
+                  projectId={projectId}
+                  boundFindingId={selectedFindingId}
+                />
+                <StudioPatchWorkflow
+                  projectId={projectId}
+                  workspaceRoot={selectedProject?.workspaceRoot}
+                  focusPatchId={propose.data?.patch?.id ?? runLoop.data?.patchId ?? null}
+                  onVerified={() => {
+                    void queryClient.invalidateQueries({ queryKey: ["studio-file"] });
+                    void queryClient.invalidateQueries({ queryKey: ["studio-tree"] });
+                    void queryClient.invalidateQueries({ queryKey: ["studio-search"] });
+                    void queryClient.invalidateQueries({
+                      queryKey: ["studio-problems-sentinel"],
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: ["studio-problems-gates"],
+                    });
+                    void fileQuery.refetch();
+                    void treeQuery.refetch();
+                  }}
+                  onCorrect={(rejectedPatchId) => {
+                    // Stage 5 (D4): store the rejected patch ID so the next
+                    // propose call will include supersedesPatchId.
+                    setCorrectionForPatchId(rejectedPatchId);
+                    setIntent("propose");
+                    setSidePanel("agent");
+                  }}
+                />
+              </Stack>
+            </Box>
+
+            {sidePanel === "more" ? (
+            <Stack spacing={2}>
+            <Box>
+              <Typography fontWeight={600} sx={{ color: inkStrong }}>
                 {t("cloneTitle")}
               </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
+              <Typography variant="body2" sx={{ mt: 0.5, color: muted }}>
                 {t("cloneHelp")}
               </Typography>
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1.5}
-                sx={{ mt: 1.75 }}
-              >
+              <Stack spacing={1.25} sx={{ mt: 1.5 }}>
                 <TextField
                   select
                   size="small"
@@ -1901,7 +2068,7 @@ export default function StudioPage() {
                     setExemplarId(e.target.value);
                     setCloneUnitId("WHOLE");
                   }}
-                  sx={{ minWidth: 220 }}
+                  sx={fieldSx}
                 >
                   {exemplars.map((item) => (
                     <MenuItem key={item.id} value={item.id}>
@@ -1918,7 +2085,7 @@ export default function StudioPage() {
                   label={t("cloneUnit")}
                   value={cloneUnitId}
                   onChange={(e) => setCloneUnitId(e.target.value)}
-                  sx={{ minWidth: 180 }}
+                  sx={fieldSx}
                 >
                   <MenuItem value="WHOLE">{t("cloneWhole")}</MenuItem>
                   {(selectedExemplar?.units ?? [])
@@ -1933,6 +2100,7 @@ export default function StudioPage() {
                   variant="outlined"
                   disabled={!selectedExemplar || cloneEx.isPending || !projectId}
                   onClick={() => cloneEx.mutate()}
+                  sx={{ alignSelf: "flex-start", textTransform: "none" }}
                 >
                   {cloneEx.isPending ? t("cloning") : t("cloneAction")}
                 </Button>
@@ -1943,7 +2111,7 @@ export default function StudioPage() {
                 </Alert>
               ) : null}
               {selectedExemplar ? (
-                <Typography variant="caption" sx={{ mt: 1, display: "block", color: "#8B9099" }}>
+                <Typography variant="caption" sx={{ mt: 1, display: "block", color: muted }}>
                   {Object.values(selectedExemplar.completeness).every(Boolean)
                     ? t("cloneReady")
                     : t("cloneNotReady")}
@@ -1970,40 +2138,43 @@ export default function StudioPage() {
                 </Alert>
               ) : null}
             </Box>
-          </Stack>
+            <Box sx={{ borderTop: panelBorder, pt: 1.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography fontWeight={600} sx={{ color: inkStrong }}>
+                  {t("aboutAgent")}
+                </Typography>
+                <Chip size="small" label={t("engineerRole")} />
+              </Stack>
+              <Typography variant="body2" sx={{ mt: 0.5, color: muted }}>
+                {t("askHelp")}
+              </Typography>
+              <Typography variant="caption" sx={{ color: muted, display: "block", mt: 0.5 }}>
+                {t("engineerNotPsa")}
+              </Typography>
+            </Box>
+            </Stack>
+            ) : null}
+            </Box>
+          </Box>
         </Box>
       ) : null}
         </>
       ) : null}
 
-      {tab === "chat" ? (
-        projectId ? (
-          <ChatPanel projectId={projectId} selectedPath={selectedPath} embedded />
-        ) : (
-          <Alert severity="info">{t("pickProject")}</Alert>
-        )
+      {workspaceTab === "run" ? (
+        <Box sx={{ p: { xs: 1.5, md: 2 } }}>
+          {projectId ? <StudioRunPanel projectId={projectId} /> : pickProjectState}
+        </Box>
       ) : null}
 
-      {tab === "run" ? (
-        projectId ? (
-          <StudioRunPanel projectId={projectId} />
-        ) : (
-          <Alert severity="info">{t("pickProject")}</Alert>
-        )
+      {workspaceTab === "cloud" ? (
+        <Box sx={{ p: { xs: 1.5, md: 2 } }}>
+          <CloudToolsPanel embedded />
+        </Box>
       ) : null}
 
-      {tab === "pty" ? (
-        projectId ? (
-          <StudioPtyTerminal projectId={projectId} />
-        ) : (
-          <Alert severity="info">{t("pickProject")}</Alert>
-        )
-      ) : null}
-
-      {tab === "cloud" ? <CloudToolsPanel embedded /> : null}
-
-      {tab === "checks" ? (
-          <Stack spacing={2}>
+      {workspaceTab === "checks" ? (
+          <Stack spacing={2} sx={{ p: { xs: 1.5, md: 2 } }}>
             {!projectId ? <Alert severity="info">{t("pickProject")}</Alert> : null}
             <Tabs
               value={checksTab}
@@ -2020,18 +2191,7 @@ export default function StudioPage() {
               variant="scrollable"
               scrollButtons="auto"
               allowScrollButtonsMobile
-              sx={{
-                borderBottom: panelBorder,
-                minHeight: 44,
-                "& .MuiTab-root": {
-                  color: "rgba(232,234,238,0.6)",
-                  minHeight: 44,
-                  textTransform: "none",
-                  fontSize: 13,
-                },
-                "& .Mui-selected": { color: "#EEEEF0 !important" },
-                "& .MuiTabs-indicator": { bgcolor: "#9A9EA8" },
-              }}
+              sx={{ ...tabsSx(40), borderBottom: panelBorder }}
             >
               {STUDIO_CHECK_IDS.map((id) => (
                 <Tab
@@ -2071,7 +2231,31 @@ export default function StudioPage() {
             ) : null}
           </Stack>
       ) : null}
-    </Stack>
+      </Box>
+
+      <Box
+        component="footer"
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          px: 1.5,
+          minHeight: 24,
+          bgcolor: projectId ? "#1D3F7A" : "#23262D",
+          color: projectId ? "#E4EBFA" : muted,
+          fontSize: 11.5,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>{selectedProject?.name ?? (projectId || t("statusNoProject"))}</span>
+        {projectId && !hasRoot ? <span>{t("noRoot")}</span> : null}
+        {dirtyCount > 0 ? <span>{t("unsavedCount", { count: dirtyCount })}</span> : null}
+        <Box sx={{ flex: 1 }} />
+        {selectedPath ? (
+          <span dir="ltr">{fileQuery.data?.languageHint ?? studioFileBaseName(selectedPath)}</span>
+        ) : null}
+      </Box>
     </Box>
+    </ThemeProvider>
   );
 }

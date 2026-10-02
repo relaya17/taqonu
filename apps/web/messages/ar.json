@@ -212,7 +212,7 @@
     "boundFinding": "Finding مرتبط للاقتراح",
     "continuity": {
       "title": "الآن في هذا المشروع",
-      "help": "آخر Patch، آخر تشغيل محكوم، والتكلفة المسجّلة من Atlas — ليست درجة Truth، وليست Control.",
+      "help": "آخر تغيير وآخر تشغيل والتكلفة المسجلة.",
       "patch": "Patch",
       "noPatch": "لا Patch بعد",
       "noRun": "لا تشغيل محكوم بعد",
@@ -222,13 +222,13 @@
     },
     "git": {
       "title": "حالة Git",
-      "help": "قائمة قراءة فقط من أمر git.status المحكوم. التحديث ما زال يتطلب هوية ثانية. Studio لا يُنشئ commits هنا.",
+      "help": "التغييرات في مجلد العمل. التحديث يتطلب هوية ثانية. لا ينشئ Studio هنا أي commits.",
       "empty": "لا توجد نتيجة git.status محكومة بعد. اطلب واحدة لعرض الملفات المتغيرة.",
       "request": "اطلب حالة Git",
       "requesting": "يُطلب الموافقة…",
       "notTruth": "حالة Git دليل مساحة عمل، وليست حكم Truth.",
       "exitCode": "exit {code}",
-      "clean": "شجرة العمل نظيفة (porcelain فارغ).",
+      "clean": "لا توجد تغييرات",
       "requestBranch": "اطلب الفرع",
       "requestDiff": "اطلب الـ diff",
       "branch": "الفرع",
@@ -245,7 +245,7 @@
     },
     "problems": {
       "title": "المشكلات",
-      "empty": "لا توجد نتائج Sentinel أو بوابات جودة أو TypeScript أو بناء أو اختبارات محكومة لهذا المشروع.",
+      "empty": "لا توجد مشكلات في هذا المشروع.",
       "notCompiler": "يشمل تشخيصات TypeScript للملف المفتوح، بالإضافة إلى Sentinel والبوابات والبناء والاختبارات.",
       "proposeFix": "اقترح إصلاحاً",
       "testUnavailable": "مشغّل الاختبارات UNAVAILABLE — هذا ليس PASS.",
@@ -276,7 +276,7 @@
       "diagnose": "شخّص",
       "review": "راجع"
     },
-    "askTitle": "CODE_ENGINEER — تصحيح محكوم",
+    "askTitle": "اطلبوا تغييرًا من الوكيل",
     "askHelp": "هذا متخصص هندسة Fabric، وليس الـ PSA الشخصي. يقترح Patch. توافقان ثم تطبّقان. التذكيرات والملخصات تكتب ذاكرة Atlas فقط.",
     "engineerRole": "CODE_ENGINEER",
     "engineerNotPsa": "ليس الـ PSA. ما زال الـ Patch يحتاج Approve → Apply.",
@@ -487,7 +487,24 @@
       "requestHelp": "الطلب اقتراح للمتخصص المختار من Fabric. لا يُطبَّق، والوكيل المشرف ليس المتخصص.",
       "requestSent": "أُرسل الطلب. ما زال يحتاج إلى الحوكمة. لم يُطبَّق شيء."
     },
-    "correctionMode": "وضع التصحيح — patch {patchId}… (انقر × للإلغاء)"
+    "correctionMode": "وضع التصحيح — patch {patchId}… (انقر × للإلغاء)",
+    "governanceShort": "الوكيل يقترح · أنتم توافقون · وبعدها فقط يُكتب شيء على القرص",
+    "governanceDetails": "التفاصيل",
+    "governanceHide": "إخفاء",
+    "emptyTitle": "افتحوا مشروعًا للبدء",
+    "editorTools": "أدوات",
+    "bottomPanel": "اللوحة السفلية",
+    "sidePanel": "لوحة الوكيل",
+    "aboutAgent": "عن الوكيل",
+    "statusNoProject": "لا يوجد مشروع مفتوح",
+    "unsavedCount": "{count} غير محفوظ",
+    "side": {
+      "agent": "الوكيل",
+      "chat": "محادثة",
+      "patches": "التغييرات المقترحة",
+      "psa": "الوكيل الشخصي",
+      "more": "المزيد"
+    }
   },
   "contract": {
     "title": "عقد البنية",

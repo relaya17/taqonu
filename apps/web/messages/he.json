@@ -267,7 +267,7 @@
     "boundFinding": "ממצא קשור להצעה",
     "continuity": {
       "title": "עכשיו בפרויקט",
-      "help": "ה-Patch האחרון, ההרצה הממשלת האחרונה, ועלות מתועדת מ-Atlas — לא ציון Truth, לא Control.",
+      "help": "השינוי האחרון, ההרצה האחרונה והעלות המתועדת.",
       "patch": "Patch",
       "noPatch": "אין Patch עדיין",
       "noRun": "אין הרצה ממשלת עדיין",
@@ -277,13 +277,13 @@
     },
     "git": {
       "title": "מצב Git",
-      "help": "רשימת קריאה בלבד מפקודת git.status הממשלת. רענון עדיין דורש זהות שנייה. Studio לא יוצר כאן commits.",
+      "help": "רשימת השינויים בתיקייה. רענון דורש אישור של זהות שנייה. Studio לא יוצר כאן commits.",
       "empty": "אין עדיין תוצאת git.status ממשלת. בקשו אחת כדי לראות קבצים שהשתנו.",
       "request": "בקש מצב Git",
       "requesting": "מבקש אישור…",
       "notTruth": "מצב Git הוא ראיה מסביבת העבודה, לא פסק Truth.",
       "exitCode": "exit {code}",
-      "clean": "עץ העבודה נקי (porcelain ריק).",
+      "clean": "אין שינויים",
       "requestBranch": "בקש ענף",
       "requestDiff": "בקש diff",
       "branch": "ענף",
@@ -300,7 +300,7 @@
     },
     "problems": {
       "title": "בעיות",
-      "empty": "אין ממצאי Sentinel, שערי איכות, TypeScript, בנייה או בדיקות ממשליות לפרויקט זה.",
+      "empty": "אין בעיות בפרויקט הזה.",
       "notCompiler": "כולל אבחנות TypeScript לקובץ הפתוח, וגם Sentinel, שערים, בנייה ובדיקות.",
       "proposeFix": "הצע תיקון",
       "testUnavailable": "מריץ הבדיקות אינו זמין (UNAVAILABLE) — זה אינו PASS.",
@@ -331,7 +331,7 @@
       "diagnose": "אבחון",
       "review": "סקירה"
     },
-    "askTitle": "CODE_ENGINEER — תיקון ממשל",
+    "askTitle": "בקשת שינוי מהסוכן",
     "askHelp": "זה מומחה ההנדסה של Fabric, לא ה-PSA האישי. הוא מציע Patch. אתם מאשרים ואז מחילים. תזכורות וסיכומים כותבים לזיכרון Atlas בלבד.",
     "engineerRole": "CODE_ENGINEER",
     "engineerNotPsa": "לא ה-PSA. Patches עדיין דורשים אשר → החל.",
@@ -542,7 +542,24 @@
       "requestHelp": "הבקשה היא הצעה למומחה Fabric שנבחר. היא לא מיושמת, והסוכן המפקח אינו המומחה.",
       "requestSent": "הבקשה נשלחה. היא עדיין דורשת ממשל. שום דבר לא יושם."
     },
-    "correctionMode": "מצב תיקון — patch {patchId}… (לחץ × לביטול)"
+    "correctionMode": "מצב תיקון — patch {patchId}… (לחץ × לביטול)",
+    "governanceShort": "הסוכן מציע · אתם מאשרים · רק אז משהו נכתב לדיסק",
+    "governanceDetails": "פרטים",
+    "governanceHide": "הסתרה",
+    "emptyTitle": "פתחו פרויקט כדי להתחיל",
+    "editorTools": "כלים",
+    "bottomPanel": "פאנל תחתון",
+    "sidePanel": "פאנל הסוכן",
+    "aboutAgent": "על הסוכן",
+    "statusNoProject": "אין פרויקט פתוח",
+    "unsavedCount": "{count} לא נשמרו",
+    "side": {
+      "agent": "סוכן",
+      "chat": "שיחה",
+      "patches": "שינויים מוצעים",
+      "psa": "הסוכן האישי",
+      "more": "עוד"
+    }
   },
   "auth": {
     "login": "התחברות",
