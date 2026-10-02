@@ -801,8 +801,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           },
           maxWidth: "100%",
           overflowX: "clip",
-          p: { xs: 1.5, sm: 2.5, md: 3 },
-          pb: { xs: 3, md: 5 },
+          // Studio is a full-bleed workspace: no page padding around it.
+          p: isStudioWorkspace ? 0 : { xs: 1.5, sm: 2.5, md: 3 },
+          pb: isStudioWorkspace ? 0 : { xs: 3, md: 5 },
           outline: "none",
           textAlign: "start",
         }}
@@ -810,14 +811,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Box
           component="header"
           sx={{
-            mb: 2,
+            mb: isStudioWorkspace ? 0 : 2,
             minWidth: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 1,
-            mt: { xs: -1.5, sm: -2.5, md: -3 },
-            mx: { xs: -1.5, sm: -2.5, md: -3 },
+            mt: isStudioWorkspace ? 0 : { xs: -1.5, sm: -2.5, md: -3 },
+            mx: isStudioWorkspace ? 0 : { xs: -1.5, sm: -2.5, md: -3 },
             px: { xs: 1.5, sm: 2, md: 3 },
             minHeight: 56,
             bgcolor: appMobileTone.bgcolor,
@@ -872,7 +873,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Stack>
           {brandMark(isAuthed ? WEB_POST_AUTH_PATH : "/welcome", { size: "sm", tone: appMobileToneKey })}
         </Box>
-        {showProductNav ? (
+        {showProductNav && !isStudioWorkspace ? (
           <PageContainer maxWidth={920} noPadding>
             <AiCompanionBar />
           </PageContainer>
@@ -881,7 +882,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           maxWidth={isStudioWorkspace ? "full" : 920}
           noPadding={isStudioWorkspace}
           sx={{
-            mb: { xs: 2, md: 3 },
+            mb: isStudioWorkspace ? 0 : { xs: 2, md: 3 },
             ...(isStudioWorkspace
               ? {}
               : {

@@ -33,6 +33,9 @@ import {
 import { ThemeProvider, useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
+import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
+import SearchIcon from "@mui/icons-material/Search";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -42,6 +45,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { createStudioRunAbort } from "@/lib/studio-run-abort";
 import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
 import { createAtlasTheme } from "@/styles/theme";
 import { ChatPanel } from "@/components/studio/ChatPanel";
 import { CloudToolsPanel } from "@/components/studio/CloudToolsPanel";
@@ -67,6 +71,7 @@ import { studioProblemRemediationId } from "@/lib/studio-problems";
 import {
   STUDIO_CHECK_IDS,
   STUDIO_FILE_ACTIONS,
+  WEB_NAV_PATHS,
   buildStudioSearch,
   isStudioCheckId,
   studioFileActionInstruction,
@@ -881,7 +886,7 @@ export default function StudioPage() {
   const [sidePanel, setSidePanel] = useState<
     "agent" | "chat" | "patches" | "psa" | "more"
   >(tab === "chat" ? "chat" : "agent");
-  const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal" | "git">(
+  const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">(
     tab === "pty" ? "terminal" : "problems",
   );
   useEffect(() => {
@@ -889,6 +894,8 @@ export default function StudioPage() {
     if (tab === "pty") setBottomPanel("terminal");
   }, [tab]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activity, setActivity] = useState<"explorer" | "search" | "git">("explorer");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [editorToolsOpen, setEditorToolsOpen] = useState(false);
 
   const openSidePanel = (next: typeof sidePanel) => {
@@ -902,6 +909,38 @@ export default function StudioPage() {
     else if (tab === "pty") selectTab("files");
   };
   const dirtyCount = Object.values(buffers).filter((b) => studioBufferIsDirty(b)).length;
+
+  // VS Code–style shortcuts: Ctrl/Cmd+S save, Ctrl+` terminal, Ctrl+Shift+F search.
+  const shortcutRef = useRef({ canSave: false, save: () => {}, terminal: () => {} });
+  shortcutRef.current = {
+    canSave:
+      Boolean(selectedPath && currentBuffer && isDirty) &&
+      !saveFile.isPending &&
+      !fileQuery.data?.truncated &&
+      !fileQuery.data?.readOnly,
+    save: () => saveFile.mutate(),
+    terminal: () => openBottomPanel("terminal"),
+  };
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      const mod = event.ctrlKey || event.metaKey;
+      if (!mod) return;
+      const key = event.key.toLowerCase();
+      if (key === "s" && !event.shiftKey) {
+        event.preventDefault();
+        if (shortcutRef.current.canSave) shortcutRef.current.save();
+      } else if (event.code === "Backquote") {
+        event.preventDefault();
+        shortcutRef.current.terminal();
+      } else if (key === "f" && event.shiftKey) {
+        event.preventDefault();
+        setActivity("search");
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Studio is a dark workspace regardless of the site theme, so every panel
   // inside it (Problems, Git, PSA, Checks) renders with dark inputs and text.
@@ -969,9 +1008,8 @@ export default function StudioPage() {
       sx={{
         display: "flex",
         flexDirection: "column",
-        minHeight: { md: "calc(100vh - 150px)" },
-        borderRadius: { xs: 1, md: 2 },
-        border: panelBorder,
+        height: { lg: "calc(100vh - 56px)" },
+        minHeight: { xs: "calc(100vh - 56px)" },
         overflow: "hidden",
         color: ink,
         textAlign: "start",
@@ -1078,6 +1116,9 @@ export default function StudioPage() {
           <Typography variant="caption" sx={{ color: muted, display: "block", mt: 0.75 }}>
             {t("projectHelp")}
           </Typography>
+          <Box sx={{ mt: 1.5, maxWidth: 820 }}>
+            <AiCompanionBar />
+          </Box>
           {projectId && hasRoot ? (
             <Box sx={{ mt: 1.5, maxWidth: 820 }}>
               <LinkWorkspaceRoot
@@ -1100,6 +1141,15 @@ export default function StudioPage() {
         </Box>
       ) : null}
 
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          bgcolor: chromeBg,
+          borderBottom: panelBorder,
+          pe: { xs: 0.5, md: 1 },
+        }}
+      >
       <Tabs
         value={workspaceTab}
         onChange={(_, v: StudioTab) => selectTab(v)}
@@ -1118,8 +1168,8 @@ export default function StudioPage() {
         sx={{
           ...tabsSx(40),
           px: { xs: 0.5, md: 1 },
-          bgcolor: chromeBg,
-          borderBottom: panelBorder,
+          flex: 1,
+          minWidth: 0,
         }}
       >
         {(["files", "run", "cloud", "checks"] as const).map((id) => (
@@ -1137,6 +1187,15 @@ export default function StudioPage() {
           />
         ))}
       </Tabs>
+      <Button
+        component={Link}
+        href={WEB_NAV_PATHS.dashboard}
+        size="small"
+        sx={{ color: muted, textTransform: "none", fontSize: 13, whiteSpace: "nowrap" }}
+      >
+        {t("dashboard")}
+      </Button>
+      </Box>
 
       {projectsQuery.isError ? (
         <Alert severity="error" sx={{ m: 1.5 }}>
@@ -1162,20 +1221,18 @@ export default function StudioPage() {
         <Alert severity="error" sx={{ m: 1.5 }}>{(treeQuery.error as Error).message}</Alert>
       ) : null}
 
-      {!projectId ? pickProjectState : null}
-
-      {projectId ? (
+      {(
         <Box
           sx={{
             // Fixed height on desktop so the editor scrolls inside its pane
             // (flex: 1 would let the grid grow to the file's full length).
-            flex: { xs: 1, lg: "none" },
-            minHeight: { xs: 0, lg: 600 },
+            flex: 1,
+            minHeight: { xs: 0, lg: 480 },
             display: "grid",
             gridTemplateColumns: {
               xs: "minmax(0, 1fr)",
-              md: "240px minmax(0, 1fr)",
-              lg: "260px minmax(0, 1fr) 360px",
+              md: "290px minmax(0, 1fr)",
+              lg: "310px minmax(0, 1fr) 360px",
             },
             gridTemplateRows: {
               xs: "auto",
@@ -1187,169 +1244,8 @@ export default function StudioPage() {
               md: '"tree editor" "tree bottom" "side side"',
               lg: '"tree editor side" "tree bottom side"',
             },
-            height: { lg: "calc(100vh - 250px)" },
           }}
         >
-          <Box
-            component="aside"
-            aria-label={t("tree")}
-            sx={{
-              gridArea: "tree",
-              minWidth: 0,
-              minHeight: 0,
-              overflow: "auto",
-              maxHeight: { xs: 320, md: "none" },
-              bgcolor: panelBg,
-              borderInlineEnd: { md: panelBorder },
-              borderBottom: { xs: panelBorder, md: "none" },
-            }}
-          >
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{
-                px: 1.5,
-                py: 1,
-                position: "sticky",
-                top: 0,
-                bgcolor: panelBg,
-                zIndex: 1,
-              }}
-            >
-              <Typography
-                variant="subtitle2"
-                sx={{ color: muted, fontSize: 11.5, fontWeight: 600, letterSpacing: "0.04em" }}
-              >
-                {t("tree")}
-              </Typography>
-              {treeQuery.data?.truncated ? (
-                <Chip size="small" label={t("truncated")} />
-              ) : null}
-              <Box sx={{ flexGrow: 1 }} />
-              {hasRoot ? (
-                <Tooltip title={t("createFolder")}>
-                  <IconButton
-                    size="small"
-                    aria-label={t("createFolder")}
-                    onClick={() => setShowNewFolder((v) => !v)}
-                    sx={{ color: muted, "&:hover": { color: ink } }}
-                  >
-                    <CreateNewFolderIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              ) : null}
-            </Stack>
-            {showNewFolder ? (
-              <Stack direction="row" spacing={0.75} sx={{ px: 1.5, pb: 0.5 }} alignItems="center">
-                <TextField
-                  size="small"
-                  fullWidth
-                  autoFocus
-                  placeholder={t("newFolderPlaceholder")}
-                  value={newFolderPath}
-                  onChange={(e) => setNewFolderPath(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newFolderPath.trim()) createFolder.mutate();
-                    if (e.key === "Escape") { setShowNewFolder(false); setNewFolderPath(""); }
-                  }}
-                  sx={fieldSx}
-                />
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={createFolder.isPending || !newFolderPath.trim()}
-                  onClick={() => createFolder.mutate()}
-                >
-                  {t("createFolder")}
-                </Button>
-              </Stack>
-            ) : null}
-            {createFolder.isError ? (
-              <Alert severity="error" sx={{ mx: 1.5, mb: 0.5 }}>
-                {(createFolder.error as Error).message}
-              </Alert>
-            ) : null}
-            <Box sx={{ px: 1.25, pb: 0.5 }}>
-              <TextField
-                size="small"
-                fullWidth
-                value={fileSearch}
-                onChange={(e) => setFileSearch(e.target.value)}
-                placeholder={t("searchPlaceholder")}
-                inputProps={{ "aria-label": t("search") }}
-                sx={fieldSx}
-              />
-            </Box>
-            {trimmedSearch.length >= 2 ? (
-              <Box sx={{ px: 0.5, pb: 1 }}>
-                {searchQuery.isError ? (
-                  <Alert severity="error" sx={{ mx: 1, mb: 1 }}>
-                    {(searchQuery.error as Error).message}
-                  </Alert>
-                ) : null}
-                {searchQuery.data?.truncated ? (
-                  <Chip size="small" label={t("searchTruncated")} sx={{ mx: 1.5, mb: 0.5 }} />
-                ) : null}
-                <List dense disablePadding>
-                  {(searchQuery.data?.items ?? []).map((hit) => (
-                    <ListItem key={`${hit.path}:${hit.line}:${hit.preview}`} disablePadding>
-                      <ListItemButton
-                        onClick={() => selectStudioFile(hit.path, hit.line)}
-                        sx={{ color: ink, borderRadius: 1 }}
-                      >
-                        <ListItemText
-                          primary={hit.path}
-                          secondary={`${hit.line}: ${hit.preview}`}
-                          primaryTypographyProps={{ noWrap: true, fontSize: "0.8rem" }}
-                          secondaryTypographyProps={{ noWrap: true, color: muted }}
-                        />
-                      </ListItemButton>
-                    </ListItem>
-                  ))}
-                </List>
-                {searchQuery.isLoading ? (
-                  <Typography variant="caption" sx={{ px: 1.5, color: muted }}>
-                    {t("searchLoading")}
-                  </Typography>
-                ) : null}
-                {searchQuery.isSuccess && (searchQuery.data?.items.length ?? 0) === 0 ? (
-                  <Typography variant="caption" sx={{ px: 1.5, color: muted }}>
-                    {t("searchEmpty")}
-                  </Typography>
-                ) : null}
-              </Box>
-            ) : null}
-            {treeQuery.data ? (
-              <List dense disablePadding sx={{ py: 0.5 }}>
-                <TreeBranch
-                  node={treeQuery.data.tree}
-                  depth={0}
-                  selectedPath={selectedPath}
-                  onSelect={(path, kind) => {
-                    if (kind === "file") selectStudioFile(path);
-                  }}
-                  onDelete={(path, kind) => {
-                    const label = kind === "file" ? "file" : "folder";
-                    if (!window.confirm(`Delete ${label}: ${path}?`)) return;
-                    if (kind === "file") {
-                      deleteFile.mutate(path);
-                    } else {
-                      deleteFolder.mutate(path);
-                    }
-                  }}
-                  onRename={(oldPath, newName) => {
-                    renameNode.mutate({ oldPath, newName });
-                  }}
-                />
-              </List>
-            ) : (
-              <Typography variant="body2" sx={{ p: 2, color: muted }}>
-                {treeQuery.isLoading ? t("loadingTree") : t("emptyTree")}
-              </Typography>
-            )}
-          </Box>
-
           <Box
             sx={{
               gridArea: "editor",
@@ -1674,6 +1570,8 @@ export default function StudioPage() {
                     ariaLabel={selectedPath ?? t("pickFile")}
                     revealLine={revealLine}
                   />
+                ) : !projectId ? (
+                  pickProjectState
                 ) : (
                   <Stack alignItems="center" justifyContent="center" sx={{ height: "100%", minHeight: 240, p: 3 }}>
                     <Typography variant="body2" sx={{ color: muted, textAlign: "center" }}>
@@ -1710,10 +1608,14 @@ export default function StudioPage() {
             >
               <Tab value="problems" label={t("problems.title")} />
               <Tab value="terminal" label={t("tab.pty")} />
-              <Tab value="git" label={t("git.title")} />
             </Tabs>
             <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1, pb: 1 }}>
-              {bottomPanel === "problems" ? (
+              {!projectId ? (
+                <Typography variant="body2" sx={{ color: muted, p: 1.5 }}>
+                  {t("pickProject")}
+                </Typography>
+              ) : null}
+              {projectId && bottomPanel === "problems" ? (
                 <StudioProblemsPanel
                   projectId={projectId}
                   enabled={Boolean(projectId)}
@@ -1732,15 +1634,230 @@ export default function StudioPage() {
                   }}
                 />
               ) : null}
-              {bottomPanel === "terminal" ? (
+              {projectId && bottomPanel === "terminal" ? (
                 <StudioPtyTerminal projectId={projectId} />
               ) : null}
-              {bottomPanel === "git" ? (
+            </Box>
+          </Box>
+
+          <Box
+            component="aside"
+            aria-label={t("tree")}
+            sx={{
+              gridArea: "tree",
+              minWidth: 0,
+              minHeight: 0,
+              display: "flex",
+              maxHeight: { xs: 360, md: "none" },
+              bgcolor: panelBg,
+              borderInlineEnd: { md: panelBorder },
+              borderBottom: { xs: panelBorder, md: "none" },
+            }}
+          >
+            <Stack
+              component="nav"
+              aria-label={t("activityBar")}
+              alignItems="center"
+              spacing={0.5}
+              sx={{ width: 48, flexShrink: 0, pt: 1, bgcolor: chromeBg, borderInlineEnd: panelBorder }}
+            >
+              {(
+                [
+                  ["explorer", <FolderOutlinedIcon key="i" />],
+                  ["search", <SearchIcon key="i" />],
+                  ["git", <AccountTreeIcon key="i" />],
+                ] as const
+              ).map(([id, icon]) => (
+                <Tooltip key={id} title={t(`activity.${id}`)} placement="left">
+                  <IconButton
+                    aria-label={t(`activity.${id}`)}
+                    aria-pressed={activity === id}
+                    onClick={() => setActivity(id)}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 1,
+                      color: activity === id ? inkStrong : muted,
+                      borderInlineStart: activity === id ? "2px solid #4C8DFF" : "2px solid transparent",
+                    }}
+                  >
+                    {icon}
+                  </IconButton>
+                </Tooltip>
+              ))}
+            </Stack>
+            <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto" }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{
+                px: 1.5,
+                py: 1,
+                position: "sticky",
+                top: 0,
+                bgcolor: panelBg,
+                zIndex: 1,
+              }}
+            >
+              <Typography
+                variant="subtitle2"
+                sx={{ color: muted, fontSize: 11.5, fontWeight: 600, letterSpacing: "0.04em" }}
+              >
+                {t(`activity.${activity}`)}
+              </Typography>
+              {activity === "explorer" && treeQuery.data?.truncated ? (
+                <Chip size="small" label={t("truncated")} />
+              ) : null}
+              <Box sx={{ flexGrow: 1 }} />
+              {hasRoot && activity === "explorer" ? (
+                <Tooltip title={t("createFolder")}>
+                  <IconButton
+                    size="small"
+                    aria-label={t("createFolder")}
+                    onClick={() => setShowNewFolder((v) => !v)}
+                    sx={{ color: muted, "&:hover": { color: ink } }}
+                  >
+                    <CreateNewFolderIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+            </Stack>
+            {!projectId ? (
+              <Stack spacing={1.25} sx={{ px: 1.5, py: 1 }}>
+                <Typography variant="body2" sx={{ color: muted }}>
+                  {t("noFolderOpen")}
+                </Typography>
+                <Button
+                  component={Link}
+                  href="/projects"
+                  variant="contained"
+                  size="small"
+                  sx={{ alignSelf: "flex-start", textTransform: "none" }}
+                >
+                  {t("goProjects")}
+                </Button>
+              </Stack>
+            ) : null}
+            {activity === "explorer" && showNewFolder ? (
+              <Stack direction="row" spacing={0.75} sx={{ px: 1.5, pb: 0.5 }} alignItems="center">
+                <TextField
+                  size="small"
+                  fullWidth
+                  autoFocus
+                  placeholder={t("newFolderPlaceholder")}
+                  value={newFolderPath}
+                  onChange={(e) => setNewFolderPath(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newFolderPath.trim()) createFolder.mutate();
+                    if (e.key === "Escape") { setShowNewFolder(false); setNewFolderPath(""); }
+                  }}
+                  sx={fieldSx}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={createFolder.isPending || !newFolderPath.trim()}
+                  onClick={() => createFolder.mutate()}
+                >
+                  {t("createFolder")}
+                </Button>
+              </Stack>
+            ) : null}
+            {createFolder.isError ? (
+              <Alert severity="error" sx={{ mx: 1.5, mb: 0.5 }}>
+                {(createFolder.error as Error).message}
+              </Alert>
+            ) : null}
+            {projectId && activity === "search" ? (
+            <Box sx={{ px: 1.25, pb: 0.5 }}>
+              <TextField
+                size="small"
+                fullWidth
+                value={fileSearch}
+                onChange={(e) => setFileSearch(e.target.value)}
+                placeholder={t("searchPlaceholder")}
+                inputProps={{ "aria-label": t("search") }}
+                inputRef={searchInputRef}
+                sx={fieldSx}
+              />
+            </Box>
+            ) : null}
+            {activity === "search" && trimmedSearch.length >= 2 ? (
+              <Box sx={{ px: 0.5, pb: 1 }}>
+                {searchQuery.isError ? (
+                  <Alert severity="error" sx={{ mx: 1, mb: 1 }}>
+                    {(searchQuery.error as Error).message}
+                  </Alert>
+                ) : null}
+                {searchQuery.data?.truncated ? (
+                  <Chip size="small" label={t("searchTruncated")} sx={{ mx: 1.5, mb: 0.5 }} />
+                ) : null}
+                <List dense disablePadding>
+                  {(searchQuery.data?.items ?? []).map((hit) => (
+                    <ListItem key={`${hit.path}:${hit.line}:${hit.preview}`} disablePadding>
+                      <ListItemButton
+                        onClick={() => selectStudioFile(hit.path, hit.line)}
+                        sx={{ color: ink, borderRadius: 1 }}
+                      >
+                        <ListItemText
+                          primary={hit.path}
+                          secondary={`${hit.line}: ${hit.preview}`}
+                          primaryTypographyProps={{ noWrap: true, fontSize: "0.8rem" }}
+                          secondaryTypographyProps={{ noWrap: true, color: muted }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+                {searchQuery.isLoading ? (
+                  <Typography variant="caption" sx={{ px: 1.5, color: muted }}>
+                    {t("searchLoading")}
+                  </Typography>
+                ) : null}
+                {searchQuery.isSuccess && (searchQuery.data?.items.length ?? 0) === 0 ? (
+                  <Typography variant="caption" sx={{ px: 1.5, color: muted }}>
+                    {t("searchEmpty")}
+                  </Typography>
+                ) : null}
+              </Box>
+            ) : null}
+            {activity === "explorer" && treeQuery.data ? (
+              <List dense disablePadding sx={{ py: 0.5 }}>
+                <TreeBranch
+                  node={treeQuery.data.tree}
+                  depth={0}
+                  selectedPath={selectedPath}
+                  onSelect={(path, kind) => {
+                    if (kind === "file") selectStudioFile(path);
+                  }}
+                  onDelete={(path, kind) => {
+                    const label = kind === "file" ? "file" : "folder";
+                    if (!window.confirm(`Delete ${label}: ${path}?`)) return;
+                    if (kind === "file") {
+                      deleteFile.mutate(path);
+                    } else {
+                      deleteFolder.mutate(path);
+                    }
+                  }}
+                  onRename={(oldPath, newName) => {
+                    renameNode.mutate({ oldPath, newName });
+                  }}
+                />
+              </List>
+            ) : projectId && activity === "explorer" ? (
+              <Typography variant="body2" sx={{ p: 2, color: muted }}>
+                {treeQuery.isLoading ? t("loadingTree") : t("emptyTree")}
+              </Typography>
+            ) : null}
+            {projectId && activity === "git" ? (
+              <Box sx={{ px: 1 }}>
                 <StudioGitStatus
                   projectId={projectId}
                   onOpenFile={(path) => selectStudioFile(path)}
                 />
-              ) : null}
+              </Box>
+            ) : null}
             </Box>
           </Box>
 
@@ -1778,7 +1895,12 @@ export default function StudioPage() {
               <Tab value="more" label={t("side.more")} />
             </Tabs>
             <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.75 }}>
-            {sidePanel === "psa" ? <SupervisingAgentPanel projectId={projectId} /> : null}
+            {!projectId && sidePanel !== "agent" && sidePanel !== "more" ? (
+              <Typography variant="body2" sx={{ color: muted }}>
+                {t("pickProject")}
+              </Typography>
+            ) : null}
+            {projectId && sidePanel === "psa" ? <SupervisingAgentPanel projectId={projectId} /> : null}
 
             {sidePanel === "agent" ? (
             <Box>
@@ -1811,12 +1933,6 @@ export default function StudioPage() {
                     {t(`fileAction.${action}`)}
                   </Button>
                 ))}
-                <Button size="small" variant="text" onClick={() => selectTab("run")} sx={{ textTransform: "none" }}>
-                  {t("tab.run")}
-                </Button>
-                <Button size="small" variant="text" onClick={() => selectTab("checks")} sx={{ textTransform: "none" }}>
-                  {t("tab.checks")}
-                </Button>
               </Stack>
               <Typography sx={{ mt: 1.75, fontWeight: 600, color: inkStrong, fontSize: 14 }}>
                 {t("askTitle")}
@@ -1930,6 +2046,7 @@ export default function StudioPage() {
                     variant="contained"
                     disabled={
                       busy ||
+                      !projectId ||
                       instruction.trim().length < 3 ||
                       (intent === "loop" && !hasRoot)
                     }
@@ -2011,10 +2128,11 @@ export default function StudioPage() {
             </Box>
             ) : null}
 
-            {sidePanel === "chat" ? (
+            {projectId && sidePanel === "chat" ? (
               <ChatPanel projectId={projectId} selectedPath={selectedPath} embedded />
             ) : null}
 
+            {projectId ? (
             <Box sx={{ display: sidePanel === "patches" ? "block" : "none" }}>
               <Stack spacing={1.5}>
                 <StudioContinuity
@@ -2048,6 +2166,7 @@ export default function StudioPage() {
                 />
               </Stack>
             </Box>
+            ) : null}
 
             {sidePanel === "more" ? (
             <Stack spacing={2}>
@@ -2157,7 +2276,7 @@ export default function StudioPage() {
             </Box>
           </Box>
         </Box>
-      ) : null}
+      )}
         </>
       ) : null}
 
@@ -2251,6 +2370,22 @@ export default function StudioPage() {
         {projectId && !hasRoot ? <span>{t("noRoot")}</span> : null}
         {dirtyCount > 0 ? <span>{t("unsavedCount", { count: dirtyCount })}</span> : null}
         <Box sx={{ flex: 1 }} />
+        <Box
+          component="button"
+          type="button"
+          onClick={() => selectTab("run")}
+          sx={{ all: "unset", cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+        >
+          {t("tab.run")}
+        </Box>
+        <Box
+          component="button"
+          type="button"
+          onClick={() => selectTab("checks")}
+          sx={{ all: "unset", cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+        >
+          {t("tab.checks")}
+        </Box>
         {selectedPath ? (
           <span dir="ltr">{fileQuery.data?.languageHint ?? studioFileBaseName(selectedPath)}</span>
         ) : null}

@@ -504,6 +504,14 @@
       "patches": "Changements proposés",
       "psa": "Agent personnel",
       "more": "Plus"
+    },
+    "noFolderOpen": "Aucun projet ouvert. Ouvrez un projet pour voir ses fichiers.",
+    "activityBar": "Barre d’activité",
+    "dashboard": "Tableau de bord",
+    "activity": {
+      "explorer": "Explorateur",
+      "search": "Recherche",
+      "git": "Git"
     }
   },
   "contract": {

@@ -504,6 +504,14 @@
       "patches": "Proposed changes",
       "psa": "Personal agent",
       "more": "More"
+    },
+    "noFolderOpen": "No project is open. Open a project to see its files.",
+    "activityBar": "Activity bar",
+    "dashboard": "Dashboard",
+    "activity": {
+      "explorer": "Explorer",
+      "search": "Search",
+      "git": "Git"
     }
   },
   "contract": {
