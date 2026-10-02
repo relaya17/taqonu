@@ -1,3 +1,5 @@
+import { resolveApiUrl } from "./api";
+
 export const AUTH_SESSION_QUERY_KEY = ["auth-session"] as const;
 
 /** Thrown by fetchAuthSession when the API returns authenticated:false (no active session). */
@@ -25,7 +27,7 @@ export interface AuthSession<T> {
  * Throws Error on non-OK HTTP responses (network, 5xx, etc.).
  */
 export async function fetchAuthSession<T>(): Promise<AuthSession<T>> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  const base = resolveApiUrl();
 
   const response = await fetch(`${base}/api/v1/auth/session`, {
     credentials: "include",

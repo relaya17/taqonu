@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { API_URL, apiGet, apiPost } from "@/lib/api";
+import { resolveApiUrl, apiGet, apiPost } from "@/lib/api";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 
@@ -184,7 +184,7 @@ export function ProcessAuditPanel({
   const openPdf = () => {
     if (!projectId) return;
     window.open(
-      `${API_URL}/api/v1/projects/${encodeURIComponent(projectId)}/central-opinion.pdf`,
+      `${resolveApiUrl()}/api/v1/projects/${encodeURIComponent(projectId)}/central-opinion.pdf`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -193,7 +193,7 @@ export function ProcessAuditPanel({
   const openHtmlPdf = () => {
     if (!projectId) return;
     window.open(
-      `${API_URL}/api/v1/projects/${encodeURIComponent(projectId)}/central-opinion.html`,
+      `${resolveApiUrl()}/api/v1/projects/${encodeURIComponent(projectId)}/central-opinion.html`,
       "_blank",
       "noopener,noreferrer",
     );

@@ -35,6 +35,10 @@
         "$TURBO_DEFAULT$",
         ".env*"
       ],
+      "env": [
+        "NEXT_PUBLIC_*",
+        "API_PROXY_TARGET"
+      ],
       "outputs": [
         "dist/**",
         ".next/**",

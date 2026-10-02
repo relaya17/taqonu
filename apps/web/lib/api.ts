@@ -4,10 +4,26 @@ const CONFIGURED_API_URL =
 const LOOPBACK = new Set(["localhost", "127.0.0.1"]);
 
 /**
- * Prefer the same loopback host the page was opened with so cookies/CORS stay
- * aligned (localhost vs 127.0.0.1).
+ * Same-origin API proxy (production).
+ *
+ * When NEXT_PUBLIC_API_PROXY=1, the browser calls `/api/v1/*` on the web
+ * origin and next.config.ts rewrites it to the real API. The session cookie is
+ * then first-party to the web host. Without this, web and API live on two
+ * different sites (e.g. two *.vercel.app hosts) and browsers that block
+ * third-party cookies drop the session: login returns 200, the next
+ * /auth/session probe is anonymous, and the user lands back on /auth/login.
+ */
+export const API_PROXY_ENABLED = process.env.NEXT_PUBLIC_API_PROXY === "1";
+
+/**
+ * Browser: same-origin when the proxy is on; otherwise prefer the same
+ * loopback host the page was opened with so cookies/CORS stay aligned
+ * (localhost vs 127.0.0.1). Server (SSR): always the configured API URL.
  */
 export function resolveApiUrl(): string {
+  if (API_PROXY_ENABLED && typeof window !== "undefined") {
+    return window.location.origin;
+  }
   try {
     const configured = new URL(CONFIGURED_API_URL);
     if (typeof window !== "undefined" && LOOPBACK.has(configured.hostname)) {

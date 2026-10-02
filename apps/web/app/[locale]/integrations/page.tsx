@@ -15,7 +15,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
-import { API_URL, apiDelete, apiGet, apiPost } from "@/lib/api";
+import { resolveApiUrl, apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface ConnectionsResponse {
   github: {
@@ -422,7 +422,7 @@ export default function IntegrationsPage() {
                   variant="contained"
                   color="secondary"
                   component="a"
-                  href={`${API_URL}${app.installUrl}?locale=${locale}`}
+                  href={`${resolveApiUrl()}${app.installUrl}?locale=${locale}`}
                   sx={{ alignSelf: "flex-start" }}
                 >
                   {t("appConnectButton")}
