@@ -54,8 +54,8 @@ function LoginPage() {
   });
 
   const login = useMutation({
-    mutationFn: () =>
-      apiPost<AuthSession>("/api/v1/auth/login", { email, password }),
+    mutationFn: (credentials: { email: string; password: string }) =>
+      apiPost<AuthSession>("/api/v1/auth/login", credentials),
     onSuccess: () => {
       // Hard navigation, not router.push()+router.refresh(): the two client
       // calls race (refresh() re-fetches the *current* route's server data
@@ -85,7 +85,18 @@ function LoginPage() {
     if (error) setOauthError(error.message);
   };
 
-  const canSubmit = !login.isPending && Boolean(email) && password.length >= 8;
+  // Read the DOM, not only React state: Chrome autofill paints values into
+  // the inputs without firing input events, so state stays "" and a
+  // state-gated button stayed disabled forever. The submit click is a user
+  // gesture, after which Chrome exposes the autofilled values to JS.
+  const submit = () => {
+    const currentEmail = (emailRef.current?.value ?? email).trim();
+    const currentPassword = passwordRef.current?.value ?? password;
+    if (currentEmail !== email) setEmail(currentEmail);
+    if (currentPassword !== password) setPassword(currentPassword);
+    if (login.isPending || !currentEmail || currentPassword.length < 8) return;
+    login.mutate({ email: currentEmail, password: currentPassword });
+  };
 
   return (
     <Stack
@@ -127,7 +138,7 @@ function LoginPage() {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (canSubmit) login.mutate();
+          submit();
         }}
       >
         <Stack spacing={2}>
@@ -154,7 +165,7 @@ function LoginPage() {
             inputProps={{ dir: fieldDir, style: { textAlign: "start" } }}
           />
 
-          <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>
+          <Button type="submit" variant="contained" fullWidth disabled={login.isPending}>
             {t("login")}
           </Button>
           <Typography variant="body2" sx={{ textAlign: "center" }}>

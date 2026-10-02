@@ -198,6 +198,38 @@ describe("resolveUserFromSupabaseAccessToken", () => {
     expect(findUserById(sub)?.role).toBe("admin");
   });
 
+  it("still resolves a verified user when the local mirror cannot be written (read-only serverless FS)", async () => {
+    // On Vercel the function filesystem is read-only outside /tmp, so the
+    // offline mirror write fails. That cache write must not turn a
+    // Supabase-verified identity into "anonymous": login would return 200
+    // and every following /auth/session probe would report signed-out.
+    const prev = process.env.ATLAS_AUTH_PATH;
+    process.env.ATLAS_AUTH_PATH = join(authPath, "unwritable", "users.json");
+    try {
+      const sub = "33333333-3333-4333-8333-333333333333";
+      const token = fakeJwt({
+        sub,
+        email: "member@example.com",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        app_metadata: { atlas_role: "user", provider: "email" },
+      });
+      mockGenuineToken({
+        sub,
+        email: "member@example.com",
+        app_metadata: { atlas_role: "user", provider: "email" },
+      });
+
+      const resolved = await resolveUserFromSupabaseAccessToken(liveEnv(), token);
+      expect(resolved?.user).toMatchObject({
+        id: sub,
+        email: "member@example.com",
+        role: "user",
+      });
+    } finally {
+      process.env.ATLAS_AUTH_PATH = prev;
+    }
+  });
+
   it("does not take a role from the local mirror when the verified user lacks atlas_role", async () => {
     const local = createLocalUser({
       email: "user@example.com",

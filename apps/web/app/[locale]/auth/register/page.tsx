@@ -52,11 +52,11 @@ function RegisterPage() {
   });
 
   const register = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: { email: string; password: string; displayName: string }) =>
       apiPost("/api/v1/auth/register", {
-        email,
-        password,
-        displayName: displayName || undefined,
+        email: input.email,
+        password: input.password,
+        displayName: input.displayName || undefined,
         locale,
       }),
     onSuccess: () => {
@@ -82,8 +82,24 @@ function RegisterPage() {
     if (error) setOauthError(error.message);
   };
 
-  const canSubmit =
-    !register.isPending && Boolean(email) && password.length >= 8;
+  // Read the DOM, not only React state: Chrome autofill paints values into
+  // the inputs without firing input events, so state stays "" and a
+  // state-gated button stayed disabled forever. The submit click is a user
+  // gesture, after which Chrome exposes the autofilled values to JS.
+  const submit = () => {
+    const currentEmail = (emailRef.current?.value ?? email).trim();
+    const currentPassword = passwordRef.current?.value ?? password;
+    const currentName = displayNameRef.current?.value ?? displayName;
+    if (currentEmail !== email) setEmail(currentEmail);
+    if (currentPassword !== password) setPassword(currentPassword);
+    if (currentName !== displayName) setDisplayName(currentName);
+    if (register.isPending || !currentEmail || currentPassword.length < 8) return;
+    register.mutate({
+      email: currentEmail,
+      password: currentPassword,
+      displayName: currentName,
+    });
+  };
 
   return (
     <Stack
@@ -117,7 +133,7 @@ function RegisterPage() {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (canSubmit) register.mutate();
+          submit();
         }}
       >
         <Stack spacing={2}>
@@ -155,7 +171,7 @@ function RegisterPage() {
             FormHelperTextProps={{ sx: { textAlign: "start" } }}
           />
 
-          <Button type="submit" variant="contained" fullWidth disabled={!canSubmit}>
+          <Button type="submit" variant="contained" fullWidth disabled={register.isPending}>
             {t("register")}
           </Button>
         </Stack>

@@ -81,22 +81,29 @@ function buildUserFromAuthClaims(
     hasPassword: Boolean(local?.passwordHash && local?.salt),
   });
   // Keep offline store warm so stub mode / Auth-down still has a row —
-  // only write when missing or role/id drift.
+  // only write when missing or role/id drift. Best-effort: on serverless
+  // hosts (Vercel) the filesystem is read-only outside /tmp, and a failed
+  // cache write must never turn a Supabase-verified identity into
+  // "signed out" (login 200 → next /auth/session anonymous).
   if (
     !local ||
     local.id !== user.id ||
     local.role !== user.role ||
     local.email !== user.email
   ) {
-    mirrorAuthUserLocally({
-      id: user.id,
-      email: user.email,
-      displayName: user.displayName,
-      role: user.role,
-      locale: user.locale,
-      provider: user.provider,
-      avatarUrl: user.avatarUrl ?? null,
-    });
+    try {
+      mirrorAuthUserLocally({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        locale: user.locale,
+        provider: user.provider,
+        avatarUrl: user.avatarUrl ?? null,
+      });
+    } catch {
+      // Local mirror is a cache; Supabase Auth already verified this user.
+    }
   }
   return user;
 }
