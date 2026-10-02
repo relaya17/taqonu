@@ -81,6 +81,7 @@ import { registerAtlasSessionGate } from "./middleware/atlas-session-gate.js";
 import { registerRequestTiming } from "./middleware/request-timing.js";
 import { osStore } from "./store/os-store.js";
 import { hydrateOsStoreFromCloudIfEmpty } from "./services/store-hydrate.js";
+import { registerCloudStoreSync } from "./store/cloud-store-sync.js";
 import { registerEventRules } from "./services/event-rules.js";
 import { registerControlPlaneBridge } from "./services/control-plane-bridge.js";
 import { registerSpecialistAgentsWithControl } from "./services/control-plane-registration.js";
@@ -166,6 +167,11 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
         note: "Specialist agent registration skipped — server continues in fail-open mode",
       });
     });
+
+  // Serverless (Vercel): Supabase is the store's source of truth; the local
+  // filesystem is read-only. Must be registered before any route.
+  const cloudStore = registerCloudStoreSync(app, env, logger);
+  if (cloudStore) logger.info("store_backend", { backend: "supabase" });
 
   osStore.ensureLoaded();
   const hydrate = await hydrateOsStoreFromCloudIfEmpty(env, {

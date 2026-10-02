@@ -96,7 +96,7 @@ export interface StoredLocalConnection {
   lastScanRepoCount: number | null;
 }
 
-interface PersistedShape {
+export interface PersistedShape {
   projects: Project[];
   evidence: Record<string, EvidenceRecord[]>;
   claims: Record<string, Claim[]>;
@@ -421,6 +421,49 @@ class OsStore {
   private goldenProjects = new Map<string, StoredGoldenProject>();
   private personalSupervisingAgents = new Map<string, PersonalSupervisingAgentRecord>();
   private loaded = false;
+  /**
+   * "file": persist() writes `.atlas/store.json` (local/dev default).
+   * "cloud": persist() only marks the store dirty; `cloud-store-sync.ts`
+   * flushes the snapshot to Supabase before the response is sent. Used on
+   * serverless hosts whose filesystem is read-only.
+   */
+  private backend: "file" | "cloud" = "file";
+  private dirty = false;
+
+  setDurableBackend(backend: "file" | "cloud"): void {
+    this.backend = backend;
+  }
+
+  durableBackend(): "file" | "cloud" {
+    return this.backend;
+  }
+
+  /** True when in-memory state changed since the last cloud flush. */
+  isDirty(): boolean {
+    return this.dirty;
+  }
+
+  markClean(): void {
+    this.dirty = false;
+  }
+
+  /**
+   * Replace all in-memory state with a persisted snapshot (cloud reload).
+   * Resets every field to a fresh instance's defaults first so no state from
+   * the previous snapshot survives.
+   */
+  replaceWithShape(raw: PersistedShape | null): void {
+    const backend = this.backend;
+    const fresh = new OsStore() as unknown as Record<string, unknown>;
+    const self = this as unknown as Record<string, unknown>;
+    for (const key of Object.keys(fresh)) {
+      self[key] = fresh[key];
+    }
+    this.backend = backend;
+    this.loaded = true;
+    this.dirty = false;
+    if (raw) this.applyShape(raw);
+  }
 
   ensureLoaded(): void {
     if (this.loaded) {
@@ -546,8 +589,17 @@ class OsStore {
     if (process.env.ATLAS_SKIP_STORE_PERSIST === "1") {
       return;
     }
-    const path = storePath();
-    const shape: PersistedShape = {
+    if (this.backend === "cloud") {
+      this.dirty = true;
+      return;
+    }
+    atomicWriteStoreFile(storePath(), JSON.stringify(this.toShape(), null, 2));
+  }
+
+  /** Serializable snapshot of the whole store (same shape as store.json). */
+  toShape(): PersistedShape {
+    this.ensureLoaded();
+    return {
       projects: this.projects,
       evidence: Object.fromEntries(this.evidence),
       claims: Object.fromEntries(this.claims),
@@ -593,7 +645,6 @@ class OsStore {
       goldenProjects: Object.fromEntries(this.goldenProjects),
       personalSupervisingAgents: Object.fromEntries(this.personalSupervisingAgents),
     };
-    atomicWriteStoreFile(path, JSON.stringify(shape, null, 2));
   }
 
   getGithubConnection(ownerId: string): StoredGithubConnection | null {
