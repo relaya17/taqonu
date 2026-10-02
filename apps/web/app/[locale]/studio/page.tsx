@@ -893,6 +893,34 @@ export default function StudioPage() {
     if (tab === "chat") setSidePanel("chat");
     if (tab === "pty") setBottomPanel("terminal");
   }, [tab]);
+  // Remember the side panel across reloads (like VS Code), so a patch that is
+  // mid-review stays on screen after a refresh. `?tab=chat` still wins.
+  useEffect(() => {
+    if (tab === "chat") return;
+    try {
+      const saved = window.localStorage.getItem("atlas.studio.sidePanel");
+      if (
+        saved === "agent" ||
+        saved === "patches" ||
+        saved === "psa" ||
+        saved === "more"
+      ) {
+        setSidePanel(saved);
+      }
+    } catch {
+      // Storage unavailable (private mode): keep the default panel.
+    }
+    // Read once on mount only.
+  }, []);
+  useEffect(() => {
+    try {
+      if (sidePanel !== "chat") {
+        window.localStorage.setItem("atlas.studio.sidePanel", sidePanel);
+      }
+    } catch {
+      // Storage unavailable: nothing to remember.
+    }
+  }, [sidePanel]);
   const proposedPatchId = propose.data?.patch?.id ?? null;
   useEffect(() => {
     if (proposedPatchId) setSidePanel("patches");
