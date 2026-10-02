@@ -180,11 +180,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isMarketing = isMarketingShellPath(pathname);
   const isStudioWorkspace =
     pathname === PATHS.studio || pathname.startsWith(`${PATHS.studio}/`);
-  // Studio is a full-width workspace: the product sidebar starts collapsed
-  // there (the menu button still opens it).
-  useEffect(() => {
-    if (isStudioWorkspace) setNavCollapsed(true);
-  }, [isStudioWorkspace]);
   const showUpgradeCta = planQuery.data?.tier === "free";
   // Product nav (Studio / Checks / Systems) is signed-in only. Do not
   // default it open on /welcome or /auth — a signed-out visitor must not

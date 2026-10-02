@@ -893,6 +893,10 @@ export default function StudioPage() {
     if (tab === "chat") setSidePanel("chat");
     if (tab === "pty") setBottomPanel("terminal");
   }, [tab]);
+  const proposedPatchId = propose.data?.patch?.id ?? null;
+  useEffect(() => {
+    if (proposedPatchId) setSidePanel("patches");
+  }, [proposedPatchId]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activity, setActivity] = useState<"explorer" | "search" | "git">("explorer");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -1017,7 +1021,6 @@ export default function StudioPage() {
       }}
     >
       <Box
-        component="header"
         sx={{
           display: "flex",
           flexWrap: "wrap",
@@ -1232,7 +1235,8 @@ export default function StudioPage() {
             gridTemplateColumns: {
               xs: "minmax(0, 1fr)",
               md: "290px minmax(0, 1fr)",
-              lg: "310px minmax(0, 1fr) 360px",
+              lg: "280px minmax(0, 1fr) 320px",
+              xl: "310px minmax(0, 1fr) 380px",
             },
             gridTemplateRows: {
               xs: "auto",
@@ -1609,10 +1613,15 @@ export default function StudioPage() {
               <Tab value="problems" label={t("problems.title")} />
               <Tab value="terminal" label={t("tab.pty")} />
             </Tabs>
-            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1, pb: 1 }}>
+            <Box
+              tabIndex={0}
+              role="region"
+              aria-label={t("bottomPanel")}
+              sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1, pb: 1, outlineOffset: -2 }}
+            >
               {!projectId ? (
                 <Typography variant="body2" sx={{ color: muted, p: 1.5 }}>
-                  {t("pickProject")}
+                  {t("statusNoProject")}
                 </Typography>
               ) : null}
               {projectId && bottomPanel === "problems" ? (
@@ -1641,7 +1650,7 @@ export default function StudioPage() {
           </Box>
 
           <Box
-            component="aside"
+            component="section"
             aria-label={t("tree")}
             sx={{
               gridArea: "tree",
@@ -1655,7 +1664,8 @@ export default function StudioPage() {
             }}
           >
             <Stack
-              component="nav"
+              role="toolbar"
+              aria-orientation="vertical"
               aria-label={t("activityBar")}
               alignItems="center"
               spacing={0.5}
@@ -1686,7 +1696,12 @@ export default function StudioPage() {
                 </Tooltip>
               ))}
             </Stack>
-            <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto" }}>
+            <Box
+              tabIndex={0}
+              role="region"
+              aria-label={t(`activity.${activity}`)}
+              sx={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", outlineOffset: -2 }}
+            >
             <Stack
               direction="row"
               spacing={1}
@@ -1894,10 +1909,15 @@ export default function StudioPage() {
               <Tab value="psa" label={t("side.psa")} />
               <Tab value="more" label={t("side.more")} />
             </Tabs>
-            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.75 }}>
+            <Box
+              tabIndex={0}
+              role="region"
+              aria-label={t("sidePanel")}
+              sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.75, outlineOffset: -2 }}
+            >
             {!projectId && sidePanel !== "agent" && sidePanel !== "more" ? (
               <Typography variant="body2" sx={{ color: muted }}>
-                {t("pickProject")}
+                {t("statusNoProject")}
               </Typography>
             ) : null}
             {projectId && sidePanel === "psa" ? <SupervisingAgentPanel projectId={projectId} /> : null}
