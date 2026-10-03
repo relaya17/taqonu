@@ -2524,7 +2524,7 @@ vitest.run           — test runner, pathArg optional
 | **Split editor** | Yes (horizontal/vertical) | Yes (MDI) | Yes (editor groups) | NO | Single editor area | MISSING |
 | **Minimap** | Yes | Yes | Yes | NO | Custom textarea editor | NOT APPLICABLE (textarea) |
 | **Breadcrumbs** | Yes | Yes | Yes | NO | No breadcrumb component | MISSING |
-| **Extension system** | VS Code-compatible | VSIX-based | 40,000+ extensions | NONE | No extension architecture | MISSING (by design?) |
+| **Extension system** | VS Code-compatible | VSIX-based | 40,000+ extensions | NONE | No extension architecture | DECIDED 2026-10-03 — native official catalog, ADR-026 |
 | **Approval / governance** | Checkpoint (file-level snapshot) | NONE | NONE | FULL APPROVAL WORKFLOW | `StudioPatchWorkflow.tsx` | ATLAS ADVANTAGE |
 | **Audit trail** | NONE | NONE | NONE | Observer, ProcessAudit, Truth panels | Multiple Checks sub-panels | ATLAS ADVANTAGE |
 | **Evidence system** | NONE | NONE | NONE | QA, Sentinel, Health, Readiness | Multiple Checks sub-panels | ATLAS ADVANTAGE |
@@ -2575,7 +2575,7 @@ vitest.run           — test runner, pathArg optional
 | **Cloud tools** | CloudToolsPanel | `CloudToolsPanel.tsx` | EXISTS |
 | **Database tools** | Not found | No component | MISSING |
 | **Deployment** | Not found in Studio | May exist elsewhere | EXISTS ELSEWHERE — not in Studio |
-| **Extensions** | None | No extension arch | MISSING (architecture decision needed) |
+| **Extensions** | None | No extension arch | DECIDED — ADR-026 (native, official-only; no third-party code) |
 | **Keyboard workflows** | Unknown | Not verified | UNKNOWN — needs investigation |
 | **Command palette** | None | No component | MISSING |
 | **Accessibility** | Stage 6 closed | Commit `26fc787` | EXISTS (Stage 6 verified) |
@@ -2644,7 +2644,7 @@ These capabilities do not exist in Atlas Studio and would require new implementa
 | Capability | Options |
 |-----------|---------|
 | **Editor upgrade** | (A) Replace textarea with Monaco — full LSP support, multi-cursor, folding, breakpoints. (B) Extend textarea — lighter, preserves current integration. (C) Overlay CodeMirror — incremental. |
-| **Extension system** | (A) Build Atlas plugin API. (B) Accept no extensions — Atlas is a closed workbench. (C) Wrap VS Code extension protocol (extreme). |
+| **Extension system** | (A) Build Atlas plugin API. (B) Accept no extensions — Atlas is a closed workbench. (C) Wrap VS Code extension protocol (extreme). **Decided 2026-10-03: (A), restricted — native declarative manifests, built-in + official only, no third-party code (ADR-026).** |
 | **Test debugger** | (A) vitest --inspect-brk + DAP connection. (B) Headless coverage only. |
 
 ---
@@ -2767,7 +2767,7 @@ Sequence is ordered by: (1) unblocks other work, (2) uses existing APIs, (3) use
 | Q11-3 | Is there a keyboard shortcut mapping for Studio? | Arlet | Determines if keyboard-first gap is real or undocumented |
 | Q11-4 | Should the editor be upgraded to Monaco, or extended textarea first? | Arlet — architectural decision | Determines path for go-to-def, breakpoints, folding |
 | Q11-5 | Should `git.commit` and `git.push` ever be added to the governed catalog? | Arlet — governance decision | Determines whether Studio can close the Git write workflow |
-| Q11-6 | Should Atlas Studio have an extension system, or remain a closed workbench? | Arlet — product decision | Determines long-term architecture |
+| Q11-6 | Should Atlas Studio have an extension system, or remain a closed workbench? | **DECIDED by Arlet 2026-10-03 → ADR-026** | Native ArletOS extensions: built-in (Git, Tests) + official catalog; user-scope install/permissions, project-scope enablement/order; no third-party code until a separate ADR |
 | Q11-7 | Does the current `StudioPatchDiff` support arbitrary file diff, or only patch workflow diffs? | Verify from source | Determines if standalone diff viewer needs building |
 
 ---
@@ -2900,7 +2900,7 @@ Debugger is last — requires architectural decision (DAP integration or alterna
 ### L. WHAT REQUIRES ARCHITECTURAL DECISION
 
 1. **Editor upgrade:** Monaco vs extended textarea vs CodeMirror — Arlet's decision
-2. **Extension system:** closed workbench vs plugin API — Arlet's decision
+2. **Extension system:** ~~closed workbench vs plugin API — Arlet's decision~~ DECIDED 2026-10-03 — ADR-026 (native, official-only)
 3. **`git.commit` / `git.push` in catalog:** governance decision — Arlet's decision
 4. **Debugger approach:** DAP adapter vs headless vs none — Arlet's decision
 5. **Bottom panel layout:** requires layout architecture change (current: full-tab model)
@@ -3119,7 +3119,7 @@ All Stages 1–11 are preserved exactly as recorded. Nothing in this reconciliat
 | No merge conflict resolution UI | MISSING | — | Stage 14 | None | Conflict resolver | Architectural decision | MAPPED → Stage 14 |
 | No blame overlay in editor | MISSING (UI only) | — | Stage 13 | git.blame governed | Editor overlay | TS language service wiring | MAPPED → Stage 13 |
 | Editor upgrade (Monaco vs textarea) | GOVERNANCE GAP / Architectural | — | Stage 12 pre-decision | StudioCodeEditor.tsx | Arlet decision Q11-4 | Must be decided before breakpoints | ARLET DECISION REQUIRED |
-| Extension system | GOVERNANCE GAP / Architectural | — | Stage 15 | None | Arlet decision Q11-6 | Must be decided before Stage 15 | ARLET DECISION REQUIRED |
+| Extension system | GOVERNANCE GAP / Architectural | — | Stage 15 | None | Arlet decision Q11-6 | Decided 2026-10-03 | DECIDED — ADR-026 |
 | git.commit / git.push governance | GOVERNANCE GAP | — | Stage 8 (governance extension) | Governed catalog without these | Arlet decision Q11-5 | Stage 8 REQ-8-7 context | ARLET DECISION REQUIRED |
 | REQ-8-5 (agent registration) | MISSING | Stage 8 | Stage 8 completion | None found | Implementation | Arlet decision on policy | MAPPED → Stage 8 |
 | REQ-8-7 (application-agent boundary) | MISSING | Stage 8 | Stage 8 completion | None found | Implementation | Stage 8 prerequisite | MAPPED → Stage 8 |
@@ -3721,7 +3721,7 @@ The pattern "capability repeatedly documented as existing but never connected to
 
 ### Stage 15 — Debugger + Extensions
 
-**Objective:** Implement debugger integration; decide extension system.
+**Objective:** Implement debugger integration. (Extension system decided 2026-10-03, ADR-026; debugger remains a separate, unapproved capability.)
 
 **Inputs:** Stage 14 CLOSED, Q11-4 (editor upgrade decision — breakpoints require Monaco or DAP adapter), Q11-6 (extension system decision).
 
@@ -3764,7 +3764,7 @@ The following evidence classes are required to close a stage. They must not be c
 | **AD-2** | REQ-8-7: What is the scope of the application-agent boundary? Is a dedicated enforcer component needed? | Stage 8 | Stage 8 cannot close | Stage 8 closure |
 | **AD-3** | Q11-5: Should `git.commit` and `git.push` be added to the governed command catalog? | Stage 8 / Stage 13 | Branch switcher and Git write UI cannot be built safely without this decision | Stage 13 Git panel |
 | **AD-4** | Q11-4: Editor upgrade — Monaco vs extended textarea vs CodeMirror? | Stage 12 pre-decision | Extended textarea can proceed for hover/go-to-def; but breakpoints, folding, and minimap require Monaco or equivalent — must be decided before Stage 13 | Stage 13+ advanced editor features |
-| **AD-5** | Q11-6: Should Atlas Studio have an extension system, or remain a closed workbench? | Stage 15 | Determines long-term architecture | Stage 15 |
+| **AD-5** | Q11-6: Should Atlas Studio have an extension system, or remain a closed workbench? | Stage 15 | **DECIDED 2026-10-03 → ADR-026** | — |
 | **AD-6** | Bottom panel layout: full-tab model → persistent panel model — architectural approval required | Stage 14 | Current tab model prevents IDE-feel UX | Stage 14 |
 | **AD-7** | Stage 8 §3 table label: authorize update from "NOT STARTED" to "PARTIAL" | Documentation | Register is factually incorrect | Ongoing accuracy |
 | **AD-8** | ARL-E2E-001 §6 status: authorize update to reflect §7.15 fix | Documentation | Register §6 is stale | Ongoing accuracy |

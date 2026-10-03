@@ -72,7 +72,8 @@ Priorities: `P0` launch/production · `P1` first commercial version ·
 | Patch rollback | Studio | Yes | `POST /code/patches/:id/rollback` | IMPLEMENTED | Live rollback E2E | none | P1 |
 | Studio checks (QA/health/truth/…) | Studio | Yes | Checks tab + panels | IMPLEMENTED | Several are local scans | none | P1 |
 | Studio RTL he/en/ar | Studio | Yes | Live 200 this pass | PROVEN | none | none | P0 |
-| Terminal / LSP / debugger / extensions | Studio | No | Explicit non-goal (GAP-043) | PRODUCT_DECISION_REQUIRED | Do not clone IDE | none | P3 |
+| Terminal / LSP / debugger | Studio | No | Explicit non-goal (GAP-043) | PRODUCT_DECISION_REQUIRED | Do not clone IDE | none | P3 |
+| Studio extensions (native, official) | Studio | Decided | ADR-026 (2026-10-03) | DECIDED | Built-in + official only; no third-party code | none | P1 |
 | GitHub/local connections | Studio | Yes | per-owner PAT maps | IMPLEMENTED | GitHub App instance-wide | GAP-030 | P1 |
 | Shared org Git | Studio | No | local folder + PAT | PRODUCT_DECISION_REQUIRED | Org Git model | GAP-037 | P2 |
 | Web nav / dashboard / settings | Web | Yes | `AppShell` + routes | IMPLEMENTED | Many ops URLs redirect into Studio | none | P1 |
@@ -269,7 +270,8 @@ Not a forecast. Allocation of engineering capacity toward remaining **real** wor
 
 ## Do not implement as closure
 
-- Terminal, LSP, debugger, extensions
+- Terminal, LSP, debugger
+- Extensions beyond ADR-026 (third-party code, VS Code/VSIX hosting, server-side extension code)
 - Org RBAC / SAML without written G5
 - Atlas executing sibling tools without ADR-022 amendment
 - Fake CaseFlow/BrokerOS/Gemini/AWS evidence

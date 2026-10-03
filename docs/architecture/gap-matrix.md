@@ -57,7 +57,7 @@ Categories: **G1** code defect · **G2** code-completable hardening ·
 | GAP-040 | Kill Switch / session SoD / executeTool | Accepted; SoD forbids self-approval on live decide | G6 | No | prior STOP audits | Do not reopen |
 | GAP-041 | Web ≠ Control planes | ADR-021 separate ports/projects | G6 | No | ADR-021 | Do not merge planes |
 | GAP-042 | Unowned project read | Readable when `ownerId` unset | G6 | No | `project-access.ts` | Personal-instance bootstrap |
-| GAP-043 | Workers remain workers | Cursor/Claude Code are workers; Atlas is truth/QA/governance | G6 | No | gap-vs-world-class | Do not clone IDE |
+| GAP-043 | Workers remain workers | Cursor/Claude Code are workers; Atlas is truth/QA/governance | G6 | No | gap-vs-world-class | Do not clone IDE. Exception (ADR-026, 2026-10-03): native official extensions that connect existing ArletOS capabilities are in scope; terminal/LSP/debugger stay non-goals |
 | GAP-044 | Connected apps except def-000 | CaseFlow/Civio/HotelOS/BrokerOS/LexStudy/Vantera observe/evaluate/inventory | G6 | No | CONNECTED_APPLICATION_RUNTIME | Until GAP-027 decides execute |
 | GAP-045 | Plugin sandbox / arbitrary tool runtime | Allow-listed internal tools; not general sandbox | G6 | No | staged roadmap historical | Intentional non-goal until G5 |
 | GAP-046 | Historical “CODE-COMPLETABLE NONE” | §64 stamped stale; live pointer is this file + remaining-work 2026-09-18 | G7 | Done | MASTER TRUTH §64 note, §67 | Do not quote §64 as current |

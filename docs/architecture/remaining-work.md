@@ -96,9 +96,9 @@ Phase 1 contracts are locked in code:
 - `MEMORY_AGENT_VISIBILITY_CONTRACT` — empty `allowedAgents` is **default-open** (INTENTIONAL). Omit requester id stays human-surface-visible. Tenant/owner isolation is fail-closed.
   - **Superseded 2026-09-26 (Stage 4, ADR-024):** the contract is now `emptyAllowedAgents: "open-to-admitted-identities-only"`, `omitRequesterId: "human-surface-declared-only"`, unknown ids denied, PSA bound to the memory owner, mixed ids AND-ed.
 - Agent id ≠ model id. Studio `proposePatch` is CODE_ENGINEER **heuristic** (`intelligenceKind: "heuristic"`, `modelInvoked: false`). Model output is not Truth.
-- Governed Studio run: `POST /api/v1/projects/:id/studio/terminal` and `/tests` are RECORD.EXECUTE + live-human `decide-and-execute`. Callers send `commandId` only. Spawn is `shell: false` inside the linked workspace. No unrestricted shell. Extensions are a fail-closed manifest registry — no marketplace, no user JS, no host API.
+- Governed Studio run: `POST /api/v1/projects/:id/studio/terminal` and `/tests` are RECORD.EXECUTE + live-human `decide-and-execute`. Callers send `commandId` only. Spawn is `shell: false` inside the linked workspace. No unrestricted shell. Extensions: superseded by ADR-026 (2026-10-03) — native declarative manifests, built-in + official catalog, durable user/project state, explicit permissions enforced by the API; still no user JS, no third-party code and no server-side extension code.
 
-GAP-043 (full IDE terminal/LSP/debugger) remains a non-goal. This pass implemented a governed subset only.
+GAP-043 (full IDE terminal/LSP/debugger) remains a non-goal. This pass implemented a governed subset only. Native official extensions are in scope per ADR-026.
 
 ### Personal Agent Guardian (local, 2026-09-19)
 
