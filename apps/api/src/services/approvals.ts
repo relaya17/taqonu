@@ -97,6 +97,25 @@ function bindProductionPostgresStore(): LiveApprovalRequestRepository {
   }
 }
 
+/**
+ * Read-only (health contract): is a live approval store bound, or bindable
+ * from configuration? Never binds, connects or queries — configuration only.
+ */
+export function isLiveApprovalStoreConfigured(): boolean {
+  if (store !== null) return true;
+  if (storeClearedForTests) return false;
+  const env = productionPostgresEnv();
+  return Boolean(
+    env.SUPABASE_URL &&
+      env.SUPABASE_ANON_KEY &&
+      env.SUPABASE_SERVICE_ROLE_KEY &&
+      isLiveSupabase({
+        SUPABASE_URL: env.SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+      }),
+  );
+}
+
 function requireStore(): LiveApprovalRequestRepository {
   if (store !== null) return store;
   if (storeClearedForTests) notConfigured();

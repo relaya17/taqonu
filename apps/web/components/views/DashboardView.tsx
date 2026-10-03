@@ -24,6 +24,7 @@ import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { PersonalDesk } from "@/components/dashboard/PersonalDesk";
 import { RecurrenceNotice } from "@/components/dashboard/RecurrenceNotice";
 import { ResumeCard } from "@/components/dashboard/ResumeCard";
+import { EngineeringStatusCard } from "@/components/dashboard/EngineeringStatusCard";
 import { MemorySummary } from "@/components/dashboard/MemorySummary";
 import { ResponsiveActions } from "@/components/layout/ResponsiveActions";
 import { Suspense } from "react";
@@ -359,6 +360,7 @@ export function DashboardView() {
       </Box>
 
       {resumeProjectId ? <ResumeCard projectId={resumeProjectId} /> : null}
+      {resumeProjectId ? <EngineeringStatusCard projectId={resumeProjectId} /> : null}
 
       <Box>
         <Typography fontWeight={700}>{t("dashboard.opsTitle")}</Typography>

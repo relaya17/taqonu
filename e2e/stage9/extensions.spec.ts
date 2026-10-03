@@ -2,6 +2,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect } from "@playwright/test";
 import { expectNoA11yViolations } from "../axe";
+import { stage9ApiBase, stage9MutationHeaders } from "./local-api";
 import {
   createMarkerWorkspace,
   createStage9Project,
@@ -26,6 +27,13 @@ test.describe("Studio extensions (ADR-026)", () => {
     await mkdir(join(root, ".git"), { recursive: true });
     await writeFile(join(root, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
     await linkWorkspaceRoot(request, project.id, root);
+    // Precondition: grants belong to the user and persist, so a previous run
+    // against the same API may have granted Git already. Start from none.
+    const revoke = await request.post(
+      `${stage9ApiBase()}/api/v1/studio/extensions/arletos.git/permissions`,
+      { data: { revoke: ["git.read"] }, headers: stage9MutationHeaders() },
+    );
+    expect(revoke.ok()).toBe(true);
 
     await page.goto(studioProjectUrl(project.id), { waitUntil: "domcontentloaded" });
     const bar = page.getByRole("toolbar", { name: "Activity bar" });
@@ -50,11 +58,24 @@ test.describe("Studio extensions (ADR-026)", () => {
     await expect(page.getByText("Git is waiting for permissions")).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Grant permissions" }).first().click();
     await expect(page.getByText("Git is waiting for permissions")).toHaveCount(0, { timeout: 20_000 });
+
+    // Health is informational (ADR-026 health contract): the details page shows
+    // per-capability health, and whatever it says, the granted panel renders.
+    await expect(page.getByRole("region", { name: "Git status" })).toBeVisible({ timeout: 20_000 });
+    const health = page.getByRole("region", { name: "Health" });
+    await expect(health.getByText(/\d+ of \d+ capabilities available/)).toBeVisible({ timeout: 20_000 });
   });
 
   test("an official extension installs, enables, and can be uninstalled", async ({ page, request }) => {
     const stamp = Date.now();
     const project = await createStage9Project(request, `Stage9 Ext2 ${stamp}`);
+    // Precondition: not installed for this user (an earlier interrupted run
+    // may have left it installed). 409 NOT_INSTALLED is the expected answer.
+    const reset = await request.post(
+      `${stage9ApiBase()}/api/v1/studio/extensions/arletos.agent-runs/uninstall`,
+      { data: {}, headers: stage9MutationHeaders() },
+    );
+    expect([200, 409]).toContain(reset.status());
     await page.goto(studioProjectUrl(project.id), { waitUntil: "domcontentloaded" });
     const bar = page.getByRole("toolbar", { name: "Activity bar" });
     await expect(bar).toBeVisible({ timeout: 45_000 });

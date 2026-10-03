@@ -231,8 +231,10 @@
       "clean": "No changes",
       "requestBranch": "Request branch",
       "requestDiff": "Request diff",
+      "requestFileDiff": "Diff this file",
       "branch": "Branch",
       "diff": "Diff vs HEAD",
+      "diffFile": "Changes in {path}",
       "diffEmpty": "No unstaged/staged diff vs HEAD, or git.diff has not been run.",
       "kind": {
         "modified": "modified",
@@ -564,11 +566,22 @@
       "searchAll": "Search all files",
       "goToLine": "Go to line…",
       "goToSymbol": "Go to symbol…",
+      "back": "Back",
+      "forward": "Forward",
+      "lastEditLocation": "Last edit location",
+      "nextProblem": "Next problem",
+      "previousProblem": "Previous problem",
+      "nextChange": "Next change",
+      "previousChange": "Previous change",
       "toggleSidebar": "Show/hide side bar",
       "togglePanel": "Show/hide bottom panel",
       "toggleAgent": "Show/hide agent panel",
       "codeTools": "Code tools (definitions & references)",
       "runPanel": "Run panel",
+      "newTerminal": "New terminal",
+      "splitTerminal": "Split terminal",
+      "splitPrimary": "first",
+      "splitSecondary": "second",
       "askAgent": "Ask the agent",
       "clone": "Clone from exemplar…",
       "manageGithub": "Manage GitHub access",
@@ -737,6 +750,14 @@
     "opsQa": "QA",
     "opsProcessAudit": "E2E process",
     "opsCounsel": "Counsel brief",
+    "engineering": {
+      "title": "Engineering status",
+      "pendingPatches": "{count} patches awaiting review",
+      "extensionsHealth": "Extensions {ok}/{total} healthy",
+      "pendingPermissions": "{count} extensions need permission",
+      "openFindings": "{count} open security findings",
+      "partialData": "Some engineering status could not be loaded."
+    },
     "personalTitle": "Personal area",
     "personalHelp": "Inbox, memory, decisions, and code patches — one place on your dashboard, not scattered in the nav.",
     "personalTab": {
@@ -2718,7 +2739,7 @@
       "grant": "Grant",
       "revoke": "Revoke",
       "grantAll": "Grant permissions",
-      "verify": "Run verification",
+      "verify": "Run health check",
       "details": "Details & permissions",
       "moveUp": "Move up",
       "moveDown": "Move down"
@@ -2731,7 +2752,7 @@
       "permissions": "Permissions",
       "capabilities": "Capabilities — what is really connected",
       "contributes": "What it adds to Studio",
-      "verification": "Verification"
+      "verification": "Health"
     },
     "installNote": "Installing grants nothing. Each permission is approved separately, logged, and can be revoked.",
     "permission": {
@@ -2739,13 +2760,13 @@
       "pending": "Waiting for approval"
     },
     "capability": {
-      "ready": "Available",
+      "ready": "Permission granted",
       "needs": "Needs: {permission}"
     },
     "contributesActivity": "An activity-bar icon and panel: {name}",
     "contributesCommand": "A View menu command: open {name}",
-    "verificationHelp": "Checks that this extension's prerequisites hold in this project, so its capabilities actually work.",
-    "verifiedAt": "Verified: {date}",
+    "verificationHelp": "Informational only: checks what each capability needs in this project. It never grants, revokes or blocks permissions.",
+    "verifiedAt": "Checked: {date}",
     "checks": {
       "workspace": "Local folder linked",
       "git_repo": "Git repository in the folder",
@@ -2755,13 +2776,20 @@
     "reasons": {
       "NO_LOCAL_FOLDER": "No local folder is linked to this project",
       "NO_GIT_REPOSITORY": "The folder has no Git repository",
-      "INCOMPATIBLE": "Not compatible with this Studio version"
+      "INCOMPATIBLE": "Not compatible with this Studio version",
+      "ROUTE_NOT_REGISTERED": "A server route it needs is not registered",
+      "APPROVAL_STORE_NOT_CONFIGURED": "The live approval store is not configured here",
+      "CLOUD_STORE_NOT_CONFIGURED": "The cloud store is not configured",
+      "UNKNOWN_DEPENDENCY": "Unknown dependency — not checked",
+      "TIMEOUT": "No answer in time",
+      "HTTP_429": "Rate-limited (not an outage)"
     },
-    "verifyNever": "Not verified yet.",
+    "verifyNever": "Not checked yet.",
     "panel": {
       "needsPermissionsTitle": "{name} is waiting for permissions",
       "somePending": "Waiting for approval: {permissions}",
-      "linkFolder": "Link folder"
+      "linkFolder": "Link folder",
+      "health": "{status}: {available} of {total} capabilities available"
     },
     "openPanel": "{name}",
     "detailTab": "Extension: {name}",
@@ -2856,6 +2884,34 @@
       "observer_history": "Observer history",
       "runs_list": "Run list",
       "runs_approve": "Approve a run"
+    },
+    "health": {
+      "HEALTHY": "✓ Healthy",
+      "DEGRADED": "Partly available",
+      "UNAVAILABLE": "Unavailable",
+      "NOT_CHECKED": "Health not checked",
+      "partial": "{available}/{total} available",
+      "summary": "{available} of {total} capabilities available",
+      "optional": "optional",
+      "rateLimited": "Too many requests right now — showing the last result. Try again in a minute."
+    },
+    "depStatus": {
+      "OK": "OK",
+      "MISSING": "Missing",
+      "NOT_CONFIGURED": "Not configured",
+      "UNREACHABLE": "Unreachable",
+      "ERROR": "Check failed",
+      "TIMEOUT": "No answer in time",
+      "RATE_LIMITED": "Rate-limited (not an outage)",
+      "NOT_CHECKED": "Not checked"
+    },
+    "depKind": {
+      "studio_compatible": "Compatible with this Studio version",
+      "route_registered": "Server routes registered",
+      "service_durable_store": "Durable store",
+      "service_approval_store": "Live approval store",
+      "project_workspace": "Local folder linked",
+      "project_git_repo": "Git repository in the folder"
     }
   }
 }

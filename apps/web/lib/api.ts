@@ -109,7 +109,8 @@ async function readError(path: string, response: Response): Promise<never> {
   } catch {
     // ignore parse errors
   }
-  throw new Error(detail);
+  // The HTTP status rides along so callers can tell e.g. 429 from an outage.
+  throw Object.assign(new Error(detail), { status: response.status });
 }
 
 async function readSuccessJson<T>(response: Response): Promise<T> {

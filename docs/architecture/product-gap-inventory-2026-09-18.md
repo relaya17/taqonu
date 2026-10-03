@@ -72,7 +72,7 @@ Priorities: `P0` launch/production · `P1` first commercial version ·
 | Patch rollback | Studio | Yes | `POST /code/patches/:id/rollback` | IMPLEMENTED | Live rollback E2E | none | P1 |
 | Studio checks (QA/health/truth/…) | Studio | Yes | Checks tab + panels | IMPLEMENTED | Several are local scans | none | P1 |
 | Studio RTL he/en/ar | Studio | Yes | Live 200 this pass | PROVEN | none | none | P0 |
-| Terminal / LSP / debugger | Studio | No | Explicit non-goal (GAP-043) | PRODUCT_DECISION_REQUIRED | Do not clone IDE | none | P3 |
+| Terminal / LSP (smart completion) / debugger | Studio | No | Not in current phase; possible future Built-in extensions (ADR-026 §6, 2026-10-03) | PRODUCT_DECISION_REQUIRED | Do not clone IDE; each needs separate approval | none | P3 |
 | Studio extensions (native, official) | Studio | Decided | ADR-026 (2026-10-03) | DECIDED | Built-in + official only; no third-party code | none | P1 |
 | GitHub/local connections | Studio | Yes | per-owner PAT maps | IMPLEMENTED | GitHub App instance-wide | GAP-030 | P1 |
 | Shared org Git | Studio | No | local folder + PAT | PRODUCT_DECISION_REQUIRED | Org Git model | GAP-037 | P2 |
@@ -205,7 +205,7 @@ Atlas does not execute sibling tools. Sibling HITL remains in the sibling.
 | G-P2-03 | Architecture | Sibling execute | PRODUCT_DECISION_REQUIRED | ADR-022 | After written amendment | none | P2 | Keep observe-only or amend |
 | G-P2-04 | Apps | LexStudy | NOT_AVAILABLE_LOCALLY | No dir | No | Repo | P2 | Provide repo |
 | G-P2-05 | Apps | Vantera | NOT_AVAILABLE_LOCALLY | No dir | No | Repo | P2 | Provide repo |
-| G-P3-01 | Studio | Terminal/LSP/debugger | PRODUCT_DECISION_REQUIRED | Non-goal GAP-043 | Do not implement as closure | none | P3 | Leave as roadmap |
+| G-P3-01 | Studio | Terminal/LSP/debugger | PRODUCT_DECISION_REQUIRED | Not in current phase (GAP-043); possible future Built-in extensions (ADR-026 §6) | Do not implement as closure | none | P3 | Leave as roadmap |
 | G-P3-02 | Agents | A2A / enterprise agent ID | PRODUCT_DECISION_REQUIRED | Catalog only | After scope | none | P3 | Out of current product |
 | G-LOCAL-01 | Code G1 | Confirmed open code defect | none found | Landscape G1=0; this pass no new G1 | n/a | n/a | — | Do not hunt hypothetically |
 

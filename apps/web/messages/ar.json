@@ -231,8 +231,10 @@
       "clean": "لا توجد تغييرات",
       "requestBranch": "اطلب الفرع",
       "requestDiff": "اطلب الـ diff",
+      "requestFileDiff": "فرق هذا الملف",
       "branch": "الفرع",
       "diff": "Diff مقابل HEAD",
+      "diffFile": "التغييرات في {path}",
       "diffEmpty": "لا يوجد diff مقابل HEAD، أو لم يُشغَّل git.diff بعد.",
       "kind": {
         "modified": "معدّل",
@@ -564,11 +566,22 @@
       "searchAll": "البحث في كل الملفات",
       "goToLine": "الانتقال إلى سطر…",
       "goToSymbol": "الانتقال إلى رمز…",
+      "back": "رجوع",
+      "forward": "التالي",
+      "lastEditLocation": "آخر موضع تعديل",
+      "nextProblem": "المشكلة التالية",
+      "previousProblem": "المشكلة السابقة",
+      "nextChange": "التغيير التالي",
+      "previousChange": "التغيير السابق",
       "toggleSidebar": "إظهار/إخفاء الشريط الجانبي",
       "togglePanel": "إظهار/إخفاء اللوحة السفلية",
       "toggleAgent": "إظهار/إخفاء لوحة الوكيل",
       "codeTools": "أدوات الكود (التعريفات والمراجع)",
       "runPanel": "لوحة التشغيل",
+      "newTerminal": "طرفية جديدة",
+      "splitTerminal": "تقسيم الطرفية",
+      "splitPrimary": "الأولى",
+      "splitSecondary": "الثانية",
       "askAgent": "اسأل الوكيل",
       "clone": "الاستنساخ من نموذج…",
       "manageGithub": "إدارة الوصول إلى GitHub",
@@ -737,6 +750,14 @@
     "opsQa": "QA",
     "opsProcessAudit": "E2E عمليات",
     "opsCounsel": "مذكرة للمحامي",
+    "engineering": {
+      "title": "حالة الهندسة",
+      "pendingPatches": "{count} تعديلات بانتظار المراجعة",
+      "extensionsHealth": "الإضافات {ok}/{total} سليمة",
+      "pendingPermissions": "{count} إضافات تحتاج إلى إذن",
+      "openFindings": "{count} نتائج أمنية مفتوحة",
+      "partialData": "تعذر تحميل بعض حالة الهندسة."
+    },
     "personalTitle": "المنطقة الشخصية",
     "personalHelp": "الوارد والذاكرة والقرارات وتصحيحات الكود — في مكان واحد بلوحة التحكم، دون تشتيت بالقائمة.",
     "personalTab": {
@@ -2718,7 +2739,7 @@
       "grant": "منح",
       "revoke": "سحب",
       "grantAll": "منح الأذونات",
-      "verify": "تشغيل التحقق",
+      "verify": "فحص السلامة",
       "details": "التفاصيل والأذونات",
       "moveUp": "نقل للأعلى",
       "moveDown": "نقل للأسفل"
@@ -2731,7 +2752,7 @@
       "permissions": "الأذونات",
       "capabilities": "القدرات — ما هو موصول فعلًا",
       "contributes": "ما تضيفه للاستوديو",
-      "verification": "التحقق"
+      "verification": "السلامة"
     },
     "installNote": "التثبيت لا يمنح أي إذن. كل إذن يُوافق عليه بشكل منفصل ويُسجَّل ويمكن سحبه.",
     "permission": {
@@ -2739,13 +2760,13 @@
       "pending": "بانتظار الموافقة"
     },
     "capability": {
-      "ready": "متاحة",
+      "ready": "تم منح الإذن",
       "needs": "تتطلب: {permission}"
     },
     "contributesActivity": "أيقونة في الشريط ولوحة: {name}",
     "contributesCommand": "أمر في قائمة العرض: فتح {name}",
-    "verificationHelp": "يتحقق من أن متطلبات الإضافة متوفرة في هذا المشروع حتى تعمل قدراتها فعلًا.",
-    "verifiedAt": "تم التحقق: {date}",
+    "verificationHelp": "للمعلومات فقط: يفحص ما تحتاجه كل قدرة في هذا المشروع. لا يمنح الأذونات ولا يلغيها ولا يحظرها أبدًا.",
+    "verifiedAt": "فُحص: {date}",
     "checks": {
       "workspace": "مجلد محلي مرتبط",
       "git_repo": "مستودع Git في المجلد",
@@ -2755,13 +2776,20 @@
     "reasons": {
       "NO_LOCAL_FOLDER": "لا يوجد مجلد محلي مرتبط بهذا المشروع",
       "NO_GIT_REPOSITORY": "لا يوجد مستودع Git في المجلد",
-      "INCOMPATIBLE": "غير متوافقة مع إصدار الاستوديو"
+      "INCOMPATIBLE": "غير متوافقة مع إصدار الاستوديو",
+      "ROUTE_NOT_REGISTERED": "مسار خادم مطلوب غير مسجّل",
+      "APPROVAL_STORE_NOT_CONFIGURED": "مخزن الموافقات الحي غير مُعدّ هنا",
+      "CLOUD_STORE_NOT_CONFIGURED": "المخزن السحابي غير مُعدّ",
+      "UNKNOWN_DEPENDENCY": "اعتماد غير معروف — لم يُفحص",
+      "TIMEOUT": "لا رد في الوقت",
+      "HTTP_429": "محدود المعدل (ليس عطلًا)"
     },
-    "verifyNever": "لم يُتحقق منها بعد.",
+    "verifyNever": "لم يُفحص بعد.",
     "panel": {
       "needsPermissionsTitle": "{name} بانتظار الأذونات",
       "somePending": "بانتظار الموافقة: {permissions}",
-      "linkFolder": "ربط مجلد"
+      "linkFolder": "ربط مجلد",
+      "health": "{status}: {available} من {total} قدرات متاحة"
     },
     "openPanel": "{name}",
     "detailTab": "إضافة: {name}",
@@ -2856,6 +2884,34 @@
       "observer_history": "سجل المراقبة",
       "runs_list": "قائمة التشغيلات",
       "runs_approve": "الموافقة على تشغيل"
+    },
+    "health": {
+      "HEALTHY": "✓ سليم",
+      "DEGRADED": "متاح جزئيًا",
+      "UNAVAILABLE": "غير متاح",
+      "NOT_CHECKED": "لم يُفحص بعد",
+      "partial": "{available}/{total} متاحة",
+      "summary": "{available} من {total} قدرات متاحة",
+      "optional": "اختياري",
+      "rateLimited": "طلبات كثيرة الآن — تُعرض آخر نتيجة. حاول مجددًا بعد دقيقة."
+    },
+    "depStatus": {
+      "OK": "سليم",
+      "MISSING": "مفقود",
+      "NOT_CONFIGURED": "غير مُعدّ",
+      "UNREACHABLE": "لا يمكن الوصول إليه",
+      "ERROR": "فشل الفحص",
+      "TIMEOUT": "لا رد في الوقت",
+      "RATE_LIMITED": "محدود المعدل (ليس عطلًا)",
+      "NOT_CHECKED": "لم يُفحص"
+    },
+    "depKind": {
+      "studio_compatible": "متوافق مع إصدار Studio هذا",
+      "route_registered": "مسارات الخادم مسجّلة",
+      "service_durable_store": "مخزن الحفظ",
+      "service_approval_store": "مخزن الموافقات الحي",
+      "project_workspace": "مجلد محلي مرتبط",
+      "project_git_repo": "مستودع Git في المجلد"
     }
   }
 }

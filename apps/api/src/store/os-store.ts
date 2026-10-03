@@ -105,11 +105,31 @@ export interface StoredStudioExtensionInstall {
   grants: string[];
 }
 
-/** ADR-026 — project scope: enablement, icon order, view state, last verification. */
+/** ADR-026 — last health check of one extension in one project (informational only). */
+export interface StoredStudioExtensionHealth {
+  at: string;
+  status: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "NOT_CHECKED";
+  counts: { healthy: number; degraded: number; unavailable: number; notChecked: number; total: number };
+  capabilities: Array<{
+    id: string;
+    status: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "NOT_CHECKED";
+    dependencies: Array<{
+      kind: string;
+      key: string | null;
+      optional: boolean;
+      status: string;
+      reason: string | null;
+      durationMs: number;
+    }>;
+  }>;
+}
+
+/** ADR-026 — project scope: enablement, icon order, view state, last health check. */
 export interface StoredStudioExtensionProjectState {
   enabled: Record<string, boolean>;
   order: string[];
   view: Record<string, unknown>;
+  /** Legacy (before the health contract): prerequisite-only verification. Read-only. */
   verified: Record<
     string,
     {
@@ -118,6 +138,7 @@ export interface StoredStudioExtensionProjectState {
       checks: Array<{ id: string; ok: boolean; reason: string | null }>;
     }
   >;
+  health: Record<string, StoredStudioExtensionHealth>;
 }
 
 export interface StoredLocalConnection {
@@ -780,6 +801,7 @@ class OsStore {
       order: [...(stored?.order ?? [])],
       view: { ...(stored?.view ?? {}) },
       verified: { ...(stored?.verified ?? {}) },
+      health: { ...(stored?.health ?? {}) },
     };
   }
 

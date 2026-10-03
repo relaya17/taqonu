@@ -66,6 +66,9 @@ P0 remains CLOSED. Arlet Studio is not Control. Production remains NOT PROVEN.
 Empty `allowedAgents` stays default-open (INTENTIONAL). Extensions host is a
 deliberate **NON-GOAL** (`STUDIO_EXTENSION_CONTRACT.productGoal: false`).
 
+> **Superseded 2026-10-03 (ADR-026):** native ArletOS extensions are a product
+> goal (`productGoal: true`): built-in + official catalog, no third-party code.
+
 > **Superseded 2026-09-26 (Stage 4, ADR-024):** memory reads are fail-closed. Empty `allowedAgents` is
 > open only to admitted, governed identities; an omitted requester id is visible
 > only on a declared human surface. Record: `ARLETOS_MASTER_PROBLEM_REGISTER.md` §7.7.
@@ -98,7 +101,7 @@ Phase 1 contracts are locked in code:
 - Agent id ≠ model id. Studio `proposePatch` is CODE_ENGINEER **heuristic** (`intelligenceKind: "heuristic"`, `modelInvoked: false`). Model output is not Truth.
 - Governed Studio run: `POST /api/v1/projects/:id/studio/terminal` and `/tests` are RECORD.EXECUTE + live-human `decide-and-execute`. Callers send `commandId` only. Spawn is `shell: false` inside the linked workspace. No unrestricted shell. Extensions: superseded by ADR-026 (2026-10-03) — native declarative manifests, built-in + official catalog, durable user/project state, explicit permissions enforced by the API; still no user JS, no third-party code and no server-side extension code.
 
-GAP-043 (full IDE terminal/LSP/debugger) remains a non-goal. This pass implemented a governed subset only. Native official extensions are in scope per ADR-026.
+GAP-043: Studio is still not an IDE clone. A full IDE terminal, LSP/smart completion and debugger are not in the current phase — this pass implemented a governed subset only. Native official extensions are in scope per ADR-026, and terminal, smart completion, debug and agent may become future Built-in extensions after separate approval (ADR-026 §6).
 
 ### Personal Agent Guardian (local, 2026-09-19)
 

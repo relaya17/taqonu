@@ -13,13 +13,24 @@ import { useFormatter, useTranslations } from "next-intl";
 import { ExtensionIcon } from "@/components/studio/extensions/ExtensionIcon";
 import {
   extensionCheckLabel,
+  extensionPermissionLabel,
   extensionStateLabel,
 } from "@/components/studio/extensions/ExtensionsView";
 import {
   extensionMessageKey,
+  isRateLimitedError,
   useStudioExtensionAction,
   useStudioExtensions,
+  type StudioHealthState,
 } from "@/lib/studio-extensions";
+
+const HEALTH_COLOR: Record<StudioHealthState, string> = {
+  HEALTHY: "#9FE0B1",
+  DEGRADED: "#EBCB7A",
+  UNAVAILABLE: "#F2A7A7",
+  NOT_CHECKED: "#C3C7CE",
+};
+const DEP_MARK: Record<string, string> = { OK: "✓", TIMEOUT: "?", RATE_LIMITED: "?", NOT_CHECKED: "?" };
 
 const MUTED = "#9AA0A8";
 const CARD = { border: "1px solid #2C3038", borderRadius: 2, p: 2 } as const;
@@ -27,7 +38,7 @@ const CARD = { border: "1px solid #2C3038", borderRadius: 2, p: 2 } as const;
 /**
  * One extension's page in the editor area (ADR-026): state, lifecycle actions,
  * permissions granted one by one, the capabilities it really connects, what it
- * adds to Studio, and the verification check.
+ * adds to Studio, and its health (informational only — never authorization).
  */
 export function ExtensionDetail({
   projectId,
@@ -58,6 +69,13 @@ export function ExtensionDetail({
   const name = t(`ext.${key}.name`);
   const state = extensionStateLabel(entry, t);
   const check = extensionCheckLabel(entry, t);
+  const permission = extensionPermissionLabel(entry, t);
+  const health = entry.health ?? null;
+  const healthOf = (capabilityId: string) => health?.capabilities.find((c) => c.id === capabilityId) ?? null;
+  const kindLabel = (kind: string) => {
+    const k = `depKind.${extensionMessageKey(kind)}`;
+    return t.has(k) ? t(k) : kind;
+  };
   const busy = action.isPending;
   const permLabel = (p: string) => t(`perm.${extensionMessageKey(p)}.label`);
 
@@ -99,6 +117,7 @@ export function ExtensionDetail({
           </Stack>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
             <Chip size="small" label={state.label} />
+            {permission ? <Chip size="small" label={permission.label} /> : null}
             {check ? <Chip size="small" label={check.label} /> : null}
           </Stack>
         </Stack>
@@ -170,7 +189,13 @@ export function ExtensionDetail({
         <Alert severity="info" variant="outlined">{t("noProject")}</Alert>
       ) : null}
       {!entry.compatible ? <Alert severity="warning">{t("incompatibleNote")}</Alert> : null}
-      {action.isError ? <Alert severity="error">{(action.error as Error).message}</Alert> : null}
+      {action.isError ? (
+        isRateLimitedError(action.error) ? (
+          <Alert severity="info">{t("health.rateLimited")}</Alert>
+        ) : (
+          <Alert severity="error">{(action.error as Error).message}</Alert>
+        )
+      ) : null}
 
       <Box
         sx={{
@@ -239,6 +264,7 @@ export function ExtensionDetail({
           <Stack divider={<Box sx={{ borderTop: "1px solid #23262D" }} />}>
             {manifest.capabilities.map((capability) => {
               const ready = !capability.permission || entry.granted.includes(capability.permission);
+              const capHealth = healthOf(capability.id);
               return (
                 <Stack key={capability.id} direction="row" spacing={1} alignItems="flex-start" sx={{ py: 0.75 }}>
                   <Stack sx={{ flex: 1, minWidth: 0 }}>
@@ -251,11 +277,16 @@ export function ExtensionDetail({
                       {capability.source}
                     </Typography>
                   </Stack>
-                  <Typography sx={{ fontSize: 12, color: ready ? "#9FE0B1" : "#EBCB7A", whiteSpace: "nowrap" }}>
-                    {ready
-                      ? t("capability.ready")
-                      : t("capability.needs", { permission: permLabel(capability.permission ?? "") })}
-                  </Typography>
+                  <Stack alignItems="flex-end" spacing={0.25}>
+                    <Typography sx={{ fontSize: 12, color: ready ? "#9FE0B1" : "#EBCB7A", whiteSpace: "nowrap" }}>
+                      {ready
+                        ? t("capability.ready")
+                        : t("capability.needs", { permission: permLabel(capability.permission ?? "") })}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: HEALTH_COLOR[capHealth?.status ?? "NOT_CHECKED"], whiteSpace: "nowrap" }}>
+                      {t(`health.${capHealth?.status ?? "NOT_CHECKED"}`)}
+                    </Typography>
+                  </Stack>
                 </Stack>
               );
             })}
@@ -279,20 +310,34 @@ export function ExtensionDetail({
             {t("detail.verification")}
           </Typography>
           <Typography sx={{ fontSize: 12.5, color: MUTED, mb: 1 }}>{t("verificationHelp")}</Typography>
-          {entry.verification ? (
-            <Stack spacing={0.5} sx={{ mb: 1 }}>
+          {health ? (
+            <Stack spacing={0.75} sx={{ mb: 1 }}>
               <Typography sx={{ fontSize: 13 }}>
-                {t("verifiedAt", { date: format.dateTime(new Date(entry.verification.at), { dateStyle: "medium", timeStyle: "short" }) })}
+                {t("verifiedAt", { date: format.dateTime(new Date(health.at), { dateStyle: "medium", timeStyle: "short" }) })}
+                {" · "}
+                {t("health.summary", {
+                  available: health.counts.healthy + health.counts.degraded,
+                  total: health.counts.total,
+                })}
               </Typography>
-              {entry.verification.checks.map((c) => (
-                <Typography key={c.id} sx={{ fontSize: 13, color: c.ok ? "#9FE0B1" : "#EBCB7A" }}>
-                  {c.ok ? "✓" : "✗"} {t(`checks.${extensionMessageKey(c.id)}`)}
-                  {c.reason ? ` — ${t(`reasons.${c.reason}`)}` : ""}
-                </Typography>
+              {health.capabilities.map((c) => (
+                <Box key={c.id}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 600, color: HEALTH_COLOR[c.status] }}>
+                    {t(`cap.${extensionMessageKey(c.id)}`)} — {t(`health.${c.status}`)}
+                  </Typography>
+                  {c.dependencies.map((d, i) => (
+                    <Typography
+                      key={`${d.kind}-${d.key ?? ""}-${i}`}
+                      sx={{ fontSize: 12.5, color: d.status === "OK" ? "#9FE0B1" : "#EBCB7A", ps: 1.5 }}
+                    >
+                      {DEP_MARK[d.status] ?? "✗"} {kindLabel(d.kind)}
+                      {d.key ? ` (${d.key})` : ""}
+                      {d.status === "OK" ? "" : ` — ${t(`depStatus.${d.status}`)}`}
+                      {d.optional ? ` · ${t("health.optional")}` : ""}
+                    </Typography>
+                  ))}
+                </Box>
               ))}
-              {entry.verification.checks.length === 0 ? (
-                <Typography sx={{ fontSize: 13, color: "#9FE0B1" }}>✓ {t("checks.none")}</Typography>
-              ) : null}
             </Stack>
           ) : (
             <Typography sx={{ fontSize: 13, color: MUTED, mb: 1 }}>{t("verifyNever")}</Typography>

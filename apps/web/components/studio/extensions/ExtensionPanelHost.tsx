@@ -5,6 +5,7 @@ import { Alert, Button, Stack, Typography } from "@mui/material";
 import { useTranslations } from "next-intl";
 import type { StudioExtensionScope } from "@/lib/studio-extension-api";
 import {
+  HEALTH_CACHE_MS,
   extensionMessageKey,
   useStudioExtensionAction,
   type StudioExtensionEntry,
@@ -12,9 +13,10 @@ import {
 
 /**
  * Renders an enabled extension's panel (ADR-026). Nothing runs until the user
- * grants at least one permission; missing permissions and failed
- * verification are shown with the way to fix them. The panel receives an
- * extension scope so the API enforces what the extension may call.
+ * grants at least one permission (authorization). Health is informational
+ * only: a DEGRADED / UNAVAILABLE result is shown with the way to fix it but
+ * never hides or blocks the panel. The panel receives an extension scope so
+ * the API enforces what the extension may call.
  */
 export function ExtensionPanelHost({
   entry,
@@ -35,17 +37,31 @@ export function ExtensionPanelHost({
   const key = extensionMessageKey(manifest.id);
   const permLabel = (p: string) => t(`perm.${extensionMessageKey(p)}.label`);
 
-  // Verify prerequisites once per project the first time the panel opens.
-  const verifiedRef = useRef<string | null>(null);
+  // Check health when the panel opens if there is no result, or it is older
+  // than the contract's 60 s cache.
+  const checkedRef = useRef<string | null>(null);
+  const healthAt = entry.health?.at ?? null;
   useEffect(() => {
     const marker = `${projectId}:${manifest.id}`;
-    if (entry.verification || verifiedRef.current === marker) return;
-    verifiedRef.current = marker;
+    const fresh = healthAt !== null && Date.now() - new Date(healthAt).getTime() < HEALTH_CACHE_MS;
+    if (fresh || checkedRef.current === marker) return;
+    checkedRef.current = marker;
     action.mutate({ kind: "verify", id: manifest.id });
-  }, [projectId, manifest.id, entry.verification]);
+  }, [projectId, manifest.id, healthAt]);
 
   const grantedAny = entry.granted.length > 0;
-  const failed = entry.verification && !entry.verification.ok ? entry.verification : null;
+  const health = entry.health ?? null;
+  const impaired =
+    health && (health.status === "DEGRADED" || health.status === "UNAVAILABLE") ? health : null;
+  const impairedReasons = impaired
+    ? [
+        ...new Set(
+          impaired.capabilities
+            .filter((c) => c.status === "UNAVAILABLE" || c.status === "DEGRADED")
+            .flatMap((c) => c.dependencies.filter((d) => d.status !== "OK").map((d) => d.reason ?? d.status)),
+        ),
+      ]
+    : [];
 
   const grantButton = (
     <Button
@@ -90,23 +106,27 @@ export function ExtensionPanelHost({
           {t("panel.somePending", { permissions: entry.pendingPermissions.map(permLabel).join(", ") })}
         </Alert>
       ) : null}
-      {failed ? (
+      {impaired ? (
         <Alert
           severity="warning"
           variant="outlined"
           sx={{ mx: 1.5 }}
           action={
-            failed.checks.some((c) => c.reason === "NO_LOCAL_FOLDER") && onLinkFolder ? (
+            impairedReasons.includes("NO_LOCAL_FOLDER") && onLinkFolder ? (
               <Button size="small" onClick={onLinkFolder}>
                 {t("panel.linkFolder")}
               </Button>
             ) : undefined
           }
         >
-          {failed.checks
-            .filter((c) => !c.ok && c.reason)
-            .map((c) => t(`reasons.${c.reason}`))
-            .join(" · ")}
+          {t("panel.health", {
+            status: t(`health.${impaired.status}`),
+            available: impaired.counts.healthy + impaired.counts.degraded,
+            total: impaired.counts.total,
+          })}
+          {impairedReasons.length > 0
+            ? ` — ${impairedReasons.map((r) => (t.has(`reasons.${r}`) ? t(`reasons.${r}`) : r)).join(" · ")}`
+            : ""}
         </Alert>
       ) : null}
       {children({ extensionId: manifest.id, projectId })}

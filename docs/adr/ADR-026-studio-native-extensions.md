@@ -34,7 +34,7 @@ Two kinds, and only two, exist in this phase:
 | **Official** | Cloud & deploy, Security, Observer, Engineering runs | From the official catalog; can be uninstalled | Yes, per project | Explicit grant |
 
 **Third-party extensions do not exist in this phase.** A later phase
-(Stage 4 of the extension plan) needs its own ADR covering an API contract,
+(a separate, not yet approved third-party phase) needs its own ADR covering an API contract,
 isolation (a sandboxed browser frame that talks to Studio only through a host
 bridge), source verification and signing, and permission enforcement. Until
 that ADR is accepted the catalog accepts no manifest that is not compiled into
@@ -83,7 +83,62 @@ removed.
 - **Installed & enabled** — connected to Studio in this project (icon, panel, commands).
 - **Verified** — the verification check passed: the extension's prerequisites
   (for example a linked workspace folder or a Git repository) hold in this
-  project, so its capabilities actually answer.
+  project.
+
+**Health Check contract — implemented (2026-10-03).** Verification now runs a
+generic, per-capability health engine
+(`apps/api/src/services/studio-extension-health.ts`), not just the
+local/project prerequisite checks described above. The engine is documented
+here because it is the mechanism behind "Verified"; it remains **informational
+only** — it never grants, revokes, installs, enables, disables or otherwise
+changes extension state, and the extension gate
+(`middleware/studio-extension-gate.ts`) never imports it.
+
+- **Dependencies are data.** A manifest declares, per capability (plus
+  manifest-level dependencies shared by all capabilities), which dependency
+  *kinds* it needs: `project.workspace`, `project.git-repo`,
+  `studio.compatible`, `route.registered`, `service.approval-store`,
+  `service.durable-store`, `credential.present`. Probes are server-owned,
+  read-only and keyed by kind — the engine itself holds no extension-specific
+  branching. A kind with no registered probe is `NOT_CHECKED` /
+  `UNKNOWN_DEPENDENCY`, never `HEALTHY`.
+- **Dependency states:** `OK`, `MISSING`, `NOT_CONFIGURED`, `UNREACHABLE`,
+  `ERROR`, `TIMEOUT`, `RATE_LIMITED`, `NOT_CHECKED`. HTTP `502`/`503`/`504`
+  classify as `UNREACHABLE` (an availability condition); `429` classifies as
+  `RATE_LIMITED` (not an outage); other failures (`400`, `500`,
+  decode/parse errors, invalid probe output) classify as `ERROR`.
+- **Capability states:** `HEALTHY`, `DEGRADED`, `UNAVAILABLE`, `NOT_CHECKED`,
+  derived from a capability's dependency results in fixed rule order: a
+  confirmed failure among required dependencies (`MISSING`, `NOT_CONFIGURED`,
+  `UNREACHABLE`, `ERROR`) wins over an indeterminate one and is `UNAVAILABLE`;
+  an indeterminate required dependency (`TIMEOUT`, `RATE_LIMITED`,
+  `NOT_CHECKED`) is `NOT_CHECKED`; an optional dependency that is not `OK`
+  (including `NOT_CHECKED`) is `DEGRADED`; otherwise `HEALTHY`. An unknown or
+  unchecked dependency can never silently produce `HEALTHY`.
+- **Extension aggregation is not "worst state wins."** Per-capability results
+  are always kept so partial availability is visible. The extension summary
+  exposes `{ healthy, degraded, unavailable, notChecked, total }` plus the full
+  capability list; the extension-level status is `HEALTHY` only if every
+  capability is, `UNAVAILABLE` only if every capability is, `NOT_CHECKED` if
+  none answered `HEALTHY` or `DEGRADED`, and `DEGRADED` otherwise.
+- **Probes stay read-only.** They never execute Git operations, run tests,
+  run scans, deploy, approve, write permissions, modify extension state,
+  contact a provider merely to prove health, or send user credentials
+  externally. A probe may only return `OK` / `MISSING` / `NOT_CONFIGURED`;
+  anything else observed (timeouts, HTTP errors, thrown errors) is classified
+  centrally by the engine, not by the probe.
+- **Verified vs. runtime-verified.** The unit-tested engine, rule tables and
+  classification are `VERIFIED` by `studio-extension-health.test.ts`. Two
+  probes remain environment-dependent and are tracked separately, not folded
+  into "Verified": `service.durable-store` against a live Supabase instance,
+  and real Git execution against a live repository in an environment that has
+  one. Neither blocker is disguised as a product defect, and neither is
+  "verified" by weakening the probe or faking a response.
+
+This section previously described the health check as an open decision; the
+contract above is now implemented. What remains open is only whether future
+capabilities need new dependency kinds (rule 5) — not the shape of the health
+contract itself.
 
 ## 5. Compatibility and versions
 
@@ -93,7 +148,25 @@ automatically if it was enabled. An installed version lower than the catalog
 version shows "update available"; updating keeps grants and leaves new
 permissions pending.
 
-## 6. Consequences
+## 6. Future built-in extensions (direction, not current work)
+
+Arlet, 2026-10-03: the extension system is the unified management layer for
+Studio capabilities, and an extension need not mean outside code. In a
+future, separately approved phase the following **may** become **Built-in**
+extensions (enable/disable per project, explicit permissions, not
+uninstallable):
+
+- Terminal
+- Smart completion
+- Debug
+- Agent, where appropriate
+
+They are architectural possibilities, **not** non-goals and **not** current
+implementation work. Nothing in this ADR implements them, adds them to the
+catalog or changes the six extensions above; each needs its own definition and
+approval first (rule 5).
+
+## 7. Consequences
 
 - Studio layout approved on 2026-10-03 is unchanged: extensions only add icons
   below Explorer and Search; Git's icon is now contributed by the built-in Git

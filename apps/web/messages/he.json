@@ -286,8 +286,10 @@
       "clean": "אין שינויים",
       "requestBranch": "בקש ענף",
       "requestDiff": "בקש diff",
+      "requestFileDiff": "Diff לקובץ זה",
       "branch": "ענף",
       "diff": "Diff מול HEAD",
+      "diffFile": "שינויים ב-{path}",
       "diffEmpty": "אין diff מול HEAD, או ש-git.diff טרם הורץ.",
       "kind": {
         "modified": "שונה",
@@ -619,11 +621,22 @@
       "searchAll": "חיפוש בכל הקבצים",
       "goToLine": "מעבר לשורה…",
       "goToSymbol": "מעבר לפונקציה…",
+      "back": "חזרה",
+      "forward": "קדימה",
+      "lastEditLocation": "מיקום עריכה אחרון",
+      "nextProblem": "הבעיה הבאה",
+      "previousProblem": "הבעיה הקודמת",
+      "nextChange": "השינוי הבא",
+      "previousChange": "השינוי הקודם",
       "toggleSidebar": "הצגה/הסתרה של סרגל הצד",
       "togglePanel": "הצגה/הסתרה של הפאנל התחתון",
       "toggleAgent": "הצגה/הסתרה של פאנל הסוכן",
       "codeTools": "כלי קוד (הגדרות והפניות)",
       "runPanel": "לוח ההרצה",
+      "newTerminal": "מסוף חדש",
+      "splitTerminal": "פיצול המסוף",
+      "splitPrimary": "ראשון",
+      "splitSecondary": "שני",
       "askAgent": "שאל את הסוכן",
       "clone": "שכפול ממופת…",
       "manageGithub": "ניהול גישה ל-GitHub",
@@ -781,6 +794,14 @@
     "opsQa": "בקרת איכות",
     "opsProcessAudit": "E2E תהליכים",
     "opsCounsel": "תדרוך לעו״ד",
+    "engineering": {
+      "title": "מצב הנדסי",
+      "pendingPatches": "{count} תיקונים ממתינים לסקירה",
+      "extensionsHealth": "תוספים {ok}/{total} תקינים",
+      "pendingPermissions": "{count} תוספים זקוקים להרשאה",
+      "openFindings": "{count} ממצאי אבטחה פתוחים",
+      "partialData": "חלק מהנתונים ההנדסיים לא נטענו."
+    },
     "personalTitle": "האזור האישי",
     "personalHelp": "תיבה, זיכרון, החלטות ותיקוני קוד — במקום אחד בלוח הבקרה, בלי לפזר בניווט.",
     "personalTab": {
@@ -2718,7 +2739,7 @@
       "grant": "אישור",
       "revoke": "ביטול",
       "grantAll": "אישור ההרשאות",
-      "verify": "הרצת בדיקה",
+      "verify": "בדיקת תקינות",
       "details": "פרטים והרשאות",
       "moveUp": "הזזה למעלה",
       "moveDown": "הזזה למטה"
@@ -2731,7 +2752,7 @@
       "permissions": "הרשאות",
       "capabilities": "יכולות — מה מחובר באמת",
       "contributes": "מה ההרחבה מוסיפה לסטודיו",
-      "verification": "בדיקת תקינות"
+      "verification": "תקינות"
     },
     "installNote": "התקנה לא מעניקה הרשאות. כל הרשאה מאושרת בנפרד, נרשמת ביומן, ואפשר לבטל אותה.",
     "permission": {
@@ -2739,13 +2760,13 @@
       "pending": "ממתינה לאישור"
     },
     "capability": {
-      "ready": "זמינה",
+      "ready": "ההרשאה ניתנה",
       "needs": "דורשת: {permission}"
     },
     "contributesActivity": "אייקון בסרגל הצדדי ופאנל: {name}",
     "contributesCommand": "פקודה בתפריט תצוגה: פתיחת {name}",
-    "verificationHelp": "בודקת שהתנאים של ההרחבה מתקיימים בפרויקט הזה, כדי שהיכולות שלה באמת יעבדו.",
-    "verifiedAt": "נבדקה: {date}",
+    "verificationHelp": "מידע בלבד: בודק מה כל יכולת צריכה בפרויקט הזה. אף פעם לא נותן, מבטל או חוסם הרשאות.",
+    "verifiedAt": "נבדק: {date}",
     "checks": {
       "workspace": "תיקייה מקומית מקושרת",
       "git_repo": "מאגר Git בתיקייה",
@@ -2755,13 +2776,20 @@
     "reasons": {
       "NO_LOCAL_FOLDER": "לפרויקט לא מקושרת תיקייה מקומית",
       "NO_GIT_REPOSITORY": "בתיקייה אין מאגר Git",
-      "INCOMPATIBLE": "לא תואמת לגרסת הסטודיו"
+      "INCOMPATIBLE": "לא תואמת לגרסת הסטודיו",
+      "ROUTE_NOT_REGISTERED": "נתיב שרת שנדרש לו לא רשום",
+      "APPROVAL_STORE_NOT_CONFIGURED": "מאגר האישורים החי לא מוגדר כאן",
+      "CLOUD_STORE_NOT_CONFIGURED": "מאגר הענן לא מוגדר",
+      "UNKNOWN_DEPENDENCY": "תלות לא מוכרת — לא נבדקה",
+      "TIMEOUT": "אין תשובה בזמן",
+      "HTTP_429": "מוגבל קצב (לא תקלה)"
     },
-    "verifyNever": "עוד לא נבדקה.",
+    "verifyNever": "עוד לא נבדק.",
     "panel": {
       "needsPermissionsTitle": "{name} מחכה לאישור הרשאות",
       "somePending": "ממתינות לאישור: {permissions}",
-      "linkFolder": "קישור תיקייה"
+      "linkFolder": "קישור תיקייה",
+      "health": "{status}: {available} מתוך {total} יכולות זמינות"
     },
     "openPanel": "{name}",
     "detailTab": "הרחבה: {name}",
@@ -2856,6 +2884,34 @@
       "observer_history": "היסטוריית תצפיות",
       "runs_list": "רשימת ריצות",
       "runs_approve": "אישור ריצה"
+    },
+    "health": {
+      "HEALTHY": "✓ תקין",
+      "DEGRADED": "זמין חלקית",
+      "UNAVAILABLE": "לא זמין",
+      "NOT_CHECKED": "התקינות לא נבדקה",
+      "partial": "{available}/{total} זמינות",
+      "summary": "{available} מתוך {total} יכולות זמינות",
+      "optional": "אופציונלי",
+      "rateLimited": "יותר מדי בקשות כרגע — מוצגת התוצאה האחרונה. נסו שוב בעוד דקה."
+    },
+    "depStatus": {
+      "OK": "תקין",
+      "MISSING": "חסר",
+      "NOT_CONFIGURED": "לא מוגדר",
+      "UNREACHABLE": "לא נגיש",
+      "ERROR": "הבדיקה נכשלה",
+      "TIMEOUT": "אין תשובה בזמן",
+      "RATE_LIMITED": "מוגבל קצב (לא תקלה)",
+      "NOT_CHECKED": "לא נבדק"
+    },
+    "depKind": {
+      "studio_compatible": "תואם לגרסת Studio הזו",
+      "route_registered": "נתיבי השרת רשומים",
+      "service_durable_store": "מאגר השמירה",
+      "service_approval_store": "מאגר האישורים החי",
+      "project_workspace": "תיקייה מקומית מקושרת",
+      "project_git_repo": "מאגר Git בתיקייה"
     }
   }
 }

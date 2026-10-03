@@ -35,16 +35,32 @@ export function extensionStateLabel(
   return { label: t("state.installedOff"), tone: "off" };
 }
 
+/** Health (informational, project scope). Shown separately from permissions. */
 export function extensionCheckLabel(
   entry: StudioExtensionEntry,
   t: ReturnType<typeof useTranslations>,
 ): { label: string; tone: "ok" | "off" | "warn" } | null {
   if (!entry.installed) return null;
-  if (entry.pendingPermissions.length > 0) return { label: t("check.pending"), tone: "warn" };
-  if (!entry.verification) return { label: t("check.unverified"), tone: "warn" };
-  return entry.verification.ok
-    ? { label: t("check.verified"), tone: "ok" }
-    : { label: t("check.failed"), tone: "warn" };
+  const health = entry.health;
+  if (!health || health.status === "NOT_CHECKED") return { label: t("health.NOT_CHECKED"), tone: "off" };
+  if (health.status === "HEALTHY") return { label: t("health.HEALTHY"), tone: "ok" };
+  if (health.status === "UNAVAILABLE") return { label: t("health.UNAVAILABLE"), tone: "warn" };
+  return {
+    label: t("health.partial", {
+      available: health.counts.healthy + health.counts.degraded,
+      total: health.counts.total,
+    }),
+    tone: "warn",
+  };
+}
+
+/** Permission state (user scope). Independent of health. */
+export function extensionPermissionLabel(
+  entry: StudioExtensionEntry,
+  t: ReturnType<typeof useTranslations>,
+): { label: string; tone: "ok" | "off" | "warn" } | null {
+  if (!entry.installed || entry.pendingPermissions.length === 0) return null;
+  return { label: t("check.pending"), tone: "warn" };
 }
 
 const TONE: Record<"ok" | "off" | "warn", { bg: string; fg: string }> = {
@@ -92,6 +108,7 @@ export function ExtensionsView({
     const key = extensionMessageKey(entry.manifest.id);
     const state = extensionStateLabel(entry, t);
     const check = extensionCheckLabel(entry, t);
+    const permission = extensionPermissionLabel(entry, t);
     const selected = selectedId === entry.manifest.id;
     return (
       <ListItem key={entry.manifest.id} disablePadding>
@@ -139,6 +156,13 @@ export function ExtensionsView({
               label={state.label}
               sx={{ height: 20, fontSize: 11, bgcolor: TONE[state.tone].bg, color: TONE[state.tone].fg }}
             />
+            {permission ? (
+              <Chip
+                size="small"
+                label={permission.label}
+                sx={{ height: 20, fontSize: 11, bgcolor: TONE[permission.tone].bg, color: TONE[permission.tone].fg }}
+              />
+            ) : null}
             {check ? (
               <Chip
                 size="small"

@@ -69,4 +69,6 @@ export const STUDIO_EXECUTION_CONTRACT = {
   extensionsThirdParty: false,
   /** ADR-026 (Arlet, 2026-10-03) supersedes the earlier non-goal. */
   extensionsHostProductGoal: true,
+  /** Health contract: extension health is informational — never authorization. */
+  extensionsHealthInformationalOnly: true,
 } as const;

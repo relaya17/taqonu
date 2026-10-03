@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AtlasError } from "@atlas/shared";
 import { requireUser } from "./auth-guards.js";
+import { assertProjectReadAccess } from "../services/project-access.js";
 import { authorizeStudioExtensionRequest } from "../services/studio-extensions.js";
 
 /** Header Studio sends when a request is made on behalf of an extension (ADR-026). */
@@ -48,12 +49,27 @@ export function registerStudioExtensionGate(app: FastifyInstance): void {
       throw new AtlasError("FORBIDDEN", "Unknown Studio extension", { statusCode: 403 });
     }
     const user = await requireUser(app, request);
+    const projectId = projectIdOf(request);
+    // The project the extension acts in may come from the client (header,
+    // query or body); the caller must be able to read it, or its enabled
+    // state would be borrowed from someone else's project.
+    if (projectId) {
+      try {
+        await assertProjectReadAccess(app, request, projectId);
+      } catch {
+        throw new AtlasError(
+          "FORBIDDEN",
+          `Studio extension "${extensionId}" is not allowed here (NO_PROJECT_ACCESS).`,
+          { statusCode: 403, details: { extensionId, denial: "NO_PROJECT_ACCESS" } },
+        );
+      }
+    }
     const body =
       request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
     const decision = authorizeStudioExtensionRequest({
       userId: user.id,
       extensionId,
-      projectId: projectIdOf(request),
+      projectId,
       method: request.method,
       url: request.routeOptions.url ?? "",
       commandId: typeof body.commandId === "string" ? body.commandId : null,

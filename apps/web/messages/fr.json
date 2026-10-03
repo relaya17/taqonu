@@ -231,8 +231,10 @@
       "clean": "Aucun changement",
       "requestBranch": "Demander la branche",
       "requestDiff": "Demander le diff",
+      "requestFileDiff": "Diff de ce fichier",
       "branch": "Branche",
       "diff": "Diff par rapport à HEAD",
+      "diffFile": "Changements dans {path}",
       "diffEmpty": "Aucun diff indexé/non indexé par rapport à HEAD, ou git.diff n’a pas été exécuté.",
       "kind": {
         "modified": "modifié",
@@ -564,11 +566,22 @@
       "searchAll": "Rechercher dans tous les fichiers",
       "goToLine": "Aller à la ligne…",
       "goToSymbol": "Aller au symbole…",
+      "back": "Précédent",
+      "forward": "Suivant",
+      "lastEditLocation": "Dernier emplacement modifié",
+      "nextProblem": "Problème suivant",
+      "previousProblem": "Problème précédent",
+      "nextChange": "Changement suivant",
+      "previousChange": "Changement précédent",
       "toggleSidebar": "Afficher/masquer la barre latérale",
       "togglePanel": "Afficher/masquer le panneau inférieur",
       "toggleAgent": "Afficher/masquer le panneau de l’agent",
       "codeTools": "Outils de code (définitions et références)",
       "runPanel": "Panneau d’exécution",
+      "newTerminal": "Nouveau terminal",
+      "splitTerminal": "Diviser le terminal",
+      "splitPrimary": "premier",
+      "splitSecondary": "second",
       "askAgent": "Demander à l’agent",
       "clone": "Cloner depuis un modèle…",
       "manageGithub": "Gérer l’accès GitHub",
@@ -737,6 +750,14 @@
     "opsQa": "Contrôle qualité",
     "opsProcessAudit": "Processus E2E",
     "opsCounsel": "Note juridique",
+    "engineering": {
+      "title": "État de l'ingénierie",
+      "pendingPatches": "{count} correctifs en attente de revue",
+      "extensionsHealth": "Extensions {ok}/{total} en bon état",
+      "pendingPermissions": "{count} extensions ont besoin d'une autorisation",
+      "openFindings": "{count} constats de sécurité ouverts",
+      "partialData": "Certaines données d'ingénierie n'ont pas pu être chargées."
+    },
     "personalTitle": "Espace personnel",
     "personalHelp": "Boîte de réception, mémoire, décisions et correctifs de code — un seul endroit sur votre tableau de bord, pas dispersés dans la navigation.",
     "personalTab": {
@@ -2718,7 +2739,7 @@
       "grant": "Accorder",
       "revoke": "Retirer",
       "grantAll": "Accorder les autorisations",
-      "verify": "Lancer la vérification",
+      "verify": "Vérifier l’état",
       "details": "Détails et autorisations",
       "moveUp": "Monter",
       "moveDown": "Descendre"
@@ -2731,7 +2752,7 @@
       "permissions": "Autorisations",
       "capabilities": "Capacités — ce qui est réellement connecté",
       "contributes": "Ce qu’elle ajoute au Studio",
-      "verification": "Vérification"
+      "verification": "État"
     },
     "installNote": "L’installation n’accorde rien. Chaque autorisation est approuvée séparément, journalisée et révocable.",
     "permission": {
@@ -2739,13 +2760,13 @@
       "pending": "En attente d’approbation"
     },
     "capability": {
-      "ready": "Disponible",
+      "ready": "Autorisation accordée",
       "needs": "Nécessite : {permission}"
     },
     "contributesActivity": "Une icône dans la barre et un panneau : {name}",
     "contributesCommand": "Une commande du menu Affichage : ouvrir {name}",
-    "verificationHelp": "Vérifie que les prérequis de l’extension sont remplis dans ce projet, pour que ses capacités fonctionnent vraiment.",
-    "verifiedAt": "Vérifiée : {date}",
+    "verificationHelp": "À titre informatif : vérifie ce dont chaque capacité a besoin dans ce projet. N’accorde, ne révoque ni ne bloque jamais d’autorisation.",
+    "verifiedAt": "Vérifié : {date}",
     "checks": {
       "workspace": "Dossier local lié",
       "git_repo": "Dépôt Git dans le dossier",
@@ -2755,13 +2776,20 @@
     "reasons": {
       "NO_LOCAL_FOLDER": "Aucun dossier local n’est lié à ce projet",
       "NO_GIT_REPOSITORY": "Le dossier ne contient pas de dépôt Git",
-      "INCOMPATIBLE": "Incompatible avec cette version du Studio"
+      "INCOMPATIBLE": "Incompatible avec cette version du Studio",
+      "ROUTE_NOT_REGISTERED": "Une route serveur nécessaire n’est pas enregistrée",
+      "APPROVAL_STORE_NOT_CONFIGURED": "Le registre d’approbations en direct n’est pas configuré ici",
+      "CLOUD_STORE_NOT_CONFIGURED": "Le stockage cloud n’est pas configuré",
+      "UNKNOWN_DEPENDENCY": "Dépendance inconnue — non vérifiée",
+      "TIMEOUT": "Pas de réponse à temps",
+      "HTTP_429": "Débit limité (pas une panne)"
     },
-    "verifyNever": "Pas encore vérifiée.",
+    "verifyNever": "Pas encore vérifié.",
     "panel": {
       "needsPermissionsTitle": "{name} attend des autorisations",
       "somePending": "En attente d’approbation : {permissions}",
-      "linkFolder": "Lier un dossier"
+      "linkFolder": "Lier un dossier",
+      "health": "{status} : {available} capacités sur {total} disponibles"
     },
     "openPanel": "{name}",
     "detailTab": "Extension : {name}",
@@ -2856,6 +2884,34 @@
       "observer_history": "Historique d’observation",
       "runs_list": "Liste des exécutions",
       "runs_approve": "Approuver une exécution"
+    },
+    "health": {
+      "HEALTHY": "✓ Opérationnel",
+      "DEGRADED": "Partiellement disponible",
+      "UNAVAILABLE": "Indisponible",
+      "NOT_CHECKED": "État non vérifié",
+      "partial": "{available}/{total} disponibles",
+      "summary": "{available} capacités sur {total} disponibles",
+      "optional": "facultatif",
+      "rateLimited": "Trop de requêtes pour l’instant — dernier résultat affiché. Réessayez dans une minute."
+    },
+    "depStatus": {
+      "OK": "OK",
+      "MISSING": "Manquant",
+      "NOT_CONFIGURED": "Non configuré",
+      "UNREACHABLE": "Injoignable",
+      "ERROR": "Échec de la vérification",
+      "TIMEOUT": "Pas de réponse à temps",
+      "RATE_LIMITED": "Débit limité (pas une panne)",
+      "NOT_CHECKED": "Non vérifié"
+    },
+    "depKind": {
+      "studio_compatible": "Compatible avec cette version de Studio",
+      "route_registered": "Routes serveur enregistrées",
+      "service_durable_store": "Stockage durable",
+      "service_approval_store": "Registre d’approbations en direct",
+      "project_workspace": "Dossier local lié",
+      "project_git_repo": "Dépôt Git dans le dossier"
     }
   }
 }

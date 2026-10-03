@@ -12,18 +12,50 @@ export interface StudioExtensionManifest {
   readonly version: string;
   readonly studio: string;
   readonly permissions: readonly string[];
-  readonly capabilities: ReadonlyArray<{ id: string; permission: string | null; source: string }>;
+  readonly capabilities: ReadonlyArray<{
+    id: string;
+    permission: string | null;
+    source: string;
+    dependencies: ReadonlyArray<StudioExtensionDependency>;
+  }>;
   readonly contributes: {
     readonly activity: { icon: string; panel: string } | null;
     readonly commands: readonly string[];
   };
-  readonly requires: readonly string[];
+  readonly dependencies: ReadonlyArray<StudioExtensionDependency>;
 }
 
-export interface StudioExtensionVerification {
+export interface StudioExtensionDependency {
+  readonly kind: string;
+  readonly key?: string;
+  readonly optional?: boolean;
+}
+
+/** Health contract (ADR-026): informational only — never authorization. */
+export type StudioHealthState = "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "NOT_CHECKED";
+
+export interface StudioExtensionHealth {
   readonly at: string;
-  readonly ok: boolean;
-  readonly checks: ReadonlyArray<{ id: string; ok: boolean; reason: string | null }>;
+  readonly status: StudioHealthState;
+  readonly counts: {
+    readonly healthy: number;
+    readonly degraded: number;
+    readonly unavailable: number;
+    readonly notChecked: number;
+    readonly total: number;
+  };
+  readonly capabilities: ReadonlyArray<{
+    readonly id: string;
+    readonly status: StudioHealthState;
+    readonly dependencies: ReadonlyArray<{
+      readonly kind: string;
+      readonly key: string | null;
+      readonly optional: boolean;
+      readonly status: string;
+      readonly reason: string | null;
+      readonly durationMs: number;
+    }>;
+  }>;
 }
 
 export interface StudioExtensionEntry {
@@ -36,13 +68,21 @@ export interface StudioExtensionEntry {
   readonly pendingPermissions: readonly string[];
   /** Project scope only. */
   readonly enabled?: boolean;
-  readonly verification?: StudioExtensionVerification | null;
+  readonly health?: StudioExtensionHealth | null;
 }
 
 export interface StudioExtensionsResponse {
   readonly studioVersion: string;
   readonly order?: readonly string[];
   readonly extensions: readonly StudioExtensionEntry[];
+}
+
+/** Health results younger than this are reused when a panel opens (contract §G). */
+export const HEALTH_CACHE_MS = 60_000;
+
+/** True when the API answered 429 — a temporary rate limit, not an outage. */
+export function isRateLimitedError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && (error as { status?: unknown }).status === 429);
 }
 
 /** next-intl treats "." as a path separator; message keys use "_". */

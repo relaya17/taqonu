@@ -9,15 +9,13 @@
  *
  * Scope (durable, osStore → cloud store):
  * - user:    installed extensions + versions, granted permissions
- * - project: enabled extensions, activity-bar order, view state, verification
+ * - project: enabled extensions, activity-bar order, view state, last health check
  *
  * Installing grants nothing. Requests made on behalf of an extension carry
  * `x-arletos-extension`; `authorizeStudioExtensionRequest` enforces that the
  * route is declared by the manifest and its permission is granted.
  * Unknown extensions, permissions and routes fail closed.
  */
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { osStore } from "../store/os-store.js";
 import type {
   StoredStudioExtensionInstall,
@@ -39,6 +37,8 @@ export const STUDIO_EXTENSION_CONTRACT = {
   permissionEnforcement: "api",
   durableSoR: true,
   productGoal: true,
+  /** Health is informational only: it never grants, revokes, bypasses or blocks. */
+  health: "informational",
   adr: "ADR-026",
 } as const;
 
@@ -63,7 +63,18 @@ export const STUDIO_EXTENSION_PERMISSIONS = [
 export type StudioExtensionPermission = (typeof STUDIO_EXTENSION_PERMISSIONS)[number];
 
 export type StudioExtensionKind = "builtin" | "official";
-export type StudioExtensionRequirement = "workspace" | "git-repo";
+
+/**
+ * Declarative dependency of a capability (health contract). `kind` names a
+ * server-owned, read-only probe; manifests never carry code. An unregistered
+ * kind is reported NOT_CHECKED / UNKNOWN_DEPENDENCY, never healthy.
+ */
+export interface StudioExtensionDependency {
+  readonly kind: string;
+  readonly key?: string;
+  /** A failing optional dependency degrades the capability instead of making it unavailable. */
+  readonly optional?: boolean;
+}
 
 export interface StudioExtensionRoute {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -80,6 +91,8 @@ export interface StudioExtensionCapability {
   readonly permission: StudioExtensionPermission | null;
   /** Where it lives in the code — shown in the catalog so nothing is a mock-up. */
   readonly source: string;
+  /** What this capability needs to answer (health contract). */
+  readonly dependencies: readonly StudioExtensionDependency[];
 }
 
 export interface StudioExtensionManifest {
@@ -96,9 +109,21 @@ export interface StudioExtensionManifest {
     readonly activity: { readonly icon: string; readonly panel: string } | null;
     readonly commands: readonly string[];
   };
-  readonly requires: readonly StudioExtensionRequirement[];
+  /** Dependencies shared by every capability (merged into each). */
+  readonly dependencies: readonly StudioExtensionDependency[];
   readonly routes: readonly StudioExtensionRoute[];
 }
+
+/** Every extension's state and routes read the Atlas OS store; all need a compatible Studio and registered routes. */
+const COMMON_DEPENDENCIES: readonly StudioExtensionDependency[] = [
+  { kind: "studio.compatible" },
+  { kind: "route.registered" },
+  { kind: "service.durable-store" },
+];
+const WORKSPACE: StudioExtensionDependency = { kind: "project.workspace" };
+const GIT_REPO: StudioExtensionDependency = { kind: "project.git-repo" };
+/** Governed Git commands run only through a live second-identity decision. */
+const APPROVAL_STORE: StudioExtensionDependency = { kind: "service.approval-store" };
 
 const GIT_READ_COMMANDS = ["git.status", "git.branch", "git.diff", "git.log", "git.blame"] as const;
 
@@ -112,14 +137,14 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
     studio: "2.0.0",
     permissions: ["git.read"],
     capabilities: [
-      { id: "git.changes", permission: "git.read", source: "StudioGitStatus · git.status / git.diff" },
-      { id: "git.history", permission: "git.read", source: "StudioGitStatus · git.log / git.blame" },
+      { id: "git.changes", permission: "git.read", source: "StudioGitStatus · git.status / git.diff", dependencies: [WORKSPACE, GIT_REPO, APPROVAL_STORE] },
+      { id: "git.history", permission: "git.read", source: "StudioGitStatus · git.log / git.blame", dependencies: [WORKSPACE, GIT_REPO, APPROVAL_STORE] },
     ],
     contributes: { activity: { icon: "git", panel: "git" }, commands: ["open"] },
-    requires: ["workspace", "git-repo"],
+    dependencies: COMMON_DEPENDENCIES,
     routes: [
       { method: "POST", url: "/api/v1/projects/:id/studio/terminal", permission: "git.read", commandIds: GIT_READ_COMMANDS },
-      { method: "POST", url: "/api/v1/projects/:id/studio/terminal/decide-and-execute", permission: "git.read" },
+      { method: "POST", url: "/api/v1/projects/:id/studio/terminal/decide-and-execute", permission: "git.read", commandIds: GIT_READ_COMMANDS },
       { method: "GET", url: "/api/v1/projects/:id/studio/executions/last", permission: "git.read" },
     ],
   },
@@ -132,11 +157,11 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
     studio: "2.0.0",
     permissions: ["qa.run", "qa.learn"],
     capabilities: [
-      { id: "qa.runs", permission: "qa.run", source: "QaPanel · /qa/runs" },
-      { id: "qa.patterns", permission: "qa.learn", source: "QaPanel · /qa/patterns, /qa/learn" },
+      { id: "qa.runs", permission: "qa.run", source: "QaPanel · /qa/runs", dependencies: [WORKSPACE] },
+      { id: "qa.patterns", permission: "qa.learn", source: "QaPanel · /qa/patterns, /qa/learn", dependencies: [WORKSPACE] },
     ],
     contributes: { activity: { icon: "tests", panel: "tests" }, commands: ["open"] },
-    requires: ["workspace"],
+    dependencies: COMMON_DEPENDENCIES,
     routes: [
       { method: "GET", url: "/api/v1/projects", permission: null },
       { method: "GET", url: "/api/v1/qa/runs", permission: "qa.run" },
@@ -155,13 +180,13 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
     studio: "2.0.0",
     permissions: ["cloud.read", "deploy.observe"],
     capabilities: [
-      { id: "cloud.adapters", permission: "cloud.read", source: "CloudToolsPanel · /providers/adapters" },
-      { id: "cloud.deployments", permission: "cloud.read", source: "DeployFeedsPanel · /feeds/:projectId/deployment" },
-      { id: "cloud.observe", permission: "deploy.observe", source: "DeployFeedsPanel · /providers/vercel|render/observe" },
-      { id: "cloud.githubSync", permission: "deploy.observe", source: "DeployFeedsPanel · /github/sync" },
+      { id: "cloud.adapters", permission: "cloud.read", source: "CloudToolsPanel · /providers/adapters", dependencies: [] },
+      { id: "cloud.deployments", permission: "cloud.read", source: "DeployFeedsPanel · /feeds/:projectId/deployment", dependencies: [] },
+      { id: "cloud.observe", permission: "deploy.observe", source: "DeployFeedsPanel · /providers/vercel|render/observe", dependencies: [] },
+      { id: "cloud.githubSync", permission: "deploy.observe", source: "DeployFeedsPanel · /github/sync", dependencies: [] },
     ],
     contributes: { activity: { icon: "cloud", panel: "cloud" }, commands: ["open"] },
-    requires: [],
+    dependencies: COMMON_DEPENDENCIES,
     routes: [
       { method: "GET", url: "/api/v1/providers/adapters", permission: "cloud.read" },
       { method: "GET", url: "/api/v1/feeds/:projectId/deployment", permission: "cloud.read" },
@@ -179,11 +204,11 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
     studio: "2.0.0",
     permissions: ["security.scan"],
     capabilities: [
-      { id: "security.scan", permission: "security.scan", source: "SentinelPanel · /projects/:id/sentinel*" },
-      { id: "security.sarif", permission: "security.scan", source: "SentinelPanel · /security/sarif" },
+      { id: "security.scan", permission: "security.scan", source: "SentinelPanel · /projects/:id/sentinel*", dependencies: [WORKSPACE] },
+      { id: "security.sarif", permission: "security.scan", source: "SentinelPanel · /security/sarif", dependencies: [WORKSPACE] },
     ],
     contributes: { activity: { icon: "security", panel: "security" }, commands: ["open"] },
-    requires: ["workspace"],
+    dependencies: COMMON_DEPENDENCIES,
     routes: [
       { method: "GET", url: "/api/v1/projects/:id/sentinel", permission: "security.scan" },
       { method: "POST", url: "/api/v1/projects/:id/sentinel/scan", permission: "security.scan" },
@@ -201,11 +226,11 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
     studio: "2.0.0",
     permissions: ["observer.run"],
     capabilities: [
-      { id: "observer.cycle", permission: "observer.run", source: "ObserverPanel · /projects/:id/observe-cycle" },
-      { id: "observer.history", permission: "observer.run", source: "ObserverPanel · /projects/:id/observer/snapshots" },
+      { id: "observer.cycle", permission: "observer.run", source: "ObserverPanel · /projects/:id/observe-cycle", dependencies: [WORKSPACE] },
+      { id: "observer.history", permission: "observer.run", source: "ObserverPanel · /projects/:id/observer/snapshots", dependencies: [WORKSPACE] },
     ],
     contributes: { activity: { icon: "observer", panel: "observer" }, commands: ["open"] },
-    requires: ["workspace"],
+    dependencies: COMMON_DEPENDENCIES,
     routes: [
       { method: "GET", url: "/api/v1/projects/:id/observer", permission: "observer.run" },
       { method: "GET", url: "/api/v1/projects/:id/observer/snapshots", permission: "observer.run" },
@@ -222,11 +247,11 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
     studio: "2.0.0",
     permissions: ["agent.runs.read", "agent.runs.approve"],
     capabilities: [
-      { id: "runs.list", permission: "agent.runs.read", source: "EngineeringRunsPanel · /engineering/loop" },
-      { id: "runs.approve", permission: "agent.runs.approve", source: "EngineeringRunsPanel · /engineering/loop/:id/approve" },
+      { id: "runs.list", permission: "agent.runs.read", source: "EngineeringRunsPanel · /engineering/loop", dependencies: [] },
+      { id: "runs.approve", permission: "agent.runs.approve", source: "EngineeringRunsPanel · /engineering/loop/:id/approve", dependencies: [] },
     ],
     contributes: { activity: { icon: "runs", panel: "runs" }, commands: ["open"] },
-    requires: [],
+    dependencies: COMMON_DEPENDENCIES,
     routes: [
       { method: "GET", url: "/api/v1/engineering/loop", permission: "agent.runs.read" },
       { method: "GET", url: "/api/v1/engineering/loop/:id", permission: "agent.runs.read" },
@@ -420,33 +445,6 @@ function isEnabledIn(state: StoredStudioExtensionProjectState, manifest: StudioE
   return state.enabled[manifest.id] ?? defaultEnabled(manifest);
 }
 
-/** Verification: do the extension's prerequisites hold in this project? */
-export function verifyStudioExtension(
-  projectId: string,
-  id: string,
-): StudioExtensionResult<StoredStudioExtensionProjectState["verified"][string]> {
-  const manifest = getStudioExtension(id);
-  if (!manifest) return { ok: false, denial: "UNKNOWN_EXTENSION" };
-  const root = osStore.getWorkspaceRoot(projectId);
-  const hasWorkspace = Boolean(root && existsSync(root));
-  const checks = manifest.requires.map((requirement) => {
-    if (requirement === "workspace") {
-      return { id: "workspace", ok: hasWorkspace, reason: hasWorkspace ? null : "NO_LOCAL_FOLDER" };
-    }
-    const gitDir = root ? join(root, ".git") : "";
-    const hasGit = Boolean(hasWorkspace && gitDir && existsSync(gitDir) && statSync(gitDir).isDirectory());
-    return { id: "git-repo", ok: hasGit, reason: hasGit ? null : "NO_GIT_REPOSITORY" };
-  });
-  if (!isStudioCompatible(manifest)) {
-    checks.push({ id: "compatibility", ok: false, reason: "INCOMPATIBLE" });
-  }
-  const result = { at: new Date().toISOString(), ok: checks.every((c) => c.ok), checks };
-  const state = osStore.getStudioExtensionProject(projectId);
-  state.verified[id] = result;
-  osStore.setStudioExtensionProject(projectId, state);
-  return { ok: true, value: result };
-}
-
 // ---------------------------------------------------------------------------
 // views
 
@@ -489,7 +487,7 @@ export function listStudioExtensions(userId: string, projectId: string) {
     extensions: catalog.map((entry) => ({
       ...entry,
       enabled: entry.installed && entry.compatible && isEnabledIn(state, entry.manifest),
-      verification: state.verified[entry.manifest.id] ?? null,
+      health: state.health[entry.manifest.id] ?? null,
     })),
   };
 }

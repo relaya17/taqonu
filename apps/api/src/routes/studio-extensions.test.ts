@@ -67,7 +67,9 @@ describe("Studio extensions (ADR-026)", () => {
       f.get("/api/v1/qa/runs", async () => ({ ok: true }));
       f.get("/api/v1/feeds/:projectId/deployment", async () => ({ items: [] }));
       f.post("/api/v1/projects/:id/studio/terminal", async () => ({ ran: true }));
+      f.post("/api/v1/projects/:id/studio/terminal/decide-and-execute", async () => ({ ran: true }));
       f.get("/api/v1/memory", async () => ({ items: [] }));
+      f.get("/api/v1/projects/:id/studio/executions/last", async () => ({ status: "NOT_RUN" }));
     });
   });
 
@@ -180,20 +182,81 @@ describe("Studio extensions (ADR-026)", () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it("verification checks the project's prerequisites", async () => {
+  it("health check (informational): per-capability dependency results, stored per project", async () => {
     const withGit = seedProject(OWNER, true);
     const withoutGit = seedProject(OWNER, false);
     const ok = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${withGit}/studio/extensions/arletos.git/verify`,
     });
-    expect(ok.json().verification.ok).toBe(true);
+    expect(ok.statusCode).toBe(200);
+    const health = ok.json().health;
+    expect(ok.json().persisted).toBe(true);
+    const changes = health.capabilities.find((c: { id: string }) => c.id === "git.changes");
+    const statusOf = (kind: string) =>
+      changes.dependencies.find((d: { kind: string }) => d.kind === kind);
+    expect(statusOf("project.workspace")).toMatchObject({ status: "OK" });
+    expect(statusOf("project.git-repo")).toMatchObject({ status: "OK" });
+    expect(statusOf("studio.compatible")).toMatchObject({ status: "OK" });
+    expect(statusOf("route.registered")).toMatchObject({ status: "OK" });
+    expect(statusOf("service.durable-store")).toMatchObject({ status: "OK" });
+    // No live approval store in unit tests: reported, not assumed.
+    expect(statusOf("service.approval-store")).toMatchObject({
+      status: "NOT_CONFIGURED",
+      reason: "APPROVAL_STORE_NOT_CONFIGURED",
+    });
+    expect(changes.status).toBe("UNAVAILABLE");
+    expect(health.counts).toMatchObject({ total: 2, unavailable: 2 });
+    expect(health.status).toBe("UNAVAILABLE");
+
     const bad = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${withoutGit}/studio/extensions/arletos.git/verify`,
     });
-    expect(bad.json().verification).toMatchObject({ ok: false });
-    expect(bad.json().verification.checks).toContainEqual({ id: "git-repo", ok: false, reason: "NO_GIT_REPOSITORY" });
+    const badChanges = bad.json().health.capabilities.find((c: { id: string }) => c.id === "git.changes");
+    expect(badChanges.dependencies).toContainEqual(
+      expect.objectContaining({ kind: "project.git-repo", status: "MISSING", reason: "NO_GIT_REPOSITORY" }),
+    );
+
+    const listed = await app.inject({ method: "GET", url: `/api/v1/projects/${withGit}/studio/extensions` });
+    const git = listed.json().extensions.find((e: { manifest: { id: string } }) => e.manifest.id === "arletos.git");
+    expect(git.health.status).toBe("UNAVAILABLE");
+    const other = await app.inject({ method: "GET", url: `/api/v1/projects/${withoutGit}/studio/extensions` });
+    const tests = other.json().extensions.find((e: { manifest: { id: string } }) => e.manifest.id === "arletos.tests");
+    expect(tests.health).toBeNull();
+  });
+
+  it("health never changes authorization: UNAVAILABLE does not block, HEALTHY would not grant", async () => {
+    const projectId = seedProject(OWNER, true);
+    const headers = { "x-arletos-extension": "arletos.git" };
+    await app.inject({ method: "POST", url: `/api/v1/projects/${projectId}/studio/extensions/arletos.git/verify` });
+    const before = await app.inject({ method: "GET", url: `/api/v1/projects/${projectId}/studio/extensions` });
+    const git = before.json().extensions.find((e: { manifest: { id: string } }) => e.manifest.id === "arletos.git");
+    expect(git.health.status).toBe("UNAVAILABLE");
+    expect(git.granted).toEqual([]);
+    expect(git.enabled).toBe(true);
+    // Not granted → still denied by the gate.
+    const denied = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/terminal`,
+      headers,
+      payload: { commandId: "git.status" },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error.message).toMatch(/PERMISSION_NOT_GRANTED/);
+    // Granted → allowed by the gate even though health is UNAVAILABLE.
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/studio/extensions/arletos.git/permissions",
+      payload: { grant: ["git.read"] },
+    });
+    const allowed = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/terminal`,
+      headers,
+      payload: { commandId: "git.status" },
+    });
+    expect(allowed.statusCode).toBe(200);
   });
 
   describe("server-side enforcement (x-arletos-extension)", () => {
@@ -295,6 +358,51 @@ describe("Studio extensions (ADR-026)", () => {
       });
       expect(push.statusCode).toBe(403);
       expect(push.json().error.message).toMatch(/COMMAND_NOT_DECLARED/);
+
+      // The decision step is read-only for the Git extension too.
+      const decide = (commandId: string) =>
+        app.inject({
+          method: "POST",
+          url: `/api/v1/projects/${projectId}/studio/terminal/decide-and-execute`,
+          headers: ext("arletos.git"),
+          payload: { approvalId: crypto.randomUUID(), decisionReason: "test", commandId },
+        });
+      for (const commandId of ["git.push", "git.commit"]) {
+        const res = await decide(commandId);
+        expect(res.statusCode).toBe(403);
+        expect(res.json().error.message).toMatch(/COMMAND_NOT_DECLARED/);
+      }
+      expect((await decide("git.status")).statusCode).toBe(200);
+    });
+
+    it("rejects a project the caller cannot access, wherever its id comes from", async () => {
+      const ownersProject = seedProject(OWNER);
+      // Built-in Tests is enabled by default in the owner's project.
+      getRequestUser.mockResolvedValue(OTHER);
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/studio/extensions/arletos.tests/permissions",
+        payload: { grant: ["qa.run"] },
+      });
+      const viaHeader = await app.inject({
+        method: "GET",
+        url: "/api/v1/qa/runs",
+        headers: ext("arletos.tests", ownersProject),
+      });
+      expect(viaHeader.statusCode).toBe(403);
+      expect(viaHeader.json().error.message).toMatch(/NO_PROJECT_ACCESS/);
+      const viaQuery = await app.inject({
+        method: "GET",
+        url: `/api/v1/qa/runs?projectId=${ownersProject}`,
+        headers: ext("arletos.tests"),
+      });
+      expect(viaQuery.statusCode).toBe(403);
+      expect(viaQuery.json().error.message).toMatch(/NO_PROJECT_ACCESS/);
+
+      // The caller's own project still works.
+      const own = seedProject(OTHER);
+      const ok = await app.inject({ method: "GET", url: "/api/v1/qa/runs", headers: ext("arletos.tests", own) });
+      expect(ok.statusCode).toBe(200);
     });
   });
 

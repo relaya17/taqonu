@@ -72,6 +72,8 @@ describe("Phase 1 architecture contracts", () => {
     expect(STUDIO_EXECUTION_CONTRACT.extensionsThirdParty).toBe(false);
     expect(STUDIO_EXECUTION_CONTRACT.extensionsServerSideCode).toBe(false);
     expect(STUDIO_EXECUTION_CONTRACT.extensionsHostProductGoal).toBe(true);
+    expect(STUDIO_EXECUTION_CONTRACT.extensionsHealthInformationalOnly).toBe(true);
+    expect(STUDIO_EXTENSION_CONTRACT.health).toBe("informational");
   });
 
   it("does not let authority or composite score promote a claim to Truth", () => {

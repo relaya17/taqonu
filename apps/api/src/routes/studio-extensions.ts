@@ -19,9 +19,9 @@ import {
   setStudioExtensionView,
   uninstallStudioExtension,
   updateStudioExtension,
-  verifyStudioExtension,
   type StudioExtensionDenial,
 } from "../services/studio-extensions.js";
+import { checkStudioExtensionHealth } from "../services/studio-extension-health.js";
 import { osStore } from "../store/os-store.js";
 
 const extensionIdSchema = z.string().min(1).max(80).regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/);
@@ -53,7 +53,8 @@ function audit(
 
 /**
  * ADR-026 — Studio extensions: official catalog (user scope) and per-project
- * enablement, order, view state and verification. Every change is audited.
+ * enablement, order, view state and health (informational only). Every
+ * change is audited.
  */
 export async function registerStudioExtensionRoutes(app: FastifyInstance): Promise<void> {
   // ---- user scope -------------------------------------------------------
@@ -167,9 +168,15 @@ export async function registerStudioExtensionRoutes(app: FastifyInstance): Promi
     const projectId = uuidSchema.parse(params.id);
     const user = await assertProjectWriteAccess(app, request, projectId);
     const id = extensionIdSchema.parse(params.extensionId);
-    const result = verifyStudioExtension(projectId, id);
-    if (!result.ok) fail(result.denial, id);
-    audit("studio.extension.verified", user.id, { extensionId: id, ok: result.value.ok }, projectId);
-    return { extensionId: id, projectId, verification: result.value };
+    // Health is informational: it reads, it never changes grants or enablement.
+    const result = await checkStudioExtensionHealth(app, projectId, id);
+    if (!result) fail("UNKNOWN_EXTENSION", id);
+    audit(
+      "studio.extension.verified",
+      user.id,
+      { extensionId: id, status: result.health.status, counts: result.health.counts },
+      projectId,
+    );
+    return { extensionId: id, projectId, health: result.health, persisted: result.persisted };
   });
 }
