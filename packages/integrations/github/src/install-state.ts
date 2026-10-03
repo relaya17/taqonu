@@ -12,6 +12,8 @@ const DOMAIN = "github_install_state:v1:";
 export interface GitHubInstallState {
   readonly projectId: string | null;
   readonly locale: string | null;
+  /** Where the setup callback sends the person back to (default: integrations). */
+  readonly returnTo?: "studio" | null;
   readonly nonce: string;
   readonly issuedAt: number;
 }
@@ -28,11 +30,13 @@ export function signGitHubInstallState(input: {
   readonly secret: string;
   readonly projectId?: string | null;
   readonly locale?: string | null;
+  readonly returnTo?: "studio" | null;
   readonly now?: Date;
 }): string {
   const payload: GitHubInstallState = {
     projectId: input.projectId ?? null,
     locale: input.locale ?? null,
+    ...(input.returnTo ? { returnTo: input.returnTo } : {}),
     nonce: randomUUID(),
     issuedAt: Math.floor((input.now ?? new Date()).getTime() / 1000),
   };

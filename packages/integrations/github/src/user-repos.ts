@@ -23,16 +23,18 @@ export interface GitHubUserProfile {
 async function githubFetch(
   path: string,
   token?: string | null,
+  fetchImpl: typeof fetch = fetch,
+  accept = "application/vnd.github+json",
 ): Promise<Response> {
   const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
+    Accept: accept,
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "ArletOS-Atlas",
   };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  return fetch(`https://api.github.com${path}`, { headers });
+  return fetchImpl(`https://api.github.com${path}`, { headers });
 }
 
 export async function verifyGithubToken(token: string): Promise<GitHubUserProfile> {
@@ -116,10 +118,12 @@ export async function fetchGithubRepoTree(
   owner: string,
   repo: string,
   ref: string,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<GitHubTreeResult> {
   const response = await githubFetch(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
     token,
+    fetchImpl,
   );
   if (!response.ok) {
     throw new Error(
@@ -161,4 +165,63 @@ export async function listGithubReposForToken(
     page += 1;
   }
   return repos;
+}
+
+/** Encode a repo-relative POSIX path for the contents API (keeps `/`). */
+function encodeRepoPath(path: string): string {
+  return path
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+export class GitHubFileFetchError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "GitHubFileFetchError";
+  }
+}
+
+/**
+ * Read one file's raw bytes via the contents API (read-only, no clone).
+ * `maxBytes` guards memory: larger bodies are rejected before buffering
+ * when GitHub reports Content-Length.
+ */
+export async function fetchGithubFileContent(
+  token: string | null | undefined,
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  options?: { readonly fetchImpl?: typeof fetch; readonly maxBytes?: number },
+): Promise<Buffer> {
+  const cleaned = path.replace(/\\/g, "/");
+  if (cleaned.split("/").some((segment) => segment === "..")) {
+    throw new GitHubFileFetchError("Path escapes repository", 400);
+  }
+  const response = await githubFetch(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPath(cleaned)}?ref=${encodeURIComponent(ref)}`,
+    token,
+    options?.fetchImpl ?? fetch,
+    "application/vnd.github.raw+json",
+  );
+  if (!response.ok) {
+    throw new GitHubFileFetchError(
+      `GitHub file fetch failed (${response.status}) for ${owner}/${repo}:${cleaned}@${ref}`,
+      response.status,
+    );
+  }
+  const maxBytes = options?.maxBytes;
+  const declared = Number(response.headers.get("content-length") ?? "");
+  if (maxBytes != null && Number.isFinite(declared) && declared > maxBytes) {
+    throw new GitHubFileFetchError(
+      `File too large to open in studio (${declared} bytes).`,
+      413,
+    );
+  }
+  return Buffer.from(await response.arrayBuffer());
 }

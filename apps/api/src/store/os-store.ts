@@ -84,6 +84,17 @@ export interface StoredGithubAppInstallation {
   updatedAt: string;
 }
 
+/**
+ * Where Studio reads a project's files when no local folder is linked: the
+ * GitHub App installation the project owner bound through the signed install
+ * flow, plus the repository they picked (null until chosen / auto-picked).
+ */
+export interface StoredStudioGithubSource {
+  installationId: string;
+  repoFullName: string | null;
+  updatedAt: string;
+}
+
 export interface StoredLocalConnection {
   id: string;
   status: "CONNECTED" | "DISCONNECTED" | "ERROR";
@@ -112,6 +123,8 @@ export interface PersistedShape {
   /** Per-owner GitHub PAT connections. Preferred over githubConnection. */
   githubConnections?: Record<string, StoredGithubConnection>;
   githubAppInstallations?: Record<string, StoredGithubAppInstallation>;
+  /** projectId → GitHub source Studio reads from (read-only). */
+  studioGithubSources?: Record<string, StoredStudioGithubSource>;
   localConnection?: StoredLocalConnection | null;
   /** Per-owner local folder connections. Preferred over localConnection. */
   localConnections?: Record<string, StoredLocalConnection>;
@@ -342,6 +355,7 @@ function emptyShape(): PersistedShape {
     githubConnection: null,
     githubConnections: {},
     githubAppInstallations: {},
+    studioGithubSources: {},
     localConnection: null,
     localConnections: {},
     cloudLinks: {},
@@ -391,6 +405,7 @@ class OsStore {
   events: Array<Record<string, unknown>> = [];
   private githubConnections = new Map<string, StoredGithubConnection>();
   private githubAppInstallations = new Map<string, StoredGithubAppInstallation>();
+  private studioGithubSources = new Map<string, StoredStudioGithubSource>();
   private localConnections = new Map<string, StoredLocalConnection>();
   private cloudLinks = new Map<string, CloudProjectLink>();
   private plan: StoredPlan | null = null;
@@ -535,6 +550,7 @@ class OsStore {
     this.githubAppInstallations = new Map(
       Object.entries(raw.githubAppInstallations ?? {}),
     );
+    this.studioGithubSources = new Map(Object.entries(raw.studioGithubSources ?? {}));
     this.localConnections = new Map(Object.entries(raw.localConnections ?? {}));
     // Legacy unscoped records are not attached to any owner — they must not
     // become readable/replaceable by every signed-in user. Reconnect per owner.
@@ -614,6 +630,7 @@ class OsStore {
       githubConnection: null,
       githubConnections: Object.fromEntries(this.githubConnections),
       githubAppInstallations: Object.fromEntries(this.githubAppInstallations),
+      studioGithubSources: Object.fromEntries(this.studioGithubSources),
       localConnection: null,
       localConnections: Object.fromEntries(this.localConnections),
       cloudLinks: Object.fromEntries(this.cloudLinks),
@@ -691,6 +708,17 @@ class OsStore {
     return [...this.githubAppInstallations.values()].find(
       (item) => item.projectId === projectId,
     );
+  }
+
+  getStudioGithubSource(projectId: string): StoredStudioGithubSource | undefined {
+    this.ensureLoaded();
+    return this.studioGithubSources.get(projectId);
+  }
+
+  setStudioGithubSource(projectId: string, source: StoredStudioGithubSource): void {
+    this.ensureLoaded();
+    this.studioGithubSources.set(projectId, source);
+    this.persist();
   }
 
   getLocalConnection(ownerId: string): StoredLocalConnection | null {
@@ -799,6 +827,7 @@ class OsStore {
     this.events = [];
     this.githubConnections.clear();
     this.githubAppInstallations.clear();
+    this.studioGithubSources.clear();
     this.localConnections.clear();
     this.cloudLinks.clear();
     this.plan = null;

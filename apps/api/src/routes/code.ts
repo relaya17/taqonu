@@ -35,6 +35,13 @@ import {
 import { z } from "zod";
 import { isAgentActorRequest } from "../services/studio-actor.js";
 import { osStore } from "../store/os-store.js";
+import {
+  chooseStudioGithubRepo,
+  listStudioGithubTree,
+  readStudioGithubFile,
+  resolveStudioGithubSource,
+  studioGithubAppConfigured,
+} from "../services/studio-github-source.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { requireSignedInForWrite, requireUser } from "../middleware/auth-guards.js";
@@ -150,6 +157,22 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
     );
   }
 
+  /**
+   * Read-only GitHub fallback: a project with no local folder on the API host
+   * (always the case on Vercel) is browsed from the repository its owner
+   * connected through the GitHub App. Null → caller keeps the local path.
+   */
+  async function resolveGithubFallback(
+    request: FastifyRequest,
+    q: { projectId?: string | undefined; workspaceRoot?: string | undefined },
+  ) {
+    if (!q.projectId || q.workspaceRoot) return null;
+    await requireUser(app, request);
+    await assertProjectReadAccess(app, request, q.projectId);
+    if (osStore.getWorkspaceRoot(q.projectId)) return null;
+    return resolveStudioGithubSource(app, q.projectId);
+  }
+
   /** Studio project tree (view). Humans save files via PUT /studio/file. */
   app.get("/api/v1/studio/tree", async (request) => {
     const q = z
@@ -158,6 +181,16 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         workspaceRoot: z.string().min(1).max(1000).optional(),
       })
       .parse(request.query);
+    const github = await resolveGithubFallback(request, q);
+    if (github) {
+      const listed = await listStudioGithubTree(github);
+      return {
+        projectId: q.projectId ?? null,
+        ...listed,
+        source: github.info,
+        note: "Read-only view of the GitHub repository. Link a local folder to edit and save in Studio.",
+      };
+    }
     const root = await resolveStudioWorkspaceRoot(request, q);
     if (!existsSync(root)) {
       throw new AtlasError(
@@ -189,6 +222,17 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         path: z.string().min(1).max(1000),
       })
       .parse(request.query);
+    const github = await resolveGithubFallback(request, q);
+    if (github) {
+      const view = await readStudioGithubFile(github, q.path);
+      return {
+        projectId: q.projectId ?? null,
+        workspaceRoot: null,
+        ...view,
+        source: github.info,
+        note: "Read-only file from GitHub. Link a local folder to edit and save in Studio.",
+      };
+    }
     const root = await resolveStudioWorkspaceRoot(request, q);
     try {
       return {
@@ -203,6 +247,37 @@ export async function registerCodeRoutes(app: FastifyInstance): Promise<void> {
         error instanceof Error ? error.message : "Failed to read file",
       );
     }
+  });
+
+  /** Studio GitHub source status: is the App configured, and is this project connected? */
+  app.get("/api/v1/studio/github-source", async (request) => {
+    const q = z.object({ projectId: z.string().uuid() }).parse(request.query);
+    await requireUser(app, request);
+    await assertProjectReadAccess(app, request, q.projectId);
+    const configured = studioGithubAppConfigured(app);
+    const bound = configured ? osStore.getStudioGithubSource(q.projectId) ?? null : null;
+    return {
+      projectId: q.projectId,
+      appConfigured: configured,
+      connected: Boolean(bound ?? osStore.getGithubAppInstallationForProject(q.projectId)),
+      repo: bound?.repoFullName ?? null,
+      installUrl: configured
+        ? `/api/v1/github/install?projectId=${encodeURIComponent(q.projectId)}&returnTo=studio`
+        : null,
+    };
+  });
+
+  /** Pick which repository of the connected installation Studio shows. */
+  app.put("/api/v1/studio/github-source", async (request) => {
+    const body = z
+      .object({
+        projectId: z.string().uuid(),
+        repo: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+      })
+      .parse(request.body);
+    await assertProjectWriteAccess(app, request, body.projectId);
+    const source = await chooseStudioGithubRepo(app, body.projectId, body.repo);
+    return { projectId: body.projectId, source };
   });
 
   /** Bounded Studio file search — linked project workspace only. No raw workspaceRoot. */

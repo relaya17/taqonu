@@ -517,6 +517,19 @@
       "explorer": "Explorateur",
       "search": "Recherche",
       "git": "Git"
+    },
+    "github": {
+      "sourceLabel": "Source des fichiers du Studio",
+      "readingFrom": "Fichiers depuis GitHub :",
+      "chooseRepo": "Choisir le dépôt",
+      "readOnly": "Lecture seule",
+      "manageAccess": "Gérer l’accès",
+      "switchFailed": "Impossible de changer de dépôt.",
+      "connect": "Connecter GitHub",
+      "reconnect": "Reconnecter GitHub",
+      "connectHint": "Le Studio affichera les fichiers du projet sur le web, en lecture seule.",
+      "installError": "La connexion à GitHub n’a pas abouti ({reason}). Réessayez.",
+      "installPending": "La demande attend l’approbation du propriétaire de l’organisation GitHub."
     }
   },
   "contract": {

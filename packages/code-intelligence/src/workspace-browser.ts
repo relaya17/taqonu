@@ -607,3 +607,132 @@ export function deleteWorkspaceFolder(
   rmdirSync(full);
   return { path: rel };
 }
+
+/** One entry of a remote (e.g. GitHub git-trees) listing, relative POSIX path. */
+export interface RemoteWorkspaceEntry {
+  readonly path: string;
+  readonly kind: "dir" | "file";
+  readonly size?: number;
+}
+
+function isHiddenRemoteSegment(name: string): boolean {
+  if (WORKSPACE_SKIP_DIRS.has(name)) return true;
+  return name.startsWith(".") && name !== ".env.example";
+}
+
+/**
+ * Build the same bounded tree shape as {@link listWorkspaceTree} from a flat
+ * remote listing (GitHub git-trees API). Applies the same skip rules (vendor
+ * dirs, dot-files) and the same entry/depth budget. Pure — no disk access.
+ */
+export function buildWorkspaceTreeFromEntries(
+  rootName: string,
+  entries: readonly RemoteWorkspaceEntry[],
+  opts?: { readonly maxEntries?: number; readonly maxDepth?: number; readonly truncated?: boolean },
+): { tree: WorkspaceTreeNode; truncated: boolean; entryCount: number } {
+  const maxEntries = opts?.maxEntries ?? MAX_TREE_ENTRIES;
+  const maxDepth = opts?.maxDepth ?? MAX_DEPTH;
+  let truncated = Boolean(opts?.truncated);
+
+  interface MutableNode {
+    name: string;
+    path: string;
+    kind: "dir" | "file";
+    size?: number;
+    children?: Map<string, MutableNode>;
+  }
+  const root: MutableNode = { name: rootName, path: "", kind: "dir", children: new Map() };
+
+  const sorted = [...entries].sort((a, b) => a.path.localeCompare(b.path));
+  let entryCount = 0;
+  for (const entry of sorted) {
+    const parts = toPosix(entry.path).split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    if (parts.some(isHiddenRemoteSegment)) continue;
+    if (parts.length - 1 > maxDepth) {
+      truncated = true;
+      continue;
+    }
+    let cursor = root;
+    for (let i = 0; i < parts.length; i += 1) {
+      const name = parts[i]!;
+      const isLeaf = i === parts.length - 1;
+      const kind: "dir" | "file" = isLeaf ? entry.kind : "dir";
+      const existing = cursor.children!.get(name);
+      if (existing) {
+        if (existing.kind !== "dir") break;
+        cursor = existing;
+        continue;
+      }
+      if (entryCount >= maxEntries) {
+        truncated = true;
+        break;
+      }
+      entryCount += 1;
+      const node: MutableNode = {
+        name,
+        path: parts.slice(0, i + 1).join("/"),
+        kind,
+        ...(kind === "dir" ? { children: new Map<string, MutableNode>() } : {}),
+        ...(kind === "file" && entry.size != null ? { size: entry.size } : {}),
+      };
+      cursor.children!.set(name, node);
+      cursor = node;
+    }
+  }
+
+  function freeze(node: MutableNode): WorkspaceTreeNode {
+    if (node.kind === "file") {
+      return {
+        name: node.name,
+        path: node.path,
+        kind: "file",
+        ...(node.size != null ? { size: node.size } : {}),
+      };
+    }
+    const children = [...(node.children?.values() ?? [])]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(freeze);
+    return { name: node.name, path: node.path, kind: "dir", children };
+  }
+
+  return { tree: freeze(root), truncated, entryCount };
+}
+
+/**
+ * Turn raw bytes fetched from a remote source into the Studio file view.
+ * Same text/binary/size rules as {@link readWorkspaceFile}; always read-only.
+ */
+export function workspaceFileViewFromBuffer(
+  relativePath: string,
+  buf: Buffer,
+): WorkspaceFileView {
+  const posix = toPosix(relativePath);
+  const name = posix.split("/").pop() ?? posix;
+  if (isEnvSecretFile(name)) {
+    throw new Error("Secret files (.env) are never opened in Studio.");
+  }
+  if (buf.length > MAX_FILE_BYTES * 2) {
+    throw new Error(
+      `File too large to open in studio (${buf.length} bytes). Ask the agent to inspect it.`,
+    );
+  }
+  if (!isProbablyText(name, buf)) {
+    throw new Error("Binary or non-text file — Studio opens text files only.");
+  }
+  let truncated = false;
+  let content = buf.toString("utf8");
+  if (buf.length > MAX_FILE_BYTES) {
+    content = content.slice(0, MAX_FILE_BYTES);
+    truncated = true;
+  }
+  return {
+    path: posix,
+    content,
+    bytes: buf.length,
+    truncated,
+    languageHint: languageHint(posix),
+    readOnly: true,
+    contentHash: hashFileContent(buf.toString("utf8")),
+  };
+}

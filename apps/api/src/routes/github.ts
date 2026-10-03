@@ -33,8 +33,43 @@ import {
 import { atlasMetrics } from "./metrics.js";
 import { enforceEntityWrite } from "../services/risk-audit.js";
 
-const SUPPORTED_LOCALES = new Set(["he", "en", "ar"]);
+const SUPPORTED_LOCALES = new Set(["he", "en", "ar", "fr"]);
 const DEFAULT_LOCALE = "he";
+
+/**
+ * Short-lived copy of the signed install `state`, so the setup callback still
+ * knows the project when GitHub omits `state` (e.g. "Configure" on an
+ * installation that already exists). Same HMAC + 15-minute expiry as the query
+ * value; scoped to the GitHub routes only.
+ */
+const INSTALL_STATE_COOKIE = "atlas_gh_install";
+
+function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const [rawKey, ...rest] = part.trim().split("=");
+    if (rawKey === name) {
+      const value = rest.join("=");
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function installStateCookie(value: string, maxAgeSeconds: number, secure: boolean): string {
+  return [
+    `${INSTALL_STATE_COOKIE}=${encodeURIComponent(value)}`,
+    "Path=/api/v1/github",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAgeSeconds}`,
+    ...(secure ? ["Secure"] : []),
+  ].join("; ");
+}
 
 function safeLocale(locale: string | null | undefined): string {
   return locale && SUPPORTED_LOCALES.has(locale) ? locale : DEFAULT_LOCALE;
@@ -180,19 +215,32 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
       .object({
         projectId: uuidSchema.optional(),
         locale: z.string().min(1).max(8).optional(),
+        returnTo: z.enum(["studio"]).optional(),
       })
       .parse(request.query ?? {});
+
+    // Binding an installation to a project is a write on that project: only
+    // its owner may start it, so nobody can attach their repos to someone
+    // else's Studio.
+    if (query.projectId) {
+      await assertProjectWriteAccess(app, request, query.projectId);
+    }
 
     const state = signGitHubInstallState({
       secret: env.COOKIE_SECRET,
       projectId: query.projectId ?? null,
       locale: safeLocale(query.locale),
+      returnTo: query.returnTo ?? null,
     });
 
     const installUrl = buildGitHubAppSetupUrl(appSlug, state);
     app.atlasLogger.info("github_install_redirect", {
       projectId: query.projectId ?? null,
     });
+    reply.header(
+      "set-cookie",
+      installStateCookie(state, 900, env.NODE_ENV === "production"),
+    );
     return reply.redirect(installUrl);
   });
 
@@ -206,13 +254,23 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
       })
       .parse(request.query ?? {});
 
-    const decodedState = query.state
-      ? verifyGitHubInstallState({ state: query.state, secret: env.COOKIE_SECRET })
+    const rawState =
+      query.state ?? readCookie(request.headers.cookie, INSTALL_STATE_COOKIE) ?? undefined;
+    const decodedState = rawState
+      ? verifyGitHubInstallState({ state: rawState, secret: env.COOKIE_SECRET })
       : null;
     const locale = safeLocale(decodedState?.locale);
+    // One-shot: the state cookie is spent by this callback whatever the outcome.
+    reply.header("set-cookie", installStateCookie("", 0, env.NODE_ENV === "production"));
 
     const redirectTo = (params: Record<string, string>): string => {
-      const url = new URL(`${env.WEB_ORIGIN}/${locale}/integrations`);
+      const backToStudio = decodedState?.returnTo === "studio" && decodedState.projectId;
+      const url = new URL(
+        backToStudio
+          ? `${env.WEB_ORIGIN}/${locale}/studio`
+          : `${env.WEB_ORIGIN}/${locale}/integrations`,
+      );
+      if (backToStudio) url.searchParams.set("project", decodedState.projectId!);
       for (const [key, value] of Object.entries(params)) {
         url.searchParams.set(key, value);
       }
@@ -230,9 +288,9 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
       );
     }
 
-    if (!query.state || !decodedState) {
+    if (!rawState || !decodedState) {
       app.atlasLogger.warn("github_install_callback_invalid_state", {
-        hasState: Boolean(query.state),
+        hasState: Boolean(rawState),
       });
       return reply.redirect(redirectTo({ github_install: "error", reason: "invalid_state" }));
     }
@@ -265,6 +323,15 @@ export async function registerGithubRoutes(app: FastifyInstance): Promise<void> 
         installedAt: now,
         updatedAt: now,
       });
+      if (decodedState.projectId) {
+        const previous = osStore.getStudioGithubSource(decodedState.projectId);
+        osStore.setStudioGithubSource(decodedState.projectId, {
+          installationId: String(info.id),
+          repoFullName:
+            previous?.installationId === String(info.id) ? previous.repoFullName : null,
+          updatedAt: now,
+        });
+      }
 
       atlasMetrics.record("retrieval_hit_rate", 1, {
         kind: "github_install_callback",

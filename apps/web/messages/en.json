@@ -517,6 +517,19 @@
       "explorer": "Explorer",
       "search": "Search",
       "git": "Git"
+    },
+    "github": {
+      "sourceLabel": "Studio file source",
+      "readingFrom": "Files from GitHub:",
+      "chooseRepo": "Choose repository",
+      "readOnly": "Read-only",
+      "manageAccess": "Manage access",
+      "switchFailed": "Couldn't switch repository.",
+      "connect": "Connect GitHub",
+      "reconnect": "Reconnect GitHub",
+      "connectHint": "Studio will show this project's files on the web, read-only.",
+      "installError": "GitHub connection didn't finish ({reason}). Please try again.",
+      "installPending": "The request is waiting for the GitHub organization owner's approval."
     }
   },
   "contract": {

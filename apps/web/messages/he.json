@@ -572,6 +572,19 @@
       "explorer": "סייר קבצים",
       "search": "חיפוש",
       "git": "Git"
+    },
+    "github": {
+      "sourceLabel": "מקור הקבצים בסטודיו",
+      "readingFrom": "קבצים מ-GitHub:",
+      "chooseRepo": "בחירת מאגר",
+      "readOnly": "קריאה בלבד",
+      "manageAccess": "ניהול גישה",
+      "switchFailed": "לא הצלחנו להחליף מאגר.",
+      "connect": "התחברות ל-GitHub",
+      "reconnect": "חיבור מחדש ל-GitHub",
+      "connectHint": "כך הסטודיו יציג את קבצי הפרויקט גם באתר, לקריאה בלבד.",
+      "installError": "החיבור ל-GitHub לא הושלם ({reason}). נסו שוב.",
+      "installPending": "הבקשה נשלחה לאישור בעל הארגון ב-GitHub."
     }
   },
   "auth": {

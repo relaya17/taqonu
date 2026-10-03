@@ -45,6 +45,10 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { createStudioRunAbort } from "@/lib/studio-run-abort";
 import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
+import {
+  StudioGithubSourceBar,
+  type StudioGithubSource,
+} from "@/components/studio/StudioGithubSourceBar";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
 import { createAtlasTheme } from "@/styles/theme";
 import { ChatPanel } from "@/components/studio/ChatPanel";
@@ -123,6 +127,8 @@ interface TreeResponse {
   entryCount: number;
   readOnly: boolean;
   note: string;
+  /** Present when the tree is read from GitHub (no local folder linked). */
+  source?: StudioGithubSource;
 }
 
 interface FileResponse {
@@ -1168,13 +1174,22 @@ export default function StudioPage() {
       </Collapse>
 
       {projectId && !hasRoot && !projectsQuery.isLoading ? (
-        <Box sx={{ px: { xs: 1.5, md: 2 }, py: 1.5, borderBottom: panelBorder }}>
-          <LinkWorkspaceRoot
+        <Stack
+          spacing={1.25}
+          sx={{ px: { xs: 1.5, md: 2 }, py: 1.5, borderBottom: panelBorder }}
+        >
+          <StudioGithubSourceBar
             projectId={projectId}
-            currentRoot={selectedProject?.workspaceRoot}
-            compact
+            source={treeQuery.data?.source ?? null}
           />
-        </Box>
+          {treeQuery.data?.source ? null : (
+            <LinkWorkspaceRoot
+              projectId={projectId}
+              currentRoot={selectedProject?.workspaceRoot}
+              compact
+            />
+          )}
+        </Stack>
       ) : null}
 
       <Box

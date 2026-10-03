@@ -517,6 +517,19 @@
       "explorer": "مستكشف الملفات",
       "search": "بحث",
       "git": "Git"
+    },
+    "github": {
+      "sourceLabel": "مصدر ملفات الاستوديو",
+      "readingFrom": "ملفات من GitHub:",
+      "chooseRepo": "اختيار المستودع",
+      "readOnly": "للقراءة فقط",
+      "manageAccess": "إدارة الوصول",
+      "switchFailed": "تعذّر تبديل المستودع.",
+      "connect": "الاتصال بـ GitHub",
+      "reconnect": "إعادة الاتصال بـ GitHub",
+      "connectHint": "سيعرض الاستوديو ملفات المشروع على الويب للقراءة فقط.",
+      "installError": "لم يكتمل الاتصال بـ GitHub ({reason}). حاول مرة أخرى.",
+      "installPending": "الطلب بانتظار موافقة مالك المؤسسة على GitHub."
     }
   },
   "contract": {
