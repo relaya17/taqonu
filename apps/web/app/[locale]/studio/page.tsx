@@ -56,6 +56,11 @@ import { ProcessAuditPanel } from "@/components/studio/ProcessAuditPanel";
 import { HealthPanel } from "@/components/studio/HealthPanel";
 import { ReadinessPanel } from "@/components/studio/ReadinessPanel";
 import { TruthPanel } from "@/components/studio/TruthPanel";
+import { GatesView } from "@/components/views/GatesView";
+import { EvalView } from "@/components/views/EvalView";
+import { ArchitectureContractView } from "@/components/views/ArchitectureContractView";
+import { ConflictsView } from "@/components/views/ConflictsView";
+import { LegalMediaView } from "@/components/views/LegalMediaView";
 import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
 import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel";
 import { StudioCodeEditor } from "@/components/studio/StudioCodeEditor";
@@ -2396,6 +2401,11 @@ export default function StudioPage() {
             {checksTab === "truth" ? (
               <TruthPanel projectId={projectId} embedded />
             ) : null}
+            {checksTab === "gates" ? <GatesView /> : null}
+            {checksTab === "eval" ? <EvalView /> : null}
+            {checksTab === "contract" ? <ArchitectureContractView /> : null}
+            {checksTab === "conflicts" ? <ConflictsView /> : null}
+            {checksTab === "legal" ? <LegalMediaView /> : null}
           </Stack>
       ) : null}
       </Box>

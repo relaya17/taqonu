@@ -53,20 +53,16 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     await expectNoA11yViolations(page, testInfo);
   });
 
-  test("More nav group toggle exposes its expanded state", async ({ page }) => {
+  test("main navigation lists the four destinations, no More group", async ({ page }) => {
     await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
     const nav = page.getByRole("navigation", { name: /main navigation/i });
     await expect(nav).toBeVisible({ timeout: 45_000 });
-    const toggle = nav.getByRole("button", { name: /more/i });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(nav.getByRole("link", { name: "Systems" })).toHaveCount(0);
-    await toggle.focus();
-    await page.keyboard.press("Enter");
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(nav.getByRole("link", { name: "Systems" })).toBeVisible();
-    await expect(toggle).toBeFocused();
-    await page.keyboard.press("Space");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    for (const name of ["Studio", "Dashboard", "Agents", "Account"]) {
+      await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
+    }
+    // Projects/Systems live in Dashboard, Models/Experts in Agents: no
+    // separate entries and no collapsible "More" group.
+    await expect(nav.getByRole("button", { name: /more/i })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Systems" })).toHaveCount(0);
   });
 
@@ -175,8 +171,11 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
 
     const mobileDrawer = page.locator(".MuiDrawer-modal .MuiDrawer-paper");
     await expect(mobileDrawer).toBeVisible({ timeout: 15_000 });
+    // The trap is the whole modal: MUI's FocusTrap sentinels sit next to the
+    // paper and briefly hold focus while it wraps from first to last item.
+    const drawerModal = page.locator(".MuiDrawer-modal");
     const focusInsideDrawer = () =>
-      mobileDrawer.evaluate((el) => el.contains(document.activeElement));
+      drawerModal.evaluate((el) => el.contains(document.activeElement));
     await expect.poll(focusInsideDrawer, { message: "focus moves into the drawer" }).toBe(true);
 
     for (let i = 0; i < 30; i++) {

@@ -357,7 +357,12 @@
       "processAudit": "Process Audit",
       "health": "Health",
       "readiness": "Readiness",
-      "truth": "Truth"
+      "truth": "Truth",
+      "gates": "Quality gates",
+      "eval": "Eval",
+      "contract": "Architecture Contract",
+      "conflicts": "Conflicts",
+      "legal": "Counsel brief"
     },
     "run": {
       "help": "Allowlisted commandId only. A second identity must decide-and-execute. Output is evidence, not Truth.",
@@ -1978,5 +1983,10 @@
       "OMISSION": "Omission",
       "CONSTITUTION": "Constitution"
     }
+  },
+  "hub": {
+    "overview": "Overview",
+    "plan": "Plan & pricing",
+    "artifacts": "Expert assist & files"
   }
 }

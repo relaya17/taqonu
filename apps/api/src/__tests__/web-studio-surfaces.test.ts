@@ -64,13 +64,10 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(appShell).toContain("NAV_GROUPS");
     expect(appShell).not.toMatch(/items:\s*\[/);
     expect(webNav).toMatch(
-      /PRIMARY_NAV_KEYS = \[\s*"studio",\s*"projects",\s*"dashboard",\s*"agents",\s*"settings",\s*\]/,
+      /PRIMARY_NAV_KEYS = \[\s*"studio",\s*"dashboard",\s*"agents",\s*"settings",\s*\]/,
     );
-    expect(webNav).toMatch(
-      /ADVANCED_NAV_KEYS = \[\s*"systems",\s*"plan",\s*"experts",\s*"models",\s*"integrations",\s*"partners",\s*"legalMedia",\s*\]/,
-    );
+    expect(webNav).toMatch(/ADVANCED_NAV_KEYS = \[\] as const/);
     expect(webNav).toMatch(/\{ id: "main", items: PRIMARY_NAV_KEYS \}/);
-    expect(webNav).toMatch(/collapsedByDefault: true,\s*items: ADVANCED_NAV_KEYS/);
     expect(webNav).toContain('query: { tab: "checks", check }');
     const login = readWeb("app/[locale]/auth/login/page.tsx");
     const register = readWeb("app/[locale]/auth/register/page.tsx");
@@ -85,7 +82,7 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(callback).toContain("allowlistedAuditNext");
     expect(appShell).toContain("keepMounted: false");
     expect(appShell).not.toContain("keepMounted: true");
-    const dashboard = readWeb("app/[locale]/page.tsx");
+    const dashboard = readWeb("components/views/DashboardView.tsx");
     expect(dashboard).toContain("studioProjectHref(projectId)");
     expect(dashboard).toContain('studioCheckHref("readiness", projectId)');
     expect(dashboard).toContain('studioCheckHref("health", projectId)');
@@ -97,7 +94,7 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(dashboard).not.toContain('href="/qa"');
     expect(dashboard).not.toContain('href="/process-audit"');
     expect(dashboard).toContain("dashboard.workingHome");
-    const projectsPage = readWeb("app/[locale]/projects/page.tsx");
+    const projectsPage = readWeb("components/views/ProjectsView.tsx");
     expect(projectsPage).toContain("studioProjectHref(project.id)");
     // workbenchProjectHref removed from Projects page at Stage 6 (§7.12); studioProjectHref is the current contract
     expect(projectsPage).toContain('studioCheckHref("processAudit", project.id)');
@@ -139,6 +136,47 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(studio).not.toContain("monaco");
     expect(studio).toContain("buildStudioSearch");
     expect(studio).toContain("enabled: Boolean(projectId)");
+  });
+
+  it("keeps consolidated destinations reachable as hub views and Studio Checks", () => {
+    const hubs: Array<[string, string, string[]]> = [
+      ["app/[locale]/page.tsx", "dashboard", ["DashboardView", "ProjectsView", "SystemsView"]],
+      ["app/[locale]/agents/page.tsx", "agents", ["AgentsView", "ExpertsView", "ModelsView", "ArtifactsView"]],
+      ["app/[locale]/settings/page.tsx", "settings", ["SettingsView", "PlanView", "IntegrationsView", "PartnersView"]],
+    ];
+    for (const [rel, , views] of hubs) {
+      const src = readWeb(rel);
+      expect(src).toContain("<ViewHub");
+      for (const view of views) expect(src).toContain(`<${view} />`);
+    }
+    const hubRedirects: Array<[string, string, string]> = [
+      ["projects", "/", "projects"],
+      ["systems", "/", "systems"],
+      ["experts", "/agents", "experts"],
+      ["models", "/agents", "models"],
+      ["artifacts", "/agents", "artifacts"],
+      ["integrations", "/settings", "integrations"],
+      ["partners", "/settings", "partners"],
+    ];
+    for (const [route, to, view] of hubRedirects) {
+      const src = readWeb(`app/[locale]/${route}/page.tsx`);
+      expect(src).toContain(`<HubRedirect to="${to}" view="${view}" />`);
+    }
+    // Public pricing stays a real page for signed-out visitors.
+    expect(readWeb("app/[locale]/plan/page.tsx")).toContain("<PlanView />");
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    const checkRedirects: Array<[string, string, string]> = [
+      ["legal-media", "legal", "LegalMediaView"],
+      ["gates", "gates", "GatesView"],
+      ["eval", "eval", "EvalView"],
+      ["contract", "contract", "ArchitectureContractView"],
+      ["conflicts", "conflicts", "ConflictsView"],
+    ];
+    for (const [route, check, view] of checkRedirects) {
+      const src = readWeb(`app/[locale]/${route}/page.tsx`);
+      expect(src).toContain(`<StudioSurfaceRedirect tab="checks" check="${check}" />`);
+      expect(studio).toContain(`checksTab === "${check}" ? <${view} />`);
+    }
   });
 
   it("keeps standalone route files that redirect into Studio Checks", () => {
@@ -188,20 +226,20 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(health).not.toContain('slug === "brokeros"');
     expect(readiness).not.toContain('slug === "brokeros"');
     expect(truth).not.toContain("items[0]");
-    const contract = readWeb("app/[locale]/contract/page.tsx");
+    const contract = readWeb("components/views/ArchitectureContractView.tsx");
     expect(contract).not.toContain("items[0]");
     expect(contract).toContain("contract.invalidEdge");
     const billing = readWeb("app/[locale]/settings/billing/page.tsx");
     expect(billing).not.toContain('apiPost("/api/v1/billing/plan"');
-    const planPage = readWeb("app/[locale]/plan/page.tsx");
+    const planPage = readWeb("components/views/PlanView.tsx");
     expect(planPage).not.toContain('setPlan.mutateAsync("pro")');
-    const models = readWeb("app/[locale]/models/page.tsx");
+    const models = readWeb("components/views/ModelsView.tsx");
     expect(models).toContain("disabled={!provider.available}");
-    const evalPage = readWeb("app/[locale]/eval/page.tsx");
+    const evalPage = readWeb("components/views/EvalView.tsx");
     expect(evalPage).toContain("item.suiteId === suiteId");
     expect(evalPage).not.toContain("items?.[0]");
     const patches = readWeb("components/dashboard/PatchesPanel.tsx");
-    const dashboardPage = readWeb("app/[locale]/page.tsx");
+    const dashboardPage = readWeb("components/views/DashboardView.tsx");
     expect(patches).toContain("useProjectQueryParam");
     expect(patches).toContain("patches?projectId=");
     expect(patches).toContain('queryKey: ["patches", projectId]');
@@ -213,7 +251,7 @@ describe("D3 Web/Studio navigation and Checks consolidation", () => {
     expect(dashboardPage).toContain(
       "(projects.data?.items?.length ?? 0) === 0",
     );
-    const artifacts = readWeb("app/[locale]/artifacts/page.tsx");
+    const artifacts = readWeb("components/views/ArtifactsView.tsx");
     expect(artifacts).toContain("item.projectId === projectId");
     expect(artifacts).toContain("artifacts?projectId=");
     expect(artifacts).toContain('queryKey: ["artifacts", projectId]');

@@ -13,7 +13,6 @@ describe("Stage 6 primary navigation", () => {
   it("keeps D9 destinations and does not list Studio checks", () => {
     expect(PRIMARY_NAV_KEYS).toEqual([
       "studio",
-      "projects",
       "dashboard",
       "agents",
       "settings",
@@ -32,19 +31,10 @@ describe("Stage 6 primary navigation", () => {
     );
   });
 
-  it("collapses advanced destinations and keeps them reachable", () => {
-    const advanced = NAV_GROUPS.find((group) => group.id === "advanced");
-    expect(advanced?.collapsedByDefault).toBe(true);
-    expect(advanced?.items).toEqual(ADVANCED_NAV_KEYS);
-    expect(ADVANCED_NAV_KEYS).toEqual([
-      "systems",
-      "plan",
-      "experts",
-      "models",
-      "integrations",
-      "partners",
-      "legalMedia",
-    ]);
+  it("has four primary destinations and no separate advanced group", () => {
+    expect(NAV_GROUPS.map((group) => group.id)).toEqual(["main"]);
+    expect(ADVANCED_NAV_KEYS).toEqual([]);
+    expect(renderedNavKeys()).toEqual(["studio", "dashboard", "agents", "settings"]);
   });
 
   it("selects Studio while a check tab is open", () => {

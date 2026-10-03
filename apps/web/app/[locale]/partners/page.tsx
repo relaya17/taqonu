@@ -1,8 +1,8 @@
 "use client";
 
-import { PartnerAuditIntake } from "@/components/partners/PartnerAuditIntake";
+import { HubRedirect } from "@/components/layout/HubRedirect";
 
-/** Deep-link alias — primary UX is under Experts. */
+/** Moved into a view of `/settings`; this route keeps old links working. */
 export default function PartnersPage() {
-  return <PartnerAuditIntake />;
+  return <HubRedirect to="/settings" view="partners" />;
 }

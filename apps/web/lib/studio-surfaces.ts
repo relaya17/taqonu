@@ -10,6 +10,11 @@ export const STUDIO_CHECK_IDS = [
   "health",
   "readiness",
   "truth",
+  "gates",
+  "eval",
+  "contract",
+  "conflicts",
+  "legal",
 ] as const;
 export type StudioCheckId = (typeof STUDIO_CHECK_IDS)[number];
 

@@ -7,22 +7,19 @@ import { WEB_NAV_PATHS, type StudioCheckId } from "./studio-surfaces";
  */
 export const PRIMARY_NAV_KEYS = [
   "studio",
-  "projects",
   "dashboard",
   "agents",
   "settings",
 ] as const;
 
-/** Discoverable, not primary. Collapsed until the current route is inside the group. */
-export const ADVANCED_NAV_KEYS = [
-  "systems",
-  "plan",
-  "experts",
-  "models",
-  "integrations",
-  "partners",
-  "legalMedia",
-] as const;
+/**
+ * Former standalone destinations, now views inside the four primary ones
+ * (no separate sidebar entries): Projects and Systems are Dashboard views;
+ * Experts, Models and Artifacts are Agents views; Plan, Integrations and
+ * Partners are Account views; Legal-media, Gates, Eval, Contract and
+ * Conflicts are Studio Checks. Their old routes redirect there.
+ */
+export const ADVANCED_NAV_KEYS = [] as const;
 
 export type WebNavKey = keyof typeof WEB_NAV_PATHS;
 
@@ -33,12 +30,6 @@ export const NAV_GROUPS: readonly {
   readonly items: readonly WebNavKey[];
 }[] = [
   { id: "main", items: PRIMARY_NAV_KEYS },
-  {
-    id: "advanced",
-    labelKey: "advancedGroup",
-    collapsedByDefault: true,
-    items: ADVANCED_NAV_KEYS,
-  },
 ];
 
 /**

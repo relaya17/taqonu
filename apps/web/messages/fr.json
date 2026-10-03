@@ -357,7 +357,12 @@
       "processAudit": "Audit de processus",
       "health": "Santé",
       "readiness": "Préparation",
-      "truth": "Vérité"
+      "truth": "Vérité",
+      "gates": "Contrôles qualité",
+      "eval": "Évaluation",
+      "contract": "Contrat d’architecture",
+      "conflicts": "Conflits",
+      "legal": "Note juridique"
     },
     "run": {
       "help": "Uniquement des commandId autorisés. Une seconde identité doit décider et exécuter. La sortie est une preuve, pas la Vérité.",
@@ -1978,5 +1983,10 @@
       "OMISSION": "Omission",
       "CONSTITUTION": "Constitution"
     }
+  },
+  "hub": {
+    "overview": "Vue d’ensemble",
+    "plan": "Offre et tarifs",
+    "artifacts": "Assistance experte et fichiers"
   }
 }
