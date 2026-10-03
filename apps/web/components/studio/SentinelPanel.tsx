@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Alert, Box, Button, Chip, Stack, Typography } from "@mui/material";
+import { useRef, useState } from "react";
+import { Alert, Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet, apiPost } from "@/lib/api";
@@ -62,8 +62,50 @@ export function SentinelPanel({
   embedded?: boolean;
 }) {
   const t = useTranslations("sentinel");
+  const tx = useTranslations("sentinelExtras");
   const queryClient = useQueryClient();
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [sarifFileName, setSarifFileName] = useState<string | null>(null);
+  const [sarifDoc, setSarifDoc] = useState<Record<string, unknown> | null>(null);
+  const [sarifParseError, setSarifParseError] = useState<string | null>(null);
+  const [toolHint, setToolHint] = useState("");
+
+  const uploadSarif = useMutation({
+    mutationFn: () =>
+      apiPost<{
+        findingCount: number;
+        evidenceIds: string[];
+        note: string;
+        epistemicState?: string;
+      }>("/api/v1/security/sarif", {
+        projectId,
+        sarif: sarifDoc,
+        ...(toolHint.trim() ? { toolHint: toolHint.trim() } : {}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sentinel", projectId] });
+    },
+  });
+
+  async function onSarifFile(file: File | undefined) {
+    uploadSarif.reset();
+    setSarifDoc(null);
+    setSarifParseError(null);
+    setSarifFileName(file?.name ?? null);
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed: unknown = JSON.parse(text);
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setSarifParseError(tx("notObject"));
+        return;
+      }
+      setSarifDoc(parsed as Record<string, unknown>);
+    } catch {
+      setSarifParseError(tx("invalidJson"));
+    }
+  }
 
   const state = useQuery({
     queryKey: ["sentinel", projectId],
@@ -133,6 +175,76 @@ export function SentinelPanel({
           {scan.isPending ? t("running") : t("run")}
         </Button>
       </Stack>
+
+      <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 2 }}>
+        <Typography variant="h6" component="h2" gutterBottom>
+          {tx("title")}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {tx("help")}
+        </Typography>
+        <input
+          ref={fileInputRef}
+          id="sentinel-sarif-file"
+          type="file"
+          accept=".sarif,.json,application/json,application/sarif+json"
+          hidden
+          onChange={(e) => {
+            void onSarifFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1.5 }} alignItems={{ sm: "center" }}>
+          <Button
+            variant="outlined"
+            disabled={!projectId}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {tx("choose")}
+          </Button>
+          <Typography variant="body2" color="text.secondary" aria-live="polite">
+            {sarifFileName ?? tx("noFile")}
+          </Typography>
+        </Stack>
+        <TextField
+          size="small"
+          label={tx("toolHint")}
+          helperText={tx("toolHintHelp")}
+          value={toolHint}
+          onChange={(e) => setToolHint(e.target.value)}
+          inputProps={{ maxLength: 80 }}
+          sx={{ mt: 1.5, maxWidth: 360 }}
+          fullWidth
+        />
+        <Box sx={{ mt: 1.5 }}>
+          <Button
+            variant="contained"
+            disabled={!projectId || !sarifDoc || uploadSarif.isPending}
+            onClick={() => uploadSarif.mutate()}
+          >
+            {uploadSarif.isPending ? tx("uploading") : tx("upload")}
+          </Button>
+        </Box>
+        {sarifParseError ? (
+          <Alert severity="error" sx={{ mt: 1.5 }}>
+            {sarifParseError}
+          </Alert>
+        ) : null}
+        {uploadSarif.isError ? (
+          <Alert severity="error" sx={{ mt: 1.5 }}>
+            {uploadSarif.error instanceof Error ? uploadSarif.error.message : t("error")}
+          </Alert>
+        ) : null}
+        {uploadSarif.data ? (
+          <Alert severity={uploadSarif.data.findingCount > 0 ? "success" : "info"} sx={{ mt: 1.5 }}>
+            {uploadSarif.data.findingCount > 0
+              ? tx("uploaded", { count: uploadSarif.data.findingCount })
+              : tx("noFindings")}
+            {" — "}
+            {uploadSarif.data.note}
+          </Alert>
+        ) : null}
+      </Box>
 
       {scan.isError ? (
         <Alert severity="error">

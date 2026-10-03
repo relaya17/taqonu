@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePathname, useRouter } from "@/i18n/routing";
 import { useProjectQueryParam } from "@/lib/use-project-query";
@@ -23,6 +23,8 @@ import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
 import { OnboardingPath } from "@/components/onboarding/OnboardingPath";
 import { PersonalDesk } from "@/components/dashboard/PersonalDesk";
 import { RecurrenceNotice } from "@/components/dashboard/RecurrenceNotice";
+import { ResumeCard } from "@/components/dashboard/ResumeCard";
+import { MemorySummary } from "@/components/dashboard/MemorySummary";
 import { ResponsiveActions } from "@/components/layout/ResponsiveActions";
 import { Suspense } from "react";
 
@@ -31,6 +33,24 @@ interface ProjectItem {
   name: string;
   slug: string;
   workspaceRoot?: string | null;
+  updatedAt?: string;
+}
+
+const LAST_STUDIO_PROJECT_KEY = "atlas.studio.lastProject";
+
+function readLastStudioProject(): string | null {
+  try {
+    const raw = window.localStorage.getItem(LAST_STUDIO_PROJECT_KEY);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('"')) {
+      const parsed: unknown = JSON.parse(trimmed);
+      return typeof parsed === "string" ? parsed : null;
+    }
+    return trimmed;
+  } catch {
+    return null;
+  }
 }
 
 interface BlockerItem {
@@ -116,6 +136,23 @@ export function DashboardView() {
   });
 
   const projectId = selectedId;
+
+  const [lastStudioProject, setLastStudioProject] = useState<string | null>(null);
+  useEffect(() => {
+    setLastStudioProject(readLastStudioProject());
+  }, []);
+
+  const resumeProjectId = useMemo(() => {
+    const items = projects.data?.items ?? [];
+    if (items.length === 0) return "";
+    if (lastStudioProject && items.some((p) => p.id === lastStudioProject)) {
+      return lastStudioProject;
+    }
+    const sorted = [...items].sort((a, b) =>
+      (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),
+    );
+    return sorted[0]?.id ?? "";
+  }, [projects.data, lastStudioProject]);
 
   const verdict = useQuery({
     queryKey: ["verdict", projectId, golden.data?.workspaceRoot, locale],
@@ -320,6 +357,8 @@ export function DashboardView() {
           <EpistemicChip state="INFERRED" />
         </Box>
       </Box>
+
+      {resumeProjectId ? <ResumeCard projectId={resumeProjectId} /> : null}
 
       <Box>
         <Typography fontWeight={700}>{t("dashboard.opsTitle")}</Typography>
@@ -646,6 +685,8 @@ export function DashboardView() {
       <Typography variant="body2" color="text.secondary">
         {t("dashboard.workersNote")}
       </Typography>
+
+      <MemorySummary />
 
       <Suspense fallback={null}>
         <PersonalDesk />

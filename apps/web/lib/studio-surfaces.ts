@@ -15,6 +15,8 @@ export const STUDIO_CHECK_IDS = [
   "contract",
   "conflicts",
   "legal",
+  "constitution",
+  "benchmarks",
 ] as const;
 export type StudioCheckId = (typeof STUDIO_CHECK_IDS)[number];
 

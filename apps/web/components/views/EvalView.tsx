@@ -13,7 +13,50 @@ import {
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, resolveApiUrl } from "@/lib/api";
+
+interface CiGateCheck {
+  id: string;
+  passed: boolean;
+  blocking: boolean;
+  note: string;
+}
+
+interface CiGateResult {
+  gate: string;
+  passed: boolean;
+  exitCode: number;
+  checks: CiGateCheck[];
+  epistemicState: string;
+  note: string;
+  blockingFailed: string[];
+}
+
+/**
+ * GET /api/v1/eval/ci-gate answers 200 (green) or 422 (red) with the same
+ * body, so read both instead of treating 422 as an error.
+ */
+async function fetchCiGate(): Promise<CiGateResult> {
+  const response = await fetch(`${resolveApiUrl()}/api/v1/eval/ci-gate`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  let json: unknown = null;
+  try {
+    json = await response.json();
+  } catch {
+    /* ignore */
+  }
+  if ((response.ok || response.status === 422) && json && typeof json === "object" && "checks" in json) {
+    return json as CiGateResult;
+  }
+  const err = json as { error?: { message?: string } | string; message?: string } | null;
+  const message =
+    (typeof err?.error === "object" ? err.error?.message : err?.error) ??
+    err?.message ??
+    `API /api/v1/eval/ci-gate failed with ${response.status}`;
+  throw new Error(message);
+}
 
 interface EvalSuite {
   id: string;
@@ -42,7 +85,15 @@ const SELF_SUITE = "22222222-2222-4222-8222-222222222222";
 
 export function EvalView() {
   const t = useTranslations("eval");
+  const tx = useTranslations("evalExtras");
   const queryClient = useQueryClient();
+
+  const ciGate = useQuery({
+    queryKey: ["eval-ci-gate"],
+    queryFn: fetchCiGate,
+    retry: false,
+    staleTime: 30_000,
+  });
   const [suiteId, setSuiteId] = useState(WRITE_SUITE);
 
   const suites = useQuery({
@@ -62,6 +113,7 @@ export function EvalView() {
       await queryClient.invalidateQueries({ queryKey: ["eval-runs"] });
       await queryClient.invalidateQueries({ queryKey: ["gates"] });
       await queryClient.invalidateQueries({ queryKey: ["billing-plan"] });
+      await queryClient.invalidateQueries({ queryKey: ["eval-ci-gate"] });
     },
   });
 
@@ -77,6 +129,69 @@ export function EvalView() {
         <Typography color="text.secondary" sx={{ mt: 1 }}>
           {t("subtitle")}
         </Typography>
+      </Box>
+
+      <Box
+        component="section"
+        aria-labelledby="eval-ci-gate-title"
+        sx={{ py: 2, borderTop: "1px solid rgba(26,31,42,0.12)", borderBottom: "1px solid rgba(26,31,42,0.12)" }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography id="eval-ci-gate-title" variant="h2" sx={{ fontSize: "1.15rem", fontWeight: 700 }}>
+            {tx("ciGateTitle")}
+          </Typography>
+          {ciGate.data ? (
+            <Chip
+              size="small"
+              color={ciGate.data.passed ? "success" : "error"}
+              label={ciGate.data.passed ? tx("green") : tx("red")}
+            />
+          ) : null}
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => void ciGate.refetch()}
+            disabled={ciGate.isFetching}
+          >
+            {ciGate.isFetching ? tx("checking") : tx("recheck")}
+          </Button>
+        </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          {tx("ciGateHelp")}
+        </Typography>
+        {ciGate.isError ? (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            {(ciGate.error as Error).message}
+          </Alert>
+        ) : ciGate.data ? (
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2">{ciGate.data.note}</Typography>
+            <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0, mt: 1 }}>
+              {ciGate.data.checks.map((c) => (
+                <Box component="li" key={c.id}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Chip
+                      size="small"
+                      color={c.passed ? "success" : c.blocking ? "error" : "warning"}
+                      label={c.passed ? tx("checkPassed") : tx("checkFailed")}
+                    />
+                    <Typography variant="body2" fontWeight={600}>
+                      {c.id}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={c.blocking ? tx("blocking") : tx("advisory")}
+                    />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    {c.note}
+                  </Typography>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        ) : null}
       </Box>
 
       <TextField

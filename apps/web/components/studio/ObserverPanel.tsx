@@ -41,8 +41,21 @@ export function ObserverPanel({
   embedded?: boolean;
 }) {
   const t = useTranslations("observer");
+  const tx = useTranslations("observerExtras");
   const queryClient = useQueryClient();
   const [bugTitle, setBugTitle] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const snapshots = useQuery({
+    queryKey: ["observer-snapshots", projectId],
+    enabled: Boolean(projectId) && historyOpen,
+    queryFn: () =>
+      apiGet<{
+        items: { file: string; capturedAt: string; apiCount: number; fileCount: number }[];
+        total: number;
+        error: string | null;
+      }>(`/api/v1/projects/${encodeURIComponent(projectId)}/observer/snapshots`),
+  });
 
   const state = useQuery({
     queryKey: ["observer-state", projectId],
@@ -60,6 +73,7 @@ export function ObserverPanel({
       apiPost<ObserveResult>(`/api/v1/projects/${projectId}/observe-cycle`, {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["observer-state", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["observer-snapshots", projectId] });
     },
   });
 
@@ -146,6 +160,67 @@ export function ObserverPanel({
           </Stack>
         </Stack>
       ) : null}
+
+      <Box>
+        <Button
+          variant="text"
+          disabled={!projectId}
+          onClick={() => setHistoryOpen((v) => !v)}
+          aria-expanded={historyOpen}
+          aria-controls="observer-history"
+        >
+          {historyOpen ? tx("hideHistory") : tx("showHistory")}
+        </Button>
+        {historyOpen ? (
+          <Box id="observer-history" sx={{ mt: 1 }}>
+            <Typography variant="h6" component="h2" gutterBottom>
+              {tx("historyTitle")}
+            </Typography>
+            {snapshots.isError ? (
+              <Alert severity="error">
+                {snapshots.error instanceof Error ? snapshots.error.message : t("error")}
+              </Alert>
+            ) : snapshots.isPending ? (
+              <Typography variant="body2" color="text.secondary">
+                {tx("loading")}
+              </Typography>
+            ) : (
+              <>
+                {snapshots.data.error ? (
+                  <Alert severity="warning" sx={{ mb: 1 }}>
+                    {snapshots.data.error}
+                  </Alert>
+                ) : null}
+                {snapshots.data.items.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {tx("empty")}
+                  </Typography>
+                ) : (
+                  <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", m: 0, p: 0 }}>
+                    {snapshots.data.items.map((snap) => (
+                      <Box
+                        component="li"
+                        key={snap.file}
+                        sx={{ borderBottom: "1px solid", borderColor: "divider", pb: 0.5 }}
+                      >
+                        <Typography variant="body2" fontWeight={600}>
+                          {snap.capturedAt}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {tx("snapshotCounts", {
+                            apis: snap.apiCount,
+                            files: snap.fileCount,
+                          })}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </>
+            )}
+          </Box>
+        ) : null}
+      </Box>
 
       <Box>
         <Typography variant="h6" component="h2" gutterBottom>

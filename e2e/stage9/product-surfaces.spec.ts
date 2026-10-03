@@ -140,6 +140,40 @@ test.describe("Signed-in product surfaces (EN)", () => {
   });
 });
 
+test.describe("Signed-in surfaces for every user-facing capability (EN)", () => {
+  test.setTimeout(120_000);
+
+  for (const [path, heading] of [
+    ["/en?view=activity", /activity/i],
+    ["/en?view=insights", /insights/i],
+    ["/en/agents?view=knowledge", /knowledge/i],
+    ["/en/agents?view=intelligence", /intelligence/i],
+  ] as const) {
+    test(`${path} renders its view without axe violations`, async ({ page }, testInfo) => {
+      await page.goto(path);
+      await expectPageHeading(page, heading);
+      await expectNoA11yViolations(page, testInfo);
+    });
+  }
+
+  test("legacy /activity and /knowledge land on the new views", async ({ page }) => {
+    await page.goto("/en/activity");
+    await expect(page).toHaveURL(/\/en\?view=activity/, { timeout: 30_000 });
+    await page.goto("/en/knowledge");
+    await expect(page).toHaveURL(/\/en\/agents\?view=knowledge/, { timeout: 30_000 });
+  });
+
+  test("Studio Checks include constitution and benchmarks", async ({ page }, testInfo) => {
+    await page.goto("/en/studio?tab=checks&check=constitution");
+    await expectPageHeading(page);
+    await expect(page.getByRole("tab", { name: "Constitution" })).toBeVisible({ timeout: 20_000 });
+    await expectNoA11yViolations(page, testInfo);
+    await page.goto("/en/studio?tab=checks&check=benchmarks");
+    await expect(page.getByRole("tab", { name: "Benchmarks & proof" })).toBeVisible({ timeout: 20_000 });
+    await expectNoA11yViolations(page, testInfo);
+  });
+});
+
 test.describe("Signed-in legacy orphan redirects (EN)", () => {
   test.setTimeout(120_000);
 

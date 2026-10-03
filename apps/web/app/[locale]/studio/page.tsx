@@ -81,6 +81,11 @@ import { EvalView } from "@/components/views/EvalView";
 import { ArchitectureContractView } from "@/components/views/ArchitectureContractView";
 import { ConflictsView } from "@/components/views/ConflictsView";
 import { LegalMediaView } from "@/components/views/LegalMediaView";
+import { ConstitutionPanel } from "@/components/studio/ConstitutionPanel";
+import { BenchmarksPanel } from "@/components/studio/BenchmarksPanel";
+import { EngineeringRunsPanel } from "@/components/studio/EngineeringRunsPanel";
+import { DeployFeedsPanel } from "@/components/studio/DeployFeedsPanel";
+import { ReplaceAllDialog } from "@/components/studio/ReplaceAllDialog";
 import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
 import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel";
 import { StudioCodeEditor } from "@/components/studio/StudioCodeEditor";
@@ -626,6 +631,32 @@ export default function StudioPage() {
   );
 
   const selectedProject = projects.find((p) => p.id === projectId) ?? null;
+
+  // Like VS Code reopening the last folder: remember the project, and open it
+  // again when Studio is entered without one in the URL.
+  const restoredProjectRef = useRef(false);
+  useEffect(() => {
+    if (restoredProjectRef.current || projectFromUrl || projectId) return;
+    if (!projectsQuery.isSuccess) return;
+    restoredProjectRef.current = true;
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem("atlas.studio.lastProject");
+    } catch {
+      saved = null;
+    }
+    if (!saved || !projects.some((p) => p.id === saved)) return;
+    setProjectId(saved);
+    router.replace(`${pathname}${buildStudioSearch({ tab, check: checksTab, projectId: saved })}`);
+  }, [projectsQuery.isSuccess, projects, projectFromUrl, projectId, router, pathname, tab, checksTab]);
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      window.localStorage.setItem("atlas.studio.lastProject", projectId);
+    } catch {
+      // Storage unavailable: Studio just won't reopen the project next time.
+    }
+  }, [projectId]);
   const hasRoot = Boolean(selectedProject?.workspaceRoot);
 
   const treeQuery = useQuery({
@@ -1028,6 +1059,7 @@ export default function StudioPage() {
   >(null);
   const [dialogText, setDialogText] = useState("");
   const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
+  const [replaceAllOpen, setReplaceAllOpen] = useState(false);
   const shell = useShellChrome();
 
   const openSidePanel = (next: typeof sidePanel) => {
@@ -1179,6 +1211,7 @@ export default function StudioPage() {
     rename: () => {},
     activity: (_: "explorer" | "search" | "git") => {},
     problems: () => {},
+    replaceAll: () => {},
   });
   shortcutRef.current = {
     canSave:
@@ -1202,6 +1235,7 @@ export default function StudioPage() {
     rename: () => selectedPath && hasRoot && openDialog("rename", selectedPath),
     activity: showActivity,
     problems: () => openBottomPanel("problems"),
+    replaceAll: () => hasRoot && setReplaceAllOpen(true),
   };
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -1259,6 +1293,9 @@ export default function StudioPage() {
       } else if (key === "g" && inStudio) {
         event.preventDefault();
         sc.goToLine();
+      } else if (key === "h" && event.shiftKey) {
+        event.preventDefault();
+        sc.replaceAll();
       } else if ((key === "f" || key === "h") && inStudio) {
         event.preventDefault();
         sc.find();
@@ -1410,6 +1447,7 @@ export default function StudioPage() {
         { id: "find", label: t("menu.find"), shortcut: "Ctrl+F", dividerBefore: true, disabled: !selectedPath, onSelect: openFind },
         { id: "replace", label: t("menu.replace"), shortcut: "Ctrl+H", disabled: !selectedPath || Boolean(fileQuery.data?.readOnly), onSelect: openFind },
         { id: "searchAll", label: t("menu.searchAll"), shortcut: "Ctrl+Shift+F", dividerBefore: true, disabled: !hasRoot, onSelect: () => showActivity("search") },
+        { id: "replaceAll", label: t("menu.replaceAll"), shortcut: "Ctrl+Shift+H", disabled: !hasRoot, onSelect: () => setReplaceAllOpen(true) },
         { id: "goToLine", label: t("menu.goToLine"), shortcut: "Ctrl+G", dividerBefore: true, disabled: !selectedPath, onSelect: () => openDialog("goToLine") },
         { id: "goToSymbol", label: t("menu.goToSymbol"), shortcut: "Ctrl+Shift+O", disabled: !selectedPath, onSelect: () => openDialog("goToSymbol") },
       ],
@@ -1492,10 +1530,14 @@ export default function StudioPage() {
         { id: "overview", label: tHub("overview"), href: WEB_NAV_PATHS.dashboard },
         { id: "projects", label: tNav("projects"), href: "/?view=projects" },
         { id: "systems", label: tNav("systems"), href: "/?view=systems" },
+        { id: "insights", label: tHub("insights"), href: "/?view=insights" },
+        { id: "activity", label: tHub("activity"), href: "/?view=activity" },
         { id: "agents", label: tNav("agents"), dividerBefore: true, href: "/agents" },
         { id: "experts", label: tNav("experts"), href: "/agents?view=experts" },
         { id: "models", label: tNav("models"), href: "/agents?view=models" },
         { id: "artifacts", label: tHub("artifacts"), href: "/agents?view=artifacts" },
+        { id: "knowledge", label: tHub("knowledge"), href: "/agents?view=knowledge" },
+        { id: "intelligence", label: tHub("intelligence"), href: "/agents?view=intelligence" },
         { id: "account", label: tNav("settings"), dividerBefore: true, href: "/settings" },
         { id: "plan", label: tHub("plan"), href: "/settings?view=plan" },
         { id: "integrations", label: tNav("integrations"), href: "/settings?view=integrations" },
@@ -1705,12 +1747,22 @@ export default function StudioPage() {
                 >
                   {workspaceTab === "run" ? (
                     <Box sx={{ p: { xs: 1.5, md: 2 } }}>
-                      {projectId ? <StudioRunPanel projectId={projectId} /> : pickProjectState}
+                      {projectId ? (
+                        <Stack spacing={3}>
+                          <StudioRunPanel projectId={projectId} />
+                          <EngineeringRunsPanel projectId={projectId} embedded />
+                        </Stack>
+                      ) : (
+                        pickProjectState
+                      )}
                     </Box>
                   ) : null}
                   {workspaceTab === "cloud" ? (
                     <Box sx={{ p: { xs: 1.5, md: 2 } }}>
-                      <CloudToolsPanel embedded />
+                      <Stack spacing={3}>
+                        <CloudToolsPanel embedded />
+                        {projectId ? <DeployFeedsPanel projectId={projectId} embedded /> : null}
+                      </Stack>
                     </Box>
                   ) : null}
                   {workspaceTab === "checks" ? (
@@ -1774,6 +1826,12 @@ export default function StudioPage() {
             {checksTab === "contract" ? <ArchitectureContractView /> : null}
             {checksTab === "conflicts" ? <ConflictsView /> : null}
             {checksTab === "legal" ? <LegalMediaView /> : null}
+            {checksTab === "constitution" ? (
+              <ConstitutionPanel projectId={projectId} embedded />
+            ) : null}
+            {checksTab === "benchmarks" ? (
+              <BenchmarksPanel projectId={projectId} embedded />
+            ) : null}
           </Stack>
 
                   ) : null}
@@ -2790,6 +2848,17 @@ export default function StudioPage() {
         </Box>
       </Box>
 
+      {projectId && hasRoot ? (
+        <ReplaceAllDialog
+          projectId={projectId}
+          open={replaceAllOpen}
+          onClose={() => setReplaceAllOpen(false)}
+          onApplied={() => {
+            void treeQuery.refetch();
+            void fileQuery.refetch();
+          }}
+        />
+      ) : null}
       <Dialog
         open={dialog !== null}
         onClose={() => setDialog(null)}

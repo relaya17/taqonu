@@ -56,10 +56,14 @@ describe("French messages", () => {
       onError: (error) => errors.push(error.message),
     });
     for (const [key, value] of frLeaves) {
-      const values = Object.fromEntries(
+      const values: Record<string, string | number> = Object.fromEntries(
         placeholders(value).map((p) => [p.slice(1, -1), "x"]),
       );
-      (t as unknown as (k: string, v: Record<string, string>) => string)(key, values);
+      // ICU plural/number arguments ({count, plural, …}) need a number.
+      for (const match of value.matchAll(/\{([a-zA-Z0-9_]+),\s*(?:plural|selectordinal|number)\b/g)) {
+        values[match[1]!] = 2;
+      }
+      (t as unknown as (k: string, v: Record<string, string | number>) => string)(key, values);
     }
     expect(errors).toEqual([]);
   });

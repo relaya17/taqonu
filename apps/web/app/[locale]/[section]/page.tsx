@@ -4,9 +4,9 @@ import { notFound, redirect } from "next/navigation";
 const SECTION_REDIRECTS: Record<string, string> = {
   roadmap: "/",
   github: "/integrations",
-  research: "/legal-media",
-  knowledge: "/memory",
-  activity: "/ops/metrics",
+  research: "/agents?view=knowledge",
+  knowledge: "/agents?view=knowledge",
+  activity: "/?view=activity",
   security: "/sentinel",
 };
 
@@ -20,6 +20,11 @@ export default async function SectionRedirectPage({
   if (!target) {
     notFound();
   }
-  const path = target === "/" ? `/${locale}` : `/${locale}${target}`;
+  const path =
+    target === "/"
+      ? `/${locale}`
+      : target.startsWith("/?")
+        ? `/${locale}${target.slice(1)}`
+        : `/${locale}${target}`;
   redirect(path);
 }

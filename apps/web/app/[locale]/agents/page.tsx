@@ -6,6 +6,8 @@ import { AgentsView } from "@/components/views/AgentsView";
 import { ExpertsView } from "@/components/views/ExpertsView";
 import { ModelsView } from "@/components/views/ModelsView";
 import { ArtifactsView } from "@/components/views/ArtifactsView";
+import { KnowledgeView } from "@/components/views/KnowledgeView";
+import { IntelligenceView } from "@/components/views/IntelligenceView";
 
 export default function AgentsPage() {
   const nav = useTranslations("nav");
@@ -18,6 +20,8 @@ export default function AgentsPage() {
         { id: "experts", label: nav("experts"), render: () => <ExpertsView /> },
         { id: "models", label: nav("models"), render: () => <ModelsView /> },
         { id: "artifacts", label: hub("artifacts"), render: () => <ArtifactsView /> },
+        { id: "knowledge", label: hub("knowledge"), render: () => <KnowledgeView /> },
+        { id: "intelligence", label: hub("intelligence"), render: () => <IntelligenceView /> },
       ]}
     />
   );

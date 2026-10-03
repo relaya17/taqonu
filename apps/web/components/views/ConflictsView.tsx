@@ -26,8 +26,10 @@ interface ConflictItem {
 
 export function ConflictsView() {
   const t = useTranslations("conflicts");
+  const tx = useTranslations("conflictsExtras");
   const queryClient = useQueryClient();
   const [resolution, setResolution] = useState<Record<string, string>>({});
+  const [suggestError, setSuggestError] = useState<Record<string, string>>({});
 
   const query = useQuery({
     queryKey: ["conflicts"],
@@ -40,6 +42,30 @@ export function ConflictsView() {
       apiPost(`/api/v1/conflicts/${id}/resolve`, { resolution: text }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["conflicts"] });
+    },
+  });
+
+  const suggest = useMutation({
+    mutationFn: (id: string) =>
+      apiPost<{ conflictId: string; suggestedResolution: string }>(
+        `/api/v1/conflicts/${encodeURIComponent(id)}/suggest`,
+        {},
+      ),
+    onMutate: (id) => {
+      setSuggestError((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    },
+    onSuccess: (data, id) => {
+      setResolution((prev) => ({ ...prev, [id]: data.suggestedResolution }));
+    },
+    onError: (error, id) => {
+      setSuggestError((prev) => ({
+        ...prev,
+        [id]: error instanceof Error ? error.message : tx("suggestFailed"),
+      }));
     },
   });
 
@@ -95,22 +121,38 @@ export function ConflictsView() {
                     }))
                   }
                 />
-                <Button
-                  variant="contained"
-                  sx={{ alignSelf: "flex-start" }}
-                  disabled={
-                    resolve.isPending ||
-                    (resolution[item.id] ?? "").trim().length < 3
-                  }
-                  onClick={() =>
-                    resolve.mutate({
-                      id: item.id,
-                      text: (resolution[item.id] ?? "").trim(),
-                    })
-                  }
-                >
-                  {t("resolve")}
-                </Button>
+                {suggestError[item.id] ? (
+                  <Alert severity="warning">{suggestError[item.id]}</Alert>
+                ) : null}
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button
+                    variant="contained"
+                    disabled={
+                      resolve.isPending ||
+                      (resolution[item.id] ?? "").trim().length < 3
+                    }
+                    onClick={() =>
+                      resolve.mutate({
+                        id: item.id,
+                        text: (resolution[item.id] ?? "").trim(),
+                      })
+                    }
+                  >
+                    {t("resolve")}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    disabled={suggest.isPending && suggest.variables === item.id}
+                    onClick={() => suggest.mutate(item.id)}
+                  >
+                    {suggest.isPending && suggest.variables === item.id
+                      ? tx("suggesting")
+                      : tx("suggest")}
+                  </Button>
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  {tx("suggestHelp")}
+                </Typography>
               </Stack>
             )}
           </Box>

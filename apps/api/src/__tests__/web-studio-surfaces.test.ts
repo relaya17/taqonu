@@ -410,6 +410,32 @@ describe("Studio Cloud & Tools panel", () => {
     expect(studio).toContain('openRoom("checks")');
   });
 
+  it("gives every user-facing API capability a place in the web app", () => {
+    const dashboard = readWeb("app/[locale]/page.tsx");
+    const agents = readWeb("app/[locale]/agents/page.tsx");
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    const sections = readWeb("app/[locale]/[section]/page.tsx");
+    expect(dashboard).toContain("<ActivityView />");
+    expect(dashboard).toContain("<InsightsView />");
+    expect(agents).toContain("<KnowledgeView />");
+    expect(agents).toContain("<IntelligenceView />");
+    expect(readWeb("components/views/ActivityView.tsx")).toContain("/api/v1/audit/mine");
+    expect(readWeb("components/views/InsightsView.tsx")).toContain("/api/v1/portfolio/truth-benchmark");
+    expect(readWeb("components/views/KnowledgeView.tsx")).toContain("/api/v1/research");
+    expect(readWeb("components/views/IntelligenceView.tsx")).toContain("/api/v1/intelligence/hypotheses");
+    expect(studio).toContain('checksTab === "constitution"');
+    expect(studio).toContain('checksTab === "benchmarks"');
+    expect(studio).toContain("<EngineeringRunsPanel");
+    expect(studio).toContain("<DeployFeedsPanel");
+    expect(studio).toContain("<ReplaceAllDialog");
+    // Legacy aliases land on the real surfaces, not admin-only or stand-in pages.
+    expect(sections).toContain('activity: "/?view=activity"');
+    expect(sections).toContain('knowledge: "/agents?view=knowledge"');
+    expect(sections).toContain('research: "/agents?view=knowledge"');
+    // Accounts with two-factor on can finish signing in on the web.
+    expect(readWeb("app/[locale]/auth/login/page.tsx")).toContain("/api/v1/auth/mfa/verify");
+  });
+
   it("draws Studio as one VS Code–style title bar with menus, not stacked rows", () => {
     const studio = readWeb("app/[locale]/studio/page.tsx");
     const menuBar = readWeb("components/studio/StudioMenuBar.tsx");

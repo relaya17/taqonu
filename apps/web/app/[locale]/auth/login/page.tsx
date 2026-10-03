@@ -37,6 +37,12 @@ interface AuthSession {
   user: { email: string; role: string };
 }
 
+/** Accounts with two-factor on get a short-lived challenge instead of a session. */
+interface MfaRequired {
+  mfaRequired: true;
+  mfaToken: string;
+}
+
 function LoginPage() {
   const t = useTranslations("auth");
   const locale = useLocale();
@@ -46,6 +52,8 @@ function LoginPage() {
   );
   const [password, setPassword, passwordRef] = useHydrationSafeInput("");
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
   const fieldDir = inputDirForLocale(locale);
 
   const providers = useQuery({
@@ -53,10 +61,24 @@ function LoginPage() {
     queryFn: () => apiGet<AuthProviders>("/api/v1/auth/providers"),
   });
 
+  const goToApp = () => {
+    window.location.href = auditReturnPath(locale, next) ?? `/${locale}${WEB_POST_AUTH_PATH}`;
+  };
+
+  const verifyMfa = useMutation({
+    mutationFn: (input: { mfaToken: string; code: string }) =>
+      apiPost<AuthSession>("/api/v1/auth/mfa/verify", input),
+    onSuccess: goToApp,
+  });
+
   const login = useMutation({
     mutationFn: (credentials: { email: string; password: string }) =>
-      apiPost<AuthSession>("/api/v1/auth/login", credentials),
-    onSuccess: () => {
+      apiPost<AuthSession | MfaRequired>("/api/v1/auth/login", credentials),
+    onSuccess: (result) => {
+      if ("mfaRequired" in result && result.mfaRequired) {
+        setMfaToken(result.mfaToken);
+        return;
+      }
       // Hard navigation, not router.push()+router.refresh(): the two client
       // calls race (refresh() re-fetches the *current* route's server data
       // before push()'s navigation has settled), which was landing the user
@@ -133,9 +155,61 @@ function LoginPage() {
         </Stack>
       </Box>
 
+      {mfaToken ? (
+        <Box
+          component="form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            const code = mfaCode.trim();
+            if (code.length >= 6 && !verifyMfa.isPending) {
+              verifyMfa.mutate({ mfaToken, code });
+            }
+          }}
+          sx={{ width: "100%" }}
+        >
+          <Stack spacing={2}>
+            <Typography variant="body2">{t("mfaPrompt")}</Typography>
+            <TextField
+              label={t("mfaCode")}
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              autoComplete="one-time-code"
+              autoFocus
+              fullWidth
+              required
+              inputProps={{ inputMode: "numeric", dir: "ltr", maxLength: 24 }}
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              disabled={verifyMfa.isPending || mfaCode.trim().length < 6}
+            >
+              {t("mfaVerify")}
+            </Button>
+            <Button
+              variant="text"
+              onClick={() => {
+                setMfaToken(null);
+                setMfaCode("");
+                verifyMfa.reset();
+              }}
+            >
+              {t("mfaBack")}
+            </Button>
+            {verifyMfa.isError ? (
+              <Alert severity="error" role="alert">
+                {(verifyMfa.error as Error).message}
+              </Alert>
+            ) : null}
+          </Stack>
+        </Box>
+      ) : null}
       <Box
         component="form"
         noValidate
+        hidden={Boolean(mfaToken)}
         onSubmit={(event) => {
           event.preventDefault();
           submit();

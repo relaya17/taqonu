@@ -17,6 +17,12 @@ import { useTranslations, useLocale } from "next-intl";
 import { Link } from "@/i18n/routing";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { AUTH_SESSION_QUERY_KEY, fetchAuthSession } from "@/lib/auth-session";
+import { TwoFactorSection } from "@/components/settings/TwoFactorSection";
+
+const MFA_SELF_SERVICE = process.env.NEXT_PUBLIC_MFA_SELF_SERVICE === "1";
+
+/** Roles allowed to read GET /api/v1/metrics (requireAdmin: admin or Control Plane). */
+const METRICS_ROLES = new Set(["admin", "operator", "owner"]);
 
 interface AuthUser {
   id: string;
@@ -29,6 +35,7 @@ interface AuthUser {
   emailVerified?: boolean;
   disabled?: boolean;
   hasPassword?: boolean;
+  mfaEnabled?: boolean;
 }
 
 interface DeviceSession {
@@ -59,6 +66,9 @@ export function SettingsView() {
     queryFn: () => fetchAuthSession<AuthUser>(),
     retry: false,
   });
+
+  const sessionRole = me.data ? me.data.role || me.data.user.role : "";
+  const canViewMetrics = METRICS_ROLES.has(sessionRole);
 
   const storage = useQuery({
     queryKey: ["memory-storage"],
@@ -299,6 +309,17 @@ export function SettingsView() {
             <Alert severity="info">{t("oauthNoPassword")}</Alert>
           )}
 
+          {/* Two-factor needs durable MFA state: the challenge and the secret
+              live in the API's local auth store, which a serverless deploy
+              (Vercel) does not share between instances, so turning it on there
+              could lock the account out. Opt in per deploy. */}
+          {MFA_SELF_SERVICE ? (
+            <>
+              <Divider />
+              <TwoFactorSection />
+            </>
+          ) : null}
+
           <Divider />
 
           <Box>
@@ -438,9 +459,11 @@ export function SettingsView() {
           <Button component={Link} href="/contract" variant="outlined" size="small">
             {t("openContract")}
           </Button>
-          <Button component={Link} href="/ops/metrics" variant="outlined" size="small">
-            {t("openMetrics")}
-          </Button>
+          {canViewMetrics ? (
+            <Button component={Link} href="/ops/metrics" variant="outlined" size="small">
+              {t("openMetrics")}
+            </Button>
+          ) : null}
           <Button component={Link} href="/gates" variant="outlined" size="small">
             {t("openGates")}
           </Button>

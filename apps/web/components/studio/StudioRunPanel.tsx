@@ -6,8 +6,10 @@ import {
   Box,
   Button,
   Chip,
+  FormControlLabel,
   MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -69,6 +71,7 @@ interface ExtensionRow {
  */
 export function StudioRunPanel({ projectId }: { projectId: string }) {
   const t = useTranslations("studio.run");
+  const tx = useTranslations("studioRunExtras");
   const queryClient = useQueryClient();
   const [commandId, setCommandId] = useState("node.version");
   const [relativePath, setRelativePath] = useState("");
@@ -103,6 +106,17 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
       apiGet<{ extensions: ExtensionRow[]; note: string }>(
         `/api/v1/projects/${encodeURIComponent(projectId)}/studio/extensions`,
       ),
+  });
+
+  const toggleExtension = useMutation({
+    mutationFn: ({ id, enable }: { id: string; enable: boolean }) =>
+      apiPost<{ ok: boolean }>(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/studio/extensions/${encodeURIComponent(id)}/${enable ? "enable" : "disable"}`,
+        {},
+      ),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["studio-extensions", projectId] });
+    },
   });
 
   const selected = catalog.data?.commands.find((c) => c.id === commandId);
@@ -329,13 +343,62 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
           {t("extensionsHelp")}
         </Alert>
         <Stack spacing={1} sx={{ mt: 1 }}>
-          {(extensions.data?.extensions ?? []).map((ext) => (
-            <Stack key={ext.id} direction="row" spacing={1} alignItems="center">
-              <Chip size="small" label={ext.hostReady ? t("hostReady") : t("noHost")} />
-              <Typography variant="body2">{ext.name}</Typography>
-            </Stack>
-          ))}
+          {(extensions.data?.extensions ?? []).map((ext) => {
+            const busy =
+              toggleExtension.isPending && toggleExtension.variables?.id === ext.id;
+            return (
+              <Stack
+                key={ext.id}
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Chip size="small" label={ext.hostReady ? t("hostReady") : t("noHost")} />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={ext.enabled ? tx("enabled") : tx("disabled")}
+                />
+                <Typography variant="body2" id={`ext-name-${ext.id}`}>
+                  {ext.name}
+                </Typography>
+                <FormControlLabel
+                  sx={{ ml: "auto" }}
+                  control={
+                    <Switch
+                      size="small"
+                      checked={ext.enabled}
+                      disabled={!projectId || busy}
+                      onChange={(e) =>
+                        toggleExtension.mutate({ id: ext.id, enable: e.target.checked })
+                      }
+                      inputProps={{
+                        "aria-label": ext.enabled
+                          ? tx("disableAria", { name: ext.name })
+                          : tx("enableAria", { name: ext.name }),
+                      }}
+                    />
+                  }
+                  label={busy ? tx("saving") : ext.enabled ? tx("toggleOn") : tx("toggleOff")}
+                />
+              </Stack>
+            );
+          })}
         </Stack>
+        {extensions.isError ? (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            {extensions.error instanceof Error ? extensions.error.message : t("error")}
+          </Alert>
+        ) : null}
+        {toggleExtension.isError ? (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            {toggleExtension.error instanceof Error
+              ? toggleExtension.error.message
+              : t("error")}
+          </Alert>
+        ) : null}
       </Box>
     </Stack>
   );

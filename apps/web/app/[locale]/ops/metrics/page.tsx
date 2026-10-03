@@ -14,6 +14,15 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { apiGet } from "@/lib/api";
+import { Link } from "@/i18n/routing";
+import {
+  AUTH_SESSION_QUERY_KEY,
+  fetchAuthSession,
+  sessionGate,
+} from "@/lib/auth-session";
+
+/** Roles allowed by GET /api/v1/metrics (requireAdmin: admin or Control Plane). */
+const METRICS_ROLES = new Set(["admin", "operator", "owner"]);
 
 interface MetricSample {
   name: string;
@@ -32,12 +41,66 @@ interface MetricsResponse {
 
 export default function OpsMetricsPage() {
   const t = useTranslations("opsMetrics");
+  const tAccess = useTranslations("opsAccess");
+
+  const sessionQuery = useQuery({
+    queryKey: AUTH_SESSION_QUERY_KEY,
+    queryFn: () => fetchAuthSession<{ role: string }>(),
+    retry: false,
+  });
+  const gate = sessionGate(sessionQuery);
+  const role = sessionQuery.data
+    ? sessionQuery.data.role || sessionQuery.data.user.role
+    : "";
+  const allowed = gate === "signed-in" && METRICS_ROLES.has(role);
 
   const metricsQuery = useQuery({
     queryKey: ["ops-metrics"],
     queryFn: () => apiGet<MetricsResponse>("/api/v1/metrics"),
     refetchInterval: 15_000,
+    enabled: allowed,
+    retry: false,
   });
+
+  const forbidden =
+    metricsQuery.isError &&
+    metricsQuery.error instanceof Error &&
+    /admin|forbidden|not signed in|unauthori[sz]ed|\b40[13]\b/i.test(
+      metricsQuery.error.message,
+    );
+
+  if (gate === "checking") {
+    return (
+      <Typography color="text.secondary">{tAccess("checking")}</Typography>
+    );
+  }
+
+  if (!allowed || forbidden) {
+    return (
+      <Stack spacing={3} sx={{ maxWidth: 960 }}>
+        <Box>
+          <Typography variant="h1" sx={{ fontSize: "2.4rem" }}>
+            {t("title")}
+          </Typography>
+        </Box>
+        <Alert severity="info">
+          {gate === "signed-out" ? (
+            <>
+              {tAccess("signedOut")}{" "}
+              <Link href="/auth/login">{tAccess("signIn")}</Link>
+            </>
+          ) : gate === "unavailable" ? (
+            tAccess("unavailable")
+          ) : (
+            tAccess("adminOnly")
+          )}
+        </Alert>
+        <Box>
+          <Link href="/settings">{tAccess("backToSettings")}</Link>
+        </Box>
+      </Stack>
+    );
+  }
 
   const data = metricsQuery.data;
   const byNameEntries = data
