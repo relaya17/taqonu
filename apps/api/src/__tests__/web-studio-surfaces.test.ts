@@ -331,7 +331,7 @@ describe("Studio level-up workspace safety and agent briefing", () => {
     // Git status is requested through the same governed terminal execution
     // path as Run (studio/terminal), not a separate/ungoverned git-specific
     // route -- that shared path is what keeps it SoD-gated end to end.
-    expect(git).toContain('requestCommand.mutate("git.status")');
+    expect(git).toContain('requestCommand.mutate({ commandId: "git.status" })');
     expect(git).toContain("studio/terminal");
     expect(git).toContain("decide-and-execute");
     expect(git).not.toContain("git commit");
@@ -460,6 +460,28 @@ describe("Studio Cloud & Tools panel", () => {
     ]) {
       expect(readWeb(panel)).toContain("useStudioApi(extensionScope)");
     }
+  });
+
+  it("ADR-026 health contract: health is informational and kept out of enforcement", () => {
+    const apiSrc = join(here, "..");
+    const gate = readFileSync(join(apiSrc, "middleware/studio-extension-gate.ts"), "utf8");
+    const service = readFileSync(join(apiSrc, "services/studio-extensions.ts"), "utf8");
+    const health = readFileSync(join(apiSrc, "services/studio-extension-health.ts"), "utf8");
+    // The gate and the authorization service never depend on the health module.
+    expect(gate).not.toContain("studio-extension-health");
+    expect(service).not.toContain("studio-extension-health");
+    // The health module never writes grants, enablement or installs.
+    for (const writer of [
+      "setStudioExtensionGrants",
+      "setStudioExtensionEnabled",
+      "installStudioExtension",
+      "uninstallStudioExtension",
+      "setStudioExtensionInstalls",
+    ]) {
+      expect(health).not.toContain(writer);
+    }
+    // The engine is generic: it never names an extension.
+    expect(health).not.toMatch(/arletos\.(git|tests|cloud|security|observer|agent-runs)/);
   });
 
   it("draws Studio as one VS Code–style title bar with menus, not stacked rows", () => {

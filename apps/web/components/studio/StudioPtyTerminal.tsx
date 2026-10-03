@@ -44,7 +44,25 @@ interface SessionHandle {
  * Real xterm.js + ConPTY/PTY stream. Not a textarea. Not Agent execution.
  * Each session owns an independent Terminal, SSE stream, and scrollback.
  */
-export function StudioPtyTerminal({ projectId }: { projectId: string }) {
+export function StudioPtyTerminal({
+  projectId,
+  newSessionSignal,
+  restoreExistingSessions = true,
+  paneLabel,
+}: {
+  projectId: string;
+  /** Bumped by the page (New Terminal, Ctrl+Shift+`) to open a fresh session. */
+  newSessionSignal?: number;
+  /**
+   * Whether to adopt and reconnect to this project's already-running PTY
+   * sessions on mount. A split pane must stay false: reconnecting rotates a
+   * session's single stream ticket, which would silently disconnect a
+   * sibling pane already attached to that same session.
+   */
+  restoreExistingSessions?: boolean;
+  /** Distinguishes this pane's terminal region when more than one is on screen (Split Terminal). */
+  paneLabel?: string;
+}) {
   const locale = useLocale();
   const copy = ptyCopyFor(locale);
   const tIntl = useTranslations("studio.ptyTerminal");
@@ -231,7 +249,7 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !restoreExistingSessions) return;
     void apiGet<Catalog>(`/api/v1/projects/${encodeURIComponent(projectId)}/studio/pty`)
       .then((catalog) => {
         setSessions((existing) => {
@@ -256,7 +274,7 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
         });
       })
       .catch((err: Error) => setError(err.message));
-  }, [projectId]);
+  }, [projectId, restoreExistingSessions]);
 
   useEffect(() => {
     if (!ready) return;
@@ -272,6 +290,19 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
       void reconnectAndAttach(row);
     }
   }, [ready, sessions]);
+
+  // New Terminal command (Ctrl+Shift+`): ignore the initial signal value so
+  // this never opens an extra session merely because the panel mounted.
+  const newSessionSignalRef = useRef(newSessionSignal);
+  useEffect(() => {
+    if (!ready || newSessionSignal === undefined) return;
+    if (newSessionSignalRef.current === newSessionSignal) return;
+    newSessionSignalRef.current = newSessionSignal;
+    void newSession();
+    // newSession is a hoisted function declaration; re-running this effect
+    // only on signal/ready changes is deliberate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newSessionSignal, ready]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -549,7 +580,7 @@ export function StudioPtyTerminal({ projectId }: { projectId: string }) {
         ref={hostRef}
         dir="ltr"
         role="application"
-        aria-label={t("terminal")}
+        aria-label={paneLabel ? `${t("terminal")} — ${paneLabel}` : t("terminal")}
         tabIndex={0}
         onClick={() => registryRef.current?.focusActive()}
         sx={{

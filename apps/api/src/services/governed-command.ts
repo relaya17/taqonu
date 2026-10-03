@@ -53,10 +53,13 @@ export const GOVERNED_COMMANDS: readonly GovernedCommandSpec[] = [
     id: "git.diff",
     kind: "terminal",
     program: "git",
-    args: ["diff", "HEAD", "--no-color", "--no-ext-diff", "--find-renames"],
+    // Trailing "--" lets an optional relativePath scope the diff to one file
+    // (hunk navigation) without changing the whole-repo diff when omitted.
+    args: ["diff", "HEAD", "--no-color", "--no-ext-diff", "--find-renames", "--"],
     timeoutMs: 20_000,
-    description: "Read-only diff vs HEAD (staged and unstaged). Never mutates.",
+    description: "Read-only diff vs HEAD (staged and unstaged). Optional relativePath scopes to one file. Never mutates.",
     mutatesWorkspace: false,
+    pathArg: "optional",
   },
   {
     id: "git.log",
@@ -421,12 +424,10 @@ function resolveGitArgv(
     return { program: git, args: ["push"] };
   }
   const args = [...spec.args];
-  if (spec.pathArg) {
-    if (!relativePath) {
-      return { denial: "UNAVAILABLE", reason: "This git command requires a workspace-relative path." };
-    }
-    args.push(relativePath);
+  if (spec.pathArg === "required" && !relativePath) {
+    return { denial: "UNAVAILABLE", reason: "This git command requires a workspace-relative path." };
   }
+  if (relativePath) args.push(relativePath);
   return { program: git, args };
 }
 

@@ -51,6 +51,7 @@ import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import CodeIcon from "@mui/icons-material/Code";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import VerticalSplitIcon from "@mui/icons-material/VerticalSplit";
 import { StudioMenuBar, type StudioMenuDef } from "@/components/studio/StudioMenuBar";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { useShellChrome } from "@/components/layout/shell-chrome";
@@ -110,6 +111,8 @@ import { StudioAgentBriefing } from "@/components/studio/StudioAgentBriefing";
 import { StudioContinuity } from "@/components/studio/StudioContinuity";
 import type { StudioProblem } from "@/lib/studio-problems";
 import { studioProblemRemediationId } from "@/lib/studio-problems";
+import { useStudioProblems } from "@/lib/use-studio-problems";
+import type { StudioDiffHunk } from "@/lib/studio-diff";
 import {
   STUDIO_CHECK_IDS,
   STUDIO_FILE_ACTIONS,
@@ -548,9 +551,30 @@ export default function StudioPage() {
     }
   }, [fileFromUrl]);
 
+  // Back / Forward (Alt+Left / Alt+Right), like VS Code's editor navigation
+  // history. A history entry is the file + the line it was opened at.
+  const [nav, setNav] = useState<{
+    stack: Array<{ path: string; line: number | null }>;
+    index: number;
+  }>({ stack: [], index: -1 });
+  const pushNavEntry = (path: string, line: number | null) => {
+    setNav((prev) => {
+      const truncated = prev.stack.slice(0, prev.index + 1);
+      const last = truncated[truncated.length - 1];
+      if (last && last.path === path) {
+        const updated = [...truncated];
+        updated[updated.length - 1] = { path, line };
+        return { stack: updated, index: updated.length - 1 };
+      }
+      const next = [...truncated, { path, line }];
+      return { stack: next, index: next.length - 1 };
+    });
+  };
+
   const selectStudioFile = (
     path: string,
     line: number | null = null,
+    fromHistory = false,
   ) => {
     setSelectedPath(path);
     setRevealLine(line);
@@ -563,6 +587,7 @@ export default function StudioPage() {
         file: path,
       })}`,
     );
+    if (!fromHistory) pushNavEntry(path, line);
   };
 
   const openFilesId = useId();
@@ -995,6 +1020,10 @@ export default function StudioPage() {
   const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">(
     tab === "pty" ? "terminal" : "problems",
   );
+  /** Two independent PTY sessions side by side (each its own xterm/ConPTY, ADR-021 governed). */
+  const [splitTerminal, setSplitTerminal] = useState(false);
+  /** Bumped to make the primary terminal pane open a brand-new session (New Terminal). */
+  const [terminalNewSignal, setTerminalNewSignal] = useState(0);
   useEffect(() => {
     if (tab === "chat") {
       setSidePanel("chat");
@@ -1114,6 +1143,72 @@ export default function StudioPage() {
     if (tab === "pty") selectTab("files");
     setMobileView("editor");
   };
+  // Next/Previous Problem (F8 / Shift+F8): the same merged list
+  // StudioProblemsPanel renders (shared react-query cache, see the hook).
+  const problemsList = useStudioProblems(
+    projectId,
+    Boolean(projectId),
+    selectedPath,
+    currentBuffer?.draft ?? fileQuery.data?.content ?? null,
+  );
+  // -1 = no navigation yet, so the first Next lands on the first problem
+  // (index 0) instead of skipping it, and the first Previous lands on the
+  // last problem instead of re-visiting index 0.
+  const [problemCursor, setProblemCursor] = useState(-1);
+  const goToProblem = (index: number) => {
+    const problem = problemsList[index];
+    if (!problem) return;
+    setProblemCursor(index);
+    if (problem.file) selectStudioFile(problem.file, problem.line);
+    openBottomPanel("problems");
+  };
+  const nextProblem = () => {
+    if (problemsList.length === 0) return;
+    goToProblem(problemCursor < 0 ? 0 : (problemCursor + 1) % problemsList.length);
+  };
+  const previousProblem = () => {
+    if (problemsList.length === 0) return;
+    goToProblem(
+      problemCursor < 0
+        ? problemsList.length - 1
+        : (problemCursor - 1 + problemsList.length) % problemsList.length,
+    );
+  };
+  // A new project is a new Problems context; a stale cursor from the
+  // previous project must not drive the first Next/Previous here.
+  useEffect(() => {
+    setProblemCursor(-1);
+  }, [projectId]);
+  // Next/Previous Change: hunks for the open file, lifted from the Git
+  // extension panel's scoped diff (StudioDiffHunk[]) — real git.diff data,
+  // never a fake decoration.
+  const [fileHunks, setFileHunks] = useState<StudioDiffHunk[]>([]);
+  // Same -1 sentinel as problemCursor, for the same first-Next/first-Previous reason.
+  const [changeCursor, setChangeCursor] = useState(-1);
+  const changedLines = useMemo(
+    () => [...new Set(fileHunks.flatMap((hunk) => hunk.changedLines))].sort((a, b) => a - b),
+    [fileHunks],
+  );
+  const nextChange = () => {
+    if (changedLines.length === 0) return;
+    const index = changeCursor < 0 ? 0 : (changeCursor + 1) % changedLines.length;
+    setChangeCursor(index);
+    revealAt(changedLines[index]!);
+  };
+  const previousChange = () => {
+    if (changedLines.length === 0) return;
+    const index =
+      changeCursor < 0
+        ? changedLines.length - 1
+        : (changeCursor - 1 + changedLines.length) % changedLines.length;
+    setChangeCursor(index);
+    revealAt(changedLines[index]!);
+  };
+  // Switching the selected file is a new Change-navigation context; a stale
+  // cursor from the previous file's hunks must not drive the first jump here.
+  useEffect(() => {
+    setChangeCursor(-1);
+  }, [selectedPath]);
   const showActivity = (next: string) => {
     if (next === activity && showTree && isMd) {
       setShowTree(false);
@@ -1179,6 +1274,27 @@ export default function StudioPage() {
   const revealAt = (line: number) => {
     setRevealLine(null);
     requestAnimationFrame(() => setRevealLine(line));
+  };
+  const goBack = () => {
+    if (nav.index <= 0) return;
+    const target = nav.stack[nav.index - 1];
+    if (!target) return;
+    setNav((prev) => ({ ...prev, index: prev.index - 1 }));
+    selectStudioFile(target.path, target.line, true);
+  };
+  const goForward = () => {
+    if (nav.index >= nav.stack.length - 1) return;
+    const target = nav.stack[nav.index + 1];
+    if (!target) return;
+    setNav((prev) => ({ ...prev, index: prev.index + 1 }));
+    selectStudioFile(target.path, target.line, true);
+  };
+  const [hasLastEdit, setHasLastEdit] = useState(false);
+  const lastEditRef = useRef<{ path: string; line: number } | null>(null);
+  const goToLastEdit = () => {
+    const location = lastEditRef.current;
+    if (!location) return;
+    selectStudioFile(location.path, location.line);
   };
   const closeAllFiles = () => {
     if (anyStudioBufferDirty(buffersRef.current) && !window.confirm(t("unsavedConfirm"))) return;
@@ -1246,6 +1362,15 @@ export default function StudioPage() {
     git: () => {},
     problems: () => {},
     replaceAll: () => {},
+    back: () => {},
+    forward: () => {},
+    lastEdit: () => {},
+    nextProblem: () => {},
+    previousProblem: () => {},
+    nextChange: () => {},
+    previousChange: () => {},
+    newTerminal: () => {},
+    splitTerminal: () => {},
   });
   shortcutRef.current = {
     canSave:
@@ -1278,6 +1403,18 @@ export default function StudioPage() {
     },
     problems: () => openBottomPanel("problems"),
     replaceAll: () => hasRoot && setReplaceAllOpen(true),
+    back: goBack,
+    forward: goForward,
+    lastEdit: goToLastEdit,
+    nextProblem,
+    previousProblem,
+    nextChange,
+    previousChange,
+    newTerminal: () => {
+      openBottomPanel("terminal");
+      setTerminalNewSignal((n) => n + 1);
+    },
+    splitTerminal: () => setSplitTerminal((v) => !v),
   };
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -1289,6 +1426,30 @@ export default function StudioPage() {
           sc.rename();
         }
         return;
+      }
+      if (event.key === "F8" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest?.("[data-studio-root]")) {
+          event.preventDefault();
+          if (event.shiftKey) sc.previousProblem();
+          else sc.nextProblem();
+        }
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey) {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest?.("[data-studio-root]")) {
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            sc.back();
+            return;
+          }
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            sc.forward();
+            return;
+          }
+        }
       }
       const mod = event.ctrlKey || event.metaKey;
       if (!mod) return;
@@ -1302,9 +1463,21 @@ export default function StudioPage() {
       } else if (key === "s" && event.altKey) {
         event.preventDefault();
         sc.saveAll();
+      } else if (event.code === "Backquote" && event.shiftKey) {
+        event.preventDefault();
+        sc.newTerminal();
       } else if (event.code === "Backquote") {
         event.preventDefault();
         sc.terminal();
+      } else if (event.code === "Digit5" && event.shiftKey) {
+        event.preventDefault();
+        sc.splitTerminal();
+      } else if (event.code === "Period" && event.altKey) {
+        event.preventDefault();
+        sc.nextChange();
+      } else if (event.code === "Comma" && event.altKey) {
+        event.preventDefault();
+        sc.previousChange();
       } else if (key === "j" && !event.shiftKey) {
         event.preventDefault();
         sc.togglePanel();
@@ -1495,6 +1668,13 @@ export default function StudioPage() {
         { id: "replaceAll", label: t("menu.replaceAll"), shortcut: "Ctrl+Shift+H", disabled: !hasRoot, onSelect: () => setReplaceAllOpen(true) },
         { id: "goToLine", label: t("menu.goToLine"), shortcut: "Ctrl+G", dividerBefore: true, disabled: !selectedPath, onSelect: () => openDialog("goToLine") },
         { id: "goToSymbol", label: t("menu.goToSymbol"), shortcut: "Ctrl+Shift+O", disabled: !selectedPath, onSelect: () => openDialog("goToSymbol") },
+        { id: "back", label: t("menu.back"), shortcut: "Alt+Left", dividerBefore: true, disabled: nav.index <= 0, onSelect: goBack },
+        { id: "forward", label: t("menu.forward"), shortcut: "Alt+Right", disabled: nav.index >= nav.stack.length - 1, onSelect: goForward },
+        { id: "lastEdit", label: t("menu.lastEditLocation"), disabled: !hasLastEdit, onSelect: goToLastEdit },
+        { id: "nextProblem", label: t("menu.nextProblem"), shortcut: "F8", dividerBefore: true, disabled: problemsList.length === 0, onSelect: nextProblem },
+        { id: "previousProblem", label: t("menu.previousProblem"), shortcut: "Shift+F8", disabled: problemsList.length === 0, onSelect: previousProblem },
+        { id: "nextChange", label: t("menu.nextChange"), shortcut: "Ctrl+Alt+.", dividerBefore: true, disabled: changedLines.length === 0, onSelect: nextChange },
+        { id: "previousChange", label: t("menu.previousChange"), shortcut: "Ctrl+Alt+,", disabled: changedLines.length === 0, onSelect: previousChange },
       ],
     },
     {
@@ -1533,6 +1713,8 @@ export default function StudioPage() {
       items: [
         { id: "runPanel", label: t("menu.runPanel"), checked: workspaceTab === "run", onSelect: () => openRoom("run") },
         { id: "terminal", label: t("tab.pty"), shortcut: "Ctrl+`", onSelect: () => openBottomPanel("terminal") },
+        { id: "newTerminal", label: t("menu.newTerminal"), shortcut: "Ctrl+Shift+`", onSelect: () => { openBottomPanel("terminal"); setTerminalNewSignal((n) => n + 1); } },
+        { id: "splitTerminal", label: t("menu.splitTerminal"), shortcut: "Ctrl+Shift+5", checked: splitTerminal, onSelect: () => setSplitTerminal((v) => !v) },
         { id: "askAgent", label: t("menu.askAgent"), dividerBefore: true, onSelect: () => openSidePanel("agent") },
         { id: "clone", label: t("menu.clone"), disabled: !projectId, onSelect: () => openDialog("clone") },
         ...(projectId
@@ -1614,6 +1796,8 @@ export default function StudioPage() {
           <StudioGitStatus
             projectId={projectId}
             onOpenFile={(path) => selectStudioFile(path)}
+            filePath={selectedPath}
+            onFileHunksChange={(hunks) => setFileHunks([...hunks])}
             extensionScope={scope}
           />
         );
@@ -2221,6 +2405,11 @@ export default function StudioPage() {
                           [selectedPath]: { ...existing, draft: value },
                         };
                       });
+                      const area = editorTextarea();
+                      const position = area?.selectionStart ?? 0;
+                      const line = value.slice(0, position).split("\n").length;
+                      lastEditRef.current = { path: selectedPath, line };
+                      setHasLastEdit(true);
                     }}
                     languageHint={fileQuery.data.languageHint}
                     readOnly={
@@ -2229,6 +2418,7 @@ export default function StudioPage() {
                     }
                     ariaLabel={selectedPath ?? t("pickFile")}
                     revealLine={revealLine}
+                    changedLines={changedLines}
                   />
                 ) : !projectId ? (
                   pickProjectState
@@ -2272,6 +2462,19 @@ export default function StudioPage() {
                 <Tab value="problems" label={t("problems.title")} />
                 <Tab value="terminal" label={t("tab.pty")} />
               </Tabs>
+              {bottomPanel === "terminal" ? (
+                <Tooltip title={t("menu.splitTerminal")}>
+                  <IconButton
+                    size="small"
+                    aria-label={t("menu.splitTerminal")}
+                    aria-pressed={splitTerminal}
+                    onClick={() => setSplitTerminal((v) => !v)}
+                    sx={{ color: splitTerminal ? "#4C8DFF" : muted }}
+                  >
+                    <VerticalSplitIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
               <Tooltip title={t("menu.closePanel")}>
                 <IconButton
                   size="small"
@@ -2314,7 +2517,28 @@ export default function StudioPage() {
                 />
               ) : null}
               {projectId && bottomPanel === "terminal" ? (
-                <StudioPtyTerminal projectId={projectId} />
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={1}
+                  sx={{ height: "100%" }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <StudioPtyTerminal
+                      projectId={projectId}
+                      newSessionSignal={terminalNewSignal}
+                      {...(splitTerminal ? { paneLabel: t("menu.splitPrimary") } : {})}
+                    />
+                  </Box>
+                  {splitTerminal ? (
+                    <Box sx={{ flex: 1, minWidth: 0, borderInlineStart: { md: panelBorder }, pt: { xs: 1, md: 0 } }}>
+                      <StudioPtyTerminal
+                        projectId={projectId}
+                        restoreExistingSessions={false}
+                        paneLabel={t("menu.splitSecondary")}
+                      />
+                    </Box>
+                  ) : null}
+                </Stack>
               ) : null}
             </Box>
           </Box>
@@ -3416,6 +3640,14 @@ export default function StudioPage() {
                     [t("menu.searchAll"), "Ctrl+Shift+F"],
                     [t("menu.goToLine"), "Ctrl+G"],
                     [t("menu.goToSymbol"), "Ctrl+Shift+O"],
+                    [t("menu.back"), "Alt+Left"],
+                    [t("menu.forward"), "Alt+Right"],
+                    [t("menu.nextProblem"), "F8"],
+                    [t("menu.previousProblem"), "Shift+F8"],
+                    [t("menu.nextChange"), "Ctrl+Alt+."],
+                    [t("menu.previousChange"), "Ctrl+Alt+,"],
+                    [t("menu.newTerminal"), "Ctrl+Shift+`"],
+                    [t("menu.splitTerminal"), "Ctrl+Shift+5"],
                     [t("menu.rename"), "F2"],
                     [t("activity.explorer"), "Ctrl+Shift+E"],
                     [extName("arletos.git"), "Ctrl+Shift+G"],

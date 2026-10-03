@@ -154,6 +154,46 @@ describe("runGovernedCommand", () => {
     }
   });
 
+  it("rejects a path-escaping relativePath for the optional-path git.diff scope (WORKSPACE_ESCAPE)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "atlas-gov-diff-escape-"));
+    dirs.push(root);
+    mkdirSync(join(root, ".git"));
+    const result = await runGovernedCommand({
+      commandId: "git.diff",
+      workspaceRoot: root,
+      projectId: "00000000-0000-4000-8000-000000000001",
+      relativePath: "../../other-project/secret.ts",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.denial).toBe("WORKSPACE_ESCAPE");
+    }
+  });
+
+  it("scopes git.diff to the given project's own workspaceRoot and never crosses into a sibling project directory", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "atlas-gov-diff-scope-"));
+    dirs.push(parent);
+    const projectA = join(parent, "project-a");
+    const projectB = join(parent, "project-b");
+    mkdirSync(join(projectA, ".git"), { recursive: true });
+    mkdirSync(join(projectB, ".git"), { recursive: true });
+    writeFileSync(join(projectB, "secret.ts"), "export const secret = 1;\n", "utf8");
+    // Attempting to scope project A's diff to a file that only exists under
+    // project B's workspace must never resolve into project B — the path is
+    // joined under project A's own workspaceRoot, so it simply reports as a
+    // path outside project A (WORKSPACE_ESCAPE) rather than reading project B.
+    const result = await runGovernedCommand({
+      commandId: "git.diff",
+      workspaceRoot: projectA,
+      projectId: "00000000-0000-4000-8000-000000000001",
+      relativePath: "../project-b/secret.ts",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.denial).toBe("WORKSPACE_ESCAPE");
+    }
+  });
+
   it("marks workspace.build UNAVAILABLE without a package.json build script", async () => {
     const root = mkdtempSync(join(tmpdir(), "atlas-gov-build-"));
     dirs.push(root);

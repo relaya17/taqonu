@@ -29,6 +29,7 @@ export function StudioCodeEditor({
   readOnly,
   ariaLabel,
   revealLine,
+  changedLines,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -36,6 +37,8 @@ export function StudioCodeEditor({
   readOnly: boolean;
   ariaLabel: string;
   revealLine?: number | null;
+  /** Working-tree line numbers with an uncommitted change (git.diff), for a gutter marker. */
+  changedLines?: readonly number[];
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLPreElement | null>(null);
@@ -43,6 +46,7 @@ export function StudioCodeEditor({
   const lines = value.split("\n");
   const lineCount = studioLineCount(value);
   const language = studioSyntaxLanguage(languageHint);
+  const changedLineSet = new Set(changedLines ?? []);
 
   const syncScroll = () => {
     const textarea = textareaRef.current;
@@ -65,6 +69,23 @@ export function StudioCodeEditor({
     textarea.scrollTop = Math.max(0, (revealLine - 1) * lineHeight - 40);
     syncScroll();
   }, [revealLine, value]);
+
+  // Mobile single-pane layout hides this editor (display:none) behind the
+  // Problems/Terminal view; a scrollTop set while hidden does not stick
+  // (zero layout height), though the cursor/selection above already does.
+  // Reapply the same reveal target once the pane is actually laid out again.
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || !revealLine || revealLine < 1) return;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientHeight === 0) return;
+      const lineHeight = 19.375;
+      textarea.scrollTop = Math.max(0, (revealLine - 1) * lineHeight - 40);
+      syncScroll();
+    });
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, [revealLine]);
 
   return (
     <Box
@@ -98,7 +119,15 @@ export function StudioCodeEditor({
         }}
       >
         {Array.from({ length: lineCount }, (_, i) => (
-          <Box key={i + 1} component="div">
+          <Box
+            key={i + 1}
+            component="div"
+            sx={
+              changedLineSet.has(i + 1)
+                ? { borderInlineStart: "2px solid #6FBF73", ps: "6px", ms: "-7px" }
+                : {}
+            }
+          >
             {i + 1}
           </Box>
         ))}

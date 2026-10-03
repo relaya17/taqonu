@@ -2,7 +2,7 @@
 
 import { Alert, Box, Button, Chip, List, ListItem, ListItemButton, ListItemText, Stack, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { isApprovalRequiredError } from "@/lib/api";
 import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-api";
@@ -13,6 +13,7 @@ import {
   parseGitBranchName,
   parseGitPorcelain,
 } from "@/lib/studio-git-status";
+import { parseUnifiedDiff, studioDiffFileFor, type StudioDiffHunk } from "@/lib/studio-diff";
 
 type GitCommandId =
   | "git.status"
@@ -50,10 +51,16 @@ interface LastResponse {
 export function StudioGitStatus({
   projectId,
   onOpenFile,
+  filePath = null,
+  onFileHunksChange,
   extensionScope = null,
 }: {
   projectId: string;
   onOpenFile: (path: string) => void;
+  /** Currently selected editor file, scoped-diff target for hunk navigation. */
+  filePath?: string | null;
+  /** Called with this file's hunks whenever a scoped diff is fetched or the file changes. */
+  onFileHunksChange?: (hunks: readonly StudioDiffHunk[]) => void;
   /** Set when the built-in Git extension renders this panel (ADR-026). */
   extensionScope?: StudioExtensionScope | null;
 }) {
@@ -64,10 +71,22 @@ export function StudioGitStatus({
   const [approvalId, setApprovalId] = useState("");
   const [executionId, setExecutionId] = useState("");
   const [pendingCommandId, setPendingCommandId] = useState<GitCommandId>("git.status");
+  const [pendingRelativePath, setPendingRelativePath] = useState<string | null>(null);
   const [decisionReason, setDecisionReason] = useState("");
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null);
   const [branchName, setBranchName] = useState<string | null>(null);
   const [diffText, setDiffText] = useState<string | null>(null);
+  const [scopedDiffPath, setScopedDiffPath] = useState<string | null>(null);
+
+  // A scoped diff belongs to one file in one project; switching either
+  // invalidates it so Next/Previous Change never points at a different
+  // project's (or file's) hunks.
+  useEffect(() => {
+    setScopedDiffPath(null);
+    onFileHunksChange?.([]);
+    // onFileHunksChange is a per-render callback from the page, not state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath, projectId]);
 
   const last = useQuery({
     queryKey: ["studio-exec-last", projectId],
@@ -82,10 +101,14 @@ export function StudioGitStatus({
   const path = `/api/v1/projects/${encodeURIComponent(projectId)}/studio/terminal`;
 
   const requestCommand = useMutation({
-    mutationFn: async (commandId: GitCommandId) => {
-      setPendingCommandId(commandId);
+    mutationFn: async (input: { commandId: GitCommandId; relativePath?: string }) => {
+      setPendingCommandId(input.commandId);
+      setPendingRelativePath(input.relativePath ?? null);
       try {
-        return await apiPost<ExecutionResult>(path, { commandId });
+        return await apiPost<ExecutionResult>(path, {
+          commandId: input.commandId,
+          ...(input.relativePath ? { relativePath: input.relativePath } : {}),
+        });
       } catch (error) {
         if (isApprovalRequiredError(error)) {
           setApprovalId(error.approvalId);
@@ -94,13 +117,22 @@ export function StudioGitStatus({
         throw error;
       }
     },
-    onSuccess: (data, commandId) => {
+    onSuccess: (data, variables) => {
       setLastResult(data);
-      if (commandId === "git.branch") {
+      if (variables.commandId === "git.branch") {
         setBranchName(parseGitBranchName(data.stdout ?? ""));
       }
-      if (commandId === "git.diff") {
+      if (variables.commandId === "git.diff") {
         setDiffText(data.stdout ?? "");
+        if (variables.relativePath) {
+          const files = parseUnifiedDiff(data.stdout ?? "");
+          const entry = studioDiffFileFor(files, variables.relativePath);
+          setScopedDiffPath(variables.relativePath);
+          onFileHunksChange?.(entry?.hunks ?? []);
+        } else {
+          setScopedDiffPath(null);
+          onFileHunksChange?.([]);
+        }
       }
       void queryClient.invalidateQueries({ queryKey: ["studio-exec-last", projectId] });
     },
@@ -113,6 +145,7 @@ export function StudioGitStatus({
         decisionReason,
         commandId: pendingCommandId,
         ...(executionId ? { executionId } : {}),
+        ...(pendingRelativePath ? { relativePath: pendingRelativePath } : {}),
       }),
     onSuccess: (data) => {
       setLastResult(data);
@@ -121,6 +154,15 @@ export function StudioGitStatus({
       }
       if (pendingCommandId === "git.diff") {
         setDiffText(data.stdout ?? "");
+        if (pendingRelativePath) {
+          const files = parseUnifiedDiff(data.stdout ?? "");
+          const entry = studioDiffFileFor(files, pendingRelativePath);
+          setScopedDiffPath(pendingRelativePath);
+          onFileHunksChange?.(entry?.hunks ?? []);
+        } else {
+          setScopedDiffPath(null);
+          onFileHunksChange?.([]);
+        }
       }
       void queryClient.invalidateQueries({ queryKey: ["studio-exec-last", projectId] });
     },
@@ -154,7 +196,7 @@ export function StudioGitStatus({
           size="small"
           variant="outlined"
           disabled={!projectId || requestCommand.isPending}
-          onClick={() => requestCommand.mutate("git.status")}
+          onClick={() => requestCommand.mutate({ commandId: "git.status" })}
           aria-label={t("request")}
         >
           {requestCommand.isPending && pendingCommandId === "git.status"
@@ -165,7 +207,7 @@ export function StudioGitStatus({
           size="small"
           variant="outlined"
           disabled={!projectId || requestCommand.isPending}
-          onClick={() => requestCommand.mutate("git.branch")}
+          onClick={() => requestCommand.mutate({ commandId: "git.branch" })}
           aria-label={t("requestBranch")}
         >
           {t("requestBranch")}
@@ -174,16 +216,29 @@ export function StudioGitStatus({
           size="small"
           variant="outlined"
           disabled={!projectId || requestCommand.isPending}
-          onClick={() => requestCommand.mutate("git.diff")}
+          onClick={() => requestCommand.mutate({ commandId: "git.diff" })}
           aria-label={t("requestDiff")}
         >
           {t("requestDiff")}
         </Button>
+        {filePath ? (
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={!projectId || requestCommand.isPending}
+            onClick={() => requestCommand.mutate({ commandId: "git.diff", relativePath: filePath })}
+            aria-label={t("requestFileDiff")}
+          >
+            {requestCommand.isPending && pendingRelativePath === filePath
+              ? t("requesting")
+              : t("requestFileDiff")}
+          </Button>
+        ) : null}
         <Button
           size="small"
           variant="outlined"
           disabled={!projectId || requestCommand.isPending}
-          onClick={() => requestCommand.mutate("git.log")}
+          onClick={() => requestCommand.mutate({ commandId: "git.log" })}
         >
           git.log
         </Button>
@@ -280,7 +335,7 @@ export function StudioGitStatus({
           {shownDiff !== null ? (
             <Box>
               <Typography variant="caption" sx={{ color: "#8B9099" }}>
-                {t("diff")}
+                {scopedDiffPath ? t("diffFile", { path: scopedDiffPath }) : t("diff")}
               </Typography>
               <Box
                 component="pre"

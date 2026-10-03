@@ -446,6 +446,45 @@ Inspected 2026-09-26 against repository HEAD at start of this pass: **`08e0c40`*
 | Status | **LOCALLY VERIFIED** for authenticated Studio axe, hamburger, and `/en/projects` document navigation (9.9). Unauthenticated `e2e/a11y.spec.ts` hamburger `fixme` **preserved**. |
 | Commit | Pre-existing; local proof in operator run after `f21fc9b`. |
 
+#### S9-26 Studio Change Navigation (Next Change / Previous Change)
+
+| Field | Value |
+|---|---|
+| Requirement ID | S9-26 |
+| Current implementation | `fileHunks`/`changeCursor` state in `apps/web/app/[locale]/studio/page.tsx`, -1 sentinel + wrap-around `nextChange`/`previousChange`, same cursor shape as the runtime-verified Problems navigation (`nextProblem`/`previousProblem`). Alt+`.` / Alt+`,` keybindings via `event.code`. Reset effect keyed on `[selectedPath]`. |
+| Existing evidence | `tsc --noEmit` clean. Code shape identical to the Problems cursor, which is itself browser-verified (F8/Shift+F8 first-press and wrap). `apps/web/lib/studio-diff.test.ts` (4/4 passing) proves the underlying hunk/changed-line parsing this cursor walks is correct. |
+| Missing evidence | Live browser proof of `nextChange`/`previousChange` cursor transitions walking a real scoped `git.diff` response (first Next, second Next, wrap last→first, first Previous, wrap first→last, empty/no-change case). |
+| Required action | Requires a completed governed `git.diff` `RECORD.EXECUTE` approval with a second identity performing `decide-and-execute` against the project under test, then exercising the cursor against the resulting hunks in-browser. |
+| Verification method | Browser (blocked this pass — closure pass 2026-10-04). |
+| Status | **IMPLEMENTED BUT NOT VERIFIED** — runtime verification blocked by the legitimate single-identity SoD fixture limitation: this workstation has exactly one identity (`dev@atlas.local`) with access to the test project, and no in-product mechanism exists to grant a second identity access to an existing project without assembling unrelated infrastructure (MFA enrollment + admin-role promotion) solely to manufacture a test identity, which was explicitly out of scope for this closure pass. |
+| Commit | Not committed this pass. |
+
+#### S9-27 Project Isolation / Scoped Diff (authorized second-identity end-to-end)
+
+| Field | Value |
+|---|---|
+| Requirement ID | S9-27 |
+| Current implementation | `git.diff` governed command, `pathArg: "optional"`, scoped by `resolvePathArg`/`buildArgv` against the requesting project's own `workspaceRoot` in `apps/api/src/services/governed-command.ts`. `StudioGitStatus.tsx` reset effect keyed on `[filePath, projectId]` (code-review fix, prevents stale cross-project diff/hunk state). |
+| Existing evidence | New unit tests in `apps/api/src/services/governed-command.test.ts` (12/12 passing this pass, incl. 2 new): "rejects a path-escaping relativePath for the optional-path git.diff scope (WORKSPACE_ESCAPE)" and "scopes git.diff to the given project's own workspaceRoot and never crosses into a sibling project directory" — proves a relativePath cannot resolve outside the requesting project's own workspaceRoot. Real-browser regression evidence (historically verified, re-confirmed this pass): cross-project ownership denial (403, "does not own this resource") and SoD self-decision denial (403, "separation of duties forbids the same identity from also being the live human who decides and claims it"). |
+| Missing evidence | Full authorized-identity end-to-end browser proof: a second, project-authorized identity completes `decide-and-execute` for a `git.diff` on a project it legitimately owns, and the returned diff is confirmed to contain only that project's files. |
+| Required action | A second identity with legitimate access to the same project — not available in this environment (see S9-26). |
+| Verification method | Unit tests (done) + real-browser denial paths (done, regression) + authorized-identity full cycle (blocked). |
+| Status | **BLOCKED** for the full authorized second-identity end-to-end path — legitimate single-identity SoD fixture limitation, same root cause as S9-26. The project-isolation guarantee itself (cannot leak another project's files via a scoped diff) is backed by the unit-test evidence above plus the real-browser denial evidence; this is recorded as supplementary legitimate evidence, not a substitute for the missing authorized-identity proof. |
+| Commit | Not committed this pass (test additions only, see §14 — do not stage/commit per this closure pass's instructions). |
+
+#### S9-28 Mobile Problems navigation scroll restoration
+
+| Field | Value |
+|---|---|
+| Requirement ID | S9-28 |
+| Current implementation | `apps/web/components/studio/StudioCodeEditor.tsx` — `ResizeObserver` effect on the editor `textarea` that reapplies `scrollTop` for the current `revealLine` when the textarea transitions from `clientHeight: 0` (hidden behind the mobile Problems/bottom panel) to non-zero (visible again after switching back to Editor view). |
+| Existing evidence | `tsc --noEmit` clean. |
+| Missing evidence | None — live mobile-viewport browser proof obtained this pass. |
+| Required action | None. |
+| Verification method | Browser, direct DOM evaluation (not accessibility-tree inference). |
+| Status | **VERIFIED**. Real mobile-viewport test: navigated via F8/Shift+F8 to the last problem (line 316 of `StudioGitStatus.tsx`); confirmed editor hidden (`clientHeight: 0`, `scrollTop: 0`) while the Problems tab was active. After switching to Editor view: `scrollTop: 6062.75`, `clientHeight: 225` — matching the predicted `(316-1)×19.375−40 ≈ 6061.25`. Before this fix, `scrollTop` stayed `0` regardless of target line. |
+| Commit | Not committed this pass. |
+
 ---
 
 ## 4. Verification requirements
@@ -685,6 +724,8 @@ Stage 9 commits will be listed here as substages land. Starting HEAD for this pa
 10. Production authenticated Stage 9 **ENVIRONMENT BLOCKED**.
 11. CI SoD/AVR **ENVIRONMENT BLOCKED**: the e2e job sets `SUPABASE_SERVICE_ROLE_KEY=replace-me`, so Apply returns 503.
 12. SoD acceptance is two real sessions and `decide-and-execute`. There is still no second Studio decide panel.
+13. S9-26 Change Navigation runtime proof **IMPLEMENTED BUT NOT VERIFIED** — blocked by the single-identity SoD fixture limitation (closure pass 2026-10-04).
+14. S9-27 Project Isolation / Scoped Diff authorized second-identity end-to-end proof **BLOCKED** — same root cause as item 13; isolation itself backed by new unit tests + real-browser denial evidence (closure pass 2026-10-04).
 
 ---
 
