@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Alert, Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost } from "@/lib/api";
+import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-api";
 
 interface Finding {
   id: string;
@@ -36,11 +36,15 @@ interface ObserveResult {
 export function ObserverPanel({
   projectId,
   embedded = false,
+  extensionScope = null,
 }: {
   projectId: string;
   embedded?: boolean;
+  /** Set when an official extension renders this panel (ADR-026). */
+  extensionScope?: StudioExtensionScope | null;
 }) {
   const t = useTranslations("observer");
+  const { apiGet, apiPost } = useStudioApi(extensionScope);
   const tx = useTranslations("observerExtras");
   const queryClient = useQueryClient();
   const [bugTitle, setBugTitle] = useState("");

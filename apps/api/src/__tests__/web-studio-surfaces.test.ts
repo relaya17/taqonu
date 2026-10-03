@@ -392,18 +392,21 @@ describe("Studio Cloud & Tools panel", () => {
     expect(workbench).toMatch(/\/studio\?tab=chat/);
   });
 
-  it("orders the open file surface as editor, problems, git, PSA, then proposal actions", () => {
+  it("orders the open file surface as editor, problems, side bar, PSA, then proposal actions", () => {
     const studio = readWeb("app/[locale]/studio/page.tsx");
     const editor = studio.indexOf("<StudioCodeEditor");
     const problems = studio.indexOf("<StudioProblemsPanel");
-    const git = studio.indexOf("<StudioGitStatus");
+    // Git is the built-in Git extension's panel (ADR-026), rendered by the
+    // extension host in the side bar.
+    const sideBar = studio.indexOf("<ExtensionPanelHost");
     const psa = studio.indexOf("<SupervisingAgentPanel");
     const actions = studio.indexOf("studioFileActionInstruction(action");
     expect(editor).toBeGreaterThan(-1);
     expect(editor).toBeLessThan(problems);
-    expect(problems).toBeLessThan(git);
-    expect(git).toBeLessThan(psa);
+    expect(problems).toBeLessThan(sideBar);
+    expect(sideBar).toBeLessThan(psa);
     expect(psa).toBeLessThan(actions);
+    expect(studio).toMatch(/case "arletos\.git":\s*return \(\s*<StudioGitStatus/);
     expect(studio).toContain('setIntent("propose")');
     // Run and Checks open from the title-bar menus and the status bar.
     expect(studio).toContain('openRoom("run")');
@@ -434,6 +437,29 @@ describe("Studio Cloud & Tools panel", () => {
     expect(sections).toContain('research: "/agents?view=knowledge"');
     // Accounts with two-factor on can finish signing in on the web.
     expect(readWeb("app/[locale]/auth/login/page.tsx")).toContain("/api/v1/auth/mfa/verify");
+  });
+
+  it("ADR-026: Studio extensions come from the official catalog and are scoped by the API", () => {
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    const scopedApi = readWeb("lib/studio-extension-api.ts");
+    const host = readWeb("components/studio/extensions/ExtensionPanelHost.tsx");
+    expect(studio).toContain("activityExtensions(extensionsQuery.data)");
+    expect(studio).toContain("<ExtensionsView");
+    expect(studio).toContain("<ExtensionDetail");
+    expect(scopedApi).toContain('"x-arletos-extension"');
+    // Nothing renders until a permission is granted.
+    expect(host).toContain("if (!grantedAny)");
+    for (const panel of [
+      "components/studio/StudioGitStatus.tsx",
+      "components/studio/QaPanel.tsx",
+      "components/studio/SentinelPanel.tsx",
+      "components/studio/ObserverPanel.tsx",
+      "components/studio/CloudToolsPanel.tsx",
+      "components/studio/DeployFeedsPanel.tsx",
+      "components/studio/EngineeringRunsPanel.tsx",
+    ]) {
+      expect(readWeb(panel)).toContain("useStudioApi(extensionScope)");
+    }
   });
 
   it("draws Studio as one VS Code–style title bar with menus, not stacked rows", () => {

@@ -48,15 +48,30 @@ describe("Phase 1 architecture contracts", () => {
     );
   });
 
-  it("forbids unrestricted shell, client argv, marketplace, and user JS", () => {
+  it("forbids unrestricted shell, client argv, and user JS", () => {
     expect(STUDIO_EXECUTION_CONTRACT.unrestrictedShell).toBe(false);
     expect(STUDIO_EXECUTION_CONTRACT.clientArgvAccepted).toBe(false);
     expect(STUDIO_EXECUTION_CONTRACT.spawnShell).toBe(false);
-    expect(STUDIO_EXTENSION_CONTRACT.marketplace).toBe(false);
     expect(STUDIO_EXTENSION_CONTRACT.userProvidedJs).toBe(false);
-    expect(STUDIO_EXTENSION_CONTRACT.hostApi).toBe(false);
-    expect(STUDIO_EXTENSION_CONTRACT.productGoal).toBe(false);
-    expect(STUDIO_EXECUTION_CONTRACT.extensionsHostProductGoal).toBe(false);
+    expect(STUDIO_EXECUTION_CONTRACT.extensionsUserJs).toBe(false);
+  });
+
+  it("ADR-026: native official extensions only — no third-party, no server-side code, explicit permissions", () => {
+    expect(STUDIO_EXTENSION_CONTRACT.adr).toBe("ADR-026");
+    expect(STUDIO_EXTENSION_CONTRACT.productGoal).toBe(true);
+    expect(STUDIO_EXTENSION_CONTRACT.marketplace).toBe("official-only");
+    expect(STUDIO_EXTENSION_CONTRACT.thirdParty).toBe(false);
+    expect(STUDIO_EXTENSION_CONTRACT.serverSideExtensionCode).toBe(false);
+    expect(STUDIO_EXTENSION_CONTRACT.vsCodeCompatibility).toBe(false);
+    expect(STUDIO_EXTENSION_CONTRACT.hostApi).toBe("declarative-contributions");
+    expect(STUDIO_EXTENSION_CONTRACT.installGrantsPermissions).toBe(false);
+    expect(STUDIO_EXTENSION_CONTRACT.permissionEnforcement).toBe("api");
+    expect(STUDIO_EXTENSION_CONTRACT.unknownPermission).toBe("deny");
+    expect(STUDIO_EXTENSION_CONTRACT.durableSoR).toBe(true);
+    expect(STUDIO_EXECUTION_CONTRACT.extensionsMarketplace).toBe("official-only");
+    expect(STUDIO_EXECUTION_CONTRACT.extensionsThirdParty).toBe(false);
+    expect(STUDIO_EXECUTION_CONTRACT.extensionsServerSideCode).toBe(false);
+    expect(STUDIO_EXECUTION_CONTRACT.extensionsHostProductGoal).toBe(true);
   });
 
   it("does not let authority or composite score promote a claim to Truth", () => {

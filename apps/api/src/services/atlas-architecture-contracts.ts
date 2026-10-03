@@ -60,8 +60,13 @@ export const STUDIO_EXECUTION_CONTRACT = {
   spawnShell: false,
   workspaceContainment: "linked-project-workspaceRoot-only",
   approval: "RECORD.EXECUTE HUMAN_ONLY live-human decide-and-execute",
-  extensionsMarketplace: false,
+  /** ADR-026: official ArletOS catalog only — no outside publishers. */
+  extensionsMarketplace: "official-only",
   extensionsUserJs: false,
-  extensionsHostApi: false,
-  extensionsHostProductGoal: false,
+  /** Extensions contribute declaratively; no code host, no server-side extension code. */
+  extensionsHostApi: "declarative-contributions",
+  extensionsServerSideCode: false,
+  extensionsThirdParty: false,
+  /** ADR-026 (Arlet, 2026-10-03) supersedes the earlier non-goal. */
+  extensionsHostProductGoal: true,
 } as const;

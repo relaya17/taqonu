@@ -95,6 +95,31 @@ export interface StoredStudioGithubSource {
   updatedAt: string;
 }
 
+/** ADR-026 — user scope: which Studio extensions are installed, and what was granted. */
+export interface StoredStudioExtensionInstall {
+  /** Installed manifest version (built-ins: the version first recorded). */
+  version: string;
+  installedAt: string;
+  updatedAt: string;
+  /** Permissions the user granted explicitly. Installing grants nothing. */
+  grants: string[];
+}
+
+/** ADR-026 — project scope: enablement, icon order, view state, last verification. */
+export interface StoredStudioExtensionProjectState {
+  enabled: Record<string, boolean>;
+  order: string[];
+  view: Record<string, unknown>;
+  verified: Record<
+    string,
+    {
+      at: string;
+      ok: boolean;
+      checks: Array<{ id: string; ok: boolean; reason: string | null }>;
+    }
+  >;
+}
+
 export interface StoredLocalConnection {
   id: string;
   status: "CONNECTED" | "DISCONNECTED" | "ERROR";
@@ -125,6 +150,10 @@ export interface PersistedShape {
   githubAppInstallations?: Record<string, StoredGithubAppInstallation>;
   /** projectId → GitHub source Studio reads from (read-only). */
   studioGithubSources?: Record<string, StoredStudioGithubSource>;
+  /** userId → extensionId → install record (ADR-026 user scope). */
+  studioExtensionInstalls?: Record<string, Record<string, StoredStudioExtensionInstall>>;
+  /** projectId → extension state (ADR-026 project scope). */
+  studioExtensionProjects?: Record<string, StoredStudioExtensionProjectState>;
   localConnection?: StoredLocalConnection | null;
   /** Per-owner local folder connections. Preferred over localConnection. */
   localConnections?: Record<string, StoredLocalConnection>;
@@ -356,6 +385,8 @@ function emptyShape(): PersistedShape {
     githubConnections: {},
     githubAppInstallations: {},
     studioGithubSources: {},
+    studioExtensionInstalls: {},
+    studioExtensionProjects: {},
     localConnection: null,
     localConnections: {},
     cloudLinks: {},
@@ -406,6 +437,8 @@ class OsStore {
   private githubConnections = new Map<string, StoredGithubConnection>();
   private githubAppInstallations = new Map<string, StoredGithubAppInstallation>();
   private studioGithubSources = new Map<string, StoredStudioGithubSource>();
+  private studioExtensionInstalls = new Map<string, Record<string, StoredStudioExtensionInstall>>();
+  private studioExtensionProjects = new Map<string, StoredStudioExtensionProjectState>();
   private localConnections = new Map<string, StoredLocalConnection>();
   private cloudLinks = new Map<string, CloudProjectLink>();
   private plan: StoredPlan | null = null;
@@ -551,6 +584,8 @@ class OsStore {
       Object.entries(raw.githubAppInstallations ?? {}),
     );
     this.studioGithubSources = new Map(Object.entries(raw.studioGithubSources ?? {}));
+    this.studioExtensionInstalls = new Map(Object.entries(raw.studioExtensionInstalls ?? {}));
+    this.studioExtensionProjects = new Map(Object.entries(raw.studioExtensionProjects ?? {}));
     this.localConnections = new Map(Object.entries(raw.localConnections ?? {}));
     // Legacy unscoped records are not attached to any owner — they must not
     // become readable/replaceable by every signed-in user. Reconnect per owner.
@@ -631,6 +666,8 @@ class OsStore {
       githubConnections: Object.fromEntries(this.githubConnections),
       githubAppInstallations: Object.fromEntries(this.githubAppInstallations),
       studioGithubSources: Object.fromEntries(this.studioGithubSources),
+      studioExtensionInstalls: Object.fromEntries(this.studioExtensionInstalls),
+      studioExtensionProjects: Object.fromEntries(this.studioExtensionProjects),
       localConnection: null,
       localConnections: Object.fromEntries(this.localConnections),
       cloudLinks: Object.fromEntries(this.cloudLinks),
@@ -718,6 +755,37 @@ class OsStore {
   setStudioGithubSource(projectId: string, source: StoredStudioGithubSource): void {
     this.ensureLoaded();
     this.studioGithubSources.set(projectId, source);
+    this.persist();
+  }
+
+  getStudioExtensionInstalls(userId: string): Record<string, StoredStudioExtensionInstall> {
+    this.ensureLoaded();
+    return { ...(this.studioExtensionInstalls.get(userId) ?? {}) };
+  }
+
+  setStudioExtensionInstalls(
+    userId: string,
+    installs: Record<string, StoredStudioExtensionInstall>,
+  ): void {
+    this.ensureLoaded();
+    this.studioExtensionInstalls.set(userId, installs);
+    this.persist();
+  }
+
+  getStudioExtensionProject(projectId: string): StoredStudioExtensionProjectState {
+    this.ensureLoaded();
+    const stored = this.studioExtensionProjects.get(projectId);
+    return {
+      enabled: { ...(stored?.enabled ?? {}) },
+      order: [...(stored?.order ?? [])],
+      view: { ...(stored?.view ?? {}) },
+      verified: { ...(stored?.verified ?? {}) },
+    };
+  }
+
+  setStudioExtensionProject(projectId: string, state: StoredStudioExtensionProjectState): void {
+    this.ensureLoaded();
+    this.studioExtensionProjects.set(projectId, state);
     this.persist();
   }
 
@@ -828,6 +896,8 @@ class OsStore {
     this.githubConnections.clear();
     this.githubAppInstallations.clear();
     this.studioGithubSources.clear();
+    this.studioExtensionInstalls.clear();
+    this.studioExtensionProjects.clear();
     this.localConnections.clear();
     this.cloudLinks.clear();
     this.plan = null;

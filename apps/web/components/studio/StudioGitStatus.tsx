@@ -4,7 +4,8 @@ import { Alert, Box, Button, Chip, List, ListItem, ListItemButton, ListItemText,
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost, isApprovalRequiredError } from "@/lib/api";
+import { isApprovalRequiredError } from "@/lib/api";
+import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-api";
 import {
   isGitBranchResult,
   isGitDiffResult,
@@ -49,11 +50,15 @@ interface LastResponse {
 export function StudioGitStatus({
   projectId,
   onOpenFile,
+  extensionScope = null,
 }: {
   projectId: string;
   onOpenFile: (path: string) => void;
+  /** Set when the built-in Git extension renders this panel (ADR-026). */
+  extensionScope?: StudioExtensionScope | null;
 }) {
   const t = useTranslations("studio.git");
+  const { apiGet, apiPost } = useStudioApi(extensionScope);
   const tRun = useTranslations("studio.run");
   const queryClient = useQueryClient();
   const [approvalId, setApprovalId] = useState("");

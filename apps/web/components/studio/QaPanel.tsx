@@ -13,7 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { EpistemicChip } from "@/components/epistemic/EpistemicChip";
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-api";
 import { Link } from "@/i18n/routing";
 
 interface Project {
@@ -127,11 +127,15 @@ function extractPatternKey(summary: string): string | null {
 export function QaPanel({
   projectId: boundProjectId,
   embedded = false,
+  extensionScope = null,
 }: {
   projectId?: string | undefined;
   embedded?: boolean;
+  /** Set when the built-in Tests extension renders this panel (ADR-026). */
+  extensionScope?: StudioExtensionScope | null;
 }) {
   const t = useTranslations("qa");
+  const { apiDelete, apiGet, apiPost } = useStudioApi(extensionScope);
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<
     "SINGLE_PROJECT" | "SELECTED_PROJECTS" | "ENTIRE_PORTFOLIO"

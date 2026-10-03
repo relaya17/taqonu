@@ -134,6 +134,8 @@ const defaultInit: NonNullable<Parameters<typeof fetch>[1]> = {
 
 export type ApiRequestInit = {
   readonly signal?: AbortSignal;
+  /** Extra headers, e.g. the Studio extension scope (ADR-026). */
+  readonly headers?: Readonly<Record<string, string>>;
 };
 
 export async function apiGet<T>(
@@ -143,6 +145,7 @@ export async function apiGet<T>(
   const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     ...(init.signal ? { signal: init.signal } : {}),
+    ...(init.headers ? { headers: { ...init.headers } } : {}),
   });
   if (!response.ok) {
     await readError(path, response);
@@ -158,7 +161,7 @@ export async function apiPost<T>(
   const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
     body: JSON.stringify(body),
     ...(init.signal ? { signal: init.signal } : {}),
   });
@@ -168,11 +171,15 @@ export async function apiPost<T>(
   return readSuccessJson<T>(response);
 }
 
-export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+export async function apiPut<T>(
+  path: string,
+  body: unknown,
+  init: ApiRequestInit = {},
+): Promise<T> {
   const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -194,16 +201,22 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return readSuccessJson<T>(response);
 }
 
-export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
+export async function apiDelete<T>(
+  path: string,
+  body?: unknown,
+  init: ApiRequestInit = {},
+): Promise<T> {
   const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...defaultInit,
     method: "DELETE",
     ...(body !== undefined
       ? {
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
           body: JSON.stringify(body),
         }
-      : {}),
+      : init.headers
+        ? { headers: { ...init.headers } }
+        : {}),
   });
   if (!response.ok) {
     await readError(path, response);

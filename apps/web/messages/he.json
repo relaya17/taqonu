@@ -2572,13 +2572,8 @@
     "close": "סגירה"
   },
   "studioRunExtras": {
-    "enabled": "מופעלת",
-    "disabled": "כבויה",
-    "toggleOn": "פעילה",
-    "toggleOff": "לא פעילה",
-    "saving": "שומר…",
-    "enableAria": "הפעלת {name}",
-    "disableAria": "כיבוי {name}"
+    "manageHint": "הרחבות מחברות יכולות לסטודיו: אייקון בסרגל, פאנל והרשאות שאת מאשרת.",
+    "manage": "ניהול הרחבות"
   },
   "observerExtras": {
     "showHistory": "הצגת היסטוריה",
@@ -2673,5 +2668,194 @@
     "signIn": "התחברות",
     "unavailable": "לא הצלחנו לבדוק את ההרשאות כרגע. אפשר לנסות שוב בעוד רגע.",
     "backToSettings": "חזרה להגדרות"
+  },
+  "studioExtensions": {
+    "title": "הרחבות",
+    "search": "חיפוש הרחבות ויכולות…",
+    "filtersLabel": "סינון הרחבות",
+    "filters": {
+      "all": "הכל",
+      "installed": "מותקנות",
+      "builtin": "מובנות",
+      "official": "רשמיות",
+      "thirdParty": "צד שלישי · בקרוב"
+    },
+    "empty": "אין הרחבות שמתאימות לחיפוש.",
+    "sections": {
+      "installed": "מותקנות",
+      "available": "זמינות להתקנה"
+    },
+    "thirdPartyNote": "הרחבות של צד שלישי יגיעו רק אחרי הגדרת חוזה, בידוד ואימות מקור (ADR-026).",
+    "kind": {
+      "builtin": "מובנית",
+      "official": "רשמית"
+    },
+    "state": {
+      "incompatible": "לא תואמת לגרסה",
+      "notInstalled": "לא מותקנת",
+      "enabled": "פעילה",
+      "installedOff": "מותקנת · כבויה",
+      "updateAvailable": "עדכון זמין"
+    },
+    "check": {
+      "pending": "ממתינה להרשאות",
+      "unverified": "לבדיקה",
+      "verified": "✓ נבדקה",
+      "failed": "הבדיקה נכשלה"
+    },
+    "loading": "טוען…",
+    "notFound": "ההרחבה לא נמצאה בקטלוג.",
+    "publisherVerified": "מאומת",
+    "version": "גרסה {version}",
+    "requiresStudio": "תואמת Studio ≥ {version}",
+    "actions": {
+      "install": "התקנה",
+      "update": "עדכון ל־{version}",
+      "enable": "הפעלה בפרויקט",
+      "open": "פתיחה",
+      "disable": "השבתה",
+      "uninstall": "הסרה",
+      "grant": "אישור",
+      "revoke": "ביטול",
+      "grantAll": "אישור ההרשאות",
+      "verify": "הרצת בדיקה",
+      "details": "פרטים והרשאות",
+      "moveUp": "הזזה למעלה",
+      "moveDown": "הזזה למטה"
+    },
+    "uninstallConfirm": "להסיר את {name}? ההרשאות וההגדרות שלה יימחקו.",
+    "builtinNote": "הרחבה מובנית: מגיעה עם ArletOS. אפשר להשבית ולהפעיל, אבל לא להסיר.",
+    "noProject": "בחרו פרויקט כדי להפעיל את ההרחבה.",
+    "incompatibleNote": "ההרחבה לא תואמת לגרסת הסטודיו, ולכן אי אפשר להפעיל אותה.",
+    "detail": {
+      "permissions": "הרשאות",
+      "capabilities": "יכולות — מה מחובר באמת",
+      "contributes": "מה ההרחבה מוסיפה לסטודיו",
+      "verification": "בדיקת תקינות"
+    },
+    "installNote": "התקנה לא מעניקה הרשאות. כל הרשאה מאושרת בנפרד, נרשמת ביומן, ואפשר לבטל אותה.",
+    "permission": {
+      "granted": "✓ אושרה",
+      "pending": "ממתינה לאישור"
+    },
+    "capability": {
+      "ready": "זמינה",
+      "needs": "דורשת: {permission}"
+    },
+    "contributesActivity": "אייקון בסרגל הצדדי ופאנל: {name}",
+    "contributesCommand": "פקודה בתפריט תצוגה: פתיחת {name}",
+    "verificationHelp": "בודקת שהתנאים של ההרחבה מתקיימים בפרויקט הזה, כדי שהיכולות שלה באמת יעבדו.",
+    "verifiedAt": "נבדקה: {date}",
+    "checks": {
+      "workspace": "תיקייה מקומית מקושרת",
+      "git_repo": "מאגר Git בתיקייה",
+      "compatibility": "תאימות לגרסת הסטודיו",
+      "none": "אין תנאים מוקדמים"
+    },
+    "reasons": {
+      "NO_LOCAL_FOLDER": "לפרויקט לא מקושרת תיקייה מקומית",
+      "NO_GIT_REPOSITORY": "בתיקייה אין מאגר Git",
+      "INCOMPATIBLE": "לא תואמת לגרסת הסטודיו"
+    },
+    "verifyNever": "עוד לא נבדקה.",
+    "panel": {
+      "needsPermissionsTitle": "{name} מחכה לאישור הרשאות",
+      "somePending": "ממתינות לאישור: {permissions}",
+      "linkFolder": "קישור תיקייה"
+    },
+    "openPanel": "{name}",
+    "detailTab": "הרחבה: {name}",
+    "ext": {
+      "arletos_git": {
+        "name": "Git",
+        "description": "שינויים, Diff, היסטוריה ומי שינה כל שורה"
+      },
+      "arletos_tests": {
+        "name": "בדיקות ו־QA",
+        "description": "הרצת בדיקות, תוצאות ודפוסים שנלמדו"
+      },
+      "arletos_cloud": {
+        "name": "ענן ופריסה",
+        "description": "כלי ענן, היסטוריית פריסות ומשיכת נתונים"
+      },
+      "arletos_security": {
+        "name": "אבטחה",
+        "description": "סריקת אבטחה ודוחות SARIF"
+      },
+      "arletos_observer": {
+        "name": "צופה",
+        "description": "מחזורי תצפית והיסטוריה"
+      },
+      "arletos_agent_runs": {
+        "name": "ריצות הסוכן",
+        "description": "ריצות לולאת ההנדסה ואישורן"
+      }
+    },
+    "perm": {
+      "workspace_read": {
+        "label": "קריאת קבצי הפרויקט",
+        "description": "צפייה בקבצים בתיקייה המקושרת"
+      },
+      "terminal_governed": {
+        "label": "פקודות מבוקרות במסוף",
+        "description": "הרצת פקודות מהרשימה המאושרת, אחרי אישור"
+      },
+      "tests_governed": {
+        "label": "הרצת בדיקות מבוקרת",
+        "description": "הרצת בדיקות מהרשימה המאושרת, אחרי אישור"
+      },
+      "git_read": {
+        "label": "קריאת Git",
+        "description": "סטטוס, ענף, Diff, היסטוריה ומי שינה — בלי שינוי"
+      },
+      "qa_run": {
+        "label": "הרצת QA",
+        "description": "הרצת בדיקות QA ושמירת התוצאות"
+      },
+      "qa_learn": {
+        "label": "למידת דפוסי QA",
+        "description": "שמירת דפוסים מהבדיקות ומחיקתם"
+      },
+      "security_scan": {
+        "label": "סריקת אבטחה",
+        "description": "סריקה, הצעת תיקון, אימות והעלאת דוח SARIF"
+      },
+      "observer_run": {
+        "label": "הרצת הצופה",
+        "description": "מחזור תצפית, היסטוריה ודיווח באג"
+      },
+      "cloud_read": {
+        "label": "קריאת מצב הענן",
+        "description": "רשימת חיבורי ענן והיסטוריית פריסות"
+      },
+      "deploy_observe": {
+        "label": "משיכת נתוני פריסה",
+        "description": "רישום נתונים מ־Vercel, Render ו־GitHub כראיות"
+      },
+      "agent_runs_read": {
+        "label": "צפייה בריצות הסוכן",
+        "description": "רשימת הריצות והשלבים שלהן"
+      },
+      "agent_runs_approve": {
+        "label": "אישור ריצות הסוכן",
+        "description": "אישור ריצה שממתינה להחלטה"
+      }
+    },
+    "cap": {
+      "git_changes": "שינויים ו־Diff",
+      "git_history": "היסטוריה ומי שינה",
+      "qa_runs": "הרצות QA",
+      "qa_patterns": "דפוסים שנלמדו",
+      "cloud_adapters": "חיבורי ענן",
+      "cloud_deployments": "היסטוריית פריסות",
+      "cloud_observe": "משיכת נתונים מ־Vercel / Render",
+      "cloud_githubSync": "סנכרון GitHub",
+      "security_scan": "סריקת אבטחה",
+      "security_sarif": "העלאת דוח SARIF",
+      "observer_cycle": "מחזור תצפית",
+      "observer_history": "היסטוריית תצפיות",
+      "runs_list": "רשימת ריצות",
+      "runs_approve": "אישור ריצה"
+    }
   }
 }

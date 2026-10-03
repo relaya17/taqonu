@@ -1,11 +1,11 @@
 /**
- * Governed Studio Terminal / Test Runner / Extensions.
+ * Governed Studio Terminal / Test Runner. (Extensions: routes/studio-extensions.ts, ADR-026.)
  *
  * RECORD.EXECUTE is HIGH_RISK_WRITE + requiresApproval and lands at HUMAN_ONLY
  * with conservative default confidence/evidence — same live-human
  * decide-and-execute split as Sentinel CASE.EXECUTE. Callers send a catalog
  * commandId. Spawn is shell:false inside the linked project workspaceRoot.
- * No client argv. No unrestricted shell. Extensions are manifest-only.
+ * No client argv. No unrestricted shell.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -29,11 +29,6 @@ import {
   type GovernedCommandKind,
   type GovernedCommandResult,
 } from "../services/governed-command.js";
-import {
-  listStudioExtensions,
-  setStudioExtensionEnabled,
-  STUDIO_EXTENSION_CONTRACT,
-} from "../services/studio-extensions.js";
 import { osStore } from "../store/os-store.js";
 
 const commandIdSchema = z.enum([
@@ -445,57 +440,5 @@ export async function registerStudioExecutionRoutes(
       );
     }
     return reply.send({ status: "KILLED" as const, executionId: body.executionId });
-  });
-
-  app.get("/api/v1/projects/:id/studio/extensions", async (request) => {
-    const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    await assertProjectReadAccess(app, request, projectId);
-    return {
-      contract: STUDIO_EXTENSION_CONTRACT,
-      extensions: listStudioExtensions(projectId),
-      note: "Manifest registry only. No marketplace. No user JavaScript. hostReady is always false.",
-    };
-  });
-
-  app.post("/api/v1/projects/:id/studio/extensions/:extensionId/enable", async (request) => {
-    const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    const user = await assertProjectWriteAccess(app, request, projectId);
-    const extensionId = z
-      .string()
-      .min(1)
-      .max(80)
-      .parse((request.params as { extensionId: string }).extensionId);
-    const result = setStudioExtensionEnabled(projectId, extensionId, true);
-    if (!result.ok) {
-      throw new AtlasError("NOT_FOUND", `Unknown extension "${extensionId}"`, {
-        statusCode: 404,
-      });
-    }
-    auditExecution("studio.extension.enabled", projectId, user.id, {
-      extensionId,
-      hostReady: false,
-    });
-    return {
-      ...result,
-      note: "Listed as enabled in this API process. No host API runs. Not durable Atlas SoR.",
-    };
-  });
-
-  app.post("/api/v1/projects/:id/studio/extensions/:extensionId/disable", async (request) => {
-    const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    const user = await assertProjectWriteAccess(app, request, projectId);
-    const extensionId = z
-      .string()
-      .min(1)
-      .max(80)
-      .parse((request.params as { extensionId: string }).extensionId);
-    const result = setStudioExtensionEnabled(projectId, extensionId, false);
-    if (!result.ok) {
-      throw new AtlasError("NOT_FOUND", `Unknown extension "${extensionId}"`, {
-        statusCode: 404,
-      });
-    }
-    auditExecution("studio.extension.disabled", projectId, user.id, { extensionId });
-    return result;
   });
 }

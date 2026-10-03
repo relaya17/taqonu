@@ -38,6 +38,8 @@ import { registerContactRoutes } from "./routes/contact.js";
 import { registerAiProviderRoutes } from "./routes/ai-providers.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerStudioExecutionRoutes } from "./routes/studio-execution.js";
+import { registerStudioExtensionRoutes } from "./routes/studio-extensions.js";
+import { registerStudioExtensionGate } from "./middleware/studio-extension-gate.js";
 import { registerStudioPtyRoutes } from "./routes/studio-pty.js";
 import { registerStudioLanguageRoutes } from "./routes/studio-language.js";
 import { registerStudioReplaceRoutes } from "./routes/studio-replace.js";
@@ -139,6 +141,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   registerAnalyzeRepoTool();
 
   registerAtlasSessionGate(app);
+  registerStudioExtensionGate(app);
 
   registerEventRules();
   registerControlPlaneBridge();
@@ -242,6 +245,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerAiProviderRoutes(app);
   await registerCodeRoutes(app);
   await registerStudioExecutionRoutes(app);
+  await registerStudioExtensionRoutes(app);
   await registerStudioPtyRoutes(app);
   await registerStudioLanguageRoutes(app);
   await registerStudioReplaceRoutes(app);

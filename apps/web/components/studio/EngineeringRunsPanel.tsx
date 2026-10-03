@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { apiGet, apiPost } from "@/lib/api";
+import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-api";
 import { AUTH_SESSION_QUERY_KEY, fetchAuthSession } from "@/lib/auth-session";
 
 interface LoopStage {
@@ -62,8 +62,15 @@ function statusColor(s: string): "success" | "error" | "warning" | "info" | "def
   return "default";
 }
 
-function RunDetail({ id }: { id: string }) {
+function RunDetail({
+  id,
+  extensionScope,
+}: {
+  id: string;
+  extensionScope: StudioExtensionScope | null;
+}) {
   const t = useTranslations("engineeringRuns");
+  const { apiGet } = useStudioApi(extensionScope);
   const detail = useQuery({
     queryKey: ["engineering-loop", id],
     queryFn: () => apiGet<LoopRun>(`/api/v1/engineering/loop/${encodeURIComponent(id)}`),
@@ -118,11 +125,15 @@ function RunDetail({ id }: { id: string }) {
 export function EngineeringRunsPanel({
   projectId,
   embedded = false,
+  extensionScope = null,
 }: {
   projectId: string;
   embedded?: boolean;
+  /** Set when the Engineering runs extension renders this panel (ADR-026). */
+  extensionScope?: StudioExtensionScope | null;
 }) {
   const t = useTranslations("engineeringRuns");
+  const { apiGet, apiPost } = useStudioApi(extensionScope);
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -242,7 +253,7 @@ export function EngineeringRunsPanel({
                 </Stack>
                 {open ? (
                   <Box id={`loop-detail-${run.id}`}>
-                    <RunDetail id={run.id} />
+                    <RunDetail id={run.id} extensionScope={extensionScope} />
                   </Box>
                 ) : null}
               </Box>

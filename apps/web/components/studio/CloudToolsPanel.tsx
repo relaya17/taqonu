@@ -5,7 +5,7 @@ import { Alert, Box, Button, Chip, Stack, TextField, Typography } from "@mui/mat
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
-import { apiGet } from "@/lib/api";
+import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-api";
 
 const CLOUD_SERVICES = [
   {
@@ -92,8 +92,16 @@ const panelBg = "rgba(28,31,38,0.92)";
  * (apps/web/app/[locale]/workbench/page.tsx) so it can live as a tab inside
  * Studio. Same endpoint (/api/v1/providers/adapters), same behavior.
  */
-export function CloudToolsPanel({ embedded = false }: { embedded?: boolean }) {
+export function CloudToolsPanel({
+  embedded = false,
+  extensionScope = null,
+}: {
+  embedded?: boolean;
+  /** Set when the Cloud extension renders this panel (ADR-026). */
+  extensionScope?: StudioExtensionScope | null;
+}) {
   const t = useTranslations("workbench");
+  const { apiGet } = useStudioApi(extensionScope);
   const [cloudService, setCloudService] = useState<CloudServiceId>("cloudflare");
   const [cloudUrl, setCloudUrl] = useState("");
 

@@ -6,10 +6,8 @@ import {
   Box,
   Button,
   Chip,
-  FormControlLabel,
   MenuItem,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -56,20 +54,18 @@ interface LastResponse {
   result: ExecutionResult | null;
 }
 
-interface ExtensionRow {
-  id: string;
-  name: string;
-  enabled: boolean;
-  hostReady: boolean;
-  invocability: string;
-  note: string;
-}
-
 /**
  * Governed Run tab: allowlisted commandId only. 202 means a second identity
  * must decide-and-execute. Missing Vitest is UNAVAILABLE, never PASS.
  */
-export function StudioRunPanel({ projectId }: { projectId: string }) {
+export function StudioRunPanel({
+  projectId,
+  onManageExtensions,
+}: {
+  projectId: string;
+  /** Opens the Studio Extensions view (ADR-026). */
+  onManageExtensions?: () => void;
+}) {
   const t = useTranslations("studio.run");
   const tx = useTranslations("studioRunExtras");
   const queryClient = useQueryClient();
@@ -97,26 +93,6 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
       apiGet<LastResponse>(
         `/api/v1/projects/${encodeURIComponent(projectId)}/studio/executions/last`,
       ),
-  });
-
-  const extensions = useQuery({
-    queryKey: ["studio-extensions", projectId],
-    enabled: Boolean(projectId),
-    queryFn: () =>
-      apiGet<{ extensions: ExtensionRow[]; note: string }>(
-        `/api/v1/projects/${encodeURIComponent(projectId)}/studio/extensions`,
-      ),
-  });
-
-  const toggleExtension = useMutation({
-    mutationFn: ({ id, enable }: { id: string; enable: boolean }) =>
-      apiPost<{ ok: boolean }>(
-        `/api/v1/projects/${encodeURIComponent(projectId)}/studio/extensions/${encodeURIComponent(id)}/${enable ? "enable" : "disable"}`,
-        {},
-      ),
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ["studio-extensions", projectId] });
-    },
   });
 
   const selected = catalog.data?.commands.find((c) => c.id === commandId);
@@ -337,69 +313,17 @@ export function StudioRunPanel({ projectId }: { projectId: string }) {
         </Typography>
       )}
 
-      <Box>
-        <Typography variant="subtitle2">{t("extensions")}</Typography>
-        <Alert severity="info" sx={{ mt: 1 }}>
-          {t("extensionsHelp")}
-        </Alert>
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          {(extensions.data?.extensions ?? []).map((ext) => {
-            const busy =
-              toggleExtension.isPending && toggleExtension.variables?.id === ext.id;
-            return (
-              <Stack
-                key={ext.id}
-                direction="row"
-                spacing={1}
-                alignItems="center"
-                flexWrap="wrap"
-                useFlexGap
-              >
-                <Chip size="small" label={ext.hostReady ? t("hostReady") : t("noHost")} />
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={ext.enabled ? tx("enabled") : tx("disabled")}
-                />
-                <Typography variant="body2" id={`ext-name-${ext.id}`}>
-                  {ext.name}
-                </Typography>
-                <FormControlLabel
-                  sx={{ ml: "auto" }}
-                  control={
-                    <Switch
-                      size="small"
-                      checked={ext.enabled}
-                      disabled={!projectId || busy}
-                      onChange={(e) =>
-                        toggleExtension.mutate({ id: ext.id, enable: e.target.checked })
-                      }
-                      inputProps={{
-                        "aria-label": ext.enabled
-                          ? tx("disableAria", { name: ext.name })
-                          : tx("enableAria", { name: ext.name }),
-                      }}
-                    />
-                  }
-                  label={busy ? tx("saving") : ext.enabled ? tx("toggleOn") : tx("toggleOff")}
-                />
-              </Stack>
-            );
-          })}
-        </Stack>
-        {extensions.isError ? (
-          <Alert severity="warning" sx={{ mt: 1 }}>
-            {extensions.error instanceof Error ? extensions.error.message : t("error")}
-          </Alert>
-        ) : null}
-        {toggleExtension.isError ? (
-          <Alert severity="error" sx={{ mt: 1 }}>
-            {toggleExtension.error instanceof Error
-              ? toggleExtension.error.message
-              : t("error")}
-          </Alert>
-        ) : null}
-      </Box>
+      {onManageExtensions ? (
+        <Box>
+          <Typography variant="subtitle2">{t("extensions")}</Typography>
+          <Typography variant="body2" sx={{ mt: 0.5, color: "#8B9099" }}>
+            {tx("manageHint")}
+          </Typography>
+          <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={onManageExtensions}>
+            {tx("manage")}
+          </Button>
+        </Box>
+      ) : null}
     </Stack>
   );
 }

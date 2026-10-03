@@ -327,46 +327,6 @@ describe("governed Studio terminal / tests / extensions", () => {
     expect(body.stdout).toContain("VITEST_FIXTURE_OK");
   });
 
-  it("extensions: catalog is fail-closed; unknown id 404; enable does not start a host", async () => {
-    const root = mkdtempSync(join(tmpdir(), "atlas-exec-ws-"));
-    dirs.push(root);
-    const projectId = seedOwnedProject(requester, root);
-    getRequestUser.mockResolvedValue(requester);
-    const listed = await app.inject({
-      method: "GET",
-      url: `/api/v1/projects/${projectId}/studio/extensions`,
-    });
-    expect(listed.statusCode).toBe(200);
-    const catalog = listed.json() as {
-      contract: { marketplace: boolean; hostApi: boolean };
-      extensions: Array<{ hostReady: boolean; invocability: string }>;
-    };
-    expect(catalog.contract.marketplace).toBe(false);
-    expect(catalog.contract.hostApi).toBe(false);
-    expect(catalog.extensions.every((item) => item.hostReady === false)).toBe(
-      true,
-    );
-    expect(
-      catalog.extensions.every((item) => item.invocability === "unavailable"),
-    ).toBe(true);
-
-    const missing = await app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${projectId}/studio/extensions/not.a.real.extension/enable`,
-    });
-    expect(missing.statusCode).toBe(404);
-
-    const enabled = await app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${projectId}/studio/extensions/atlas.workspace-inspector/enable`,
-    });
-    expect(enabled.statusCode).toBe(200);
-    expect(enabled.json()).toMatchObject({
-      enabled: true,
-      hostReady: false,
-    });
-  });
-
   it("kill of a non-running execution is 409 fail-closed", async () => {
     const root = mkdtempSync(join(tmpdir(), "atlas-exec-ws-"));
     dirs.push(root);

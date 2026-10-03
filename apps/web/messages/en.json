@@ -2572,13 +2572,8 @@
     "close": "Close"
   },
   "studioRunExtras": {
-    "enabled": "Enabled",
-    "disabled": "Disabled",
-    "toggleOn": "On",
-    "toggleOff": "Off",
-    "saving": "Saving…",
-    "enableAria": "Enable {name}",
-    "disableAria": "Disable {name}"
+    "manageHint": "Extensions connect capabilities to Studio: an activity-bar icon, a panel and permissions you approve.",
+    "manage": "Manage extensions"
   },
   "observerExtras": {
     "showHistory": "Show history",
@@ -2673,5 +2668,194 @@
     "signIn": "Sign in",
     "unavailable": "Could not verify your access right now. Try again in a moment.",
     "backToSettings": "Back to settings"
+  },
+  "studioExtensions": {
+    "title": "Extensions",
+    "search": "Search extensions and capabilities…",
+    "filtersLabel": "Filter extensions",
+    "filters": {
+      "all": "All",
+      "installed": "Installed",
+      "builtin": "Built-in",
+      "official": "Official",
+      "thirdParty": "Third-party · coming later"
+    },
+    "empty": "No extensions match your search.",
+    "sections": {
+      "installed": "Installed",
+      "available": "Available to install"
+    },
+    "thirdPartyNote": "Third-party extensions come only after an API contract, isolation and source verification are defined (ADR-026).",
+    "kind": {
+      "builtin": "Built-in",
+      "official": "Official"
+    },
+    "state": {
+      "incompatible": "Incompatible",
+      "notInstalled": "Not installed",
+      "enabled": "Enabled",
+      "installedOff": "Installed · off",
+      "updateAvailable": "Update available"
+    },
+    "check": {
+      "pending": "Waiting for permissions",
+      "unverified": "Not verified yet",
+      "verified": "✓ Verified",
+      "failed": "Verification failed"
+    },
+    "loading": "Loading…",
+    "notFound": "This extension is not in the catalog.",
+    "publisherVerified": "Verified",
+    "version": "Version {version}",
+    "requiresStudio": "Studio ≥ {version}",
+    "actions": {
+      "install": "Install",
+      "update": "Update to {version}",
+      "enable": "Enable in project",
+      "open": "Open",
+      "disable": "Disable",
+      "uninstall": "Uninstall",
+      "grant": "Grant",
+      "revoke": "Revoke",
+      "grantAll": "Grant permissions",
+      "verify": "Run verification",
+      "details": "Details & permissions",
+      "moveUp": "Move up",
+      "moveDown": "Move down"
+    },
+    "uninstallConfirm": "Uninstall {name}? Its permissions and settings are removed.",
+    "builtinNote": "Built-in extension: ships with ArletOS. It can be disabled and enabled, but not uninstalled.",
+    "noProject": "Open a project to enable this extension.",
+    "incompatibleNote": "This extension does not support this Studio version, so it cannot be enabled.",
+    "detail": {
+      "permissions": "Permissions",
+      "capabilities": "Capabilities — what is really connected",
+      "contributes": "What it adds to Studio",
+      "verification": "Verification"
+    },
+    "installNote": "Installing grants nothing. Each permission is approved separately, logged, and can be revoked.",
+    "permission": {
+      "granted": "✓ Granted",
+      "pending": "Waiting for approval"
+    },
+    "capability": {
+      "ready": "Available",
+      "needs": "Needs: {permission}"
+    },
+    "contributesActivity": "An activity-bar icon and panel: {name}",
+    "contributesCommand": "A View menu command: open {name}",
+    "verificationHelp": "Checks that this extension's prerequisites hold in this project, so its capabilities actually work.",
+    "verifiedAt": "Verified: {date}",
+    "checks": {
+      "workspace": "Local folder linked",
+      "git_repo": "Git repository in the folder",
+      "compatibility": "Compatible with this Studio version",
+      "none": "No prerequisites"
+    },
+    "reasons": {
+      "NO_LOCAL_FOLDER": "No local folder is linked to this project",
+      "NO_GIT_REPOSITORY": "The folder has no Git repository",
+      "INCOMPATIBLE": "Not compatible with this Studio version"
+    },
+    "verifyNever": "Not verified yet.",
+    "panel": {
+      "needsPermissionsTitle": "{name} is waiting for permissions",
+      "somePending": "Waiting for approval: {permissions}",
+      "linkFolder": "Link folder"
+    },
+    "openPanel": "{name}",
+    "detailTab": "Extension: {name}",
+    "ext": {
+      "arletos_git": {
+        "name": "Git",
+        "description": "Changes, diff, history and blame"
+      },
+      "arletos_tests": {
+        "name": "Tests & QA",
+        "description": "Run checks, results and learned patterns"
+      },
+      "arletos_cloud": {
+        "name": "Cloud & deploy",
+        "description": "Cloud tools, deploy history and observations"
+      },
+      "arletos_security": {
+        "name": "Security",
+        "description": "Security scans and SARIF reports"
+      },
+      "arletos_observer": {
+        "name": "Observer",
+        "description": "Observe cycles and history"
+      },
+      "arletos_agent_runs": {
+        "name": "Engineering runs",
+        "description": "Engineering loop runs and approvals"
+      }
+    },
+    "perm": {
+      "workspace_read": {
+        "label": "Read project files",
+        "description": "View files in the linked folder"
+      },
+      "terminal_governed": {
+        "label": "Governed terminal commands",
+        "description": "Run allow-listed commands after approval"
+      },
+      "tests_governed": {
+        "label": "Governed test runs",
+        "description": "Run allow-listed tests after approval"
+      },
+      "git_read": {
+        "label": "Read Git",
+        "description": "Status, branch, diff, log and blame — no changes"
+      },
+      "qa_run": {
+        "label": "Run QA",
+        "description": "Run QA checks and store the results"
+      },
+      "qa_learn": {
+        "label": "Learn QA patterns",
+        "description": "Save and remove patterns learned from checks"
+      },
+      "security_scan": {
+        "label": "Security scanning",
+        "description": "Scan, propose fixes, verify and upload SARIF"
+      },
+      "observer_run": {
+        "label": "Run the observer",
+        "description": "Observe cycles, history and bug reports"
+      },
+      "cloud_read": {
+        "label": "Read cloud state",
+        "description": "Cloud connections and deploy history"
+      },
+      "deploy_observe": {
+        "label": "Pull deploy data",
+        "description": "Record Vercel, Render and GitHub data as evidence"
+      },
+      "agent_runs_read": {
+        "label": "View agent runs",
+        "description": "List runs and their stages"
+      },
+      "agent_runs_approve": {
+        "label": "Approve agent runs",
+        "description": "Approve a run that is waiting for a decision"
+      }
+    },
+    "cap": {
+      "git_changes": "Changes & diff",
+      "git_history": "History & blame",
+      "qa_runs": "QA runs",
+      "qa_patterns": "Learned patterns",
+      "cloud_adapters": "Cloud connections",
+      "cloud_deployments": "Deploy history",
+      "cloud_observe": "Pull data from Vercel / Render",
+      "cloud_githubSync": "GitHub sync",
+      "security_scan": "Security scan",
+      "security_sarif": "SARIF upload",
+      "observer_cycle": "Observe cycle",
+      "observer_history": "Observer history",
+      "runs_list": "Run list",
+      "runs_approve": "Approve a run"
+    }
   }
 }

@@ -2572,13 +2572,8 @@
     "close": "إغلاق"
   },
   "studioRunExtras": {
-    "enabled": "مفعّلة",
-    "disabled": "معطّلة",
-    "toggleOn": "تشغيل",
-    "toggleOff": "إيقاف",
-    "saving": "جارٍ الحفظ…",
-    "enableAria": "تفعيل {name}",
-    "disableAria": "تعطيل {name}"
+    "manageHint": "الإضافات تربط قدرات بالاستوديو: أيقونة في الشريط ولوحة وأذونات توافق عليها.",
+    "manage": "إدارة الإضافات"
   },
   "observerExtras": {
     "showHistory": "عرض السجل",
@@ -2673,5 +2668,194 @@
     "signIn": "تسجيل الدخول",
     "unavailable": "تعذّر التحقق من صلاحياتك الآن. حاول مرة أخرى بعد قليل.",
     "backToSettings": "العودة إلى الإعدادات"
+  },
+  "studioExtensions": {
+    "title": "الإضافات",
+    "search": "ابحث في الإضافات والقدرات…",
+    "filtersLabel": "تصفية الإضافات",
+    "filters": {
+      "all": "الكل",
+      "installed": "المثبتة",
+      "builtin": "المدمجة",
+      "official": "الرسمية",
+      "thirdParty": "طرف ثالث · لاحقًا"
+    },
+    "empty": "لا توجد إضافات مطابقة للبحث.",
+    "sections": {
+      "installed": "المثبتة",
+      "available": "متاحة للتثبيت"
+    },
+    "thirdPartyNote": "إضافات الطرف الثالث تأتي فقط بعد تحديد عقد الواجهة والعزل والتحقق من المصدر (ADR-026).",
+    "kind": {
+      "builtin": "مدمجة",
+      "official": "رسمية"
+    },
+    "state": {
+      "incompatible": "غير متوافقة",
+      "notInstalled": "غير مثبتة",
+      "enabled": "مفعّلة",
+      "installedOff": "مثبتة · متوقفة",
+      "updateAvailable": "يتوفر تحديث"
+    },
+    "check": {
+      "pending": "بانتظار الأذونات",
+      "unverified": "لم يُتحقق منها بعد",
+      "verified": "✓ تم التحقق",
+      "failed": "فشل التحقق"
+    },
+    "loading": "جارٍ التحميل…",
+    "notFound": "هذه الإضافة غير موجودة في الكتالوج.",
+    "publisherVerified": "موثّق",
+    "version": "الإصدار {version}",
+    "requiresStudio": "الاستوديو ≥ {version}",
+    "actions": {
+      "install": "تثبيت",
+      "update": "تحديث إلى {version}",
+      "enable": "تفعيل في المشروع",
+      "open": "فتح",
+      "disable": "إيقاف",
+      "uninstall": "إزالة",
+      "grant": "منح",
+      "revoke": "سحب",
+      "grantAll": "منح الأذونات",
+      "verify": "تشغيل التحقق",
+      "details": "التفاصيل والأذونات",
+      "moveUp": "نقل للأعلى",
+      "moveDown": "نقل للأسفل"
+    },
+    "uninstallConfirm": "إزالة {name}؟ ستُحذف أذوناتها وإعداداتها.",
+    "builtinNote": "إضافة مدمجة: تأتي مع ArletOS. يمكن إيقافها وتفعيلها، لكن لا يمكن إزالتها.",
+    "noProject": "افتح مشروعًا لتفعيل هذه الإضافة.",
+    "incompatibleNote": "هذه الإضافة لا تدعم إصدار الاستوديو الحالي، لذا لا يمكن تفعيلها.",
+    "detail": {
+      "permissions": "الأذونات",
+      "capabilities": "القدرات — ما هو موصول فعلًا",
+      "contributes": "ما تضيفه للاستوديو",
+      "verification": "التحقق"
+    },
+    "installNote": "التثبيت لا يمنح أي إذن. كل إذن يُوافق عليه بشكل منفصل ويُسجَّل ويمكن سحبه.",
+    "permission": {
+      "granted": "✓ ممنوح",
+      "pending": "بانتظار الموافقة"
+    },
+    "capability": {
+      "ready": "متاحة",
+      "needs": "تتطلب: {permission}"
+    },
+    "contributesActivity": "أيقونة في الشريط ولوحة: {name}",
+    "contributesCommand": "أمر في قائمة العرض: فتح {name}",
+    "verificationHelp": "يتحقق من أن متطلبات الإضافة متوفرة في هذا المشروع حتى تعمل قدراتها فعلًا.",
+    "verifiedAt": "تم التحقق: {date}",
+    "checks": {
+      "workspace": "مجلد محلي مرتبط",
+      "git_repo": "مستودع Git في المجلد",
+      "compatibility": "التوافق مع إصدار الاستوديو",
+      "none": "لا متطلبات مسبقة"
+    },
+    "reasons": {
+      "NO_LOCAL_FOLDER": "لا يوجد مجلد محلي مرتبط بهذا المشروع",
+      "NO_GIT_REPOSITORY": "لا يوجد مستودع Git في المجلد",
+      "INCOMPATIBLE": "غير متوافقة مع إصدار الاستوديو"
+    },
+    "verifyNever": "لم يُتحقق منها بعد.",
+    "panel": {
+      "needsPermissionsTitle": "{name} بانتظار الأذونات",
+      "somePending": "بانتظار الموافقة: {permissions}",
+      "linkFolder": "ربط مجلد"
+    },
+    "openPanel": "{name}",
+    "detailTab": "إضافة: {name}",
+    "ext": {
+      "arletos_git": {
+        "name": "Git",
+        "description": "التغييرات والفروق والسجل ومن غيّر"
+      },
+      "arletos_tests": {
+        "name": "الاختبارات وضمان الجودة",
+        "description": "تشغيل الفحوص والنتائج والأنماط المتعلَّمة"
+      },
+      "arletos_cloud": {
+        "name": "السحابة والنشر",
+        "description": "أدوات السحابة وسجل النشر وجلب البيانات"
+      },
+      "arletos_security": {
+        "name": "الأمان",
+        "description": "فحوص الأمان وتقارير SARIF"
+      },
+      "arletos_observer": {
+        "name": "المراقب",
+        "description": "دورات المراقبة والسجل"
+      },
+      "arletos_agent_runs": {
+        "name": "تشغيلات الوكيل",
+        "description": "تشغيلات حلقة الهندسة والموافقة عليها"
+      }
+    },
+    "perm": {
+      "workspace_read": {
+        "label": "قراءة ملفات المشروع",
+        "description": "عرض الملفات في المجلد المرتبط"
+      },
+      "terminal_governed": {
+        "label": "أوامر طرفية مضبوطة",
+        "description": "تشغيل أوامر من القائمة المعتمدة بعد الموافقة"
+      },
+      "tests_governed": {
+        "label": "تشغيل اختبارات مضبوط",
+        "description": "تشغيل اختبارات من القائمة المعتمدة بعد الموافقة"
+      },
+      "git_read": {
+        "label": "قراءة Git",
+        "description": "الحالة والفرع والفروق والسجل ومن غيّر — دون تغيير"
+      },
+      "qa_run": {
+        "label": "تشغيل ضمان الجودة",
+        "description": "تشغيل فحوص الجودة وحفظ النتائج"
+      },
+      "qa_learn": {
+        "label": "تعلّم أنماط الجودة",
+        "description": "حفظ الأنماط المتعلَّمة وحذفها"
+      },
+      "security_scan": {
+        "label": "فحص الأمان",
+        "description": "الفحص واقتراح الإصلاح والتحقق ورفع SARIF"
+      },
+      "observer_run": {
+        "label": "تشغيل المراقب",
+        "description": "دورات المراقبة والسجل والإبلاغ عن الأخطاء"
+      },
+      "cloud_read": {
+        "label": "قراءة حالة السحابة",
+        "description": "اتصالات السحابة وسجل النشر"
+      },
+      "deploy_observe": {
+        "label": "جلب بيانات النشر",
+        "description": "تسجيل بيانات Vercel وRender وGitHub كأدلة"
+      },
+      "agent_runs_read": {
+        "label": "عرض تشغيلات الوكيل",
+        "description": "قائمة التشغيلات ومراحلها"
+      },
+      "agent_runs_approve": {
+        "label": "الموافقة على تشغيلات الوكيل",
+        "description": "الموافقة على تشغيل ينتظر قرارًا"
+      }
+    },
+    "cap": {
+      "git_changes": "التغييرات والفروق",
+      "git_history": "السجل ومن غيّر",
+      "qa_runs": "تشغيلات الجودة",
+      "qa_patterns": "الأنماط المتعلَّمة",
+      "cloud_adapters": "اتصالات السحابة",
+      "cloud_deployments": "سجل النشر",
+      "cloud_observe": "جلب بيانات Vercel / Render",
+      "cloud_githubSync": "مزامنة GitHub",
+      "security_scan": "فحص الأمان",
+      "security_sarif": "رفع تقرير SARIF",
+      "observer_cycle": "دورة المراقبة",
+      "observer_history": "سجل المراقبة",
+      "runs_list": "قائمة التشغيلات",
+      "runs_approve": "الموافقة على تشغيل"
+    }
   }
 }

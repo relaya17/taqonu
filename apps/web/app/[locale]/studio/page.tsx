@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -42,7 +43,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import SearchIcon from "@mui/icons-material/Search";
-import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import ExtensionOutlinedIcon from "@mui/icons-material/ExtensionOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
@@ -94,6 +95,17 @@ import { StudioProblemsPanel } from "@/components/studio/StudioProblemsPanel";
 import { StudioRunPanel } from "@/components/studio/StudioRunPanel";
 import { StudioPtyTerminal } from "@/components/studio/StudioPtyTerminal";
 import { StudioGitStatus } from "@/components/studio/StudioGitStatus";
+import { ExtensionsView } from "@/components/studio/extensions/ExtensionsView";
+import { ExtensionDetail } from "@/components/studio/extensions/ExtensionDetail";
+import { ExtensionPanelHost } from "@/components/studio/extensions/ExtensionPanelHost";
+import { ExtensionIcon } from "@/components/studio/extensions/ExtensionIcon";
+import {
+  activityExtensions,
+  extensionMessageKey,
+  useStudioExtensionAction,
+  useStudioExtensions,
+} from "@/lib/studio-extensions";
+import type { StudioExtensionScope } from "@/lib/studio-extension-api";
 import { StudioAgentBriefing } from "@/components/studio/StudioAgentBriefing";
 import { StudioContinuity } from "@/components/studio/StudioContinuity";
 import type { StudioProblem } from "@/lib/studio-problems";
@@ -450,6 +462,7 @@ export default function StudioPage() {
   const tRoot = useTranslations();
   const tNav = useTranslations("nav");
   const tHub = useTranslations("hub");
+  const tExt = useTranslations("studioExtensions");
   const locale = useLocale();
   const queryClient = useQueryClient();
 
@@ -1023,7 +1036,27 @@ export default function StudioPage() {
     setShowSideChoice(true);
     setMobileView("agent");
   }, [proposedPatchId]);
-  const [activity, setActivity] = useState<"explorer" | "search" | "git">("explorer");
+  /** Side-bar view: Explorer, Search, Extensions, or an extension panel (`ext:<id>`, ADR-026). */
+  const [activity, setActivity] = useState<string>("explorer");
+  const [extensionDetailId, setExtensionDetailId] = useState<string | null>(null);
+  const [extensionMenu, setExtensionMenu] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+  const extensionsQuery = useStudioExtensions(projectId || null);
+  const extensionAction = useStudioExtensionAction(projectId || null);
+  const barExtensions = activityExtensions(extensionsQuery.data);
+  const activeExtension = activity.startsWith("ext:")
+    ? (barExtensions.find((e) => `ext:${e.manifest.id}` === activity) ?? null)
+    : null;
+  const extName = (id: string) => tExt(`ext.${extensionMessageKey(id)}.name`);
+  // A disabled/uninstalled extension (or another project) leaves no stale panel open.
+  useEffect(() => {
+    if (!activity.startsWith("ext:") || !extensionsQuery.isSuccess) return;
+    if (!barExtensions.some((e) => `ext:${e.manifest.id}` === activity)) setActivity("explorer");
+  }, [activity, barExtensions, extensionsQuery.isSuccess]);
+  const activityTitle = activeExtension
+    ? extName(activeExtension.manifest.id)
+    : activity === "extensions"
+      ? tExt("title")
+      : t(`activity.${activity === "search" ? "search" : "explorer"}`);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // ---- VS Code–style layout: panels open on demand, never stacked -------
@@ -1081,7 +1114,7 @@ export default function StudioPage() {
     if (tab === "pty") selectTab("files");
     setMobileView("editor");
   };
-  const showActivity = (next: typeof activity) => {
+  const showActivity = (next: string) => {
     if (next === activity && showTree && isMd) {
       setShowTree(false);
       return;
@@ -1209,7 +1242,8 @@ export default function StudioPage() {
     goToSymbol: () => {},
     find: () => {},
     rename: () => {},
-    activity: (_: "explorer" | "search" | "git") => {},
+    activity: (_: string) => {},
+    git: () => {},
     problems: () => {},
     replaceAll: () => {},
   });
@@ -1234,6 +1268,14 @@ export default function StudioPage() {
     find: openFind,
     rename: () => selectedPath && hasRoot && openDialog("rename", selectedPath),
     activity: showActivity,
+    git: () => {
+      const git = barExtensions.find((e) => e.manifest.id === "arletos.git");
+      if (git) showActivity("ext:arletos.git");
+      else {
+        showActivity("extensions");
+        setExtensionDetailId("arletos.git");
+      }
+    },
     problems: () => openBottomPanel("problems"),
     replaceAll: () => hasRoot && setReplaceAllOpen(true),
   };
@@ -1283,7 +1325,10 @@ export default function StudioPage() {
         sc.activity("explorer");
       } else if (key === "g" && event.shiftKey) {
         event.preventDefault();
-        sc.activity("git");
+        sc.git();
+      } else if (key === "x" && event.shiftKey) {
+        event.preventDefault();
+        sc.activity("extensions");
       } else if (key === "m" && event.shiftKey) {
         event.preventDefault();
         sc.problems();
@@ -1458,7 +1503,14 @@ export default function StudioPage() {
       items: [
         { id: "explorer", label: t("activity.explorer"), shortcut: "Ctrl+Shift+E", checked: showTree && activity === "explorer", onSelect: () => showActivity("explorer") },
         { id: "search", label: t("activity.search"), shortcut: "Ctrl+Shift+F", checked: showTree && activity === "search", onSelect: () => showActivity("search") },
-        { id: "git", label: t("activity.git"), shortcut: "Ctrl+Shift+G", checked: showTree && activity === "git", onSelect: () => showActivity("git") },
+        ...barExtensions.map((e) => ({
+          id: `ext-${e.manifest.id}`,
+          label: tExt("openPanel", { name: extName(e.manifest.id) }),
+          ...(e.manifest.id === "arletos.git" ? { shortcut: "Ctrl+Shift+G" } : {}),
+          checked: showTree && activity === `ext:${e.manifest.id}`,
+          onSelect: () => showActivity(`ext:${e.manifest.id}`),
+        })),
+        { id: "extensions", label: tExt("title"), shortcut: "Ctrl+Shift+X", checked: showTree && activity === "extensions", onSelect: () => showActivity("extensions") },
         { id: "problems", label: t("problems.title"), shortcut: "Ctrl+Shift+M", dividerBefore: true, checked: showBottom && bottomPanel === "problems", onSelect: () => openBottomPanel("problems") },
         { id: "terminal", label: t("tab.pty"), shortcut: "Ctrl+`", checked: showBottom && bottomPanel === "terminal", onSelect: () => openBottomPanel("terminal") },
         ...(["agent", "chat", "patches", "psa"] as const).map((id, index) => ({
@@ -1554,6 +1606,37 @@ export default function StudioPage() {
     },
   ];
 
+  /** Panels the official manifests point at — existing ArletOS capabilities only (ADR-026). */
+  const renderExtensionPanel = (id: string, scope: StudioExtensionScope): ReactNode => {
+    switch (id) {
+      case "arletos.git":
+        return (
+          <StudioGitStatus
+            projectId={projectId}
+            onOpenFile={(path) => selectStudioFile(path)}
+            extensionScope={scope}
+          />
+        );
+      case "arletos.tests":
+        return <QaPanel projectId={projectId} embedded extensionScope={scope} />;
+      case "arletos.cloud":
+        return (
+          <Stack spacing={2}>
+            <CloudToolsPanel embedded extensionScope={scope} />
+            <DeployFeedsPanel projectId={projectId} embedded extensionScope={scope} />
+          </Stack>
+        );
+      case "arletos.security":
+        return <SentinelPanel projectId={projectId} embedded extensionScope={scope} />;
+      case "arletos.observer":
+        return <ObserverPanel projectId={projectId} embedded extensionScope={scope} />;
+      case "arletos.agent-runs":
+        return <EngineeringRunsPanel projectId={projectId} embedded extensionScope={scope} />;
+      default:
+        return null;
+    }
+  };
+
   const projectPicker = (
     <TextField
       select
@@ -1616,12 +1699,15 @@ export default function StudioPage() {
   );
 
   const activityButton = (
-    id: "explorer" | "search" | "git",
+    id: string,
     icon: ReactNode,
+    label: string = t(`activity.${id}`),
+    onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void,
   ) => (
-    <Tooltip key={id} title={t(`activity.${id}`)} placement="left">
+    <Tooltip key={id} title={label} placement="left">
       <IconButton
-        aria-label={t(`activity.${id}`)}
+        aria-label={label}
+        {...(onContextMenu ? { onContextMenu } : {})}
         aria-pressed={showTree && activity === id}
         onClick={() => showActivity(id)}
         sx={{
@@ -1717,7 +1803,45 @@ export default function StudioPage() {
               overflow: "hidden",
             }}
           >
-            {roomTitle ? (
+            {extensionDetailId ? (
+              <>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ px: 1.5, minHeight: 35, bgcolor: "#15171C", borderBottom: panelBorder, flexShrink: 0 }}
+                >
+                  <Typography component="h2" sx={{ flex: 1, fontSize: 13, color: inkStrong, fontWeight: 600 }}>
+                    {tExt("detailTab", { name: extName(extensionDetailId) })}
+                  </Typography>
+                  <Tooltip title={t("menu.close")}>
+                    <IconButton
+                      size="small"
+                      aria-label={t("menu.close")}
+                      onClick={() => setExtensionDetailId(null)}
+                      sx={{ color: muted }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+                <Box
+                  tabIndex={0}
+                  role="region"
+                  aria-label={tExt("detailTab", { name: extName(extensionDetailId) })}
+                  sx={{ flex: 1, minHeight: 0, overflow: "auto", outlineOffset: -2 }}
+                >
+                  <ExtensionDetail
+                    projectId={projectId || null}
+                    extensionId={extensionDetailId}
+                    onOpenPanel={(id) => {
+                      showActivity(`ext:${id}`);
+                      setExtensionDetailId(null);
+                    }}
+                  />
+                </Box>
+              </>
+            ) : roomTitle ? (
               <>
                 <Stack
                   direction="row"
@@ -1749,7 +1873,10 @@ export default function StudioPage() {
                     <Box sx={{ p: { xs: 1.5, md: 2 } }}>
                       {projectId ? (
                         <Stack spacing={3}>
-                          <StudioRunPanel projectId={projectId} />
+                          <StudioRunPanel
+                            projectId={projectId}
+                            onManageExtensions={() => showActivity("extensions")}
+                          />
                           <EngineeringRunsPanel projectId={projectId} embedded />
                         </Stack>
                       ) : (
@@ -2214,7 +2341,68 @@ export default function StudioPage() {
             >
               {activityButton("explorer", <FolderOutlinedIcon />)}
               {activityButton("search", <SearchIcon />)}
-              {activityButton("git", <AccountTreeIcon />)}
+              {barExtensions.length > 0 ? (
+                <Box sx={{ width: 26, height: "1px", bgcolor: "#30343C", my: 0.5 }} aria-hidden />
+              ) : null}
+              {barExtensions.map((e) =>
+                activityButton(
+                  `ext:${e.manifest.id}`,
+                  <ExtensionIcon icon={e.manifest.contributes.activity?.icon ?? "extension"} />,
+                  extName(e.manifest.id),
+                  (event) => {
+                    event.preventDefault();
+                    setExtensionMenu({ id: e.manifest.id, anchor: event.currentTarget });
+                  },
+                ),
+              )}
+              {activityButton("extensions", <ExtensionOutlinedIcon />, tExt("title"))}
+              <Menu
+                anchorEl={extensionMenu?.anchor ?? null}
+                open={Boolean(extensionMenu)}
+                onClose={() => setExtensionMenu(null)}
+                MenuListProps={{ dense: true, "aria-label": extensionMenu ? extName(extensionMenu.id) : "" }}
+              >
+                {extensionMenu
+                  ? (() => {
+                      const id = extensionMenu.id;
+                      const ids = barExtensions.map((e) => e.manifest.id);
+                      const index = ids.indexOf(id);
+                      const move = (delta: number) => {
+                        const next = [...ids];
+                        const target = index + delta;
+                        if (target < 0 || target >= next.length) return;
+                        [next[index], next[target]] = [next[target]!, next[index]!];
+                        extensionAction.mutate({ kind: "order", order: next });
+                      };
+                      const close = () => setExtensionMenu(null);
+                      return [
+                        <MenuItem key="open" onClick={() => { close(); showActivity(`ext:${id}`); }}>
+                          {tExt("actions.open")}
+                        </MenuItem>,
+                        <MenuItem key="up" disabled={index <= 0} onClick={() => { close(); move(-1); }}>
+                          {tExt("actions.moveUp")}
+                        </MenuItem>,
+                        <MenuItem key="down" disabled={index >= ids.length - 1} onClick={() => { close(); move(1); }}>
+                          {tExt("actions.moveDown")}
+                        </MenuItem>,
+                        <Divider key="d" />,
+                        <MenuItem key="details" onClick={() => { close(); setExtensionDetailId(id); }}>
+                          {tExt("actions.details")}
+                        </MenuItem>,
+                        <MenuItem
+                          key="disable"
+                          onClick={() => {
+                            close();
+                            if (activity === `ext:${id}`) setActivity("explorer");
+                            extensionAction.mutate({ kind: "disable", id });
+                          }}
+                        >
+                          {tExt("actions.disable")}
+                        </MenuItem>,
+                      ];
+                    })()
+                  : null}
+              </Menu>
               <Box sx={{ flex: 1 }} />
               <Tooltip title={t("menu.agentsLink")} placement="left">
                 <IconButton
@@ -2272,10 +2460,10 @@ export default function StudioPage() {
             <Box
               tabIndex={0}
               role="region"
-              aria-label={t(`activity.${activity}`)}
+              aria-label={activityTitle}
               sx={{
                 flex: 1,
-                width: { md: 260 },
+                width: { md: activity.startsWith("ext:") || activity === "extensions" ? 330 : 260 },
                 minWidth: 0,
                 minHeight: 0,
                 overflow: "auto",
@@ -2300,7 +2488,7 @@ export default function StudioPage() {
                 variant="subtitle2"
                 sx={{ color: muted, fontSize: 11.5, fontWeight: 600, letterSpacing: "0.04em" }}
               >
-                {t(`activity.${activity}`)}
+                {activityTitle}
               </Typography>
               {activity === "explorer" && treeQuery.data?.truncated ? (
                 <Chip size="small" label={t("truncated")} />
@@ -2468,13 +2656,33 @@ export default function StudioPage() {
                 </Stack>
               )
             ) : null}
-            {projectId && activity === "git" ? (
-              <Box sx={{ px: 1 }}>
-                <StudioGitStatus
-                  projectId={projectId}
-                  onOpenFile={(path) => selectStudioFile(path)}
-                />
-              </Box>
+            {activity === "extensions" ? (
+              <ExtensionsView
+                projectId={projectId || null}
+                selectedId={extensionDetailId}
+                onSelect={(id) => {
+                  setExtensionDetailId(id);
+                  setMobileView("editor");
+                }}
+              />
+            ) : null}
+            {projectId && activeExtension ? (
+              <ExtensionPanelHost
+                entry={activeExtension}
+                projectId={projectId}
+                onOpenDetails={(id) => {
+                  setExtensionDetailId(id);
+                  setMobileView("editor");
+                }}
+                onLinkFolder={() => openDialog("linkFolder")}
+              >
+                {(scope) => <Box sx={{ px: 1 }}>{renderExtensionPanel(activeExtension.manifest.id, scope)}</Box>}
+              </ExtensionPanelHost>
+            ) : null}
+            {!projectId && activeExtension ? (
+              <Typography variant="body2" sx={{ p: 2, color: muted }}>
+                {t("statusNoProject")}
+              </Typography>
             ) : null}
             </Box>
           </Box>
@@ -3210,7 +3418,8 @@ export default function StudioPage() {
                     [t("menu.goToSymbol"), "Ctrl+Shift+O"],
                     [t("menu.rename"), "F2"],
                     [t("activity.explorer"), "Ctrl+Shift+E"],
-                    [t("activity.git"), "Ctrl+Shift+G"],
+                    [extName("arletos.git"), "Ctrl+Shift+G"],
+                    [tExt("title"), "Ctrl+Shift+X"],
                     [t("problems.title"), "Ctrl+Shift+M"],
                     [t("tab.pty"), "Ctrl+`"],
                     [t("menu.toggleSidebar"), "Ctrl+B"],

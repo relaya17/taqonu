@@ -2572,13 +2572,8 @@
     "close": "Fermer"
   },
   "studioRunExtras": {
-    "enabled": "Activée",
-    "disabled": "Désactivée",
-    "toggleOn": "Activée",
-    "toggleOff": "Désactivée",
-    "saving": "Enregistrement…",
-    "enableAria": "Activer {name}",
-    "disableAria": "Désactiver {name}"
+    "manageHint": "Les extensions relient des capacités au Studio : une icône dans la barre, un panneau et des autorisations que vous approuvez.",
+    "manage": "Gérer les extensions"
   },
   "observerExtras": {
     "showHistory": "Afficher l’historique",
@@ -2673,5 +2668,194 @@
     "signIn": "Se connecter",
     "unavailable": "Impossible de vérifier votre accès pour le moment. Réessayez dans un instant.",
     "backToSettings": "Retour aux paramètres"
+  },
+  "studioExtensions": {
+    "title": "Extensions",
+    "search": "Rechercher des extensions et des capacités…",
+    "filtersLabel": "Filtrer les extensions",
+    "filters": {
+      "all": "Toutes",
+      "installed": "Installées",
+      "builtin": "Intégrées",
+      "official": "Officielles",
+      "thirdParty": "Tierces · plus tard"
+    },
+    "empty": "Aucune extension ne correspond à votre recherche.",
+    "sections": {
+      "installed": "Installées",
+      "available": "Disponibles à l’installation"
+    },
+    "thirdPartyNote": "Les extensions tierces viendront seulement après la définition d’un contrat d’API, de l’isolation et de la vérification de la source (ADR-026).",
+    "kind": {
+      "builtin": "Intégrée",
+      "official": "Officielle"
+    },
+    "state": {
+      "incompatible": "Incompatible",
+      "notInstalled": "Non installée",
+      "enabled": "Activée",
+      "installedOff": "Installée · désactivée",
+      "updateAvailable": "Mise à jour disponible"
+    },
+    "check": {
+      "pending": "En attente d’autorisations",
+      "unverified": "Pas encore vérifiée",
+      "verified": "✓ Vérifiée",
+      "failed": "Vérification échouée"
+    },
+    "loading": "Chargement…",
+    "notFound": "Cette extension n’est pas dans le catalogue.",
+    "publisherVerified": "Vérifié",
+    "version": "Version {version}",
+    "requiresStudio": "Studio ≥ {version}",
+    "actions": {
+      "install": "Installer",
+      "update": "Mettre à jour vers {version}",
+      "enable": "Activer dans le projet",
+      "open": "Ouvrir",
+      "disable": "Désactiver",
+      "uninstall": "Désinstaller",
+      "grant": "Accorder",
+      "revoke": "Retirer",
+      "grantAll": "Accorder les autorisations",
+      "verify": "Lancer la vérification",
+      "details": "Détails et autorisations",
+      "moveUp": "Monter",
+      "moveDown": "Descendre"
+    },
+    "uninstallConfirm": "Désinstaller {name} ? Ses autorisations et réglages seront supprimés.",
+    "builtinNote": "Extension intégrée : fournie avec ArletOS. Elle peut être désactivée et réactivée, mais pas désinstallée.",
+    "noProject": "Ouvrez un projet pour activer cette extension.",
+    "incompatibleNote": "Cette extension ne prend pas en charge cette version du Studio : elle ne peut pas être activée.",
+    "detail": {
+      "permissions": "Autorisations",
+      "capabilities": "Capacités — ce qui est réellement connecté",
+      "contributes": "Ce qu’elle ajoute au Studio",
+      "verification": "Vérification"
+    },
+    "installNote": "L’installation n’accorde rien. Chaque autorisation est approuvée séparément, journalisée et révocable.",
+    "permission": {
+      "granted": "✓ Accordée",
+      "pending": "En attente d’approbation"
+    },
+    "capability": {
+      "ready": "Disponible",
+      "needs": "Nécessite : {permission}"
+    },
+    "contributesActivity": "Une icône dans la barre et un panneau : {name}",
+    "contributesCommand": "Une commande du menu Affichage : ouvrir {name}",
+    "verificationHelp": "Vérifie que les prérequis de l’extension sont remplis dans ce projet, pour que ses capacités fonctionnent vraiment.",
+    "verifiedAt": "Vérifiée : {date}",
+    "checks": {
+      "workspace": "Dossier local lié",
+      "git_repo": "Dépôt Git dans le dossier",
+      "compatibility": "Compatible avec cette version du Studio",
+      "none": "Aucun prérequis"
+    },
+    "reasons": {
+      "NO_LOCAL_FOLDER": "Aucun dossier local n’est lié à ce projet",
+      "NO_GIT_REPOSITORY": "Le dossier ne contient pas de dépôt Git",
+      "INCOMPATIBLE": "Incompatible avec cette version du Studio"
+    },
+    "verifyNever": "Pas encore vérifiée.",
+    "panel": {
+      "needsPermissionsTitle": "{name} attend des autorisations",
+      "somePending": "En attente d’approbation : {permissions}",
+      "linkFolder": "Lier un dossier"
+    },
+    "openPanel": "{name}",
+    "detailTab": "Extension : {name}",
+    "ext": {
+      "arletos_git": {
+        "name": "Git",
+        "description": "Modifications, diff, historique et blame"
+      },
+      "arletos_tests": {
+        "name": "Tests et QA",
+        "description": "Lancer des contrôles, résultats et motifs appris"
+      },
+      "arletos_cloud": {
+        "name": "Cloud et déploiement",
+        "description": "Outils cloud, historique des déploiements et relevés"
+      },
+      "arletos_security": {
+        "name": "Sécurité",
+        "description": "Analyses de sécurité et rapports SARIF"
+      },
+      "arletos_observer": {
+        "name": "Observateur",
+        "description": "Cycles d’observation et historique"
+      },
+      "arletos_agent_runs": {
+        "name": "Exécutions de l’agent",
+        "description": "Exécutions de la boucle d’ingénierie et leur approbation"
+      }
+    },
+    "perm": {
+      "workspace_read": {
+        "label": "Lire les fichiers du projet",
+        "description": "Voir les fichiers du dossier lié"
+      },
+      "terminal_governed": {
+        "label": "Commandes de terminal encadrées",
+        "description": "Lancer des commandes autorisées après approbation"
+      },
+      "tests_governed": {
+        "label": "Tests encadrés",
+        "description": "Lancer des tests autorisés après approbation"
+      },
+      "git_read": {
+        "label": "Lire Git",
+        "description": "Statut, branche, diff, historique et blame — sans modification"
+      },
+      "qa_run": {
+        "label": "Lancer la QA",
+        "description": "Lancer des contrôles QA et enregistrer les résultats"
+      },
+      "qa_learn": {
+        "label": "Apprendre des motifs QA",
+        "description": "Enregistrer et supprimer les motifs appris"
+      },
+      "security_scan": {
+        "label": "Analyse de sécurité",
+        "description": "Analyser, proposer un correctif, vérifier et envoyer un SARIF"
+      },
+      "observer_run": {
+        "label": "Lancer l’observateur",
+        "description": "Cycles d’observation, historique et signalement de bugs"
+      },
+      "cloud_read": {
+        "label": "Lire l’état du cloud",
+        "description": "Connexions cloud et historique des déploiements"
+      },
+      "deploy_observe": {
+        "label": "Récupérer les données de déploiement",
+        "description": "Enregistrer les données Vercel, Render et GitHub comme preuves"
+      },
+      "agent_runs_read": {
+        "label": "Voir les exécutions de l’agent",
+        "description": "Liste des exécutions et de leurs étapes"
+      },
+      "agent_runs_approve": {
+        "label": "Approuver les exécutions de l’agent",
+        "description": "Approuver une exécution qui attend une décision"
+      }
+    },
+    "cap": {
+      "git_changes": "Modifications et diff",
+      "git_history": "Historique et blame",
+      "qa_runs": "Exécutions QA",
+      "qa_patterns": "Motifs appris",
+      "cloud_adapters": "Connexions cloud",
+      "cloud_deployments": "Historique des déploiements",
+      "cloud_observe": "Données Vercel / Render",
+      "cloud_githubSync": "Synchronisation GitHub",
+      "security_scan": "Analyse de sécurité",
+      "security_sarif": "Envoi d’un rapport SARIF",
+      "observer_cycle": "Cycle d’observation",
+      "observer_history": "Historique d’observation",
+      "runs_list": "Liste des exécutions",
+      "runs_approve": "Approuver une exécution"
+    }
   }
 }
