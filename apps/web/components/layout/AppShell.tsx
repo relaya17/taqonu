@@ -47,6 +47,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/api";
 import { AiCompanionBar } from "@/components/layout/AiCompanionBar";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
+import { ShellChromeContext } from "@/components/layout/shell-chrome";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SessionGateNotice } from "@/components/layout/SessionGateNotice";
 import { useColorMode } from "@/components/providers/ColorModeProvider";
@@ -709,7 +710,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const appMobileToneKey: NavTone = mode === "dark" ? "sidebar" : "light";
   const appMobileTone = navChrome[appMobileToneKey];
 
+  const shellChrome = {
+    openNav: () => setNavOpen(true),
+    navOpen,
+    navId,
+    signOut: logout,
+    user: meQuery.data?.user
+      ? { email: meQuery.data.user.email, displayName: meQuery.data.user.displayName }
+      : null,
+  };
+
   return (
+    <ShellChromeContext.Provider value={showProductNav ? shellChrome : null}>
     <Box
       sx={{
         display: "flex",
@@ -753,7 +765,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             {nav({ mobile: true, tone: appMobileToneKey })}
           </Drawer>
 
-          {/* Desktop: docked sidebar — closable; hidden when collapsed */}
+          {/* Desktop: docked sidebar — closable; hidden when collapsed.
+              Studio is a full-screen IDE with its own title bar and activity
+              bar, so the docked sidebar is not mounted there at all. */}
+          {isStudioWorkspace ? null : (
           <Drawer
             variant="permanent"
             anchor={anchor}
@@ -775,6 +790,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             {nav({ mobile: false, tone: "sidebar" })}
           </Drawer>
+          )}
         </>
       ) : null}
 
@@ -790,7 +806,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           width: {
             xs: "100%",
             md:
-              navCollapsed || !showProductNav
+              navCollapsed || !showProductNav || isStudioWorkspace
                 ? "100%"
                 : `calc(100% - ${DRAWER_WIDTH}px)`,
           },
@@ -806,9 +822,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Box
           component="header"
           sx={{
+            // Studio draws its own one-line title bar (menus, project, ☰).
+            display: isStudioWorkspace && showProductNav ? "none" : "flex",
             mb: isStudioWorkspace ? 0 : 2,
             minWidth: 0,
-            display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 1,
@@ -896,5 +913,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </PageContainer>
       </Box>
     </Box>
+    </ShellChromeContext.Provider>
   );
 }

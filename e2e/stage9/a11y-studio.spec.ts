@@ -45,16 +45,47 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     ).toBeVisible({ timeout: 45_000 });
     const skip = page.locator("a.skip-link");
     await expect(skip).toHaveAttribute("href", "#main-content");
-    // The sidebar mounts only after the session query resolves; scanning
-    // before that leaves its text out of the axe run.
-    await expect(
-      page.getByRole("navigation", { name: /main navigation/i }),
-    ).toBeVisible({ timeout: 30_000 });
+    // Studio draws one VS Code–style title bar: its menu bar replaces the
+    // app header and docked sidebar there.
+    await expect(page.getByRole("menubar", { name: "Studio menu" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByRole("navigation", { name: /main navigation/i })).toHaveCount(0);
     await expectNoA11yViolations(page, testInfo);
   });
 
-  test("main navigation lists the four destinations, no More group", async ({ page }) => {
+  test("Studio menus open from the title bar and list their commands", async ({ page }, testInfo) => {
     await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
+    const bar = page.getByRole("menubar", { name: "Studio menu" });
+    await expect(bar).toBeVisible({ timeout: 45_000 });
+    for (const name of ["File", "Edit", "View", "Run", "Cloud", "Checks", "Dashboard", "Help"]) {
+      await expect(bar.getByRole("menuitem", { name, exact: true })).toBeVisible();
+    }
+    const file = bar.getByRole("menuitem", { name: "File", exact: true });
+    await file.click();
+    await expect(file).toHaveAttribute("aria-expanded", "true");
+    const fileMenu = page.getByRole("menu", { name: "File" });
+    await expect(fileMenu.getByRole("menuitem", { name: /Go to file/ })).toBeVisible();
+    await expect(fileMenu.getByRole("menuitem", { name: /^Save\b/ }).first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(fileMenu).toBeHidden();
+    await expect(file).toBeFocused();
+    // An open dropdown covers the activity bar the way any popup does, which
+    // axe's target-size heuristic reports; scan the closed bar instead.
+    await expectNoA11yViolations(page, testInfo);
+
+    // Checks open inside the workspace, like an editor tab.
+    await bar.getByRole("menuitem", { name: "Checks", exact: true }).click();
+    await page.getByRole("menu", { name: "Checks" }).getByRole("menuitem", { name: "Counsel brief" }).click();
+    await expect(page).toHaveURL(/check=legal/);
+    await expect(page.getByText(/not legal advice/i).first()).toBeVisible({ timeout: 20_000 });
+
+    // Problems stay closed until asked for.
+    await expect(page.getByRole("tab", { name: "Problems" })).toHaveCount(0);
+  });
+
+  test("main navigation lists the four destinations, no More group", async ({ page }) => {
+    await page.goto("/en", { waitUntil: "domcontentloaded" });
     const nav = page.getByRole("navigation", { name: /main navigation/i });
     await expect(nav).toBeVisible({ timeout: 45_000 });
     for (const name of ["Studio", "Dashboard", "Agents", "Account"]) {
@@ -86,7 +117,7 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
   test("keyboard focus on a sidebar link paints an outline of at least 3:1", async ({
     page,
   }) => {
-    await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
+    await page.goto("/en", { waitUntil: "domcontentloaded" });
     const nav = page.getByRole("navigation", { name: /main navigation/i });
     await expect(nav).toBeVisible({ timeout: 45_000 });
 

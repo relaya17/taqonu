@@ -96,15 +96,12 @@ test.describe("Stage 9.3 auth + Studio entry + project context", () => {
       page.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 45_000 });
 
-    // Sign out lives in the product sidebar. At desktop width this button
-    // toggles the docked sidebar, so it is clicked only when the sidebar is
-    // closed; clicking an open one would hide Sign out.
-    const openMenu = page.getByRole("button", { name: /open menu/i });
-    await expect(openMenu).toBeVisible({ timeout: 20_000 });
-    if ((await openMenu.getAttribute("aria-expanded")) !== "true") {
-      await openMenu.click();
-    }
-    const signOut = page.getByRole("button", { name: /^sign out$/i });
+    // In Studio, Sign out lives in the Account menu at the bottom of the
+    // activity bar (like VS Code's Accounts button).
+    const account = page.getByRole("button", { name: /^account$/i });
+    await expect(account).toBeVisible({ timeout: 20_000 });
+    await account.click();
+    const signOut = page.getByRole("menuitem", { name: /^sign out$/i });
     await expect(signOut).toBeVisible({ timeout: 20_000 });
     await signOut.click();
     await page.waitForURL(/\/en\/auth\/login/, {

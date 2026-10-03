@@ -48,6 +48,17 @@ async function expectSidebarBesideMain(
   expect(overlap, "sidebar overlaps main content").toBeLessThanOrEqual(1);
 }
 
+/** Studio is a full-screen IDE: one title bar with the menus, no app sidebar. */
+async function expectStudioTitleBar(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  const bar = page.getByRole("menubar");
+  await expect(bar).toBeVisible({ timeout: 30_000 });
+  const box = await bar.boundingBox();
+  expect(box && box.y < 60, "the menu bar is the top row").toBeTruthy();
+  await expect(page.locator("aside:has(nav)")).toBeHidden();
+}
+
 test.describe("Stage 9.8 authenticated Studio locales", () => {
   test.setTimeout(90_000);
 
@@ -60,7 +71,7 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 45_000 });
     await expectAuthenticatedStudio(page);
-    await expectSidebarBesideMain(page);
+    await expectStudioTitleBar(page);
   });
 
   test("HE Studio is RTL", async ({ page }) => {
@@ -72,7 +83,7 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.getByRole("heading", { level: 1, name: "סטודיו פרויקט" }),
     ).toBeVisible({ timeout: 45_000 });
     await expectAuthenticatedStudio(page);
-    await expectSidebarBesideMain(page);
+    await expectStudioTitleBar(page);
   });
 
   test("AR Studio is RTL", async ({ page }) => {
@@ -84,7 +95,7 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.getByRole("heading", { level: 1, name: "Studio المشروع" }),
     ).toBeVisible({ timeout: 45_000 });
     await expectAuthenticatedStudio(page);
-    await expectSidebarBesideMain(page);
+    await expectStudioTitleBar(page);
   });
 
   test("the language menu switches Studio to French, LTR", async ({ page }) => {
@@ -115,7 +126,7 @@ test.describe("Stage 9.8 authenticated Studio locales", () => {
       page.locator("main header").getByRole("button", { name: fr.nav.languages }),
     ).toBeVisible();
     await expectAuthenticatedStudio(page);
-    await expectSidebarBesideMain(page);
+    await expectStudioTitleBar(page);
   });
 });
 
@@ -137,7 +148,8 @@ test.describe("Header keeps brand and controls on the same sides at every width"
       const m = webMessages(locale);
       const rtl = locale === "he";
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto(`/${locale}/studio`, { waitUntil: "domcontentloaded" });
+      // The app header (Studio draws its own title bar instead).
+      await page.goto(`/${locale}`, { waitUntil: "domcontentloaded" });
       await expect(page.locator("html")).toHaveAttribute("dir", rtl ? "rtl" : "ltr");
 
       const header = page.locator("main header");
@@ -177,7 +189,7 @@ test.describe("Header keeps brand and controls on the same sides at every width"
 
   test("desktop hamburger closes and reopens the docked sidebar", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/en/studio", { waitUntil: "domcontentloaded" });
+    await page.goto("/en", { waitUntil: "domcontentloaded" });
     const sidebar = page.locator("aside:has(nav)");
     const menu = page.locator("main header").getByRole("button", { name: "Open menu" });
     await expect(sidebar).toBeVisible({ timeout: 45_000 });

@@ -405,7 +405,29 @@ describe("Studio Cloud & Tools panel", () => {
     expect(git).toBeLessThan(psa);
     expect(psa).toBeLessThan(actions);
     expect(studio).toContain('setIntent("propose")');
-    expect(studio).toContain("selectTab(\"run\")");
-    expect(studio).toContain("selectTab(\"checks\")");
+    // Run and Checks open from the title-bar menus and the status bar.
+    expect(studio).toContain('openRoom("run")');
+    expect(studio).toContain('openRoom("checks")');
+  });
+
+  it("draws Studio as one VS Code–style title bar with menus, not stacked rows", () => {
+    const studio = readWeb("app/[locale]/studio/page.tsx");
+    const menuBar = readWeb("components/studio/StudioMenuBar.tsx");
+    const appShell = readWeb("components/layout/AppShell.tsx");
+    expect(studio).toContain("<StudioMenuBar");
+    for (const id of ["file", "edit", "view", "run", "cloud", "checks", "dashboard", "help"]) {
+      expect(studio).toContain(`id: "${id}",`);
+    }
+    expect(menuBar).toContain('role="menubar"');
+    expect(menuBar).toContain('aria-haspopup="menu"');
+    // The old Tools / Save / Reload button row and the "More" side tab are gone:
+    // their actions live in the menus.
+    expect(studio).not.toContain('t("editorTools")');
+    expect(studio).not.toContain('value="more"');
+    // Problems/terminal open on demand; the app shell hides its own header
+    // and docked sidebar on Studio so there is one title row.
+    expect(studio).toContain("useState(tab === \"pty\")");
+    expect(appShell).toContain("isStudioWorkspace && showProductNav ? \"none\" : \"flex\"");
+    expect(appShell).toContain("{isStudioWorkspace ? null : (");
   });
 });

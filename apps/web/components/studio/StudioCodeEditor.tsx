@@ -74,8 +74,8 @@ export function StudioCodeEditor({
         display: "grid",
         gridTemplateColumns: "minmax(2.5rem, auto) 1fr",
         flex: 1,
+        height: "100%",
         minHeight: 240,
-        maxHeight: 440,
         overflow: "hidden",
         bgcolor: "rgba(14,17,22,0.9)",
         unicodeBidi: "isolate",
@@ -142,7 +142,8 @@ export function StudioCodeEditor({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onScroll={syncScroll}
-          disabled={readOnly}
+          readOnly={readOnly}
+          data-studio-editor
           spellCheck={false}
           aria-label={ariaLabel}
           aria-readonly={readOnly}
@@ -153,7 +154,6 @@ export function StudioCodeEditor({
             p: 2,
             width: "100%",
             height: "100%",
-            maxHeight: 440,
             overflow: "auto",
             fontSize: 12.5,
             lineHeight: 1.55,
