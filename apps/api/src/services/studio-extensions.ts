@@ -58,6 +58,7 @@ export const STUDIO_EXTENSION_PERMISSIONS = [
   "deploy.observe",
   "agent.runs.read",
   "agent.runs.approve",
+  "debug.governed",
 ] as const;
 
 export type StudioExtensionPermission = (typeof STUDIO_EXTENSION_PERMISSIONS)[number];
@@ -126,6 +127,8 @@ const GIT_REPO: StudioExtensionDependency = { kind: "project.git-repo" };
 const APPROVAL_STORE: StudioExtensionDependency = { kind: "service.approval-store" };
 
 const GIT_READ_COMMANDS = ["git.status", "git.branch", "git.diff", "git.log", "git.blame"] as const;
+/** Debugger capability health — see studio-debug-session.ts. Not GOVERNED_COMMANDS/service.approval-store: the Debugger has its own isolated catalog (Studio Evolution design, 2026-10-04). */
+const DEBUG_SESSION: StudioExtensionDependency = { kind: "service.debug-session" };
 
 export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
   {
@@ -256,6 +259,32 @@ export const STUDIO_BUILTIN_EXTENSIONS: readonly StudioExtensionManifest[] = [
       { method: "GET", url: "/api/v1/engineering/loop", permission: "agent.runs.read" },
       { method: "GET", url: "/api/v1/engineering/loop/:id", permission: "agent.runs.read" },
       { method: "POST", url: "/api/v1/engineering/loop/:id/approve", permission: "agent.runs.approve" },
+    ],
+  },
+  {
+    id: "arletos.debugger",
+    name: "Debugger",
+    kind: "official",
+    publisher: "arletos",
+    version: "1.0.0",
+    studio: "2.0.0",
+    permissions: ["debug.governed"],
+    capabilities: [
+      {
+        id: "debug.session",
+        permission: "debug.governed",
+        source: "StudioDebugPanel · /studio/debug/sessions",
+        dependencies: [DEBUG_SESSION],
+      },
+    ],
+    contributes: { activity: { icon: "debug", panel: "debug" }, commands: ["debug.continue", "debug.step", "debug.pause"] },
+    dependencies: COMMON_DEPENDENCIES,
+    routes: [
+      { method: "GET", url: "/api/v1/projects/:id/studio/debug/targets", permission: "debug.governed" },
+      { method: "POST", url: "/api/v1/projects/:id/studio/debug/sessions", permission: "debug.governed" },
+      { method: "GET", url: "/api/v1/projects/:id/studio/debug/sessions/:sessionId", permission: "debug.governed" },
+      { method: "POST", url: "/api/v1/projects/:id/studio/debug/sessions/:sessionId/action", permission: "debug.governed" },
+      { method: "POST", url: "/api/v1/projects/:id/studio/debug/sessions/:sessionId/close", permission: "debug.governed" },
     ],
   },
 ] as const;

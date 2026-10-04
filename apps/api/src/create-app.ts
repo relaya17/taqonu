@@ -41,6 +41,7 @@ import { registerStudioExecutionRoutes } from "./routes/studio-execution.js";
 import { registerStudioExtensionRoutes } from "./routes/studio-extensions.js";
 import { registerStudioExtensionGate } from "./middleware/studio-extension-gate.js";
 import { registerStudioPtyRoutes } from "./routes/studio-pty.js";
+import { registerStudioDebugRoutes } from "./routes/studio-debug.js";
 import { registerStudioLanguageRoutes } from "./routes/studio-language.js";
 import { registerStudioReplaceRoutes } from "./routes/studio-replace.js";
 import { registerExemplarRoutes } from "./routes/exemplars.js";
@@ -247,6 +248,7 @@ export async function buildApp(env: ServerEnv): Promise<FastifyInstance> {
   await registerStudioExecutionRoutes(app);
   await registerStudioExtensionRoutes(app);
   await registerStudioPtyRoutes(app);
+  await registerStudioDebugRoutes(app);
   await registerStudioLanguageRoutes(app);
   await registerStudioReplaceRoutes(app);
   await registerExemplarRoutes(app);
