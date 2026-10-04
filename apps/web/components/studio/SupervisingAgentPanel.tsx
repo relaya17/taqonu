@@ -63,8 +63,11 @@ interface CoordinationPlan {
  */
 export function SupervisingAgentPanel({
   projectId,
+  selectedPath,
 }: {
   projectId: string;
+  /** Studio's currently open file, forwarded as PSA context (explain/recommend/escalate/coordinate only — the server schemas that accept contextPath). */
+  selectedPath?: string | null;
 }) {
   const t = useTranslations("studio.psa");
   const queryClient = useQueryClient();
@@ -127,6 +130,7 @@ export function SupervisingAgentPanel({
       apiPost<CoordinationPlan>("/api/v1/supervising-agent/coordinate", {
         request: coordinateRequest.trim(),
         projectId,
+        ...(selectedPath ? { contextPath: selectedPath } : {}),
       }),
   });
 
@@ -135,6 +139,7 @@ export function SupervisingAgentPanel({
       apiPost<{ explanation: string }>("/api/v1/supervising-agent/explain", {
         ...(explainEventId.trim() ? { eventId: explainEventId.trim() } : {}),
         ...(explainProcessId.trim() ? { processId: explainProcessId.trim() } : {}),
+        ...(selectedPath ? { contextPath: selectedPath } : {}),
       }),
   });
 
@@ -143,6 +148,7 @@ export function SupervisingAgentPanel({
       apiPost("/api/v1/supervising-agent/recommend", {
         reason: attentionReason.trim(),
         severity: "MEDIUM",
+        ...(selectedPath ? { contextPath: selectedPath } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["supervising-agent"] });
@@ -154,6 +160,7 @@ export function SupervisingAgentPanel({
       apiPost("/api/v1/supervising-agent/escalate", {
         reason: attentionReason.trim(),
         severity: "HIGH",
+        ...(selectedPath ? { contextPath: selectedPath } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["supervising-agent"] });

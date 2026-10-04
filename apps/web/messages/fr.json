@@ -236,6 +236,8 @@
       "diff": "Diff par rapport à HEAD",
       "diffFile": "Changements dans {path}",
       "diffEmpty": "Aucun diff indexé/non indexé par rapport à HEAD, ou git.diff n’a pas été exécuté.",
+      "log": "Historique récent",
+      "logEmpty": "Aucun historique pour l’instant, ou git.log n’a pas été exécuté.",
       "kind": {
         "modified": "modifié",
         "added": "ajouté",
@@ -390,6 +392,19 @@
       "extensionsHelp": "Registre de manifestes uniquement. Pas de marketplace, pas de JavaScript utilisateur, pas d’API hôte.",
       "hostReady": "hôte prêt",
       "noHost": "aucun hôte"
+    },
+    "debug": {
+      "help": "Cibles de débogage lancées uniquement par ArletOS. Aucun rattachement à un processus externe arbitraire.",
+      "target": "Cible de débogage",
+      "request": "Démarrer une session de débogage",
+      "requesting": "Demande en cours…",
+      "close": "Fermer la session",
+      "forceClose": "Fermeture forcée",
+      "reason": "Motif",
+      "status": "Statut",
+      "noSession": "Aucune session de débogage pour ce projet pour l'instant.",
+      "sessionClosed": "Session fermée.",
+      "error": "Échec de la demande de débogage"
     },
     "ptyTerminal": {
       "help": "Terminal interactif humain dans l’espace de travail lié. Il s’agit d’un vrai processus/PTY, pas d’une exécution gouvernée par commandId.",

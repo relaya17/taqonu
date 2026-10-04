@@ -4,6 +4,7 @@ import { Box } from "@mui/material";
 import { useEffect, useRef } from "react";
 import {
   highlightStudioLine,
+  lineColumnForStudioOffset,
   offsetForStudioLine,
   studioLineCount,
   studioSyntaxLanguage,
@@ -30,6 +31,10 @@ export function StudioCodeEditor({
   ariaLabel,
   revealLine,
   changedLines,
+  onCursorChange,
+  breakpointLines,
+  stoppedLine,
+  onBreakpointToggle,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -39,6 +44,14 @@ export function StudioCodeEditor({
   revealLine?: number | null;
   /** Working-tree line numbers with an uncommitted change (git.diff), for a gutter marker. */
   changedLines?: readonly number[];
+  /** Current cursor position (1-based), for tools that act at the cursor (Code tools: hover/definition/references/rename). */
+  onCursorChange?: (line: number, column: number) => void;
+  /** Debugger: lines with a breakpoint set (1-based). Independent of changedLines. */
+  breakpointLines?: readonly number[];
+  /** Debugger: the line currently paused at, if any (1-based). */
+  stoppedLine?: number | null;
+  /** Debugger: gutter click toggles a breakpoint on that line. Gutter stays read-only without this. */
+  onBreakpointToggle?: (line: number) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLPreElement | null>(null);
@@ -47,6 +60,7 @@ export function StudioCodeEditor({
   const lineCount = studioLineCount(value);
   const language = studioSyntaxLanguage(languageHint);
   const changedLineSet = new Set(changedLines ?? []);
+  const breakpointLineSet = new Set(breakpointLines ?? []);
 
   const syncScroll = () => {
     const textarea = textareaRef.current;
@@ -56,6 +70,13 @@ export function StudioCodeEditor({
       highlightRef.current.scrollLeft = textarea.scrollLeft;
     }
     if (gutterRef.current) gutterRef.current.scrollTop = textarea.scrollTop;
+  };
+
+  const reportCursor = () => {
+    const textarea = textareaRef.current;
+    if (!textarea || !onCursorChange) return;
+    const { line, column } = lineColumnForStudioOffset(value, textarea.selectionStart);
+    onCursorChange(line, column);
   };
 
   useEffect(() => {
@@ -104,7 +125,7 @@ export function StudioCodeEditor({
     >
       <Box
         ref={gutterRef}
-        aria-hidden
+        aria-hidden={!onBreakpointToggle}
         sx={{
           overflow: "hidden",
           px: 1,
@@ -118,19 +139,37 @@ export function StudioCodeEditor({
           borderRight: "1px solid rgba(232,234,238,0.12)",
         }}
       >
-        {Array.from({ length: lineCount }, (_, i) => (
-          <Box
-            key={i + 1}
-            component="div"
-            sx={
-              changedLineSet.has(i + 1)
-                ? { borderInlineStart: "2px solid #6FBF73", ps: "6px", ms: "-7px" }
-                : {}
-            }
-          >
-            {i + 1}
-          </Box>
-        ))}
+        {Array.from({ length: lineCount }, (_, i) => {
+          const line = i + 1;
+          const isBreakpoint = breakpointLineSet.has(line);
+          const isStopped = stoppedLine === line;
+          return (
+            <Box
+              key={line}
+              component={onBreakpointToggle ? "button" : "div"}
+              type={onBreakpointToggle ? "button" : undefined}
+              aria-label={onBreakpointToggle ? `Toggle breakpoint on line ${line}` : undefined}
+              onClick={onBreakpointToggle ? () => onBreakpointToggle(line) : undefined}
+              sx={{
+                display: "block",
+                width: "100%",
+                background: isStopped ? "rgba(255, 196, 0, 0.18)" : "none",
+                border: 0,
+                p: 0,
+                m: 0,
+                font: "inherit",
+                color: isBreakpoint ? "#F07178" : "inherit",
+                cursor: onBreakpointToggle ? "pointer" : "inherit",
+                ...(changedLineSet.has(line)
+                  ? { borderInlineStart: "2px solid #6FBF73", ps: "6px", ms: "-7px" }
+                  : {}),
+              }}
+            >
+              {isBreakpoint ? "● " : ""}
+              {line}
+            </Box>
+          );
+        })}
       </Box>
       <Box sx={{ position: "relative", minWidth: 0 }}>
         <Box
@@ -171,6 +210,9 @@ export function StudioCodeEditor({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onScroll={syncScroll}
+          onSelect={reportCursor}
+          onClick={reportCursor}
+          onKeyUp={reportCursor}
           readOnly={readOnly}
           data-studio-editor
           spellCheck={false}

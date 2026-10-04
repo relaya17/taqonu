@@ -96,6 +96,7 @@ import { StudioProblemsPanel } from "@/components/studio/StudioProblemsPanel";
 import { StudioRunPanel } from "@/components/studio/StudioRunPanel";
 import { StudioPtyTerminal } from "@/components/studio/StudioPtyTerminal";
 import { StudioGitStatus } from "@/components/studio/StudioGitStatus";
+import { StudioDebugPanel } from "@/components/studio/StudioDebugPanel";
 import { ExtensionsView } from "@/components/studio/extensions/ExtensionsView";
 import { ExtensionDetail } from "@/components/studio/extensions/ExtensionDetail";
 import { ExtensionPanelHost } from "@/components/studio/extensions/ExtensionPanelHost";
@@ -1105,6 +1106,8 @@ export default function StudioPage() {
     tab === "chat" ? "agent" : tab === "pty" ? "panel" : "editor",
   );
   const [codeToolsOpen, setCodeToolsOpen] = useState(false);
+  /** Editor cursor position (1-based), so Code tools (hover/definition/references/rename) act where the cursor actually is. */
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [findOpen, setFindOpen] = useState(false);
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const [dialog, setDialog] = useState<
@@ -1816,6 +1819,8 @@ export default function StudioPage() {
         return <ObserverPanel projectId={projectId} embedded extensionScope={scope} />;
       case "arletos.agent-runs":
         return <EngineeringRunsPanel projectId={projectId} embedded extensionScope={scope} />;
+      case "arletos.debugger":
+        return <StudioDebugPanel projectId={projectId} extensionScope={scope} />;
       default:
         return null;
     }
@@ -2334,6 +2339,8 @@ export default function StudioPage() {
                         path={selectedPath}
                         content={currentBuffer?.draft ?? fileQuery.data.content}
                         onOpen={(path, line) => selectStudioFile(path, line)}
+                        cursorLine={cursorPosition.line}
+                        cursorColumn={cursorPosition.column}
                       />
                     ) : null}
                     {outline.length > 0 ? (
@@ -2419,6 +2426,7 @@ export default function StudioPage() {
                     ariaLabel={selectedPath ?? t("pickFile")}
                     revealLine={revealLine}
                     changedLines={changedLines}
+                    onCursorChange={(line, column) => setCursorPosition({ line, column })}
                   />
                 ) : !projectId ? (
                   pickProjectState
@@ -2965,7 +2973,9 @@ export default function StudioPage() {
                 {t("statusNoProject")}
               </Typography>
             ) : null}
-            {projectId && sidePanel === "psa" ? <SupervisingAgentPanel projectId={projectId} /> : null}
+            {projectId && sidePanel === "psa" ? (
+              <SupervisingAgentPanel projectId={projectId} selectedPath={selectedPath} />
+            ) : null}
 
             {sidePanel === "agent" ? (
             <Box>
@@ -3638,6 +3648,7 @@ export default function StudioPage() {
                     [t("menu.find"), "Ctrl+F"],
                     [t("menu.replace"), "Ctrl+H"],
                     [t("menu.searchAll"), "Ctrl+Shift+F"],
+                    [t("menu.replaceAll"), "Ctrl+Shift+H"],
                     [t("menu.goToLine"), "Ctrl+G"],
                     [t("menu.goToSymbol"), "Ctrl+Shift+O"],
                     [t("menu.back"), "Alt+Left"],

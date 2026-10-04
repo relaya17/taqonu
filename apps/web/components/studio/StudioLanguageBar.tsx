@@ -2,7 +2,7 @@
 
 import { Alert, Button, Stack, TextField, Typography } from "@mui/material";
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { apiPost } from "@/lib/api";
 
@@ -15,17 +15,27 @@ export function StudioLanguageBar({
   path,
   content,
   onOpen,
+  cursorLine,
+  cursorColumn,
 }: {
   projectId: string;
   path: string;
   content: string;
   onOpen: (path: string, line: number | null) => void;
+  /** Current editor cursor position (1-based); hover/definition/references/rename default here, same as F12-at-cursor in VS Code. Still editable below. */
+  cursorLine?: number;
+  cursorColumn?: number;
 }) {
   const t = useTranslations("studio");
-  const [line, setLine] = useState(1);
-  const [column, setColumn] = useState(1);
+  const [line, setLine] = useState(cursorLine ?? 1);
+  const [column, setColumn] = useState(cursorColumn ?? 1);
   const [newName, setNewName] = useState("");
   const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cursorLine) setLine(cursorLine);
+    if (cursorColumn) setColumn(cursorColumn);
+  }, [cursorLine, cursorColumn]);
 
   const unsaved = { path, content };
 

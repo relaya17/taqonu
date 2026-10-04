@@ -291,6 +291,8 @@
       "diff": "Diff מול HEAD",
       "diffFile": "שינויים ב-{path}",
       "diffEmpty": "אין diff מול HEAD, או ש-git.diff טרם הורץ.",
+      "log": "היסטוריה אחרונה",
+      "logEmpty": "אין היסטוריה עדיין, או ש-git.log טרם הורץ.",
       "kind": {
         "modified": "שונה",
         "added": "נוסף",
@@ -445,6 +447,19 @@
       "extensionsHelp": "רישום מניפסט בלבד. אין חנות, אין JavaScript משתמש, אין מארח.",
       "hostReady": "מארח מוכן",
       "noHost": "אין מארח"
+    },
+    "debug": {
+      "help": "מטרות דיבוג שהופעלו על ידי ArletOS בלבד. אין attach לתהליך חיצוני שרירותי.",
+      "target": "מטרת דיבוג",
+      "request": "פתח session דיבוג",
+      "requesting": "מבקש…",
+      "close": "סגור session",
+      "forceClose": "סגירה כפויה",
+      "reason": "סיבה",
+      "status": "סטטוס",
+      "noSession": "אין session דיבוג לפרויקט זה עדיין.",
+      "sessionClosed": "ה-session נסגר.",
+      "error": "בקשת הדיבוג נכשלה"
     },
     "ptyTerminal": {
       "help": "מסוף אינטראקטיבי אנושי בתיקיית הפרויקט. זה תהליך/PTY אמיתי, לא הרצת commandId ממשלת.",

@@ -56,6 +56,34 @@ export function isGitDiffResult(result: {
   return Boolean(result && result.commandId === "git.diff");
 }
 
+export function isGitLogResult(result: {
+  commandId?: string | null;
+} | null): boolean {
+  return Boolean(result && result.commandId === "git.log");
+}
+
+export interface StudioGitLogEntry {
+  readonly hash: string;
+  readonly decoration: string | null;
+  readonly message: string;
+}
+
+const LOG_LINE = /^(\S+)(?:\s+\(([^)]*)\))?\s*(.*)$/;
+
+/** Parse `git log --oneline --decorate --no-color` stdout. Read-only; never invents commits. */
+export function parseGitLog(stdout: string): StudioGitLogEntry[] {
+  const entries: StudioGitLogEntry[] = [];
+  for (const raw of stdout.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const match = LOG_LINE.exec(line);
+    if (!match) continue;
+    const [, hash, decoration, message] = match;
+    entries.push({ hash: hash!, decoration: decoration ?? null, message: message ?? "" });
+  }
+  return entries;
+}
+
 export function parseGitBranchName(stdout: string): string {
   return stdout.trim().split(/\r?\n/)[0] ?? "";
 }

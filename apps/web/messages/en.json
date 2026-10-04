@@ -236,6 +236,8 @@
       "diff": "Diff vs HEAD",
       "diffFile": "Changes in {path}",
       "diffEmpty": "No unstaged/staged diff vs HEAD, or git.diff has not been run.",
+      "log": "Recent history",
+      "logEmpty": "No history yet, or git.log has not been run.",
       "kind": {
         "modified": "modified",
         "added": "added",
@@ -390,6 +392,19 @@
       "extensionsHelp": "Manifest registry only. No marketplace, no user JavaScript, no host API.",
       "hostReady": "host ready",
       "noHost": "no host"
+    },
+    "debug": {
+      "help": "Debug targets launched by ArletOS only. No attach to an arbitrary external process.",
+      "target": "Debug target",
+      "request": "Start debug session",
+      "requesting": "Requesting…",
+      "close": "Close session",
+      "forceClose": "Force close",
+      "reason": "Reason",
+      "status": "Status",
+      "noSession": "No debug session for this project yet.",
+      "sessionClosed": "Session closed.",
+      "error": "Debug request failed"
     },
     "ptyTerminal": {
       "help": "Interactive human terminal in the linked workspace. This is a real process/PTY, not governed commandId execution.",

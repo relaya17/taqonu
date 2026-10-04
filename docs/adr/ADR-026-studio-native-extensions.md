@@ -176,3 +176,49 @@ approval first (rule 5).
 - Tests in `atlas-architecture-contracts.test.ts` assert the new contract
   (official-only, no third-party, no user JS, no server-side extension code,
   durable state, product goal).
+
+## 8. Verification (2026-10-04, Studio-only verification pass)
+
+Status vocabulary: `VERIFIED` / `IMPLEMENTED BUT NOT VERIFIED` / `BLOCKED` /
+`MISSING` / `CONFLICTED`. This section is the result of exercising the
+already-implemented platform against this ADR; it does not change the
+decision or the implementation beyond one environment fix (below).
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Extension identity stable; duplicate/unknown IDs rejected | `VERIFIED` | `routes/studio-extensions.test.ts` (14/14): unknown extension → 404/`UNKNOWN_EXTENSION`; gate rejects unknown/malformed `x-arletos-extension` → 403. Re-confirmed live: `fetch` with `arletos.does-not-exist` → 403 `UNKNOWN_EXTENSION`; `<script>...</script>` header value → 403 `Unknown Studio extension` (no reflection). |
+| Installing grants nothing; permissions explicit, one by one, audited | `VERIFIED` | Live: installed "Cloud & deploy" → state "Installed · off", both permissions still "Waiting for approval"; granting one flips only that permission. |
+| Unknown/undeclared permissions and routes fail closed | `VERIFIED` | `routes/studio-extensions.test.ts`: "blocks a disabled extension, an undeclared route and an unknown extension"; "limits the Git extension to read-only Git commands". |
+| Server-side enforcement (`x-arletos-extension`) — permission not granted, not enabled, wrong route/command | `VERIFIED` | Live, direct `fetch` to the API (not UI-mediated): `PERMISSION_NOT_GRANTED` → 403, then 200 after granting; `NOT_ENABLED` → 403 after disabling with the permission still granted. |
+| Health contract: dependency/capability/extension state rules | `VERIFIED` | `studio-extension-health.test.ts` (7/7, unit, synthetic manifest — contract §E/§F). |
+| Health: Healthy, Unavailable, and Recovery (unavailable → healthy once the condition clears) | `VERIFIED` | Live: Git read `UNAVAILABLE` ("The live approval store is not configured here") while the local API process held a stale `SUPABASE_SERVICE_ROLE_KEY`; restarting the API process (the actual defect — see below) made the same project's Git and Tests & QA read `HEALTHY` without any code or data change — a genuine recovery transition, not a rerun of the same state. |
+| Health: Degraded (capability-level, optional dependency) | `VERIFIED` (engine only) | `studio-extension-health.test.ts`: optional-dependency and partial-availability cases. Not reproduced against a real manifest — see Remaining gaps. |
+| Health is informational: never blocks, grants or revokes | `VERIFIED` | Code path separation holds (`studio-extension-gate.ts` does not import the health module). Live: the Git panel rendered its buttons while `UNAVAILABLE`; `Request git status` remained clickable throughout. |
+| Dashboard/catalog UI reflects loading, error, and empty states safely | `VERIFIED` | `EngineeringStatusCard.tsx`: `Skeleton` while loading, `Alert severity="warning"` on partial failure (`anyError`), default-to-zero counts via `?? []`/`?? 0`; `ExtensionsView`/`ExtensionDetail`: `Alert severity="error"` on query error, explicit `notFound`/`loading` text, no unguarded property access found in review. |
+| Dynamic activity bar reflects real backend state | `VERIFIED` | Live: installing + enabling "Cloud & deploy" added its icon to the activity bar within one refetch; disabling removed it; no page reload. |
+| i18n — en/he/ar/fr, no English leakage, no missing-key markers | `VERIFIED` | Live, all 4 locales: catalog, filters, state/health labels, permissions, capabilities, third-party note all render fully translated; evaluated DOM text for `MISSING_MESSAGE`/raw key patterns — none found. |
+| RTL | `VERIFIED` | Live: `he` and `ar` both render `document.documentElement.dir === "rtl"` with the Extensions view laid out correctly. |
+| Accessibility — distinct roles/regions, keyboard operability, disabled-state semantics | `VERIFIED`, one observation | Live: filter chips keyboard-operable (`Tab` + `Enter` toggles `aria-pressed`); each extension row, panel and detail page has a distinct `region`/`aria-label`. Observation (not a defect): the same extension's name legitimately appears twice in the DOM at once (activity-bar icon button and catalog list entry, e.g. both named "Git"), each in a different landmark (`toolbar` vs `region`). This mirrors how the catalog and activity bar are specified to work (same extension, two surfaces) and is not the duplicate-label defect fixed elsewhere in Studio (identical labels on two *different* things). No fix applied. |
+| Project/user isolation — a project cannot see or mutate another project's extension state | `VERIFIED` | `routes/studio-extensions.test.ts`: "rejects a project the caller cannot access, wherever its id comes from" (header, query, and body paths, two real local identities, `bindProjectOwner`-scoped) and "only the project owner changes project-scope state". This is a real two-identity API-level test already in the suite — not invented for this pass. |
+| Regression — other Studio surfaces unaffected | `VERIFIED` | `apps/api`: `web-studio-surfaces.test.ts` 16/16, `atlas-architecture-contracts.test.ts` 6/6; `apps/web`: `tsc --noEmit` clean. |
+
+**Defect found and fixed:** none in the implementation. One **environment**
+defect was found and corrected: the locally running API dev-server process
+had been started while `apps/api/.env` temporarily held a non-live
+`SUPABASE_SERVICE_ROLE_KEY` (from an earlier, unrelated verification pass)
+and had not picked up the file's later revert, so `service.approval-store`
+and the Git extension's health read `UNAVAILABLE`/`NOT_CONFIGURED` against a
+correctly-configured environment. Restarting the process (no code change)
+resolved it and produced the Recovery evidence above.
+
+**Remaining gaps:**
+- Extension-level `DEGRADED` (partial capability availability) is `VERIFIED`
+  only against the synthetic manifest in `studio-extension-health.test.ts`.
+  None of the 6 shipped manifests currently has two capabilities with
+  different dependency sets or any `optional: true` dependency, so this state
+  is not reachable through real data today. Not a defect — the rule is
+  implemented and unit-tested; the shipped manifests simply never exercise
+  it. No manifest change made (would be scope beyond this verification pass).
+- `service.durable-store` against a live Supabase instance and real Git
+  execution against a live repository remain environment-dependent probes,
+  as already noted above (§4) — unchanged by this pass.

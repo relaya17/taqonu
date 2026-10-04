@@ -9,8 +9,10 @@ import { useStudioApi, type StudioExtensionScope } from "@/lib/studio-extension-
 import {
   isGitBranchResult,
   isGitDiffResult,
+  isGitLogResult,
   isGitStatusResult,
   parseGitBranchName,
+  parseGitLog,
   parseGitPorcelain,
 } from "@/lib/studio-git-status";
 import { parseUnifiedDiff, studioDiffFileFor, type StudioDiffHunk } from "@/lib/studio-diff";
@@ -176,6 +178,7 @@ export function StudioGitStatus({
     (shown && isGitBranchResult(shown) ? parseGitBranchName(shown.stdout ?? "") : null);
   const shownDiff =
     diffText ?? (shown && isGitDiffResult(shown) ? shown.stdout ?? "" : null);
+  const log = shown && isGitLogResult(shown) && shown.stdout ? parseGitLog(shown.stdout) : [];
 
   return (
     <Box
@@ -353,6 +356,31 @@ export function StudioGitStatus({
               >
                 {shownDiff.trim() ? shownDiff : t("diffEmpty")}
               </Box>
+            </Box>
+          ) : null}
+          {shown && isGitLogResult(shown) ? (
+            <Box>
+              <Typography variant="caption" sx={{ color: "#8B9099" }}>
+                {t("log")}
+              </Typography>
+              {log.length > 0 ? (
+                <List dense disablePadding aria-label={t("log")}>
+                  {log.map((entry, index) => (
+                    <ListItem key={`${entry.hash}-${index}`} disablePadding>
+                      <ListItemText
+                        primary={entry.message}
+                        secondary={entry.decoration ? `${entry.hash} · ${entry.decoration}` : entry.hash}
+                        primaryTypographyProps={{ sx: { color: "#DCDDE1", fontSize: 13 } }}
+                        secondaryTypographyProps={{ sx: { color: "#8B9099", fontSize: 11 }, dir: "ltr" }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" sx={{ color: "#8B9099" }}>
+                  {t("logEmpty")}
+                </Typography>
+              )}
             </Box>
           ) : null}
         </Stack>

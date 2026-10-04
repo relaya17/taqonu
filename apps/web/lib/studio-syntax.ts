@@ -325,3 +325,14 @@ export function offsetForStudioLine(content: string, line: number): number {
   }
   return offset;
 }
+
+/** Inverse of `offsetForStudioLine` — 1-based line/column (TypeScript language-service convention) for a textarea selection offset. */
+export function lineColumnForStudioOffset(
+  content: string,
+  offset: number,
+): { line: number; column: number } {
+  const clamped = Math.min(Math.max(offset, 0), content.length);
+  const before = content.slice(0, clamped);
+  const parts = before.split("\n");
+  return { line: parts.length, column: parts[parts.length - 1]!.length + 1 };
+}
