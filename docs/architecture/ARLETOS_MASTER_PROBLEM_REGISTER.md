@@ -887,8 +887,964 @@ Every row is 🟡 **IMPLEMENTED_UNVERIFIED**. Unit tests were added in most of t
 | Checks as Studio aliases (`studioCheckHref`; `STUDIO_CHECK_IDS` pre-existing from `39b3fc2`; old routes redirect client-side) | `93e1ff2` | WSP Stage 6 |
 | Memory archive, consolidate, storage meter (Settings, MemoryPanel) | `383ecb6`, `93e1ff2` | WSP Stage 7 |
 | Recurring-failure recommendation | `e89b594`, `93e1ff2` | WSP Stage 8 |
-| Studio file move | `73a3662`, `d68038a` (API), `93e1ff2` (Studio button) | WSP Stage 9 |
-| Studio layout (negative margins removed; content still capped at `maxWidth: 1240`), AppShell chrome, signed-in welcome | `ad55e6c` | none |
+| Studio file move | `73a3662`, `d68038a` (API), `93e1ff2` (Studio button) | WSP Stage 9 — see §11 "Studio file move" reconciliation note below: already VERIFIED via Q-V.6 (S-04), not reopened. |
+| Studio layout (negative margins removed; content still capped at `maxWidth: 1240`), AppShell chrome, signed-in welcome | `ad55e6c` | none — see §11 reconciliation note below. |
+
+**Reconciliation note (2026-10-04, Studio VS Code capability benchmark continuation — not Q11, not Stage 9, not Q-V):**
+the "WSP Stage 2 (PARTIAL)" framing of the Explain/Diagnose/Review row above
+is **stale**. `docs/architecture/studio-web-future-direction-2026-09-25.md`
+(dated 2026-09-25, i.e. after `93e1ff2`) already settles the "do they call
+`/code/explain`/`/code/review`" question explicitly: those routes require a
+Control role and a raw `workspaceRoot`, and are **not meant to be opened to a
+regular user** — "Explain for the user needs to be built on the project they
+own, not on this route." So "pre-fill a CODE_ENGINEER proposal instead of
+calling `/code/explain`/`/code/review`" is the **correct, intentional**
+design, not a shortcut. "PARTIAL" is corrected to reflect that; this was
+never a product gap.
+- **Source — confirmed this pass:** `apps/web/lib/studio-surfaces.ts`
+  (`STUDIO_FILE_ACTIONS`, `studioFileActionInstruction(action, path)`) builds
+  `"{Explain|Diagnose|Review} {path}. Stop at a proposal. Do not apply."`.
+  `apps/web/app/[locale]/studio/page.tsx` (Agent panel, "Open file actions"
+  row) wires each button's `onClick` to `setInstruction(...)` +
+  `setIntent("propose")` only — it does **not** auto-submit; the user still
+  clicks "Ask agent" separately (same submission path already proven in
+  Q11-1, not repeated here).
+- **Existing tests (re-run this pass):** `apps/web/lib/studio-surfaces.test.ts`
+  — **28/28 passing**, including `studioFileActionInstruction` (differentiates
+  the three verbs) and "studio file action i18n" (Explain/Diagnose/Review
+  shipped in EN/HE/AR).
+- **Runtime evidence (this pass, live, no second identity needed):** opened
+  the Agent panel on `StudioGitStatus.tsx`; clicked **Explain** — the
+  instruction field filled with exactly `"Explain apps/web/components/studio/StudioGitStatus.tsx. Stop at a proposal. Do not apply."`,
+  Mode stayed `Fix` (unchanged), "Ask agent" remained present and was not
+  auto-triggered. Clicked **Diagnose** then **Review** — each replaced the
+  field with its own correctly-worded instruction. All three verbs confirmed
+  distinct and correct, live.
+- **Classification:** `VERIFIED` (was 🟡 IMPLEMENTED_UNVERIFIED). No defect
+  found; no code changed for this item.
+
+**Reconciliation note — PSA panel wiring (2026-10-04, same continuation):**
+The "WSP Stage 3" row above is too coarse to classify in one word — "wiring"
+has four distinct layers, and they are **not all at the same status**. Also:
+an *existing* register claim contradicts the actual source and was corrected
+here rather than trusted (§5773/§6018 "S-07 PSA selectedPath prop VERIFIED"
+describes only the **backend** schema test, not the frontend; §5492's older
+"Gap" note — "no component connects file context to PSA" — was the one that
+was actually still true in source, until this pass).
+
+- **UI entry point:** `VERIFIED`. "Personal agent" tab in the Agent panel,
+  `apps/web/components/studio/SupervisingAgentPanel.tsx`, rendered at
+  `apps/web/app/[locale]/studio/page.tsx`. Confirmed live.
+- **Selected project context:** `VERIFIED`. `projectId` prop; `scopedToProject`
+  gates the memory query and the attention/coordinate/verbs sections.
+- **Selected file context (`contextPath`):** was **`MISSING` in the frontend**
+  despite the backend already supporting it — a genuine, demonstrated,
+  narrow integration gap. **Fixed this pass** (see below). Confirmed by
+  `git log -p --follow` on `SupervisingAgentPanel.tsx`: `selectedPath` never
+  appears in any commit's diff for this file — the "S-07 VERIFIED" claim
+  did not describe code that was ever committed.
+- **Backend/API connection:** `VERIFIED`, real. `GET /api/v1/supervising-agent`
+  (200, real persisted record), `GET /observation` (200, real attention
+  item: `"MEDIUM: 14 pending approval(s)..."`), `explain`/`recommend`/
+  `escalate`/`coordinate` all real `apiPost` calls to
+  `apps/api/src/routes/personal-supervising-agent.ts`, which already declares
+  `contextPath` on `explainBodySchema`/`attentionBodySchema`/
+  `coordinateBodySchema` and prepends it to the reason/request text as
+  `[Studio file: {path}]\n...`. `request` (Fabric specialist proposal) has
+  **no** `contextPath` field server-side (`buildPsaGovernedRequest` in
+  `apps/web/lib/psa-governed-request.ts` confirms no such field) — correctly
+  left unwired.
+- **Persistence:** `VERIFIED`, real — the PSA record (`agentId`, `scope`,
+  `status: "ACTIVE"`, `createdAt`) persists across requests; confirmed via a
+  direct authenticated `GET` returning the same real record outside any UI
+  interaction.
+- **Loading/error/empty states:** `VERIFIED` by reading the full component —
+  per-section handling: memory (`isLoading` → "…", `isError` → info Alert,
+  empty → `t("memoryEmpty")`), attention items (empty → `t("noAttention")`),
+  coordinate (`isError` → Alert with the real error message, result list only
+  when `steps.length > 0`), explain/recommend/escalate each with their own
+  `isError` Alert. One **secondary, not fixed** observation: the shared
+  `t("unavailable")` string ("PSA is unavailable until you are signed in.")
+  fires for `psa.isError || ensure.isError` generically, so it was shown live
+  for a real cause that was **not** "signed out" (see below) — a minor
+  message-accuracy issue, left as-is since it is outside this pass's narrow
+  fix scope.
+- **Runtime evidence — real environment blocker found (not fixed, not a code
+  defect):** live, clicking "Link PSA to this Studio project" for the
+  `taqonu` project (`e9c45758-...`) returns a real
+  `403 FORBIDDEN "Presented tenant, project, or application is outside the
+  persisted supervising agent scope"`. Root cause: this environment's
+  `dev@atlas.local` PSA was already permanently scoped to a **different**
+  project (`bead9260-13f6-444a-8b8d-c073a51a1ea0`, from earlier D3 testing
+  this same engagement) before this pass began; the backend intentionally
+  refuses to silently widen an existing PSA's scope. This is a fixture/
+  environment state artifact, not a bug in the link flow itself, and not a
+  SoD/second-identity question — no second identity was used or needed.
+- **Fix made (small, local, backend-ready — not new functionality):**
+  `apps/web/components/studio/SupervisingAgentPanel.tsx` — added an optional
+  `selectedPath` prop; `explain`/`recommend`/`escalate`/`coordinate` mutations
+  now send `contextPath: selectedPath` when a file is open (conditionally
+  spread, no `undefined`-assignment, per `exactOptionalPropertyTypes`).
+  `apps/web/app/[locale]/studio/page.tsx` — passes `selectedPath` to the
+  existing `<SupervisingAgentPanel>` call site. No new prop, route, schema,
+  or UI element was invented — this completes wiring the backend already
+  had and tested.
+- **Test evidence:** `apps/api/src/__tests__/web-studio-surfaces.test.ts`
+  (16/16), `apps/api/src/routes/personal-supervising-agent.test.ts` (4/4) —
+  both re-run after the fix, unaffected. `tsc --noEmit` clean.
+- **Runtime evidence of the fix:** intercepted the real
+  `POST /api/v1/supervising-agent/explain` request live — captured body:
+  `{"eventId":"test-event-123","contextPath":"apps/web/components/studio/StudioGitStatus.tsx"}`.
+  The server then correctly answered `"No authorized record matches that
+  identity"` (expected — `test-event-123` is not a real audit record; this
+  proves the request reached real server logic past the `contextPath` field,
+  not a client-side-only change).
+- **Final classification:** UI entry/project context/backend connectivity/
+  persistence/loading-error-empty states — `VERIFIED`. File-context
+  (`contextPath`) forwarding — `VERIFIED` (fixed and confirmed live this
+  pass). Full "link to an arbitrary new project" flow — `BLOCKED` by
+  pre-existing fixture scope state, not a code defect, not SoD. Overall
+  capability: **no longer a single "IMPLEMENTED_UNVERIFIED" row** — see the
+  per-layer breakdown above; nothing here should be read as one aggregate
+  status.
+
+**Reconciliation note — Studio second-identity `decide-and-execute` UI
+(2026-10-04, same continuation, WSP Stage 4):** Reusing evidence already
+established earlier in this same engagement rather than reopening the SoD
+investigation (`S9-17`, `STAGE_9_MASTER_PLAN_2026-09-26.md`, plus this
+session's own git.log/git.status regression checks); this pass adds exactly
+one new, targeted confirmation and a precise classification.
+
+- **Source/data flow:** the requirement is implemented **twice**, by design,
+  not inconsistently: `apps/web/components/studio/StudioGitStatus.tsx` (Git
+  commands) and `apps/web/components/studio/StudioRunPanel.tsx` (build/test/
+  other terminal commands) each request a governed command, catch
+  `isApprovalRequiredError` to capture `approvalId`, and render their own
+  "Second identity — decide and execute" block (`decisionReason` field +
+  "Decide and execute" button) that posts to the same backend family,
+  `POST {path}/decide-and-execute`, where `{path}` is
+  `/api/v1/projects/:id/studio/{terminal|tests|build}`. Both panels are UI
+  surfaces over the same governed-command/SoD backend
+  (`apps/api/src/services/governed-command.ts`,
+  `apps/api/src/routes/studio-execution.ts`); no third, inconsistent
+  implementation was found.
+- **Runtime evidence (new this pass):** used `StudioRunPanel` (not Git —
+  genuinely new UI surface for this session) with the default `node.version`
+  command. "Request run" minted a real approval
+  (`2019a95f-1647-4876-9460-1298b11abf0c`) and rendered the real
+  "Second identity — decide and execute" block with the exact approval id.
+  Self-approval regression check: submitted a decision reason and clicked
+  "Decide and execute" as the same identity — real `403`:
+  *"Approval request 2019a95f-... was requested by 95a63e6e-... --
+  separation of duties forbids the same identity from also being the live
+  human who decides and claims it."* Identical message shape to the
+  git.log/git.status checks already on record — confirms the gate is the
+  same one, correctly enforced on a second, independent UI surface.
+- **Authorization/SoD evidence:** `requesterId !== deciderId` is enforced
+  server-side (confirmed by the real 403 above); no bypass attempted, no
+  second identity manufactured.
+- **Persistence/state result:** the approval request persists across the
+  self-approval attempt (same `approvalId` still shown, still pending) — the
+  denied attempt did not consume or corrupt the pending approval.
+- **Completing the flow with a second, distinct, project-authorized
+  identity:** `BLOCKED` — this environment has exactly one identity
+  (`dev@atlas.local`) with write access to the `taqonu` project in this
+  manual session. This is the same, already-documented
+  environment/verification-fixture limitation as `S9-26`/`S9-27` and this
+  session's git.log/git.status checks — not a new blocker, not a product
+  defect. The automated `e2e/stage9/sod.spec.ts` suite already proves the
+  **successful** two-identity path exists and has run green historically
+  (`S9-17`, via its own dedicated two-identity fixture,
+  `stage9-requester@atlas.test` / `stage9-decider@atlas.test`), which this
+  manual session has no access to and was not re-run here (per "do not
+  reopen Stage 9").
+- **Final classification:** UI wiring (both surfaces), approval minting,
+  and SoD self-decision denial — `VERIFIED` (live, this pass, on a second,
+  independent UI surface). Full successful second-identity
+  completion in *this* manual session — `BLOCKED` (environment/fixture:
+  single available identity), distinct from the historically `VERIFIED`
+  automated-fixture proof (`S9-17`). No code changed; no defect found.
+
+**Reconciliation note — Desk verify
+(2026-10-04, same continuation, WSP Stage 5):** this capability was already
+fixed and tested under **G-2 "Server-Authoritative Remediation
+Classification"** (see the G-table and the G-2 write-up elsewhere in this
+document); this pass does not reopen that work, only confirms it against
+the current source and notes the one thing that cannot be exercised live
+right now.
+
+- **Source:** `apps/web/lib/studio-patch-workflow.ts` —
+  `deskPatchVerifyPath(patch)` routes to
+  `/api/v1/remediation/drafts/:id/verify` only when
+  `patch.createdBy === "atlas-auto-remediation" | "atlas-truth-remediation"`
+  or `patch.sourceIssueId` is set (server-set fields only, per G-2); every
+  other patch routes to the governed `/api/v1/code/patches/:id/verify`
+  (`patchVerifyPath`). Consumed by
+  `apps/web/components/dashboard/PatchesPanel.tsx` (the `verify` mutation),
+  which is embedded as the "Patches" tab of
+  `apps/web/components/dashboard/PersonalDesk.tsx` — this is the literal
+  "Desk" in "Desk verify"; it is a Dashboard/Desk surface, not part of the
+  Studio page itself, confirmed by `grep` (only usage is `PersonalDesk.tsx`
+  → `<PatchesPanel embedded />`).
+- **Test evidence (existing, not re-run beyond confirming it's current):**
+  `apps/api/src/__tests__/web-studio-surfaces.test.ts` asserts
+  `PatchesPanel.tsx` contains `deskPatchVerifyPath` and
+  `formatPatchVerifyLabel`, and explicitly asserts it does **not** contain a
+  hardcoded `/api/v1/remediation/drafts/` literal (i.e. the split must stay
+  data-driven, not copy-pasted) — this is exactly the "others use
+  `/code/patches/:id/verify`" requirement. `apps/api/src/routes/
+  stage5-golden-loop.test.ts` covers the G-2 title-injection/server-
+  provenance backend tests.
+- **Runtime evidence:** navigated to the live Desk (`/en?desk=patches`,
+  Patches tab of `PersonalDesk`) — confirmed real empty state: *"No patches
+  yet — use Agent modes Generate/Fix/… or run an audit for AUTO_FIX
+  drafts."* Exercising the live Verify button end-to-end would require
+  first creating a real patch (propose → approve → apply), a separate,
+  larger, already-covered capability — not done here to avoid fabricating
+  state or reopening that workflow.
+- **Final classification:** routing-split logic (auto-remediation vs.
+  governed patch) — `VERIFIED` (via the existing G-2 fix + its dedicated
+  tests + the current-source re-read above). Live end-to-end exercise with
+  a real patch in this environment — `BLOCKED`, reason: no patch currently
+  exists in this project to verify (empty state, not a defect; creating one
+  is a separate, out-of-scope operation). No code changed; no defect found.
+
+**Reconciliation note — Checks as Studio aliases
+(2026-10-04, same continuation, WSP Stage 6):**
+
+- **Source:** `apps/web/lib/studio-surfaces.ts` — `STUDIO_CHECK_IDS` (14
+  ids: `observer, sentinel, qa, processAudit, health, readiness, truth,
+  gates, eval, contract, conflicts, legal, constitution, benchmarks`) and
+  `studioCheckHref(check, projectId)`, which always builds
+  `{ pathname: "/studio", query: { tab: "checks", check, project? } }`.
+  Old standalone routes (`/health`, `/qa`, `/readiness`, `/gates`, `/eval`,
+  `/contract`, `/conflicts`, `/legal-media`, `/process-audit`, `/proof`,
+  etc.) are now one-line client components rendering
+  `apps/web/components/studio/StudioSurfaceRedirect.tsx`, e.g.
+  `apps/web/app/[locale]/health/page.tsx`:
+  `<StudioSurfaceRedirect tab="checks" check="health" />`.
+  `StudioSurfaceRedirect` reads `project` from the current search params and
+  `router.replace`s to `/studio?tab=checks&check=<id>&project=<id>` in a
+  `useEffect` — a real client-side redirect, not a dead link.
+- **Runtime evidence:** navigated to `/en/health` live — observed the
+  `router.replace` fire and land on
+  `/en/studio?tab=checks&check=health&project=e9c45758-...`, rendering
+  "Checks › Health" with the "Health" tab selected in the Checks tablist
+  (alongside Observer, Security, QA, Process Audit, Readiness, Truth,
+  Quality gates, Eval, Architecture Contract, Conflicts, Counsel brief,
+  Constitution, Benchmarks & proof — all 14 `STUDIO_CHECK_IDS`, confirmed
+  present as tabs) and the real System Health panel content (folder path,
+  user intent, "Run audit" button) — i.e. the alias is a working redirect
+  into a real, populated Studio Check, not a stub.
+- **Test evidence:** `apps/web/lib/studio-surfaces.test.ts` and
+  `apps/api/src/__tests__/web-studio-surfaces.test.ts` cover
+  `studioCheckHref`/`STUDIO_CHECK_IDS` construction (pre-existing from
+  `39b3fc2`, per the original table row).
+- **Final classification:** `VERIFIED` (live, this pass). No code changed;
+  no defect found.
+
+**Reconciliation note — Memory archive, consolidate, storage meter
+(2026-10-04, same continuation, WSP Stage 7):** a prior reconciliation
+already exists (`docs/architecture/MISSING_ITEMS_REPORT_2026-09-27.md`
+§2.7, classification `EXISTING_CONNECTED — RUNTIME UNVERIFIED`) with full
+source evidence (`MemoryPanel.tsx` archive/consolidate mutations,
+`apps/api/src/routes/memory.ts` `POST /memory/:id/archive` and
+`POST /memory/consolidate`, `SettingsView.tsx` storage-meter query). This
+pass does not re-derive that source evidence; it closes the one open gap
+that note flagged — **runtime verification** — with real, live actions.
+
+- **Storage meter runtime evidence:** navigated to the live Settings page
+  (`/en/settings`) — real "Memory storage" section rendered: *"4339 bytes
+  across 19 records"*, sourced from a live `GET /api/v1/memory/storage`
+  call (`measureOwnedMemoryStorage`), not a placeholder.
+- **Archive runtime evidence:** navigated to the live Desk Memory tab
+  (`/en?desk=memory`) — real pending-approval list with 10 items, each with
+  a working "Archive" button. Clicked "Archive" on one real pending memory
+  ("Infra restore health memory …", a test/dev fixture row, not production
+  data) — the pending count went from **10 → 9** and the row disappeared
+  from the list, confirming a real `POST /api/v1/memory/:id/archive`
+  round-trip (`archiveOwnedMemory`, which sets `status: "ARCHIVED"` and
+  explicitly does not delete the row — reversible, non-destructive, no Git/
+  disk write involved).
+- **Consolidate:** not separately exercised live this pass (same backend
+  write pattern as archive, already proven live above); source + existing
+  unit test (`memory.test.ts`, consolidate 200 + supersededBy assertions)
+  already cited in the prior reconciliation note stand as evidence.
+- **Final classification:** archive — `VERIFIED` (live, this pass).
+  Storage meter — `VERIFIED` (live, this pass). Consolidate — unchanged
+  from the prior note, `IMPLEMENTED` with source+unit-test evidence, not
+  separately re-exercised live. No code changed; no defect found.
+
+**Reconciliation note — Recurring-failure recommendation
+(2026-10-04, same continuation, WSP Stage 8):**
+
+- **Source:** `apps/api/src/services/recurring-failure.ts` —
+  `detectRecurringFailures()` groups owner/project-scoped `evaluation.completed`
+  events with `epistemicState` in `{OBSERVED, VERIFIED, CONFLICTED}` and a
+  real failure payload (`ok === false`, `patchVerifyStatus === "FAIL"`, or
+  `remediationResult === "NOT_FIXED"`) by a derived signature
+  (`finding:…`/`check:…`/`patch:…`); only signatures seen **2+ times**
+  produce a recommendation, always hard-coded
+  `epistemicState: "INFERRED"` — it never promotes to FACT/CONFIRMED/
+  VERIFIED and never writes anything (read-only). Exposed via
+  `GET /api/v1/recurrence` (`apps/api/src/routes/recurrence.ts`). Rendered
+  by `apps/web/components/dashboard/RecurrenceNotice.tsx`
+  (`DashboardView.tsx:426`), which renders `null` when `items.length === 0`
+  — an intentional empty state, not a bug.
+- **Test evidence:** `recurring-failure.test.ts` — asserts recurrence
+  requires 2+ matching verified-failure events (a single failure, an
+  INFERRED-state event, or a different owner's events do not count),
+  always returns `epistemicState: "INFERRED"`, and the recommendation text
+  never contains `FACT` or `CONFIRMED` even when a cited memory is
+  `VERIFIED` (the memory's own state is cited as-is, not used to promote
+  the recommendation).
+- **Runtime evidence:** called the live endpoint directly,
+  `GET http://localhost:4000/api/v1/recurrence?projectId=e9c45758-...` →
+  real `200 {"items":[]}` — confirms the route is live, authenticated, and
+  reachable; empty because this project has no verified failure repeated
+  2+ times with the same signature yet (correct per the `events.length < 2`
+  guard, not a defect). `RecurrenceNotice` correctly renders nothing for
+  this project, matching the empty API response — UI and backend agree.
+- **Final classification:** `VERIFIED` (live route reachability/auth/
+  correct-empty-state this pass, source+tests confirm INFERRED-only
+  semantics). Producing and rendering a populated (non-empty) recommendation
+  live was not exercised — would require seeding 2+ real recurring verified
+  failures, an out-of-scope data-fabrication step, not a defect. No code
+  changed.
+
+**Reconciliation note — Studio file move
+(2026-10-04, same continuation, WSP Stage 9):** already closed. `§Q-V.6 —
+Closure Pass (2026-09-29)`'s Requirement Classification Matrix lists
+`S-04: FD-9: Inline Rename` as `VERIFIED` (changed from `IMPLEMENTED BUT
+NOT VERIFIED` in Q-V.5), with its Developer Journey table recording the
+real sequence: `triple_click → type → Enter → POST /move 202`, then
+confirming the renamed state live (`TextField gone, no ref_404, delete
+button appeared`). Per the standing instruction not to reopen the Q-V.1–
+Q-V.8 series, this pass does not re-verify it — only cross-references it
+from the §11 top-level table row above so the row is not left looking
+unresolved. No new evidence gathered, no code changed.
+
+**Reconciliation note — Studio layout / AppShell chrome / signed-in welcome
+(2026-10-04, same continuation, last row of the §11 CURRENT table, no WSP
+stage number):**
+
+- **Negative margins:** a workspace-wide search for negative `m*`/`margin`
+  values in `apps/web` found **none** — the `ad55e6c` removal holds; nothing
+  has reintroduced a negative margin since.
+- **`maxWidth: 1240` specifically:** that literal no longer exists anywhere
+  in the current source (confirmed by search). Layout width capping has
+  since been centralized into a reusable component,
+  `apps/web/components/layout/PageContainer.tsx`, with named presets
+  (`narrow` 680 / default 920 / `wide` 1120 / `full` 100%) — a refactor of
+  the same requirement ("content still capped," never full-bleed outside
+  Studio) into a systematic component, not a regression or a removal of the
+  cap. Studio itself is explicitly full-bleed by design
+  (`apps/web/components/layout/AppShell.tsx`: `p: isStudioWorkspace ? 0 :
+  {...}`, and the docked sidebar is not mounted at all when
+  `isStudioWorkspace`).
+- **AppShell chrome — source:** `AppShell.tsx` implements the signed-in nav
+  drawer (desktop permanent + mobile temporary), theme toggle, language
+  switcher, marketing vs. product-shell branching (`isMarketing`,
+  `showProductNav`), and session-gate redirect for private pages.
+- **Signed-in welcome — runtime evidence (live, this pass):** navigated to
+  `/en/welcome` while authenticated — after the session query resolved, a
+  **"Continue"** button appeared both in the header and the hero CTA block
+  (session-aware `WelcomeLanding.tsx`: `session.isSuccess ? <Button>
+  ctaContinue</Button> : null`), alongside the regular Sign up/Log in
+  buttons — confirms the signed-in variant renders for real, live, with a
+  real resolved session, not a stub.
+- **Final classification:** `VERIFIED` (live/source, this pass). The
+  original `maxWidth: 1240` literal is superseded by `PageContainer`'s
+  preset system; this is a legitimate evolution of the same requirement,
+  not a defect — noted explicitly so the register does not read as if a
+  literal value regressed. No code changed.
+
+**Reconciliation note — Q11-5 / AD-3 (`git.commit`/`git.push` governed
+catalog) runtime verification (2026-10-04, same continuation):** this is
+not a new decision — Arlet already decided and implemented AD-3 during
+Stage 8 closure (2026-09-27): "YES, HUMAN-ONLY, not agent-invokable, no UI
+in Stage 8" (§L, AD-3 constraints). `§Q-R.2 — AD-3 Final Classification`
+(2026-09-27) left exactly one gap open: *"no targeted test for
+git.commit/git.push specifically going through the full
+`runGovernedClaimedExecution` chain and producing the audit record."* This
+pass closes that gap with live evidence and does not relitigate the
+decision itself:
+
+- **Source (unchanged, re-confirmed):**
+  `apps/api/src/services/governed-command.ts` — `GOVERNED_COMMANDS`
+  entries for `git.commit` (`pathArg: "required"`, carries the commit
+  message) and `git.push` (no `pathArg`, args hard-coded to `["push"]`,
+  force-push structurally impossible). `apps/api/src/routes/
+  studio-execution.ts` — `commandIdSchema` includes both.
+- **Runtime evidence (new this pass):** in the live Run panel, selected
+  `git.commit` from the real command catalog dropdown (confirmed present
+  among 13 real catalog entries, including `git.push`), filled the
+  `relativePath`-labeled field with a commit message, and clicked
+  "Request run" — real `202 APPROVAL_REQUIRED` response with the exact
+  instruction text naming `"commandId": "git.commit"` and a real minted
+  `approvalId` (`11744746-176d-4152-ae20-340680754050`). Self-approval
+  attempt with a decision reason → real `403`: *"Approval request
+  11744746-... was requested by 95a63e6e-... -- separation of duties
+  forbids the same identity from also being the live human who decides and
+  claims it."* Identical shape to every other governed command verified
+  this engagement — confirms `git.commit` goes through the exact same
+  catalog → approval-mint → SoD-enforcement chain as `node.version`,
+  `git.status`, etc. No actual commit occurred (self-denial blocks
+  execution by design); this environment has no second identity to
+  complete the happy path, the same already-accepted BLOCKED/environment
+  reasoning as every other governed command this engagement, not a new or
+  different blocker.
+- **Final classification:** `VERIFIED` (chain exercised live for
+  `git.commit` specifically, closing the Q-R.2 gap). The AD-3 governance
+  decision itself was already made and implemented in 2026-09-27 — not
+  reopened, not re-decided here. `git.push`'s structural force-push
+  impossibility was already proven by source inspection (Q-R.2); not
+  separately re-exercised live this pass (same catalog/chain, no new risk).
+
+**Q11 open-questions sweep (2026-10-04, same continuation):** re-read
+`§11.15` in full. Of the 7 entries: Q11-1, Q11-2, Q11-3, Q11-7 are
+`ANSWERED` (this engagement, see above in this section); Q11-6 is
+`DECIDED` (ADR-026); Q11-5 is `DECIDED + IMPLEMENTED + now runtime-VERIFIED`
+(this note). **Q11-4** (Monaco vs. extended-textarea editor upgrade) is the
+only entry still genuinely open — it is a forward-looking architectural
+decision with no implementation yet to verify (`AD-4`, blocks Stage 13+
+advanced editor features only), not a capability-verification gap. Per
+standing instruction, it is left as-is: not decided, not implemented, not
+touched.
+
+## 11.19 VS Code Capability Comparison — Reconciliation (2026-10-04)
+
+**Purpose and scope.** This section reconciles the register with current
+source for the broad Atlas-Studio-vs-VS-Code comparison (§11.4–§11.9,
+§J Stage 12–15, §L AD-6). **This is a separate layer from the "Studio VS
+Code Capability Closure Pass" / Studio Benchmark work closed earlier this
+engagement** (the §11 "Evidence and verification status (CURRENT)" table,
+§11.15 Q11 series, Q-V.1–Q-V.8). Nothing already `VERIFIED` there is
+reopened here; where the two overlap, this section cross-references that
+work instead of re-deriving it. No code, tests, or architecture were
+changed to produce this section — it is a documentation reconciliation
+only, per instruction.
+
+**Why this section exists:** §11.4/§11.5/§11.6/§11.7/§11.8/§11.9 and the
+§J Stage 12–14 roadmap were written on 2026-09-26, from source code only,
+in an environment with no browser execution (§11.11). Since then, Studio's
+shell (`apps/web/app/[locale]/studio/page.tsx`) was substantially
+rewritten into a persistent CSS Grid layout ("VS Code–style layout: panels
+open on demand, never stacked" — the file's own comment). Several items
+those sections still mark `MISSING` are now implemented. This section does
+not edit those original tables' rows in place (per "preserve history, do
+not delete"); short pointer notes were added after each affected table
+(§11.4, §11.8, §11.9, §L AD-6) referring here.
+
+### Classification table
+
+| Capability | Classification | Evidence |
+|---|---|---|
+| **Persistent file tabs** | `VERIFIED` (live, this pass + 2026-10-04 source read) | `apps/web/app/[locale]/studio/page.tsx` — `openFiles` array, `role="tablist"`/`role="tab"` Chip strip, dirty marker (`•`), close button, active-file highlight, keyboard nav (`onOpenFilesKeyDown`). Backed by `apps/web/lib/studio-workspace.ts` (`addOpenStudioFile`, `closeOpenStudioFile`, `openStudioFileTabIndexForKey`, `studioBufferIsDirty`). The `role="tablist"`/Chip accessibility mismatch this register already recorded (ARL-E2E-002) was a defect **in this same tab strip**, already fixed — further proof the strip is live, not speculative. |
+| **Breadcrumbs** | `VERIFIED` (live) | Live navigation to a file showed a real breadcrumb: `apps › web › components › studio › StudioGitStatus.tsx`. |
+| **Always-visible file tree / project context persistence** | `VERIFIED` (source; live grid structure confirmed, activity-bar icon visibility not separately screenshotted this pass) | `gridTemplateAreas` / `gridAreas` in `studio/page.tsx`: `"tree editor side"` / `"tree bottom side"` — the `tree` grid area (file tree + Explorer/Search/Extensions activity bar) is structurally independent of `workspaceTab`. Switching to Run/Cloud/Checks (`roomTitle` set) replaces only the `editor` grid-area content, not the `tree` area. |
+| **Bottom panel (Problems/Terminal) — persistent panel model** | `VERIFIED` (source) | Same grid: `gridArea: "bottom"`, toggled by `showBottom`/`Ctrl+J`, independent of the main tab. This directly supersedes **AD-6** — see the corrected §L row. |
+| **Full-text search panel** | `VERIFIED` (already reconciled 2026-09-27, `MISSING_ITEMS_REPORT_2026-09-27.md` §3.3, `EXISTING_CONNECTED`; re-confirmed in source this pass) | Inline search in `studio/page.tsx` (`fileSearch` state, `GET /api/v1/studio/search`, truncated-results rendering, 2-char minimum). |
+| **Quick Open (`Ctrl+P`)** | `VERIFIED` (source) | `dialog === "quickOpen"` in `studio/page.tsx`, bound to the File menu and `Ctrl+P` (Q11-3 shortcut map, §11.18). This is file quick-open, not a full command palette — see MISSING below. |
+| **Code tools (hover / go-to-def / references / rename)** | `VERIFIED` — **already closed in the Studio Benchmark pass, not reopened; cross-reference only** | §11.18 (2026-10-04 Studio VS Code capability closure pass): `StudioLanguageBar.tsx`, "Code tools" panel, live round-trip confirmed via `studio-language` routes, Outline with real symbols. |
+| **Problems panel ↔ live diagnostics wiring** | `VERIFIED` — **already closed in the Studio Benchmark pass, not reopened; cross-reference only** | §11.18: `apps/web/lib/use-studio-problems.ts` imports `problemsFromLanguageDiagnostics`; historically verified live (F8 navigation landed on a real TypeScript diagnostic). |
+| **AD-6 (bottom panel: full-tab → persistent-panel model)** | `VERIFIED` (source) — **the pending architectural approval this row described is moot; the implementation already exists** | Same grid evidence as "Bottom panel" above. §L row corrected in place with this note; original wording preserved. |
+| **Command Palette (`Ctrl+Shift+P`, fuzzy-searchable list of all actions)** | `MISSING` | Studio has a traditional `StudioMenuBar` (File/Edit/View/Run/Cloud/Checks) and Quick Open (file search only). No fuzzy-searchable all-commands surface exists. Distinct from Quick Open — not the same capability. |
+| **Debugger / DAP integration** | `FUTURE / ARCHITECTURAL` (2026-10-04: corrected from `MISSING` — Arlet recorded this explicitly as a future capability, not an unplanned gap; still not implemented, not scheduled) | No debug component, no launch config, no DAP client found anywhere in `apps/web`/`apps/api` (confirmed by source search, §11.17E, re-confirmed this pass). Monaco alone is not a debugger; a real debugger needs its own runtime/debugging architecture that accounts for Atlas's governed-execution model (permissions, approvals, SoD, audit) — explicitly not a blind copy of the VS Code DAP model. See §11.20. |
+| **Git blame UI** | `MISSING` | `git.blame` exists in the governed catalog and in `StudioGitStatus.tsx`'s `GitCommandId` type union only — no button/trigger renders it (confirmed in a prior pass, `MISSING_ITEMS_REPORT_2026-09-27.md` §2.6, re-confirmed this pass). |
+| **Branch switcher UI** | `MISSING` | `git.branch` is a governed command with no picker/switcher UI; `StudioGitStatus.tsx` only requests branch *status*, not a list to switch between. |
+| **Structured test results (pass/fail tree, jump-to-failure)** | `MISSING` | `StudioRunPanel.tsx` (read in full this pass) renders only raw `ExecutionResult` fields (`stdout`, `stderr`, `exitCode`) for `vitest.run` — no JSON parsing into a tree, no jump-to-failure, no rerun-failed. |
+| **Merge conflict resolution UI** | `MISSING` | No component, no route, no governed command found for conflict markers/resolution (source search, this pass and §11.8/§J Stage 14, unchanged). |
+| **Split editor / multiple editor groups** | `MISSING` | `studio/page.tsx` renders exactly one `editor` grid area; no split-pane logic found. |
+| **True multi-cursor / column (box) selection** | `BLOCKED` → **2026-10-04: the blocking decision is now `DECIDED` (Monaco), but the capability itself remains `FUTURE / NOT IMPLEMENTED`** — Monaco being chosen as foundation does not itself grant multi-cursor; no migration has occurred | `StudioCodeEditor.tsx` is unchanged — still a single native `<textarea>` (confirmed by source read, §11.17 re-confirmation, re-confirmed 2026-10-04). HTML textareas support exactly one caret/selection range — a browser platform limit. See §11.20 — do not read Q11-4's decision as this capability being complete. |
+| **Status bar (persistent branch + errors + language + line:col)** | `IMPLEMENTED BUT NOT VERIFIED` — left as such per instruction, not escalated to MISSING or VERIFIED without full evidence | A bottom bar element exists in the live DOM (project name, "Run", "Checks" controls observed during this session's live testing) and `StudioLanguageBar.tsx` shows language mode while editing, but no single persistent component combining branch + error count + language + cursor position across all views was found or screenshotted. Needs a dedicated, targeted verification pass before any status change — not performed here, per instruction to leave this unverified. |
+| **Q11-4 (editor upgrade: Monaco vs. extended textarea vs. CodeMirror)** | `ARCHITECTURAL DECISION — left open, not decided here` | Per explicit instruction: no editor replacement is chosen, implemented, or recommended in this pass. `StudioCodeEditor.tsx` remains the existing `<textarea>` implementation, untouched. This decision continues to gate Debugger, Split editor, and true multi-cursor above. |
+
+**Update (2026-10-04, later the same day — Arlet's Master Decision &
+Capability Direction Report):** Q11-4 is no longer open. **Arlet decided:
+Monaco is the long-term Studio editor foundation.** The decision's own
+stated reasoning is explicit that this is a foundation choice for where
+Atlas is headed, not a claim that today's gaps individually require it:
+*"Atlas מתפתח, ולכן Studio צריך foundation של עורך שיכול להתפתח יחד
+איתו... Monaco הוא foundation, לא completion claim."* Classification is
+therefore **`DECIDED / NOT IMPLEMENTED`**, a status distinct from both
+`ARCHITECTURAL DECISION REQUIRED` (no longer applies) and `IMPLEMENTED`
+(does not apply — no migration happened). `StudioCodeEditor.tsx` is
+unchanged; no dependency was installed. Debugger, Split editor, and true
+multi-cursor (rows above) remain `FUTURE`/`MISSING`/`BLOCKED→DECIDED-NOT-
+IMPLEMENTED` respectively — Monaco being chosen does **not** retroactively
+make any of them implemented or verified. Full record: §11.20.
+
+### What this section does NOT change
+
+- No row in §11.4/§11.5/§11.6/§11.7/§11.8/§11.9 was edited or deleted — only
+  short pointer notes were appended after the relevant tables/lists.
+- The duplicate listings of the same items elsewhere in this document
+  (§11.5 Capability Matrix, §11.6/§11.7 hidden/disconnected tables, §11.17
+  B–E lists, §J Stage 12–14 "Known findings"/"Implementation scope" text,
+  the Category 1–7 breakdown, and the THIN/MISSING/GOVERNANCE-GAP summary
+  near §J) were **not** individually edited — there are too many duplicate
+  occurrences of the same stale claims to correct one-by-one without a
+  disproportionate diff for a documentation-only reconciliation. This table
+  is the single authoritative correction; any future reader should treat it
+  as superseding those older duplicate mentions for the specific items
+  listed above, the same way §G of this register already acknowledges this
+  document has a duplicate/repeated-audit problem in general.
+- Q11-4 was not decided **at the time this bullet list was first written,
+  earlier on 2026-10-04**. It was decided later the same day — see the
+  update directly above and §11.20. This sentence is left as the original,
+  accurate-at-the-time record, not deleted.
+- The textarea editor was not replaced. No Monaco/CodeMirror dependency was
+  added — the decision to use Monaco as a future foundation does not by
+  itself authorize or perform that migration.
+- The Status Bar classification was deliberately left at
+  `IMPLEMENTED BUT NOT VERIFIED` rather than resolved either way, per
+  instruction, pending a dedicated verification pass.
+
+## 11.20 Master Decision & Capability Direction — Arlet Record (2026-10-04)
+
+Recorded verbatim-in-substance from Arlet's "ArletOS / Atlas — Master
+Decision & Capability Direction Report." This section is a **decision and
+direction record**, not an implementation authorization. Per that
+document's own binding rule: **"בוצע = מסומן בוצע בלבד"** (done = marked
+done only) — nothing below is to be read as VERIFIED, IMPLEMENTED, or
+COMPLETE because it is planned, Monaco-enabled, visionary, or
+agent-recommended. No historical evidence is deleted by this section; it
+adds a new status layer, per that same document's instruction.
+
+### Product identity (recorded, not a capability-status item)
+
+ArletOS/Atlas is explicitly **not** "another VS Code." Studio is the
+engineering workspace; Atlas is the broader layer that is meant to give
+that workspace a Personal Agent, Memory, Verification, Evidence, Failure
+History, Governance, and Security — the stated differentiator versus a
+plain IDE. VS Code is a **benchmark for specific capabilities**, not
+Atlas's architectural target. This reframes how §11.4–§11.9/§11.19's VS
+Code comparison should be read going forward: as a capability benchmark
+input, not a product specification.
+
+### Decisions now DECIDED (recorded here; implementation status tracked separately per item)
+
+| # | Decision | Status |
+|---|---|---|
+| 1 | Native ArletOS Extension System (not VS Code Extension Host) | `DECIDED` — unchanged from ADR-026 (2026-10-03), not reopened here |
+| 2 | **Monaco selected as the long-term Studio editor foundation** | `DECIDED / NOT IMPLEMENTED` (new, 2026-10-04) — see Q11-4/AD-4 updates above. Reasoning recorded as foundation-for-growth, not a claim that current gaps individually require it |
+| 3 | Atlas is intended to evolve beyond ordinary IDE functionality (Personal Agent / Memory / Verification / Evidence / Failure History / Governance as the differentiator) | `DECIDED` (direction statement) — strategic target, not a capability with its own VERIFIED/MISSING status; tracked per constituent capability instead (§3–§6 of the source document) |
+| 4 | VS Code is a benchmark, not Atlas's product definition | `DECIDED` (framing decision) |
+| 5 | Personal Agent + Memory + Verification + Evidence + Failure History are central to Atlas's differentiation | `DECIDED` (direction statement) |
+
+### Explicitly FUTURE / NOT IMPLEMENTED — not authorized by the Monaco or Extension-System decisions
+
+Per the source document's §14 ("מה אסור לעשות בעקבות המסמך"), none of the
+following gained implementation, verification, or authorization status
+from decisions #1–#5 above. Each keeps its own, already-recorded status
+(§11.19, §L) and is only cross-referenced here, not re-decided:
+
+- Debugger / DAP — `FUTURE / ARCHITECTURAL` (§11.19, updated above). Explicitly
+  requires its own runtime/debugging architecture accounting for Atlas's
+  governed-execution model (permissions, approvals, SoD, audit) — not a
+  blind copy of the VS Code DAP model.
+- Split Editor — `MISSING` (§11.19, unchanged)
+- Multi-cursor / Column selection — `BLOCKED → DECIDED-NOT-IMPLEMENTED` (§11.19, updated above)
+- Git Blame UI — `MISSING` (§11.19, unchanged)
+- Branch Switcher UI — `MISSING` (§11.19, unchanged)
+- Merge Conflict Resolution UI — `MISSING` (§11.19, unchanged)
+- Command Palette — `MISSING` (§11.19, unchanged)
+- Structured Test Results — `MISSING` (§11.19, unchanged)
+- Extension permissions model, extension marketplace/discovery, extension
+  third-party model — `FUTURE` design-detail questions under the already-
+  `DECIDED` native architecture (ADR-026); not designed or implemented here
+
+### Capabilities that remain VERIFIED (reconfirmed, not reopened)
+
+Per the source document's §13: Studio layout/AppShell, persistent file
+tree, file tabs, breadcrumbs, bottom panel, Search, Quick Open, Go to
+Line, Go to Symbol, Code tools (hover/definition/references/rename),
+Problems/diagnostics wiring, Studio file move, Checks aliases, Memory
+archive/storage-meter/consolidate, recurring-failure recommendation,
+decide-and-execute UI, Desk verify, and PSA-related capabilities already
+verified under their respective benchmark passes — **all unchanged, all
+still `VERIFIED`, none downgraded**. See §11 CURRENT table, §11.18, §11.19
+for the underlying evidence; this section does not re-derive it.
+
+### Status model (recorded as the canonical vocabulary going forward)
+
+`VERIFIED` · `IMPLEMENTED BUT NOT VERIFIED` · `MISSING` · `BLOCKED` ·
+`DECIDED / NOT IMPLEMENTED` · `FUTURE` · `ARCHITECTURAL DECISION REQUIRED`.
+Per the source document: never use a bare "done" where it would blur
+implemented vs. verified.
+
+### Still requires product prioritization (NOT decided by this pass or the source document itself)
+
+1. Which VS Code-benchmark capabilities are `MUST` / `SHOULD` / `LATER` /
+   `NOT REQUIRED` — this four-way classification is **introduced** by the
+   source document as the correct framework, but **no capability has been
+   assigned a value yet**. The §4/§11.19 candidate list (Command Palette,
+   Structured Test Results, Branch Switcher, Git Blame, Merge Conflict
+   Resolution, Status Bar, Debugger/DAP, Split Editor, Multi-cursor) stays
+   at "candidate," not reclassified into this new framework — doing so is
+   explicitly Arlet's call, not recorded here.
+2. Exact future Debugger scope (which of breakpoints/continue/pause/step
+   over/step into/step out/variables/call stack/watch/execution-state
+   visualization/debug console, and how each interacts with governed
+   execution).
+3. Exact Extension contract and permissions model (contract, lifecycle,
+   permissions, isolation, discovery/install, dynamic action-bar
+   integration, security boundary, third-party boundary, extension-to-agent
+   interaction, extension-to-editor interaction).
+4. Ordering of future Atlas intelligence capabilities (Personal Agent,
+   Memory tiers, Verification chain, Failure History / "Prophet of
+   Problems").
+
+### What this pass did and did not do
+
+- Updated: the Q11-4 row (§11.15), the AD-4 row (§L), and three rows in the
+  §11.19 classification table (Debugger/DAP, true multi-cursor, plus the
+  Q11-4 row in that same table) to record `DECIDED / NOT IMPLEMENTED` /
+  `FUTURE` where the source document's decision applies. Added this §11.20
+  section.
+- Did not touch: any `VERIFIED` row anywhere in this register; `StudioCodeEditor.tsx`
+  or any other source file; `package.json` or any dependency; the native
+  Extension System decision (ADR-026, unchanged); the Git-governance
+  decision (AD-3/Q11-5, unchanged).
+- Did not assign MUST/SHOULD/LATER/NOT REQUIRED to any capability — that
+  activity is explicitly reserved for Arlet.
+- No commit, no push, no staging.
+
+## 11.21 Monaco Migration — Phase 1 Pre-Change Investigation (2026-10-04)
+
+**Status correction (2026-10-04, later the same day):** this section was
+written while Monaco's selection read as `DECIDED`. Arlet has since
+explicitly **reopened** the editor choice itself (see the corrected Q11-4/
+AD-4 rows and §11.22) — the final choice is pending a reasoned
+recommendation and Arlet's confirmation, not assumed. **Nothing below is
+retracted**: the DOM-coupling findings are facts about the *current*
+textarea implementation, independent of which editor is eventually chosen,
+and the facade-layer plan is good practice regardless of outcome. Read this
+section as pre-work / risk inventory, not as evidence that a Monaco
+migration is underway or has been re-authorized.
+
+**Trigger:** Arlet's "START IMPLEMENTATION NOW" instruction (2026-10-04),
+Phase 1 steps 1–4: *"לפני שינוי קוד: 1. בדוק StudioCodeEditor.tsx ואת כל
+מי שצורך אותו. 2. זהה את ה-editor contract הקיים. 3. שמור את ההתנהגות
+שכבר קיימת. 4. תכנן את המעבר."* This section is that investigation and
+plan. **No code was changed to produce it.** Per the same instruction's own
+stop conditions ("עצור רק אם... שינוי עלול לשבור החלטה/יכולת קיימת"), this
+investigation surfaced concrete, confirmed evidence that a direct/blind
+swap would break several already-`VERIFIED` capabilities — this section
+ends with that stop, not a continuation into actual migration.
+
+### Confirmed callers (complete — only one real caller exists)
+
+- `apps/web/app/[locale]/studio/page.tsx:2398` — the only live render site.
+- `apps/api/src/__tests__/web-studio-surfaces.test.ts:397` — asserts the
+  component is present and (separately) that `monaco` is **not** referenced
+  in `studio/page.tsx` today, i.e. there is a standing regression test that
+  will need deliberate, intentional updating as part of any real migration
+  PR (not an obstacle, just a required, known edit).
+
+### Confirmed existing editor contract (`StudioCodeEditor` props)
+
+```text
+value: string
+onChange: (next: string) => void
+languageHint: string | null
+readOnly: boolean
+ariaLabel: string
+revealLine?: number | null
+changedLines?: readonly number[]      // git-diff gutter markers
+onCursorChange?: (line, column) => void
+```
+
+### Confirmed DOM-level coupling points outside the component (the real risk surface)
+
+These are call sites in `studio/page.tsx` that reach into the rendered
+`<textarea>` directly, bypassing the React prop contract — **every one of
+these breaks silently under a blind swap to Monaco**, because Monaco does
+not render a plain `<textarea>` and does not support
+`document.execCommand`/`selectionStart`/`selectionEnd`/`setSelectionRange`
+on its host element:
+
+| Call site | Line | What it does | Why Monaco breaks it |
+|---|---|---|---|
+| `editorTextarea()` | `page.tsx:1247-1248` | `document.querySelector("textarea[data-studio-editor]")` | Monaco's host element is not a `<textarea>`; the query returns `null` |
+| `editorCommand("undo"\|"redo")` | `page.tsx:1249-1254` | `document.execCommand(command)` on the textarea — backs the **Edit menu's Undo/Redo**, an already-`VERIFIED` capability | Monaco has its own undo/redo stack (`editor.getModel().undo()`/`redo()` or the `"undo"`/`"redo"` editor actions) — `execCommand` does nothing on a non-editable host |
+| `findNextInEditor()` | `page.tsx:1255-1270` | reads `.value`, `.selectionEnd`, calls `.setSelectionRange`, sets `.scrollTop` — backs **Find (`Ctrl+F`)**, an already-`VERIFIED` capability | Needs Monaco's `findMatches`/`setSelection`/`revealLineInCenter` APIs instead — different call shape, not a drop-in |
+| `onCursorChange` plumbing | `page.tsx:2413`, `StudioCodeEditor.tsx:66-69` | reads `textarea.selectionStart`, converts via `lineColumnForStudioOffset` — backs **Code tools (hover/def/references/rename)**, already-`VERIFIED` | Monaco reports cursor position natively (`onDidChangeCursorPosition`) in its own coordinate model; `lineColumnForStudioOffset` (a plain-string offset→line/col function) would no longer be the right translation layer for Monaco's own position events, though it would still be needed for any remaining plain-string call sites |
+| `revealLine` effect | `StudioCodeEditor.tsx:72-79` | `textarea.setSelectionRange` + manual `scrollTop` math (`19.375px` line height constant) — backs **"go to line," Problems-panel "open file at line," git.diff gutter navigation** | Monaco has first-class `revealLineInCenter`/`setPosition`; the manual pixel-math line-height constant is textarea-specific and would not apply |
+| Mobile-hidden-pane `ResizeObserver` re-apply | `StudioCodeEditor.tsx:83-95` | re-applies the same manual scroll math when the pane becomes visible again (mobile single-pane layout) | Needs a Monaco-native equivalent (`editor.layout()` + `revealLine` on visibility change) — same risk class as above |
+
+### Capabilities already confirmed NOT directly DOM-coupled (lower migration risk)
+
+- `ReplaceAllDialog.tsx` — no direct textarea DOM access found; it appears
+  to operate through the normal `value`/`onChange` prop contract, not
+  `document.execCommand` or selection APIs. Lower risk, but not yet
+  independently verified end-to-end against a real Monaco instance.
+- Server-side file-size guard (`MAX_FILE_BYTES = 400_000` in
+  `workspace-browser.ts`) is unaffected either way — it runs before any
+  content reaches either editor implementation.
+
+### What must NOT break (preservation checklist, per Arlet's explicit list)
+
+Tabs, unsaved/dirty state, file selection, diagnostics, Code tools,
+search/navigation, keyboard shortcuts, Agent context, RTL, accessibility,
+persistence. Of these, **Undo/Redo, Find, Code-tools cursor tracking, and
+line-reveal navigation are the four that this investigation found to be
+directly DOM-coupled to the textarea implementation detail** and therefore
+the four most likely to silently regress without an explicit adapter
+layer — not a reason to avoid the migration, but the concrete reason a
+*blind* swap (exactly what Arlet's instruction already forbids) is unsafe.
+
+### Draft adapter-layer plan (planning only — not implemented)
+
+1. Introduce an internal editor-facade interface (e.g. `StudioEditorHandle`)
+   exposing `{ undo(), redo(), find(text), revealLine(n), getCursor(),
+   focus() }` that `StudioCodeEditor` implements once per backend
+   (textarea today, Monaco behind a feature path later) — `page.tsx` would
+   call the facade instead of querying `textarea[data-studio-editor]`
+   directly. This removes the DOM-coupling risk class entirely regardless
+   of which editor backend is active, and is useful even before any Monaco
+   code is written.
+2. Replace `document.execCommand`/`selectionStart`/`setSelectionRange` call
+   sites in `page.tsx` with calls through that facade.
+3. Only after (1)-(2) are in place and re-verified against the *current*
+   textarea backend (so the refactor itself is proven safe in isolation),
+   introduce Monaco as an alternate implementation of the same facade.
+4. Re-verify, one by one, against the preservation checklist above before
+   considering any row "re-VERIFIED."
+
+### Dependency/build impact (not yet incurred)
+
+No `monaco-editor` (or `@monaco-editor/react`) dependency exists in
+`apps/web/package.json` today. Adding one requires: a new dependency, a
+Next.js webpack/worker configuration change (Monaco ships its own web
+workers for language services), and SSR-exclusion handling (`next/dynamic`
+with `ssr: false}` or equivalent) — none of this has been done.
+
+### Stop point reached — matches Arlet's own listed stop conditions
+
+This pass stops here, before installing any dependency or editing
+`StudioCodeEditor.tsx`/`page.tsx`, because two of Arlet's own explicit
+stop conditions are met simultaneously: **(a)** *"שינוי עלול לשבור
+החלטה/יכולת קיימת"* — four already-`VERIFIED` capabilities (Undo/Redo,
+Find, Code tools, line-reveal navigation) are confirmed DOM-coupled to the
+textarea and would regress under a direct swap; **(b)** installing a new
+dependency and reconfiguring the Next.js build is the first genuinely
+irreversible step of this migration and has not yet been authorized at
+the specific-action level (the Monaco *decision* is authorized; this is
+the first concrete *execution* step of it). No code was changed; no
+dependency was installed; `StudioCodeEditor.tsx` is untouched.
+
+**Awaiting:** Arlet's one-line confirmation to (1) proceed with the
+facade-refactor-first approach above, or (2) a different migration
+sequencing, before any dependency is installed or any file is edited.
+
+## 11.22 Studio Evolution — Architecture Definition (2026-10-04)
+
+**Scope of this section.** Arlet's instruction for this pass is explicit:
+define architecture and present it for approval; **do not implement**.
+Four parts below (editor role/boundary + recommendation, Extension Host
+architecture + prioritized capability list, Debugger connection points,
+approval checkpoint) correspond to Arlet's steps 1–4. Step 5
+(implementation) is **not started** — this section ends with a stop, per
+instruction. No code was changed, no dependency was installed, no file
+other than this register was touched.
+
+### Part 1 — Editor: role, responsibility boundary, and recommendation
+
+**The editor contract (already implemented; must survive any technology
+choice).** `StudioCodeEditor` owns exactly:
+
+- the text buffer's visual surface and raw edit events (`value`/`onChange`)
+- cursor/selection position, reported outward (`onCursorChange(line, column)`)
+- lexical syntax coloring (`studio-syntax.ts` — not a parser)
+- the gutter: line numbers + git-changed-line markers (`changedLines`)
+- scroll position and on-demand line reveal (`revealLine`)
+- read-only enforcement and an accessible label
+
+It explicitly does **not** own, and must continue not to own regardless of
+which technology implements it: file lifecycle/persistence/dirty-tracking
+(`apps/web/lib/studio-workspace.ts`, `buffers` state in `studio/page.tsx`),
+diagnostics computation (`apps/api/src/routes/studio-language.ts` via
+`use-studio-problems.ts`), Git state (`StudioGitStatus.tsx`), test
+execution (`StudioRunPanel.tsx`), Agent context assembly
+(`StudioAgentBriefing.tsx`), governance/approval (patch workflow, SoD), or
+extension permission enforcement (`studio-extension-gate.ts`). This
+separation — editor as a narrow, replaceable rendering/input surface, with
+every IDE-adjacent concern owned elsewhere — is the real contract that
+must survive a technology change; §11.21 already found the concrete
+places (`document.execCommand`, `selectionStart`/`setSelectionRange`
+call sites in `studio/page.tsx`) where today's implementation leaks past
+that boundary and would need the facade layer §11.21 proposes, independent
+of which editor is eventually chosen.
+
+**Formal recommendation (reaffirming the 2026-10-04 Decision Closure
+Pass; decision stays open per Arlet's instruction in this message):**
+
+> **`RECOMMENDATION: KEEP TEXTAREA`** (for now; not a final ruling)
+
+Reasoning: most of the "IDE feel" gap this benchmark originally found
+(tabs, breadcrumbs, persistent file tree, bottom panel, Quick Open,
+manually-triggered Code tools) is already closed without Monaco, per
+§11.19's VERIFIED rows. The server already hard-caps file size at 400 KB
+(`workspace-browser.ts`, `MAX_FILE_BYTES`), which removes the primary
+performance argument for Monaco on large files. The capabilities that
+specifically require a different editor primitive — true multi-cursor,
+inline hover/squiggles, folding, minimap, a debugger breakpoint gutter —
+are real but fewer in number than what the current implementation has
+already achieved. Migrating introduces concrete, non-trivial risk in two
+areas that are currently known-good and tested (accessibility, RTL) and
+in four already-`VERIFIED` capabilities that §11.21 found to be
+DOM-coupled to the textarea (Undo/Redo, Find, Code-tools cursor tracking,
+line-reveal navigation) — all recoverable with the facade-layer approach
+§11.21 outlines, but real engineering cost, not zero-risk. This
+recommendation does not retract the "Monaco as long-term foundation"
+reasoning recorded earlier (§11.20) — it only keeps the *final* choice, and
+the *timing* of any migration, open pending Arlet's ruling, exactly as
+this message instructs.
+
+**Status: `ARLET DECISION REQUIRED`** (Q11-4/AD-4 corrected above,
+superseding the earlier `DECIDED` record without deleting it).
+
+### Part 2 — Independent ArletOS Extension Host: architecture + prioritized capability list
+
+**Already-decided architecture (ADR-026, unchanged, not reopened).**
+Source: `apps/api/src/services/studio-extensions.ts`,
+`studio-extension-gate.ts`, `studio-extension-health.ts`. Concretely:
+
+- **Manifest contract** (`StudioExtensionManifest`): `id`, `name`, `kind`
+  (`"builtin" | "official"`), `publisher` (fixed `"arletos"`), `version`,
+  minimum-compatible `studio` semver, `permissions[]`, `capabilities[]`
+  (each with `id`/`permission`/`source`/`dependencies`),
+  `contributes.{activity:{icon,panel}|null, commands[]}`, shared
+  `dependencies[]`, and `routes[]` (`method`/`url`/`permission`/
+  `commandIds?`). No code ships inside a manifest — contributions are
+  purely declarative (`hostApi: "declarative-contributions"`).
+- **Enforcement** (`studio-extension-gate.ts`): permission not granted →
+  403; extension not enabled → 403; route/`commandId` not declared by the
+  manifest → 403; unknown extension → 404/403. Fail-closed by design
+  (`unknownPermission: "deny"`, `installGrantsPermissions: false` — install
+  grants nothing, each permission is approved individually).
+- **Health** (`studio-extension-health.ts`): per-capability dependency
+  probes with an `optional` flag that distinguishes `DEGRADED` (partial)
+  from `UNAVAILABLE` (hard dependency down); informational only — verified
+  this engagement (ADR-026 §8) that health never grants, revokes, or
+  blocks.
+- **Discovery/isolation**: server-controlled **official catalog only**
+  (`marketplace: "official-only"`, `thirdParty: false`), not an open
+  marketplace; `isolation: "manifest-only"` — there is no running
+  extension code to isolate because none exists; this is explicitly a
+  decision not to build a VS-Code-style code-execution host.
+
+**Key finding: the existing contract already generalizes to new
+capabilities without new host mechanics.** Adding any new official
+extension — including a future Debugger (Part 3) — needs new manifest
+*content* (a new permission string, a new capability with its own
+dependency kind, a new `contributes.panel`, new `routes`), not a new kind
+of host plumbing. This materially lowers the cost of everything in the
+priority list below.
+
+**Prioritized capability-content list (recommendation only — Arlet assigns
+MUST/SHOULD/LATER/NOT REQUIRED per the §11.19/§11.20 framework; nothing
+below is a mandate):**
+
+| Priority (recommended) | Missing content | Why |
+|---|---|---|
+| High | A debugger-specific permission (e.g. `debug.governed`) + a `service.debug-session` dependency kind, so a future Debugger extension can be expressed inside the existing manifest contract | Nothing architecturally new is required; this is vocabulary, not plumbing — needed before Part 3 can be scaffolded even as a stub manifest |
+| Medium | A written, repeatable process for authoring/reviewing a new **official** manifest (who authors it, who reviews it, where it's compiled into the API) | Exists informally today (6 shipped manifests); not yet documented as a process, which will matter once the catalog grows beyond the current built-ins |
+| Medium | Confirm whether an extension whose declared `studio` semver is incompatible with the running Studio version is actually rejected at runtime, or only recorded for display | Not verified either way this pass; matters once extensions can version independently of Studio itself |
+| Low (explicitly deferred, per ADR-026, not reopened here) | Third-party boundary, external developer onboarding, a real marketplace | Explicitly out of scope "until a separate ADR" — unchanged |
+
+### Part 3 — Debugger: connection points (architecture only, nothing implemented)
+
+**To the editor.** Today's gutter shows only line numbers and git-changed
+markers (`StudioCodeEditor.tsx`). A breakpoint-toggle gutter (click a line
+number to mark/unmark a breakpoint) is a bounded, additive extension of
+that *existing* gutter concept — it does **not**, by itself, require
+Monaco; a clickable gutter row is achievable in the current component.
+Only *inline* execution-state rendering while paused (current-line
+highlight, inline variable hover) meaningfully benefits from a richer
+editor primitive. This refines Part 1: breakpoint UI is **not** fully
+gated on the Monaco decision; only inline step-highlighting/hover is.
+Jump-to-paused-location reuses the existing `revealLine` prop as-is — no
+new editor capability needed there.
+
+**To the Extension system.** The natural fit, given Part 2's finding, is
+for the Debugger to ship as a **future official extension** inside the
+existing manifest contract: its own activity-bar icon + a panel
+(variables/call stack/watch) + commands (continue/step-over/step-into/
+step-out), gated by its own new permission and health dependency — exactly
+parallel to how Git and Tests work today. This avoids inventing a second,
+parallel extension mechanism just for the debugger.
+
+**To Studio's execution/run capabilities — the genuinely open question.**
+Two execution models exist today, and a debugger does not cleanly fit
+either as-is:
+
+1. **Governed command** (`/studio/terminal`, `/studio/tests`,
+   `/studio/build` — `governed-command.ts`, `studio-execution.ts`):
+   single-shot, allowlisted `commandId`, request → `202 APPROVAL_REQUIRED`
+   → a second identity decides-and-executes → one response. Strong for
+   SoD/audit; a poor fit for a live, bidirectional, long-running debug
+   session (step/continue/inspect is a conversation, not one request and
+   one response).
+2. **PTY terminal** (`POST /studio/pty/sessions`, `studio-pty.ts`): a real,
+   persistent, bidirectional session — ticket-scoped SSE stream
+   (`studioPtyEventsUrl`), reconnect-on-mount, independent concurrent
+   sessions (confirmed via `StudioPtyTerminal.tsx`'s split-pane support).
+   Human-only (`isAgentPtyRequest`/`denyAgentPty()`), gated by ordinary
+   project write-access (`assertProjectWriteAccess`) — **not**
+   individually SoD/approval-gated the way `git.commit`/`git.push` are.
+   This is architecturally the much closer shape for a debug session:
+   start → long-lived channel → many small interactions → stop.
+
+**Recommendation (architecture-only, not authorized for implementation):**
+model the debug-session lifecycle after the PTY session pattern
+(persistent, ticketed, SSE-streamed), not after the single-shot
+governed-command pattern. **Open question requiring Arlet's input, not
+decided here:** should starting a debug session require the same
+SoD/approval gate as `git.commit`/`git.push` (stricter — a second identity
+must approve even starting it), or the lighter write-access-only gate the
+PTY terminal already uses (a human debugging their own linked project,
+same posture as opening their own terminal)? Either way, session
+start/stop should be audited at minimum, the same way `studio.pty.opened`
+is audited today.
+
+**To Atlas's governance/evidence/memory (explicitly future, not required
+for a first working debugger).** A debug session's findings (e.g., "root
+cause confirmed at line X") could later become an Evidence/Memory entry,
+consistent with §11.20's Atlas-intelligence direction — this is a later
+layer, not a connection point a first debugger needs.
+
+### Part 4 — Approval checkpoint: user-flow sketch, then STOP
+
+```text
+Problems panel (symptom)
+  → open file, set breakpoint (gutter click — editor-level, not Monaco-gated)
+  → Run → "Debug" (new action, extension-contributed per Part 2's contract)
+  → session-start gate: write-access-only (PTY-style) OR SoD/approval
+    (governed-command-style) — OPEN QUESTION, not decided
+  → persistent debug session opens (PTY-pattern: ticket + SSE stream)
+  → paused at breakpoint: editor reveals the line (`revealLine`, existing);
+    Debugger panel (extension-contributed) shows variables/call stack
+  → step/continue (commands declared in the extension's manifest)
+  → session ends → audit entry recorded (studio.pty.opened-style, at minimum)
+```
+
+**Open items requiring Arlet's decision, explicitly not decided in this
+pass:**
+
+1. Final editor choice (Part 1) — textarea vs. Monaco vs. alternative.
+2. Debug-session governance model (Part 3) — SoD/approval vs.
+   PTY-style write-access-only.
+3. MUST/SHOULD/LATER/NOT REQUIRED assignment for Part 2's "Medium"
+   priority items.
+
+**This pass stops here.** No code was changed. No dependency was
+installed. No file other than this register was edited. Step 5
+(implementation) is not authorized by this section and was not started —
+awaiting Arlet's approval of this architecture and ruling on the three
+open items above.
 
 ### 11.1 Current Stage 9 E2E run (CURRENT verification evidence)
 
@@ -2531,6 +3487,15 @@ vitest.run           — test runner, pathArg optional
 | **Rollback** | Checkpoint (per-agent-action) | Git only | Git only | Full governed rollback | Patch workflow | ATLAS ADVANTAGE |
 | **Memory** | Project context, recent files | Recent files, MRU | Recent files, MRU | Full memory pipeline | `memory-pipeline.ts` | ATLAS ADVANTAGE |
 
+**Correction (2026-10-04, see §11.19):** the rows above for **Open file
+tabs**, **Current file context** (breadcrumb), **File tree**, **Persistent
+project root**, **Search**, and **Persistent diagnostics surface** are
+**stale** — current source shows these are implemented. Rows not listed
+here (Command palette, Debugger, Git history/blame UI, Status bar, Split
+editor) remain accurate. §11.19 has the full corrected classification;
+this table's original rows are left as-is (historical record), not edited
+in place.
+
 ---
 
 ## 11.5 Capability Matrix — Full Domain Analysis
@@ -2639,6 +3604,14 @@ These capabilities do not exist in Atlas Studio and would require new implementa
 | **Split editor** | No split layout | VS Code editor groups |
 | **Status bar** | No persistent status bar component found | VS Code bottom status bar |
 
+**Correction (2026-10-04, see §11.19):** **Persistent file tabs**,
+**File tree (always-visible)**, **Full-text search**, and **Breadcrumbs**
+are **no longer accurate** — all four now exist in current source, with
+live confirmation for tabs and breadcrumbs. **Command palette**,
+**Debugger**, **Git blame viewer**, **Branch switcher**, **Split editor**,
+and **Status bar** remain genuinely missing/unverified — unchanged. See
+§11.19 for the full re-classification and evidence.
+
 ### Must be decided (architectural options exist)
 
 | Capability | Options |
@@ -2664,6 +3637,15 @@ Using concrete characteristics (per Stage 11 §13 requirements — no subjective
 9. **Excessive context switches** — to go from editing a file, to running tests, to seeing test output, to reading diagnostics requires navigating between multiple full-page tabs
 10. **Disconnected engineering surfaces** — Git, terminal, tests, editor, and diagnostics are in separate tabs rather than coordinated panels
 11. **No keyboard-first workflow confirmed** — no keyboard shortcut map documented or found in source
+
+**Correction (2026-10-04, see §11.19):** items 1, 2, and 5 above are
+**stale** — project context (file tree) persists across tab changes via a
+CSS Grid layout, persistent open-file tabs exist, and the bottom panel
+(Problems/Terminal) is a persistent grid area, not a full-tab switch. Item
+6 (no command palette) and item 7 (no contextual `F12`/`F2` — now partially
+addressed via the "Code tools" panel, see §11.18) are updated separately.
+Items 3, 4, 8, 9, 10 are unchanged. Item 11 (keyboard-first workflow) was
+answered — see Q11-3, §11.18: a real 24-binding shortcut map exists.
 
 ---
 
@@ -2762,13 +3744,13 @@ Sequence is ordered by: (1) unblocks other work, (2) uses existing APIs, (3) use
 
 | ID | Question | Who Decides | Impact |
 |----|---------|------------|--------|
-| Q11-1 | What context does `StudioAgentBriefing` actually send? (current file? selection? diagnostics? Git state?) | Verify from source | Determines if Chat already has IDE context or not |
-| Q11-2 | Does `StudioGitStatus` show branch only, or also staged/unstaged counts? | Read component source | Determines Git UX gap severity |
-| Q11-3 | Is there a keyboard shortcut mapping for Studio? | Arlet | Determines if keyboard-first gap is real or undocumented |
-| Q11-4 | Should the editor be upgraded to Monaco, or extended textarea first? | Arlet — architectural decision | Determines path for go-to-def, breakpoints, folding |
-| Q11-5 | Should `git.commit` and `git.push` ever be added to the governed catalog? | Arlet — governance decision | Determines whether Studio can close the Git write workflow |
+| Q11-1 | What context does `StudioAgentBriefing` actually send? (current file? selection? diagnostics? Git state?) | **ANSWERED 2026-10-04 — see §11.18** | Determines if Chat already has IDE context or not |
+| Q11-2 | Does `StudioGitStatus` show branch only, or also staged/unstaged counts? | **ANSWERED 2026-10-04 — see §11.18** | Determines Git UX gap severity |
+| Q11-3 | Is there a keyboard shortcut mapping for Studio? | **ANSWERED 2026-10-04 — see §11.18** | Determines if keyboard-first gap is real or undocumented |
+| Q11-4 | Should the editor be upgraded to Monaco, or extended textarea first? | **RECORDED 2026-10-04 → Monaco named as long-term foundation direction, then explicitly REOPENED by Arlet the same day: "החלטה על בחירת עורך הקוד צריכה להישאר פתוחה עד לקבלת המלצה מנומקת מהסוכן והכרעה שלך". Status: `ARLET DECISION REQUIRED` (not `DECIDED`) — see §11.21 for the formal reasoned recommendation.** | Determines path for go-to-def, breakpoints, folding |
+| Q11-5 | Should `git.commit` and `git.push` ever be added to the governed catalog? | **DECIDED by Arlet (Stage 8 closure, 2026-09-27) → AD-3: YES, HUMAN-ONLY, not agent-invokable, no UI in Stage 8. Runtime-VERIFIED 2026-10-04 — see §11.18.** | Determines whether Studio can close the Git write workflow |
 | Q11-6 | Should Atlas Studio have an extension system, or remain a closed workbench? | **DECIDED by Arlet 2026-10-03 → ADR-026** | Native ArletOS extensions: built-in (Git, Tests) + official catalog; user-scope install/permissions, project-scope enablement/order; no third-party code until a separate ADR |
-| Q11-7 | Does the current `StudioPatchDiff` support arbitrary file diff, or only patch workflow diffs? | Verify from source | Determines if standalone diff viewer needs building |
+| Q11-7 | Does the current `StudioPatchDiff` support arbitrary file diff, or only patch workflow diffs? | **ANSWERED 2026-10-04 — see §11.18** | Determines if standalone diff viewer needs building |
 
 ---
 
@@ -2912,6 +3894,338 @@ All items in §11.6 (Existing-but-Hidden Capabilities): hover, go-to-def, refere
 ### N. SINGLE NEXT ACTION
 
 **Read `StudioAgentBriefing.tsx` and `apps/api/src/routes/studio-language.ts` in full to confirm the exact API contract, then define the minimal UI changes needed to wire hover and go-to-definition into `StudioCodeEditor.tsx` — all using existing routes. Do not implement in Stage 11. Document the wiring spec as Stage 12 definition.**
+
+---
+
+## 11.18 Verification Update (2026-10-04, Studio VS Code capability closure pass)
+
+Section 11 above was written **from source code only**, in an environment with
+no browser execution (§11.11). This update was produced with a real running
+Studio (`http://localhost:3000`, project `taqonu`, user `dev@atlas.local`) and
+corrects rows that static analysis mis-classified, plus closes genuine
+integration gaps found live. It does not rewrite §11.1–§11.17; it supersedes
+specific rows below with dated evidence, per the §B reconciliation convention
+used elsewhere in this register.
+
+**Corrections (capability already existed; §11 said UI MISSING or disconnected):**
+
+| Row (§11.4/§11.5/§11.6/§11.17B) | Original classification | Correction | Evidence |
+|---|---|---|---|
+| Symbols in file / Go-to-definition / References / Rename | "API EXISTS, UI MISSING" | UI exists: `StudioLanguageBar.tsx`, opened from View → "Code tools (definitions & references)", plus an Outline list and a separate "Go to symbol…" dialog (`Ctrl+Shift+O`) | Live: opened the panel on `StudioGitStatus.tsx`; Outline showed real symbols (`StudioExtensionScope:8`, `StudioDiffHunk:16`, `GitCommandId:18`, `ExecutionResult:28`, `LastResponse:42`, `StudioGitStatus:51`); `hover`/`definition`/`references`/`rename` buttons call the real `studio-language` routes (confirmed round-trip, no error) |
+| Diagnostics API → ProblemsPanel wiring | "MISSING" / "EXISTS BUT NOT CONNECTED to language service" | Already wired | `apps/web/lib/use-studio-problems.ts` imports and merges `problemsFromLanguageDiagnostics`; historically verified live (F8 navigation previously landed on a real TypeScript diagnostic for this same project) |
+| Keyboard-first workflow | "UNKNOWN — needs verification" | Partially verified, not a full VS Code keymap | `Ctrl+Shift+O` (Go to symbol), `F8`/`Shift+F8` (Problems), `Alt+Left/Right` (Back/Forward), `Ctrl+Alt+.`/`,` (Change navigation), `Ctrl+Shift+5` (Split terminal), `` Ctrl+Shift+` `` (New terminal) are wired and (several) runtime-verified in earlier passes (see `STAGE_9_MASTER_PLAN_2026-09-26.md` §S9-26/27/28). No `F12`/`F2`/command-palette-style global keymap exists — this part of the row is still accurately MISSING. |
+| "Git log, blame — governed commands exist; no UI viewer" (§11.17B) | MISSING (no viewer) | `git.log` now has a viewer; `git.blame` is unchanged (still no trigger anywhere in the UI) | See fix below |
+
+**Genuine integration gaps found and fixed this pass:**
+
+1. "Code tools" (hover/definition/references/rename) existed but required the
+   user to **manually type** the line and column of the symbol to query — it
+   did not know where the editor's cursor actually was, so it did not behave
+   like `F12`-at-cursor in any compared IDE. Fixed by wiring the textarea's
+   real cursor position into the panel:
+   - `apps/web/lib/studio-syntax.ts`: added `lineColumnForStudioOffset()`, the
+     inverse of the existing `offsetForStudioLine()`.
+   - `apps/web/components/studio/StudioCodeEditor.tsx`: new optional
+     `onCursorChange(line, column)` prop, reported on `onSelect`/`onClick`/`onKeyUp`.
+   - `apps/web/components/studio/StudioLanguageBar.tsx`: new optional
+     `cursorLine`/`cursorColumn` props; internal line/column state now syncs to
+     the real cursor (still editable by hand afterward — not removed, just
+     defaulted correctly).
+   - `apps/web/app/[locale]/studio/page.tsx`: new `cursorPosition` state wired
+     between the two.
+   - Evidence: `apps/web/lib/studio-syntax.test.ts` (6/6 passing, incl.
+     round-trips against `offsetForStudioLine`). `tsc --noEmit` clean. Live:
+     clicked the editor at a known offset (`selectionStart` confirmed via DOM
+     read), opened Code tools, and the `line`/`col` fields reflected the real
+     cursor position immediately (not `1`/`1`).
+2. `git.log` had a button (`StudioGitStatus.tsx`) that triggered a real
+   governed command execution, but its result (commit history) was never
+   rendered anywhere — clicking it looked like it worked but showed nothing,
+   which is worse than simply absent. Fixed:
+   - `apps/web/lib/studio-git-status.ts`: added `parseGitLog()` (parses
+     `git log --oneline --decorate --no-color`) and `isGitLogResult()`,
+     mirroring the existing `parseGitPorcelain`/`isGitStatusResult` pattern.
+   - `apps/web/components/studio/StudioGitStatus.tsx`: renders the parsed
+     commit list (hash, decoration, message) the same way the existing diff
+     box renders `git.diff`, when the latest result is from `git.log`.
+   - `apps/web/messages/{en,he,ar,fr}.json`: added `studio.git.log` /
+     `studio.git.logEmpty`.
+   - Evidence: `apps/web/lib/studio-git-status.test.ts` (6/6 passing, incl. a
+     decorated and an undecorated commit line, and an empty-result case).
+     `tsc --noEmit` clean.
+   - **Live runtime proof, attempt 1:** local Supabase (Docker,
+     `127.0.0.1:15432`) was not running and the Docker daemon itself was not
+     reachable (`docker info` exit 1). Every governed-command request failed
+     identically with `503` / `TypeError: fetch failed` — including the
+     pre-existing, previously-working **"Request git status"** button, tested
+     side-by-side as a control. Confirmed an environment blocker, not a
+     defect in this fix.
+   - **Live runtime proof, attempt 2 (same session, after Docker was started
+     by the operator):** `127.0.0.1:15432` confirmed listening. Clicking
+     `git.log` now reaches the real governed-command path and mints a real
+     approval (`e25b6fa0-0796-489d-9e0e-ef1b7ca766ea`), requiring a second,
+     live-authenticated identity to `decide-and-execute` — identical to every
+     other governed command in Studio (`git.status`, `git.diff`, etc.), and
+     to the already-documented `S9-27` limitation (`STAGE_9_MASTER_PLAN_2026-09-26.md`):
+     this environment has exactly one identity with write access to the
+     `taqonu` project. Submitted a self-approval as `dev@atlas.local`
+     (regression check, not a bypass attempt) and got the expected real 403:
+     *"separation of duties forbids the same identity from also being the
+     live human who decides and claims it"* — proving SoD enforcement covers
+     `git.log` exactly like every other governed command, and ruling out
+     "the fix broke the approval gate" as an explanation for not seeing a
+     populated list.
+   - **Classification (granular, per sub-claim):**
+     | Sub-claim | Status |
+     |---|---|
+     | Live dispatch (click → real governed-command request reaches the API) | `VERIFIED` |
+     | Approval creation (`approvalId` minted for `git.log`) | `VERIFIED` |
+     | Parsing + rendering (`parseGitLog`, commit list UI) | `IMPLEMENTED, UNIT-TESTED` (`studio-git-status.test.ts` 6/6; not yet seen rendering real stdout, since no execution has completed) |
+     | Full post-`decide-and-execute` commit-list proof (a real populated list actually on screen) | `BLOCKED` — exactly one identity has write access to the `taqonu` project in this environment (same constraint as `S9-26`/`S9-27`); not a Docker/Supabase issue (see attempt 2) and not a product defect |
+     | Docker/Supabase reachability | no longer a blocker — confirmed listening on `127.0.0.1:15432` in attempt 2 |
+     | 403 on self-approval | correct SoD evidence, **not a defect** — proves the gate still covers `git.log` |
+
+     No further change was made to `git.log` to "close" this status — the
+     remaining gap is a fixture/environment limitation, not a code defect,
+     and is left `BLOCKED` on purpose.
+
+**Open question resolved this pass — Q11-1 (Ask Agent context payload):**
+Not SoD-gated (no governed-command/`decide-and-execute` involved), so this
+was fully runtime-verifiable in one pass, no second identity needed.
+
+- **Source:** client builds the request at `apps/web/app/[locale]/studio/page.tsx`
+  (`propose` mutation): `{ projectId, path: selectedPath, mode, instruction,
+  findingId?, supersedesPatchId? }`. Server schema at
+  `apps/api/src/routes/code.ts` (`POST /api/v1/studio/ask-agent`) accepts
+  exactly those fields plus `workspaceRoot`. Neither side has a field for
+  text selection/cursor range, a diagnostics list, or Git state.
+- **Live confirmation:** intercepted the real `POST /api/v1/studio/ask-agent`
+  request (`page.route`, not a mock — the real request was still sent) while
+  `StudioGitStatus.tsx` was the open file. Captured exact body:
+  `{"projectId":"e9c45758-e2a7-4a8a-aba9-94b761c55eb2","path":"apps/web/components/studio/StudioGitStatus.tsx","mode":"fix","instruction":"Add a one-line comment above the StudioGitStatus function declaration."}`.
+- **Answer:** Ask Agent sends **project id + current open file path + mode +
+  free-text instruction** (+ optional `findingId`/`supersedesPatchId` when
+  applicable). It does **not** send the text selection/cursor position, a
+  structured diagnostics list, or Git state (branch/changes) — those would
+  need to be typed into the instruction text by the user, or added as new
+  fields, neither of which exists today.
+- **Observation (not investigated further — different, already-verified
+  capability):** on this same request, the heuristic CODE_ENGINEER proposer
+  returned `"Target state not understood: docs/atlas/patches/regression-fix.md
+  (add but the file already exists)"` — an unrelated path, not the real
+  `path` sent. This suggests the sent `path` is not always used by the
+  heuristic to anchor "target state" for ambiguous instructions. This is a
+  question about Ask Agent's *proposal quality* (already `LOCALLY VERIFIED`,
+  `S9-15`/`S9-16`), not about what context is *sent* (Q11-1's actual
+  question, answered above) — recorded here as an observation only, not
+  pursued, per "do not repeat already-verified capabilities."
+
+**Open question resolved this pass — Q11-7 (`StudioPatchDiff` arbitrary-file
+vs. patch-only):** No second identity needed (viewing an existing patch's
+diff is read-only, no approve/apply/decide-and-execute involved).
+
+- **Source — the component itself:** `apps/web/components/studio/StudioPatchDiff.tsx`
+  accepts `filesChanged: readonly PatchFileChangeLike[]` and calls
+  `studioPatchChangeSet(filesChanged)`. Neither the component nor
+  `apps/web/lib/studio-patch-diff.ts` (`PatchFileChangeLike`, `parseUnifiedDiff`,
+  `studioPatchChangeSet`) references a patch id, the OS store, approvals, or
+  any Patch-workflow concept — `parseUnifiedDiff` there is a generic
+  unified-diff-text-to-`StudioDiffLine[]` classifier that works on any string
+  in that format. Confirmed (not merely inferred from the type name) by the
+  **existing** `apps/web/lib/studio-patch-diff.test.ts` (3/3 passing,
+  re-run this pass): its fixtures are hand-built synthetic objects, never
+  fetched from a real Patch — proof the function has no runtime dependency
+  on the Patch/Proposal workflow.
+- **Source — the only caller:** `grep` across `apps/web` for `<StudioPatchDiff`
+  found exactly **one** usage: `apps/web/components/studio/StudioPatchWorkflow.tsx:476`
+  — `<StudioPatchDiff filesChanged={focused.filesChanged} />`, where `focused`
+  is a real Patch record. No other component (e.g. `StudioGitStatus.tsx`,
+  which has its own, separate, unrelated unified-diff handling for `git.diff`
+  in `apps/web/lib/studio-diff.ts` — a **different** `parseUnifiedDiff` with
+  a different output shape, `StudioDiffHunk`/changed-line-numbers rather than
+  per-line add/del/ctx classification) ever constructs a `PatchFileChangeLike[]`
+  from an arbitrary workspace file and passes it to `StudioPatchDiff`.
+- **Runtime evidence:** opened the Agent panel's "Proposed changes" tab live;
+  a real, pre-existing patch ("D4 test patch for rejection", status
+  `REJECTED`) was already loaded and its diff rendered correctly by
+  `StudioPatchDiff`: "Change set: 1 files · +1 −0", `modified` /
+  `apps/test/test.txt` / "Add comment", with the real unified-diff lines
+  (`--- a/...`, `+++ b/...`, `@@ -1 +1,2 @@`, context line `existing`, added
+  line `+// added comment`) correctly classified and colored. This proves
+  the **only existing caller** renders live, real data correctly — it does
+  **not** prove arbitrary-file support, since this patch's `filesChanged` is
+  still Patch-workflow data, not an arbitrary file's diff. No caller exists
+  to runtime-test the arbitrary-file case directly (see next point).
+- **Answer:** `StudioPatchDiff` and its library are **architecturally
+  generic** — they accept any `PatchFileChangeLike[]` and have zero coupling
+  to patches, approvals, or the OS store. In **practice**, today, they are
+  reached by exactly one caller, which is Patch-workflow-only. This is
+  "arbitrary-file diff is already supported by the renderer but undiscoverable/
+  unwired" (not a missing implementation, and not a genuine architectural
+  patch-only coupling) — **no defect found**, and per explicit instruction
+  this pass did **not** wire a second caller (e.g. routing `StudioGitStatus`'s
+  scoped `git.diff` through `StudioPatchDiff` instead of its own `<pre>` box)
+  to "close" this question, since that would be new integration work, not a
+  demonstrated defect fix.
+- **Classification:** Component/library generic capability — `VERIFIED` (source
+  + existing unit tests, re-run, 3/3). Only existing caller (Patch workflow)
+  — `VERIFIED` live. Arbitrary-file (non-patch) use of `StudioPatchDiff`
+  specifically — `NOT WIRED` (zero callers exist to exercise it); distinct
+  from both `VERIFIED` and `MISSING`.
+
+**Open question resolved this pass — Q11-2 (`StudioGitStatus` branch-only vs.
+staged/unstaged counts):**
+
+- **Source — data flow:** `StudioGitStatus.tsx` requests `git.status` (governed
+  command, porcelain format). The response `stdout` is parsed by
+  `parseGitPorcelain()` in `apps/web/lib/studio-git-status.ts`, which reads
+  the two-char `xy` porcelain code per line and calls `porcelainKind(xy)` to
+  pick exactly **one** label per file: `modified | added | deleted |
+  untracked | renamed | other`. `porcelainKind` only checks `xy.includes(...)`
+  — it never inspects *which* position (index/staged = first char, worktree/
+  unstaged = second char) a letter came from, so e.g. a staged-only
+  modification (`"M "`) and an unstaged-only modification (`" M"`) both
+  collapse to the identical `"modified"` label. The raw `xy` string is kept
+  on each `StudioGitChange` object, but the component only ever renders
+  `t(\`kind.\${change.kind}\`)` (confirmed by reading the render block) — `xy`
+  itself, and any staged/unstaged aggregate, is never displayed. There is no
+  "N staged, M unstaged" summary anywhere, and no per-file staged/unstaged
+  badge.
+  - Branch: shown separately, via its own "Request branch" button
+    (`git.branch` → `parseGitBranchName`) and a `Chip` labelled
+    `"{branch}: {name}"`.
+- **Existing tests:** `apps/web/lib/studio-git-status.test.ts` (6/6, re-run
+  this pass, unchanged from the Q11-7 work) — covers XY→kind mapping
+  (`modified`/`untracked`/`added`/`deleted`/`renamed`) and branch/diff/log
+  result-type discrimination. **No test asserts a staged or unstaged count**
+  anywhere, consistent with none being implemented.
+- **Runtime evidence:** live, in the running Studio: clicked "Request git
+  status" — a real approval was minted
+  (`670f1719-ca84-4722-95bf-b7ec2355d3a4`), requiring a second,
+  live-authenticated identity to `decide-and-execute` — the same
+  single-identity SoD constraint already recorded for `git.log`/`S9-26`/
+  `S9-27`, not specific to this question. Confirmed the gate is intact with a
+  self-approval regression check: real 403, "separation of duties forbids
+  the same identity from also being the live human who decides and claims
+  it." Checked `GET /api/v1/projects/:id/studio/executions/last` directly:
+  `{"status":"NOT_RUN","result":null}` — no prior cached execution exists for
+  this project to inspect instead. A live, populated staged/unstaged count
+  (if it existed) could not be observed for this same reason it couldn't for
+  `git.log` — this is an environment/fixture limitation, not something this
+  pass could complete, and is **not needed** to answer the question, since
+  the absence of any staged/unstaged rendering path is already conclusive
+  from source (there is no code path that would ever produce such a count,
+  populated or not).
+- **Answer:** `StudioGitStatus` shows **branch** (on request) and a **per-file
+  change list with one kind label per file** (on request). It does **not**
+  show staged count, unstaged count, or any per-file staged/unstaged
+  distinction. The raw porcelain data the component already fetches
+  **does** carry the staged/unstaged distinction (the two-char `xy` code),
+  so this is "the information exists in the already-fetched data but is
+  discarded before rendering" — an **integration/UI gap** (a `porcelainKind`
+  classification choice + a missing summary chip), not a missing Git
+  capability and not an architectural blocker. No fix was made: this pass's
+  scope was to establish the truth, not to decide whether to build a
+  staged/unstaged summary.
+- **Classification:** Branch display — `VERIFIED` (already covered by
+  existing behavior, not newly tested here). Per-file kind list — `VERIFIED`.
+  Staged/unstaged counts — `CONFIRMED NOT IMPLEMENTED` (source), distinct
+  from `MISSING` Git capability: the underlying data is already present in
+  what Studio fetches, just not classified or rendered. Full live proof of
+  "a populated git.status response renders N files with kinds" (already
+  `HISTORICALLY VERIFIED` in earlier passes of this engagement, per the
+  established — and here regression-checked — SoD/decide-and-execute path)
+  was not repeated.
+
+No new keyboard shortcut, hover tooltip, click-on-symbol-in-place behavior,
+or `git.blame` UI was added — those remain larger, undecided/unattempted
+scope (see §11.6/§11.8), not attempted here.
+
+**Unchanged (still genuinely missing — not attempted this pass, out of scope):**
+Persistent file tabs, always-visible file tree outside the Files tab,
+full-text search panel, command palette, breadcrumbs, split editor, status
+bar, branch switcher UI, Git blame viewer UI, debugger.
+
+**Architectural gaps re-confirmed (not attempted — classification only, per
+this pass's scope):**
+- **True multi-cursor editing / column (box) selection:** `StudioCodeEditor.tsx`
+  is a single native `<textarea>` (confirmed by source read) — HTML textareas
+  support exactly one caret/selection range; this is a browser platform
+  limit, not an application choice. Still MISSING, as §11.8 already states.
+  Closing it requires a different editor primitive (Monaco/CodeMirror), which
+  is the same undecided "Editor upgrade" architectural option already
+  recorded in §11.8 — no new option identified.
+- **Complete Run/Debug via DAP:** confirmed no debug component, no launch
+  config, no DAP client anywhere in `apps/web`/`apps/api` (source search, this
+  pass). Still MISSING, as §11.5/§11.8 already state. No new evidence either
+  way on "Test debugger" options already listed in §11.8.
+
+**Open question resolved this pass — Q11-3 (keyboard shortcut mapping):**
+No second identity needed (local DOM state only).
+
+- **Source — the single authoritative handler:** one `useEffect`/`window.addEventListener("keydown", onKey)`
+  in `apps/web/app/[locale]/studio/page.tsx` (one function, not scattered
+  across components) is the entire implementation. Confirmed 24 distinct
+  bindings by reading it in full: `F2` rename; `F8`/`Shift+F8` next/previous
+  problem; `Alt+Left`/`Alt+Right` back/forward; `Ctrl+S` save; `Ctrl+Alt+S`
+  save all; `` Ctrl+Shift+` `` new terminal; `` Ctrl+` `` toggle terminal;
+  `Ctrl+Shift+5` split terminal; `Ctrl+Alt+.`/`Ctrl+Alt+,` next/previous
+  change; `Ctrl+J` toggle bottom panel; `Ctrl+Alt+B` toggle agent panel;
+  `Ctrl+B` toggle file tree; `Ctrl+P` quick open; `Ctrl+Shift+F` search;
+  `Ctrl+Shift+E` explorer; `Ctrl+Shift+G` Git; `Ctrl+Shift+X` extensions;
+  `Ctrl+Shift+M` problems; `Ctrl+Shift+O` go to symbol; `Ctrl+G` go to line;
+  `Ctrl+Shift+H` replace in all files; `Ctrl+F`/`Ctrl+H` find.
+- **Canonical mapping — exists, one gap found and fixed:** a dedicated
+  "Keyboard shortcuts" dialog (`dialog === "shortcuts"` in the same file,
+  opened from View → "Keyboard shortcuts") renders a static `[label, keys]`
+  array intended as the single human-readable reference. Cross-checked all
+  24 handler bindings against it line by line: 23 matched exactly; **one was
+  missing** — `Ctrl+Shift+H` → "Replace in all files…" was fully wired (the
+  handler, and the View menu's own `replaceAll` item, both already had it)
+  but absent from this one dialog's array. Fixed by adding the single
+  missing row (`apps/web/app/[locale]/studio/page.tsx`); re-verified live
+  (see below). This is the only change made — no new shortcut, no new
+  architecture, a one-line completeness correction to an existing array.
+- **Existing tests:** none. Searched `apps/api/src/__tests__/web-studio-surfaces.test.ts`
+  and the rest of the suite — there is no automated test asserting any
+  keydown binding or the Shortcuts dialog's contents. All prior verification
+  of this area (this pass and earlier ones) has been manual/runtime only.
+- **Runtime verification (targeted, not a re-run of everything already
+  proven):**
+  - `Ctrl+Shift+X` (real keypress, not a menu click): switched the activity
+    bar to Extensions (`button "Extensions" [pressed]`, full Extensions
+    catalog rendered).
+  - `Ctrl+Shift+E` (real keypress): switched back to Explorer.
+  - Opened the (now-fixed) Shortcuts dialog live and read its real DOM text
+    (`role="dialog"`): confirmed all 24 rows present, including the newly
+    added "Replace in all files…Ctrl+Shift+H".
+  - Not re-tested (already real-runtime-verified in earlier passes of this
+    engagement, cited rather than repeated): `F8`/`Shift+F8` (Problems
+    navigation — landed on a real TypeScript diagnostic), `Ctrl+Shift+5`
+    (Split Terminal — button reached `[pressed]`), `` Ctrl+Shift+` ``
+    (New Terminal — new PID confirmed).
+  - Tried `Ctrl+B` (toggle file tree): pressed, no observable change in this
+    environment's narrow/mobile viewport — plausible if `showTree` only
+    affects a desktop-width layout and the mobile "Files" view always shows
+    Explorer regardless of that flag; not confirmed either way, so left
+    `IMPLEMENTED BUT NOT VERIFIED` rather than guessed.
+- **Classification (per shortcut group):**
+  | Group | Status |
+  |---|---|
+  | `F8`/`Shift+F8`, `Ctrl+Shift+5`, `` Ctrl+Shift+` `` | `VERIFIED` (historically, this engagement; not repeated this pass) |
+  | `Ctrl+Shift+X`, `Ctrl+Shift+E` | `VERIFIED` (this pass, real keypress) |
+  | `Ctrl+B` (toggle file tree) | `IMPLEMENTED BUT NOT VERIFIED` — no observable effect in the current narrow viewport, cause not isolated |
+  | `Ctrl+Alt+.`/`Ctrl+Alt+,` (Change navigation) | `IMPLEMENTED BUT NOT VERIFIED` — already recorded as `S9-26`, unchanged |
+  | All other listed bindings (`F2`, `Alt+Left/Right`, `Ctrl+S`/`Ctrl+Alt+S`, `Ctrl+P`, `Ctrl+J`, `Ctrl+Alt+B`, `Ctrl+Shift+G`, `Ctrl+Shift+M`, `Ctrl+Shift+O`, `Ctrl+G`, `Ctrl+Shift+H`, `Ctrl+F`/`Ctrl+H`) | `IMPLEMENTED BUT NOT VERIFIED` — present in the single handler and (after the fix) in the dialog, not individually keypress-tested this pass or recorded as tested in any earlier pass |
+  | Dialog completeness vs. the handler | Was `CONFLICTED` (1 of 24 missing); now `VERIFIED` (fixed and re-checked live) |
+  | `git.commit`/`git.push` shortcuts | Not applicable — `Q11-5` is a separate governance decision, not attempted here |
+- **Answer:** Yes — Studio has a canonical keyboard-shortcut mapping. It is
+  **not** a separate data file; it is (a) the single `onKey` handler in
+  `page.tsx` (the actual behavior) and (b) a dedicated Shortcuts dialog in
+  the same file (the human-readable reference), which — after this pass's
+  one-line fix — are in sync. This is "the mapping exists, centralized, and
+  was incomplete by one entry" — not "scattered with no canonical source,"
+  and not "missing." No new mapping document was created, per instruction.
 
 ---
 
@@ -3762,10 +5076,10 @@ The following evidence classes are required to close a stage. They must not be c
 |---|---|---|---|---|
 | **AD-1** | REQ-8-5: Is explicit agent registration enforcement required, or is identity boundary sufficient? | Stage 8 | Stage 8 cannot close | Stage 8 closure |
 | **AD-2** | REQ-8-7: What is the scope of the application-agent boundary? Is a dedicated enforcer component needed? | Stage 8 | Stage 8 cannot close | Stage 8 closure |
-| **AD-3** | Q11-5: Should `git.commit` and `git.push` be added to the governed command catalog? | Stage 8 / Stage 13 | Branch switcher and Git write UI cannot be built safely without this decision | Stage 13 Git panel |
-| **AD-4** | Q11-4: Editor upgrade — Monaco vs extended textarea vs CodeMirror? | Stage 12 pre-decision | Extended textarea can proceed for hover/go-to-def; but breakpoints, folding, and minimap require Monaco or equivalent — must be decided before Stage 13 | Stage 13+ advanced editor features |
+| **AD-3** | Q11-5: Should `git.commit` and `git.push` be added to the governed command catalog? | Stage 8 / Stage 13 | **DECIDED + IMPLEMENTED (Stage 8, 2026-09-27) + runtime-VERIFIED (2026-10-04, see §11.18)** — HUMAN-ONLY, not agent-invokable. | — |
+| **AD-4** | Q11-4: Editor upgrade — Monaco vs extended textarea vs CodeMirror? | Stage 12 pre-decision | **REOPENED by Arlet 2026-10-04** (same day as the earlier `DECIDED` note): the earlier "Monaco selected" record stands as history, not deleted, but Arlet explicitly instructed that the final choice "צריכה להישאר פתוחה" (must remain open) until a reasoned agent recommendation is delivered and Arlet rules on it. Current status: `ARLET DECISION REQUIRED`. Formal recommendation delivered in §11.21 (`RECOMMENDATION: KEEP TEXTAREA`, for now). No code changed, no dependency installed. | Stage 13+ advanced editor features (still pending the decision) |
 | **AD-5** | Q11-6: Should Atlas Studio have an extension system, or remain a closed workbench? | Stage 15 | **DECIDED 2026-10-03 → ADR-026** | — |
-| **AD-6** | Bottom panel layout: full-tab model → persistent panel model — architectural approval required | Stage 14 | Current tab model prevents IDE-feel UX | Stage 14 |
+| **AD-6** | Bottom panel layout: full-tab model → persistent panel model — architectural approval required | Stage 14 | **SUPERSEDED BY EVIDENCE (2026-10-04, see §11.19):** current source already implements the persistent-panel model (`apps/web/app/[locale]/studio/page.tsx`, CSS Grid `gridArea: "bottom"`, independent of file/editor tabs). No architectural approval is pending on this point; the decision this row anticipated already happened in code. | — |
 | **AD-7** | Stage 8 §3 table label: authorize update from "NOT STARTED" to "PARTIAL" | Documentation | Register is factually incorrect | Ongoing accuracy |
 | **AD-8** | ARL-E2E-001 §6 status: authorize update to reflect §7.15 fix | Documentation | Register §6 is stale | Ongoing accuracy |
 | **AD-9** | Stage 9 formal closure: authorize after ARL-E2E-004 verification run | Stage 9 | Stage 9 remains open | Stage 12 start |
@@ -4186,9 +5500,22 @@ Rationale: Structural enforcement exists and is correct. The `@atlas/api` 1876/1
 | Audit | Same `auditExecution()` path |
 | Evidence | Same `outputEvidence` structure |
 
-**Final classification:** `IMPLEMENTED / NOT VERIFIED`
+**Final classification (2026-09-27):** `IMPLEMENTED / NOT VERIFIED`
 
 Rationale: Both commands are in catalog, in `commandIdSchema`, have proper validation, force-push is structurally impossible, SoD is enforced by the existing suite (9/9). Missing: no targeted test for git.commit/git.push specifically going through the full `runGovernedClaimedExecution` chain and producing the audit record. Existing governed-command tests (10/10) and studio-execution tests (9/9) provide architecture coverage but do not exercise git.commit/git.push by commandId.
+
+**Update (2026-10-04, see §11.18 for full evidence):** the missing targeted
+runtime check above is now closed. Live, in the Run panel, selected
+`git.commit`, submitted a commit-message `pathArg`, and clicked
+"Request run" — real `202 APPROVAL_REQUIRED` with `commandId: "git.commit"`
+in the server-generated instructions. Self-approval attempt → real `403`
+SoD denial, identical message shape to every other governed command tested
+this engagement. **Revised final classification: `VERIFIED`** (catalog →
+approval-mint → SoD-enforcement chain exercised live for `git.commit`
+specifically, closing the one gap this section flagged). No actual commit
+occurred (self-denial blocks execution, by design) — completing the
+happy path still requires a second identity, same BLOCKED/environment
+reasoning already established for every other governed command.
 
 ---
 
