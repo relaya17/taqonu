@@ -28,8 +28,6 @@ export const createConversationMessageSchema = z.object({
     ])
     .optional(),
   locale: z.enum(["en", "he", "ar"]).optional(),
-  /** Experiment arm — for PSA economic experiment only. baseline suppresses retained knowledge. */
-  experimentArm: z.enum(["baseline", "treatment"]).optional(),
 });
 
 export const conversationEvidenceRefSchema = z.object({
