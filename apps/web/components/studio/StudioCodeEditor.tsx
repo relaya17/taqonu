@@ -1,7 +1,12 @@
 "use client";
 
 import { Box } from "@mui/material";
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
+import {
+  findNextStudioMatch,
+  studioEditorScrollTop,
+  type StudioEditorHandle,
+} from "@/lib/studio-editor-handle";
 import {
   highlightStudioLine,
   lineColumnForStudioOffset,
@@ -35,6 +40,7 @@ export function StudioCodeEditor({
   breakpointLines,
   stoppedLine,
   onBreakpointToggle,
+  editorRef,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -52,6 +58,8 @@ export function StudioCodeEditor({
   stoppedLine?: number | null;
   /** Debugger: gutter click toggles a breakpoint on that line. Gutter stays read-only without this. */
   onBreakpointToggle?: (line: number) => void;
+  /** Editor-neutral control surface; callers must use this instead of reaching into the DOM. */
+  editorRef?: Ref<StudioEditorHandle>;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLPreElement | null>(null);
@@ -79,16 +87,68 @@ export function StudioCodeEditor({
     onCursorChange(line, column);
   };
 
+  const revealLineIn = (textarea: HTMLTextAreaElement, text: string, line: number) => {
+    const offset = offsetForStudioLine(text, line);
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+    textarea.scrollTop = studioEditorScrollTop(line, 40);
+    syncScroll();
+  };
+
+  useImperativeHandle(editorRef, () => {
+    const area = () => textareaRef.current;
+    return {
+      focus: () => area()?.focus(),
+      undo: () => {
+        const textarea = area();
+        if (!textarea) return;
+        textarea.focus();
+        document.execCommand("undo");
+      },
+      redo: () => {
+        const textarea = area();
+        if (!textarea) return;
+        textarea.focus();
+        document.execCommand("redo");
+      },
+      getValue: () => area()?.value ?? "",
+      setValue: (next) => onChange(next),
+      getCursor: () => {
+        const textarea = area();
+        return textarea
+          ? lineColumnForStudioOffset(textarea.value, textarea.selectionStart)
+          : { line: 1, column: 1 };
+      },
+      getSelection: () => {
+        const textarea = area();
+        return { start: textarea?.selectionStart ?? 0, end: textarea?.selectionEnd ?? 0 };
+      },
+      setSelection: (start, end) => area()?.setSelectionRange(start, end),
+      revealLine: (line) => {
+        const textarea = area();
+        if (!textarea || line < 1) return;
+        revealLineIn(textarea, textarea.value, line);
+      },
+      findNext: (needle) => {
+        const textarea = area();
+        if (!textarea || !needle) return false;
+        const text = textarea.value;
+        const at = findNextStudioMatch(text, needle, textarea.selectionEnd ?? 0);
+        if (at < 0) return false;
+        textarea.focus();
+        textarea.setSelectionRange(at, at + needle.length);
+        const line = text.slice(0, at).split("\n").length;
+        textarea.scrollTop = studioEditorScrollTop(line, 60);
+        return true;
+      },
+    } satisfies StudioEditorHandle;
+  });
+
   useEffect(() => {
     if (!revealLine || revealLine < 1) return;
     const textarea = textareaRef.current;
     if (!textarea) return;
-    const offset = offsetForStudioLine(value, revealLine);
-    textarea.focus();
-    textarea.setSelectionRange(offset, offset);
-    const lineHeight = 19.375;
-    textarea.scrollTop = Math.max(0, (revealLine - 1) * lineHeight - 40);
-    syncScroll();
+    revealLineIn(textarea, value, revealLine);
   }, [revealLine, value]);
 
   // Mobile single-pane layout hides this editor (display:none) behind the
@@ -100,8 +160,7 @@ export function StudioCodeEditor({
     if (!textarea || !revealLine || revealLine < 1) return;
     const observer = new ResizeObserver(() => {
       if (textarea.clientHeight === 0) return;
-      const lineHeight = 19.375;
-      textarea.scrollTop = Math.max(0, (revealLine - 1) * lineHeight - 40);
+      textarea.scrollTop = studioEditorScrollTop(revealLine, 40);
       syncScroll();
     });
     observer.observe(textarea);

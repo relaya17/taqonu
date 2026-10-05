@@ -91,6 +91,7 @@ import { ReplaceAllDialog } from "@/components/studio/ReplaceAllDialog";
 import { StudioPatchWorkflow } from "@/components/studio/StudioPatchWorkflow";
 import { SupervisingAgentPanel } from "@/components/studio/SupervisingAgentPanel";
 import { StudioCodeEditor } from "@/components/studio/StudioCodeEditor";
+import type { StudioEditorHandle } from "@/lib/studio-editor-handle";
 import { StudioLanguageBar } from "@/components/studio/StudioLanguageBar";
 import { StudioProblemsPanel } from "@/components/studio/StudioProblemsPanel";
 import { StudioRunPanel } from "@/components/studio/StudioRunPanel";
@@ -1245,29 +1246,17 @@ export default function StudioPage() {
     setDiskChangedPath((current) => (current === selectedPath ? null : current));
     void fileQuery.refetch();
   };
-  const editorTextarea = () =>
-    document.querySelector<HTMLTextAreaElement>("textarea[data-studio-editor]");
+  const editorRef = useRef<StudioEditorHandle | null>(null);
   const editorCommand = (command: "undo" | "redo") => {
-    const area = editorTextarea();
-    if (!area) return;
-    area.focus();
-    document.execCommand(command);
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (command === "undo") editor.undo();
+    else editor.redo();
   };
   const findNextInEditor = () => {
-    const area = editorTextarea();
-    if (!area || !findText) return;
-    const text = area.value;
-    const from = area.selectionEnd ?? 0;
-    let at = text.indexOf(findText, from);
-    if (at < 0) at = text.indexOf(findText);
-    if (at < 0) {
-      setReplaceNote(t("replaceNone"));
-      return;
-    }
-    area.focus();
-    area.setSelectionRange(at, at + findText.length);
-    const line = text.slice(0, at).split("\n").length;
-    area.scrollTop = Math.max(0, (line - 1) * 19.375 - 60);
+    const editor = editorRef.current;
+    if (!editor || !findText) return;
+    if (!editor.findNext(findText)) setReplaceNote(t("replaceNone"));
   };
   const openFind = () => {
     if (!selectedPath) return;
@@ -2253,7 +2242,7 @@ export default function StudioPage() {
                       if (event.key === "Escape") {
                         event.stopPropagation();
                         setFindOpen(false);
-                        editorTextarea()?.focus();
+                        editorRef.current?.focus();
                       }
                     }}
                     sx={{
@@ -2412,8 +2401,7 @@ export default function StudioPage() {
                           [selectedPath]: { ...existing, draft: value },
                         };
                       });
-                      const area = editorTextarea();
-                      const position = area?.selectionStart ?? 0;
+                      const position = editorRef.current?.getSelection().start ?? 0;
                       const line = value.slice(0, position).split("\n").length;
                       lastEditRef.current = { path: selectedPath, line };
                       setHasLastEdit(true);
@@ -2427,6 +2415,7 @@ export default function StudioPage() {
                     revealLine={revealLine}
                     changedLines={changedLines}
                     onCursorChange={(line, column) => setCursorPosition({ line, column })}
+                    editorRef={editorRef}
                   />
                 ) : !projectId ? (
                   pickProjectState
