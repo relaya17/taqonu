@@ -402,7 +402,7 @@
       "forceClose": "Fermeture forcée",
       "reason": "Motif",
       "status": "Statut",
-      "noSession": "Aucune session de débogage pour ce projet pour l'instant.",
+      "noSession": "Aucune session de débogage pour ce projet pour l’instant.",
       "sessionClosed": "Session fermée.",
       "error": "Échec de la demande de débogage"
     },
@@ -766,12 +766,12 @@
     "opsProcessAudit": "Processus E2E",
     "opsCounsel": "Note juridique",
     "engineering": {
-      "title": "État de l'ingénierie",
+      "title": "État de l’ingénierie",
       "pendingPatches": "{count} correctifs en attente de revue",
       "extensionsHealth": "Extensions {ok}/{total} en bon état",
-      "pendingPermissions": "{count} extensions ont besoin d'une autorisation",
+      "pendingPermissions": "{count} extensions ont besoin d’une autorisation",
       "openFindings": "{count} constats de sécurité ouverts",
-      "partialData": "Certaines données d'ingénierie n'ont pas pu être chargées."
+      "partialData": "Certaines données d’ingénierie n’ont pas pu être chargées."
     },
     "personalTitle": "Espace personnel",
     "personalHelp": "Boîte de réception, mémoire, décisions et correctifs de code — un seul endroit sur votre tableau de bord, pas dispersés dans la navigation.",
