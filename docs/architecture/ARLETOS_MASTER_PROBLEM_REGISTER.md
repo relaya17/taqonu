@@ -6,6 +6,8 @@
 
 **Last consolidated:** 2026-09-27 against HEAD `d3b3ec427da4f75e1e61f70d2f4daeb0b06db0e4`. Stage 4 implementation record added 2026-09-26 (§7.7). ARL-TEST-001 CLOSED 2026-09-27 (§7.16 reconciliation pass). **Stage 9 CLOSED 2026-09-27 (§7.17): ARL-E2E-001 CLOSED (no recurrence in 106/0/1), ARL-E2E-004 CLOSED (5/5 targeted run), full E2E 106/0/1.**
 
+**Reconciled 2026-10-05 (§7.20):** the Debugger P0 security/lifecycle foundation and the CDP Studio UI vertical slice are recorded there against HEAD `9eb18285ae46f1db81eebb77acbae064a02cf366`; the Stage 8 / Stage 9 status conflict between §3, §J, §O and §P is recorded as K-13. Earlier text in this document is preserved. Statuses of Stages 10–15 were not re-audited in that pass.
+
 ---
 
 ## 0. At a glance
@@ -14,6 +16,8 @@
 | --- | --- |
 | **Current stage** | Stage 4: ✅ **CLOSED (local verification, 2026-09-26)**: implemented; API 181/1852 passed, Stage 9 19 passed, typechecks clean (§7.7). Not Production-verified. Remaining findings assigned to later stages (§7.7). **Stage 5: ✅ CLOSED (native Windows verification, 2026-09-26)**: 21/21 Golden Loop, 1876/1876 API, 98/98 web/lib, 56/56 code-intelligence, 53/53 typecheck, ESLint clean (§7.11). Stage 9 E2E deferred/environment-dependent. **Stage 6: ✅ COMMITTED / PUSHED (`aa9c8bf`, origin/main). VERIFIED locally (2026-09-27), not CLOSED** (§7.12). web/lib 109/109, eslint and web typecheck clean, browser journeys PASS on the local Web in en/he/ar including S6-004 and S6-005. Documentation reconciled 2026-09-28. Admin-role nav link is source-observed only. **Stage 7: ✅ CLOSED (local verification, 2026-09-27)**: S7-A to S7-E VERIFIED locally, S7-F DEFERRED (§7.13 S7-C final test closure). `a11y-studio.spec.ts` 7/7, full Stage 9 **22/22** on the current suite (Arlet, 2026-09-27), a11y 5 passed / 1 fixme. ARL-E2E-001 OPEN, outside Stage 7. Stage 9 and Production are not closed. |
 | **Next authorized action** | See §15 |
+| **Debugger / CDP (2026-10-05, §7.20)** | No numbered stage in §3; closest is Stage 15 (§J), built out of sequence. **P0 security/lifecycle foundation: CLOSED** for the authorized scope. **CDP Studio UI vertical slice (Resume / Pause / Evaluate): IMPLEMENTED + VERIFIED** (local, Windows; real-browser E2E 3 passes). **D1 Inspector isolation: DESIGN OPEN / production INFRASTRUCTURE BLOCKED.** Breakpoints / Step: NOT STARTED. Production readiness: NOT DECLARED. Commit `9eb1828`, on origin/main |
+| **Register reconciliation (2026-10-05)** | §7.20 added; dated notes added beside stale text (§11 capability row, §11.22 Part 3, §J, §O, §P); K-13 to K-15 added to §14; §15 updated. No earlier text removed |
 | ✅ Closed | Stage 1 / 1A, Stage 2 (local), ARL-HYDRATION-001 (§5) |
 | 🕘 Historical proof | STAGE_9 program, 19 passed at `2587d1b`. Valid history; **requires regression** on current HEAD (§5) |
 | Current Stage 9 E2E run | Earlier run (before Stage 4): **NOT GREEN**, 16 passed, 1 failed, 2 flaky, exit 1. After Stage 4 (2026-09-26): **19 passed, exit 0**. Earlier findings A–C not reproduced, cause unexplained (§11.1, §7.8). 2026-09-27 (Stage 7 tree): full runs 1–2 failed on `auth-studio.spec.ts:14`, full run 3 **20 passed, exit 0**; current 22-test suite **22 passed, exit 0** (Arlet); intermittent failure tracked as **ARL-E2E-001** (✅ CLOSED §7.17 — 106/0/1, `softenLoopbackSessionCookies` fix). §7.14 tree (French, header, glass; uncommitted): full runs A/B/C **NOT GREEN** (24/25, 23/25, 26/28); run C failures are `auth-studio.spec.ts:14` (ARL-E2E-001 — now CLOSED) and `isolation.spec.ts:68` (**ARL-E2E-002**, OPEN); all locale and header tests passed |
@@ -1350,7 +1354,7 @@ not delete"); short pointer notes were added after each affected table
 | **Problems panel ↔ live diagnostics wiring** | `VERIFIED` — **already closed in the Studio Benchmark pass, not reopened; cross-reference only** | §11.18: `apps/web/lib/use-studio-problems.ts` imports `problemsFromLanguageDiagnostics`; historically verified live (F8 navigation landed on a real TypeScript diagnostic). |
 | **AD-6 (bottom panel: full-tab → persistent-panel model)** | `VERIFIED` (source) — **the pending architectural approval this row described is moot; the implementation already exists** | Same grid evidence as "Bottom panel" above. §L row corrected in place with this note; original wording preserved. |
 | **Command Palette (`Ctrl+Shift+P`, fuzzy-searchable list of all actions)** | `MISSING` | Studio has a traditional `StudioMenuBar` (File/Edit/View/Run/Cloud/Checks) and Quick Open (file search only). No fuzzy-searchable all-commands surface exists. Distinct from Quick Open — not the same capability. |
-| **Debugger / DAP integration** | `FUTURE / ARCHITECTURAL` (2026-10-04: corrected from `MISSING` — Arlet recorded this explicitly as a future capability, not an unplanned gap; still not implemented, not scheduled) | No debug component, no launch config, no DAP client found anywhere in `apps/web`/`apps/api` (confirmed by source search, §11.17E, re-confirmed this pass). Monaco alone is not a debugger; a real debugger needs its own runtime/debugging architecture that accounts for Atlas's governed-execution model (permissions, approvals, SoD, audit) — explicitly not a blind copy of the VS Code DAP model. See §11.20. |
+| **Debugger / DAP integration** | `FUTURE / ARCHITECTURAL` (2026-10-04: corrected from `MISSING` — Arlet recorded this explicitly as a future capability, not an unplanned gap; still not implemented, not scheduled) | No debug component, no launch config, no DAP client found anywhere in `apps/web`/`apps/api` (confirmed by source search, §11.17E, re-confirmed this pass). Monaco alone is not a debugger; a real debugger needs its own runtime/debugging architecture that accounts for Atlas's governed-execution model (permissions, approvals, SoD, audit) — explicitly not a blind copy of the VS Code DAP model. See §11.20. *(Superseded in part 2026-10-05, original kept: a governed Debugger backend and Studio panel now exist and a CDP vertical slice is verified; see §7.20 and K-14. Breakpoints, step, call stack and variables remain NOT STARTED.)* |
 | **Git blame UI** | `MISSING` | `git.blame` exists in the governed catalog and in `StudioGitStatus.tsx`'s `GitCommandId` type union only — no button/trigger renders it (confirmed in a prior pass, `MISSING_ITEMS_REPORT_2026-09-27.md` §2.6, re-confirmed this pass). |
 | **Branch switcher UI** | `MISSING` | `git.branch` is a governed command with no picker/switcher UI; `StudioGitStatus.tsx` only requests branch *status*, not a list to switch between. |
 | **Structured test results (pass/fail tree, jump-to-failure)** | `MISSING` | `StudioRunPanel.tsx` (read in full this pass) renders only raw `ExecutionResult` fields (`stdout`, `stderr`, `exitCode`) for `vitest.run` — no JSON parsing into a tree, no jump-to-failure, no rerun-failed. |
@@ -1757,6 +1761,8 @@ below is a mandate):**
 
 ### Part 3 — Debugger: connection points (architecture only, nothing implemented)
 
+> **Note 2026-10-05 (history kept below):** this heading was true when written (2026-10-04). A governed Debugger backend (`455d935`), a Studio Debugger panel (`35e6d7c`) and a verified CDP vertical slice (`9eb1828`) now exist. See §7.20 and K-14.
+
 **To the editor.** Today's gutter shows only line numbers and git-changed
 markers (`StudioCodeEditor.tsx`). A breakpoint-toggle gutter (click a line
 number to mark/unmark a breakpoint) is a bounded, additive extension of
@@ -1917,6 +1923,9 @@ Recorded, not fixed. Source documents are not edited by this master, with one ex
 | K-12 | WSP "Stage 4 — Control inside Studio" and rooms table "Control: Authority: policy, SoD, Apply, Verify, Rollback, evidence, kill switches" | §7.9: Control is a separate application; SoD and Apply for ArletOS are ArletOS paths | **STALE wording**, preserved; source not edited |
 | K-7 | STAGE_9 header "Status: IN PROGRESS", and B10 / §14 (FD is untracked, do not commit) | STAGE_9 §10 records "STAGE 9 LOCALLY VERIFIED"; FD was committed in `1071450` | **STALE** |
 | K-8 | WSP rooms table: Account user-storage meter "does not exist yet" | `383ecb6` added `GET /memory/storage`; Settings shows it (unverified) | **STALE** |
+| K-13 | §J (Stage 8 "PARTIAL", Stage 9 "OPEN"), §O (Stage 8 PARTIAL, Stage 9 OPEN, "Action required: Arlet commits register") and §P (single next action: AD-1/AD-2/AD-3 and the Stage 9 verification run) | §3 rows 8–9, §Q-T.9 and §7.17: Stage 8 governance closure scope **CLOSED** (remaining EAG-SEC-01 security/reliability scope NOT STARTED); Stage 9 **CLOSED** (106/0/1) | **SUPERSEDED** (2026-10-05): dated notes added beside the original text in §J, §O and §P; original text kept. Statuses of Stages 10–15 not re-audited |
+| K-14 | §11 capability row "Debugger / DAP integration … No debug component, no launch config, no DAP client found anywhere in `apps/web`/`apps/api`", and §11.22 Part 3 "architecture only, nothing implemented" | `455d935` (governed Debugger backend), `35e6d7c` (Studio Debugger panel), `9eb1828` (verified CDP vertical slice). Breakpoints, step, call stack, variables, source maps: still NOT STARTED. **No DAP client exists**; the transport is the Node Inspector Protocol (CDP) | **SUPERSEDED in part** (2026-10-05): dated notes added; original text kept. Not a claim of VS Code debugger parity |
+| K-15 | §J Stage 15 "No debugger component exists … debugger remains a separate, unapproved capability" and its dependency on Stage 14 | The Debugger was built and verified out of sequence, ahead of Stages 12–14, under explicit Arlet authorizations (P0 policy decisions 2026-10-05) | **CONFLICTED** (sequence): recorded, not resolved here. Stage 15's formal status is unchanged; ordering is an Arlet decision (§7.20, open decisions) |
 
 ## 15. Next authorized action
 
@@ -1927,6 +1936,8 @@ Recorded, not fixed. Source documents are not edited by this master, with one ex
 *Superseded 2026-09-26 (history):* "Stage 5 is PARTIAL (§7.10)…" Stage 5 was later closed in §7.11 and committed as `aab3da99`. That paragraph is kept above this note as the pre-closure instruction. It does not reopen Stage 5.
 
 **Now:** Stage 6 is ✅ **COMMITTED / PUSHED** (`aa9c8bf`, origin/main). Documentation reconciled 2026-09-28: the "COMMITTED: no / PUSHED: no" status was a record-keeping gap, not a missing commit. Stage 6 is not CLOSED (Production not verified). Stage 7 is ✅ **CLOSED (local verification)**: S7-A to S7-E VERIFIED, S7-F DEFERRED, §7.13. ARL-E2E-001 stays OPEN outside Stage 7. Stage 5 stays CLOSED. Stage 9 and Production stay separate.
+
+**Now (2026-10-05):** the Debugger P0 foundation is CLOSED and the CDP Studio UI vertical slice is IMPLEMENTED + VERIFIED, committed and pushed as `9eb1828` (§7.20). **No capability is currently authorized.** The next capability is chosen by Arlet after this reconciliation, through a Studio capability-gap map; breakpoints and step are candidates, not authorized (they also depend on the D1 isolation decision before anything may be declared production-safe). This paragraph does not reopen Stages 5–9 and does not change Stage 15's formal status.
 
 ---
 
@@ -4904,6 +4915,8 @@ The pattern "capability repeatedly documented as existing but never connected to
 
 ### Stage 8 — Security / Reliability / Governance (PARTIAL — resume before Stage 12)
 
+> **Superseded 2026-09-27 and reconciled 2026-10-05 (original below kept as history; see K-13).** This heading records Stage 8 before closure. The current record is §3 row 8 and §Q-T.9: the Stage 8 **governance closure scope** (13 REQ items) is **CLOSED**; the remaining security/reliability scope (EAG-SEC-01: secret exposure, kernel governance, gateway/fulfill controls, tenant administration) is **NOT STARTED**, tracked separately.
+
 **Objective:** Complete the security and governance baseline required before exposing new capabilities to users.
 
 **Inputs:** Stage 4 security (CLOSED), Stage 5 governance (CLOSED), Stage 8 PARTIAL evidence matrix (§F above).
@@ -4933,6 +4946,8 @@ The pattern "capability repeatedly documented as existing but never connected to
 ---
 
 ### Stage 9 — Integration Closure (OPEN — close before Stage 12)
+
+> **Superseded 2026-09-27 and reconciled 2026-10-05 (original below kept as history; see K-13).** This heading records Stage 9 before closure. The current record is §3 row 9 and §7.17: Stage 9 is **CLOSED** (ARL-E2E-001 CLOSED, ARL-E2E-004 CLOSED 5/5, full E2E 106/0/1).
 
 **Objective:** Formally close Stage 9 by resolving ARL-E2E-004 and confirming ARL-E2E-001 fix in Arlet's environment.
 
@@ -5035,6 +5050,8 @@ The pattern "capability repeatedly documented as existing but never connected to
 
 ### Stage 15 — Debugger + Extensions
 
+> **Note 2026-10-05 (original kept; see §7.20, K-14, K-15):** parts of this stage were implemented **out of sequence**, before Stages 12–14: the governed Debugger backend, the Studio Debugger panel, and a verified CDP vertical slice (Resume / Pause / Evaluate). The formal status of Stage 15 is **not changed here** (its Stage 14 dependency is not met in this register's sequence). Breakpoints, step, call stack, variables, source maps and multi-target/remote debugging are NOT STARTED.
+
 **Objective:** Implement debugger integration. (Extension system decided 2026-10-03, ADR-026; debugger remains a separate, unapproved capability.)
 
 **Inputs:** Stage 14 CLOSED, Q11-4 (editor upgrade decision — breakpoints require Monaco or DAP adapter), Q11-6 (extension system decision).
@@ -5120,6 +5137,8 @@ The following capabilities already exist in Atlas and must be extended rather th
 
 ## O. CURRENT AUTHORITATIVE STATUS
 
+> **Reconciled 2026-10-05 (the block below is the 2026-09-27 snapshot, kept as written; see K-13).** Its Stage 8 and Stage 9 lines are superseded: Stage 8 governance closure scope is CLOSED (§Q-T.9) and Stage 9 is CLOSED (§7.17); §3 is the live table. Its Stage 10–15 lines were not re-audited on 2026-10-05, and its "Windows authoritative repo HEAD" and "Action required" lines describe 2026-09-27, not today. For the Debugger / CDP work see §7.20.
+
 ```
 Stage 1:   CLOSED
 Stage 2:   CLOSED
@@ -5160,6 +5179,8 @@ Protected files:                   e2e/new-surfaces.spec.ts, cookies.txt — UNT
 ---
 
 ## P. SINGLE NEXT ACTION
+
+> **Superseded 2026-10-05 (original kept as history; see K-13).** The action below (record AD-1, AD-2, AD-3 and close Stage 9) is stale: Stage 9 was closed in §7.17 and Stage 8 governance closure in §Q-T. The current next action is in §15.
 
 **The reconciled dependency graph produces the following order:**
 
@@ -8364,3 +8385,114 @@ curl -s http://127.0.0.1:3100/api/v1/status 2>/dev/null | head -5
 **Commit: לא. Push: לא.**
 
 *§7.19 Parts F/H/I Implementation by Claude Sonnet 4.6 · 2026-09-29*
+
+---
+
+## §7.20 — Debugger P0 foundation and CDP Studio UI vertical slice: reconciliation (2026-10-05)
+
+**Not a numbered stage.** §3 has no stage for the Debugger. The closest existing stage is **Stage 15 — Debugger + Extensions** (§J), which depends on Stage 14. The Debugger was built **out of sequence**, ahead of Stages 12–14, under explicit Arlet authorizations. Stage 15's formal status is not changed by this section (K-15). This section records evidence only; it does not approve, schedule or authorize anything.
+
+**Baseline of this record:** HEAD `9eb18285ae46f1db81eebb77acbae064a02cf366` (`feat(debugger): add verified CDP Studio UI vertical slice`), parent `2205f06d921e8eee85b4391c4393dfccde06afcc`, equal to `origin/main` at the time of writing (0 ahead, 0 behind). Environment: local Windows development host, Node v22.23.3, pnpm 10.28.2. **Nothing here is Production-verified.**
+
+### Status summary
+
+| Item | Status |
+| --- | --- |
+| P0 Debugger security/lifecycle foundation | **CLOSED** for the authorized scope (C2, C3, elevation, Tier 2, C5, C6 below) |
+| CDP Studio UI vertical slice (Resume / Pause / Evaluate) | **IMPLEMENTED + VERIFIED** (local; real browser) |
+| D1 Inspector isolation | **DESIGN OPEN**; production **INFRASTRUCTURE BLOCKED** |
+| Breakpoints / Step / call stack / variables / source maps | **NOT STARTED** |
+| Production readiness | **NOT DECLARED** |
+
+### Repository history (all on origin/main)
+
+| Commit | Content |
+| --- | --- |
+| `455d935` | Governed Debugger backend: gate, isolated spawn, session lifecycle, routes |
+| `35e6d7c` | Studio Debugger panel, editor breakpoint gutter props (not wired), git log view, i18n, ADR-026 update |
+| `b85433d` | Register documentation update (this file) |
+| `4097fd1` | Studio lint fixes **and unintended PSA experiment changes** (conversation route and schema, a live-provider test) |
+| `3e84ce2` | Selective removal of the PSA experiment from the working tree. **History was not rewritten**: the experiment remains in `4097fd1`. A binary patch is preserved outside the repository |
+| `2205f06` | ICU-safe typographic apostrophes in four French strings |
+| `9eb1828` | P0 closure plus the CDP Studio UI vertical slice: 24 files (17 modified, 7 new), including a test-only E2E harness |
+
+### P0 requirements
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| C2 hard creation-time lifetime | **VERIFIED** (deterministic clock only) | `apps/api/src/services/studio-debug-session.test.ts`: immutable deadline, idle-only renewal, post-deadline denial, child kill, cleanup, one expiry audit, no resurrection. 8 of these tests fail against the pre-change session code. **No real 4-hour run was performed.** |
+| C3 missing owner / no auto-claim | **VERIFIED** | `routes/studio-debug.test.ts`, `studio-debug-session.test.ts`: absent, malformed, unavailable and backup-recovered ownership deny; the shared claiming helper cannot restore access; unrelated and anonymous callers cannot revoke another user's session; watchdog is attributed to the session registry and isolates per-session failures |
+| Elevation fails closed | **VERIFIED (injected environment)** | `studio-debug-gate.test.ts`: success, explicit denial, thrown, non-zero, timeout, unrecognized; 5 s subprocess timeout unchanged. The live `whoami` path is not exercised by tests |
+| Tier 2 ownership provenance | **VERIFIED** | `store-io.ts` strict load, `os-store.ts` retained load source, `project-access.ts` `lookupProjectOwner` (VERIFIED / ABSENT / MALFORMED / UNAVAILABLE / RECOVERED_FROM_BACKUP); tests in `os-store.test.ts`, `project-access.test.ts`, route and watchdog tests on real files. Backup-recovered ownership is not authorization-grade |
+| C5 failed launch | **VERIFIED** (defect found and fixed) | An asynchronous spawn failure used to yield an ACTIVE session with `pid -1` that accepted actions. It is now `SPAWN_FAILED`: no session, timers, watchdog or `opened` audit. Pre-spawn denials and revoke cleanup verified. Fix is in `studio-debug-session.ts` only |
+| C6 production classification | **VERIFIED (local)** | An unclassified or production project is denied; the test seams are referenced only inside `studio-debug-gate.ts`. Not proven in a production deployment |
+| Identity provenance | **DEFERRED from P0** (Arlet decision) | `supabase-session.ts` and `resolve-identity.ts` untouched. Residual: the global auth fallback accepts a valid local session when the Supabase path fails; it applies to every route and is out of scope |
+
+**Residuals (not blockers):** backup-recovery provenance lasts for the process lifetime only (the first write rewrites the primary file); a cloud-snapshot read is treated as primary and a failed cloud pull is not represented; a real-timer null-owner watchdog run was not performed; an administrator or control-plane user is denied on Debugger session routes while ownership of the project is unverified; an unknown elevation result is cached until the API restarts.
+
+### CDP Studio UI vertical slice
+
+| Component | Status | Evidence |
+| --- | --- | --- |
+| CDP transport (loopback only; endpoint never leaves the process) | **VERIFIED** | `apps/api/src/services/studio-debug-cdp.ts`, `studio-debug-cdp.test.ts` (25 tests, 5 consecutive runs, real `node --inspect-brk` target) |
+| Authorization before Inspector | **VERIFIED** | A non-opener never reaches the Inspector; unsupported actions make no contact (service and route tests) |
+| Resume / Pause | **VERIFIED** | Real browser: the target's own marker files show not-started at entry, ticks advancing after Resume, frozen over a fixed 1 s window after Pause |
+| Evaluate | **VERIFIED** | `process.pid` equals the session pid; bounded exception; objects shown by description only; long strings truncated to at most 2,001 characters; 4,096-character input limit enforced in the UI and independently by the API |
+| Target state in the session snapshot | **VERIFIED** | Additive `targetState` (NOT_ATTACHED, PAUSED, RUNNING, ENDED); the snapshot key set is asserted and carries no Inspector detail |
+| Inspector disconnect, target natural exit | **VERIFIED** | Session ends, target killed, further actions 403, lifecycle audited; Node's wait-for-disconnect is handled via `NodeRuntime.waitingForDisconnect` |
+| Authorization loss | **VERIFIED** | Browser run with a deliberately stale UI: the click reaches the backend, is rejected, the session is revoked and the target killed |
+| Session expiry | **VERIFIED, with a stated limit** | The browser run fires the same expiry transition the timers fire; it is not a real 30-minute or 4-hour wait |
+| Hard lifetime | **VERIFIED (deterministic clock)** | Service tests; no endurance run |
+| Audit / evidence; endpoint secrecy | **VERIFIED** | Lifecycle recorded; evaluate records only `expressionChars`; the expression, result and endpoint do not appear in audit, errors, responses, snapshots or the page DOM |
+| UI polling and state reflection | **VERIFIED** | `StudioDebugPanel.tsx` reads the polled session; `apps/web/lib/studio-debug-view.ts` (29 unit tests). Polling is not session activity. The UI is not an authority; the API re-authorizes every action |
+| Real-browser E2E | **VERIFIED** | `e2e/debugger/studio-debugger.spec.ts`, `playwright.debugger.config.ts`, `pnpm test:e2e:debugger`: 3 passes, EXIT=0, 5/5 steps (84 s, 83 s, 81 s). The harness `e2e/debugger/harness-api.ts` is **test-only**: it runs the real API app and uses the existing in-process P2 test seam; the ordinary path still denies unclassified projects |
+| Cleanup | **VERIFIED** | After the runs and again afterwards: no listener on ports 3100 / 4100 / 4101 and 0 orphaned `--inspect-brk` targets |
+
+**Exact locators for the run logs:** EXACT LOCATOR NOT AVAILABLE. The run logs were written to local temp files and were not committed. The tests, harness, config and script above are in the repository.
+
+**Disclosed failures during the work (all traced and resolved):** the first real-browser attempts failed because the Debugger activity-bar button rendered an untranslated key (the extension's name, permission and capability labels were missing from all four locales, now added) and because a per-test browser context lost the session cookie (fixed by using one test with steps). One full API regression had a single failure caused by a flaky `ticks.txt` read in a test helper (empty read while the file was being rewritten); the helper was fixed, with no product change and no timeout change.
+
+### Verification results (latest known)
+
+| Check | Result |
+| --- | --- |
+| API tests (full) | 195 files, 2,216 tests, all passed |
+| CDP service suite | 25 tests, 5 of 5 consecutive runs passed |
+| Web unit tests (view model and French/ICU parity) | 36 of 36 |
+| API `tsc -p tsconfig.build.json` | Exit 0, 0 errors |
+| API `tsc -p tsconfig.json` (includes tests) | 125 errors, identical set to baseline (compared against the committed files) |
+| Web `tsc` | Exit 0 |
+| ESLint | API: 1 error, `studio-debug.ts` unused `projectId` in the force-close route (**PRE-EXISTING BASELINE**, at HEAD line 191); web and e2e files: clean |
+| e2e `tsc` | 0 errors in the new files; 2 errors in `e2e/a11y.spec.ts` (**PRE-EXISTING**: file unmodified since `aaa75f6`, 2026-09-27) |
+| Not run in the final state | Full root test suite, web production build (`next build`), full Stage 9 E2E suite |
+
+### D1 — Inspector isolation
+
+- **VERIFIED:** from another local process, a client knowing only the Inspector port could read `/json/list`, obtain `webSocketDebuggerUrl`, connect, run `Runtime.evaluate` and `Runtime.runIfWaitingForDebugger`, with no Atlas ticket or opener involved (same OS user; a different OS user was not tested). The CDP module accepts only a loopback announcement and keeps the URL inside the process. The repository contains no Dockerfile, Compose file or executor service; `deploy/` covers only the Control Plane, Admin and Worker. Docker Desktop was present and running on the development host at the audit.
+- **INFERRED, not re-demonstrated after the CDP slice:** the bypass still exists, because the spawn that starts the Inspector (`--inspect-brk=127.0.0.1:0`) is unchanged.
+- **DESIGN OPEN:** the preferred direction is a per-session container behind a trusted controller (Arlet approved Docker as the preferred development direction only; no infrastructure was authorized). Open: the controller-to-Inspector path, Windows-native `node_modules` in a Linux container, image source and pinning, workspace-mount policy.
+- **INFRASTRUCTURE BLOCKED:** no production executor exists; the user plane is serverless and the private VM provisions no container runtime.
+- **Missing before it can be declared resolved:** a chosen production execution host and runtime; image and mount policies; a verified controller path; forbidden-caller tests; cleanup and restart reconciliation; a run in the production configuration.
+- **The slice is not production-grade isolation** and must not be described as such.
+
+### Not done
+
+Breakpoints, Step / Step Over / Step Into / Step Out, call stack, variables, source maps, watch expressions, multi-target and remote debugging, DAP, extension integration; any D1 infrastructure (Docker, Compose, executor, broker); changes to `governed-command.ts`, `studio-execution.ts`, schemas, the conversation route or schema, `supabase-session.ts`, `resolve-identity.ts`, `studio-debug-spawn.ts`, `e2e/a11y.spec.ts`. The editor breakpoint-gutter props from `35e6d7c` exist but are not wired to anything.
+
+### Accepted values (Arlet, 2026-10-05)
+
+The CDP-specific 10 s announce timeout and 10 s command timeout, and the 4,096-character evaluate input limit. P0 session timeouts (idle 30 minutes, lifetime 4 hours, watchdog 15 s) are unchanged.
+
+### Open decisions (Arlet)
+
+1. Whether and when to commit and push this register update (separate approval; not part of `9eb1828`).
+2. The next capability, to be chosen after a Studio capability-gap map: breakpoints and step are candidates, not authorized.
+3. Sequencing of the out-of-order Debugger work against Stages 12–14 (K-15).
+4. D1 infrastructure: production execution host and runtime, image policy, workspace-mount policy, and the interim posture until then.
+5. Optional and unrelated: whether to fix the pre-existing lint error in the force-close route.
+
+### Reconciliation scope
+
+Edited: header note, §0 rows, one §11 capability row, §11.22 Part 3, §J (Stage 8, Stage 9, Stage 15 notes), §O and §P notes, §14 rows K-13 to K-15, §15, and this section. **No earlier text was removed or rewritten**; every correction is a dated note beside the original. Stages 10–15 were not re-audited. No other file was changed. This edit has not been staged, committed or pushed.
+
+*§7.20 recorded 2026-10-05 by the AI assistant (Copilot SDK in VS Code) from the evidence cited above. No commit or push of this document was performed.*
