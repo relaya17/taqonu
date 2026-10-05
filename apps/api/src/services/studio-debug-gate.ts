@@ -8,6 +8,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { AtlasError } from "@atlas/shared";
+import type { ProjectOwnerLookup } from "./project-access.js";
 import { isAgentActorRequest } from "./studio-actor.js";
 
 /**
@@ -93,42 +94,77 @@ export function resetProjectEnvironmentTiersForTests(): void {
  * process creation and cannot change while it runs — so this is checked once
  * and cached, not per-request (Studio Evolution design, §7: startup-only).
  * Non-Windows hosts use the POSIX root check as a best-effort equivalent.
+ *
+ * Fail-closed: only positive evidence of a non-elevated process yields
+ * `false`. A failed, timed-out, non-zero or unrecognized check is `"UNKNOWN"`,
+ * which the gate denies exactly like an elevated process. `"UNKNOWN"` is cached
+ * too, so a failed check denies until the API restarts and never re-spawns
+ * `whoami` on every request.
  */
-let cachedElevationState: boolean | null = null;
+export type AtlasElevation = boolean | "UNKNOWN";
 
-function detectAtlasElevatedWindows(): boolean {
+let cachedElevationState: AtlasElevation | null = null;
+
+// Integrity-level RIDs (S-1-16-<rid>): Untrusted, Low, Medium, Medium Plus.
+const NON_ELEVATED_INTEGRITY_RIDS: ReadonlySet<number> = new Set([0, 4096, 8192, 8448]);
+const HIGH_INTEGRITY_RID = 12288;
+
+export interface WindowsElevationProbe {
+  readonly error?: Error | undefined;
+  readonly status: number | null;
+  readonly stdout: string | null | undefined;
+}
+
+/** Pure interpretation of `whoami /groups`; exported so every outcome is testable. */
+export function classifyWindowsElevationProbe(probe: WindowsElevationProbe): AtlasElevation {
+  if (probe.error || probe.status !== 0) return "UNKNOWN";
+  const stdout = probe.stdout;
+  if (typeof stdout !== "string" || stdout.length === 0) return "UNKNOWN";
+  const rids = [...stdout.matchAll(/\bS-1-16-(\d+)\b/g)].map((m) => Number(m[1]));
+  if (rids.some((rid) => rid >= HIGH_INTEGRITY_RID) || /High Mandatory Level/i.test(stdout)) return true;
+  if (rids.some((rid) => NON_ELEVATED_INTEGRITY_RIDS.has(rid))) return false;
+  return "UNKNOWN";
+}
+
+export interface AtlasElevationEnvironment {
+  readonly platform: NodeJS.Platform;
+  readonly spawn: typeof spawnSync;
+  readonly getuid: (() => number) | undefined;
+}
+
+/** Uncached detection. The injected environment exists so failures can be exercised without a real host check. */
+export function detectAtlasElevation(
+  env: AtlasElevationEnvironment = {
+    platform: process.platform,
+    spawn: spawnSync,
+    getuid: typeof process.getuid === "function" ? process.getuid.bind(process) : undefined,
+  },
+): AtlasElevation {
   try {
-    const result = spawnSync("whoami", ["/groups"], {
-      shell: false,
-      windowsHide: true,
-      encoding: "utf8",
-      timeout: 5_000,
-    });
-    const stdout = result.stdout ?? "";
-    // S-1-16-12288 = High Mandatory Level (elevated). Absence of the High
-    // marker, or any failure to run the check, is treated as non-elevated
-    // ONLY when the command succeeded; a failed check is reported honestly
-    // as non-elevated=false here but the caller (gate) still fails closed
-    // overall via P2, so this is not a silent bypass of anything.
-    return stdout.includes("S-1-16-12288") || /High Mandatory Level/i.test(stdout);
+    if (env.platform === "win32") {
+      const result = env.spawn("whoami", ["/groups"], {
+        shell: false,
+        windowsHide: true,
+        encoding: "utf8",
+        timeout: 5_000,
+      });
+      return classifyWindowsElevationProbe(result);
+    }
+    // POSIX: uid 0 is the closest equivalent to "elevated" for this check.
+    return env.getuid ? env.getuid() === 0 : "UNKNOWN";
   } catch {
-    return false;
+    return "UNKNOWN";
   }
 }
 
-export function isAtlasApiElevated(): boolean {
+export function getAtlasElevation(): AtlasElevation {
   if (cachedElevationState !== null) return cachedElevationState;
-  if (process.platform === "win32") {
-    cachedElevationState = detectAtlasElevatedWindows();
-  } else {
-    // POSIX: uid 0 is the closest equivalent to "elevated" for this check.
-    cachedElevationState = typeof process.getuid === "function" && process.getuid() === 0;
-  }
+  cachedElevationState = detectAtlasElevation();
   return cachedElevationState;
 }
 
 /** Test-only: forces the cached elevation state so unit tests do not spawn `whoami`. */
-export function setAtlasElevationStateForTests(next: boolean | null): void {
+export function setAtlasElevationStateForTests(next: AtlasElevation | null): void {
   cachedElevationState = next;
 }
 
@@ -155,7 +191,15 @@ export function checkP2(environmentTier: ProjectEnvironmentTier | null): DebugGa
   return { decision: "ALLOW" };
 }
 
-export function checkP3(elevated: boolean): DebugGateDecision {
+export function checkP3(elevated: AtlasElevation): DebugGateDecision {
+  if (elevated === "UNKNOWN") {
+    return {
+      decision: "DENY",
+      denial: "P3_CONFIGURATION_ERROR",
+      reason:
+        "Atlas API process elevation could not be verified. Debug sessions are disabled host-wide until it can (fail-closed).",
+    };
+  }
   if (elevated) {
     return {
       decision: "DENY",
@@ -167,15 +211,32 @@ export function checkP3(elevated: boolean): DebugGateDecision {
   return { decision: "ALLOW" };
 }
 
-export function checkOwnership(ownerId: string | null, actorId: string): DebugGateDecision {
-  if (ownerId !== null && ownerId !== actorId) {
+/**
+ * Only an authorization-grade owner record that equals the actor allows. A
+ * missing, malformed, unavailable or backup-recovered record denies, and the
+ * Debugger never claims an unowned project.
+ */
+export function checkOwnership(owner: ProjectOwnerLookup, actorId: string): DebugGateDecision {
+  if (owner.state === "VERIFIED" && owner.ownerId !== null) {
+    if (owner.ownerId === actorId) return { decision: "ALLOW" };
     return {
       decision: "DENY",
       denial: "OWNERSHIP",
       reason: "Debug sessions may only be opened by the project owner.",
     };
   }
-  return { decision: "ALLOW" };
+  return { decision: "DENY", denial: "OWNERSHIP", reason: ownershipUnverifiedReason(owner.state) };
+}
+
+export function ownershipUnverifiedReason(state: ProjectOwnerLookup["state"]): string {
+  switch (state) {
+    case "ABSENT":
+      return "Project has no recorded owner. Debug sessions are not opened on an unowned project, and the Debugger never claims one.";
+    case "RECOVERED_FROM_BACKUP":
+      return "Project ownership was recovered from a backup and is not authorization-grade. Debug sessions are denied.";
+    default:
+      return "Project ownership could not be established. Debug sessions are denied (fail-closed).";
+  }
 }
 
 export function checkDuplicateSession(hasActiveSessionForTarget: boolean): DebugGateDecision {
@@ -191,9 +252,9 @@ export function checkDuplicateSession(hasActiveSessionForTarget: boolean): Debug
 
 export interface DebugGateInput {
   readonly hostEnabled: boolean;
-  readonly elevated: boolean;
+  readonly elevated: AtlasElevation;
   readonly environmentTier: ProjectEnvironmentTier | null;
-  readonly ownerId: string | null;
+  readonly owner: ProjectOwnerLookup;
   readonly actorId: string;
   readonly hasActiveSessionForTarget: boolean;
 }
@@ -209,7 +270,7 @@ export function evaluateDebugGate(input: DebugGateInput): DebugGateDecision {
   const p2 = checkP2(input.environmentTier);
   if (p2.decision === "DENY") return p2;
 
-  const ownership = checkOwnership(input.ownerId, input.actorId);
+  const ownership = checkOwnership(input.owner, input.actorId);
   if (ownership.decision === "DENY") return ownership;
 
   const duplicate = checkDuplicateSession(input.hasActiveSessionForTarget);

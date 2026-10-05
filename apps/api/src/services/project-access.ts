@@ -92,6 +92,53 @@ export function getProjectOwnerId(projectId: string): string | null {
 }
 
 /**
+ * Strict owner lookup for security-sensitive callers (the Debugger). Unlike
+ * `getProjectOwnerId`, it never collapses "no record", "unusable metadata" and
+ * "recovered from backup" into `null`, and it never mutates or claims.
+ *
+ * - VERIFIED: a usable owner record from authorization-grade state.
+ * - ABSENT: authorization-grade state with no record for this project.
+ * - MALFORMED / UNAVAILABLE: persisted or owner state exists but cannot be used.
+ * - RECOVERED_FROM_BACKUP: evidence only; `ownerId` is deliberately null.
+ */
+export type ProjectOwnerLookupState =
+  | "VERIFIED"
+  | "ABSENT"
+  | "MALFORMED"
+  | "UNAVAILABLE"
+  | "RECOVERED_FROM_BACKUP";
+
+export interface ProjectOwnerLookup {
+  readonly state: ProjectOwnerLookupState;
+  readonly ownerId: string | null;
+}
+
+export function lookupProjectOwner(projectId: string): ProjectOwnerLookup {
+  const source = osStore.getLoadSource();
+  if (source === "BACKUP") return { state: "RECOVERED_FROM_BACKUP", ownerId: null };
+  if (source === "MALFORMED") return { state: "MALFORMED", ownerId: null };
+  if (source === null || source === "UNAVAILABLE") return { state: "UNAVAILABLE", ownerId: null };
+
+  const raw = osStore.getMeta(OWNERS_META);
+  if (raw === undefined) return { state: "ABSENT", ownerId: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: "MALFORMED", ownerId: null };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { state: "MALFORMED", ownerId: null };
+  }
+  if (!Object.prototype.hasOwnProperty.call(parsed, projectId)) {
+    return { state: "ABSENT", ownerId: null };
+  }
+  const entry = (parsed as Record<string, unknown>)[projectId];
+  if (typeof entry !== "string" || entry.length === 0) return { state: "MALFORMED", ownerId: null };
+  return { state: "VERIFIED", ownerId: entry };
+}
+
+/**
  * Governance-boundary existence check for `resolveAgentIdentity` —
  * deliberately NOT an ownership check.
  *

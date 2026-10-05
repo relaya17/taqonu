@@ -404,7 +404,27 @@
       "status": "Statut",
       "noSession": "Aucune session de débogage pour ce projet pour l’instant.",
       "sessionClosed": "Session fermée.",
-      "error": "Échec de la demande de débogage"
+      "error": "Échec de la demande de débogage",
+      "stateNotAttached": "En attente à l’entrée (débogueur pas encore attaché)",
+      "statePaused": "En pause",
+      "stateRunning": "En cours d’exécution",
+      "stateExpired": "Session expirée",
+      "stateRevoked": "Autorisation perdue, session terminée",
+      "stateTerminated": "Cible terminée, session terminée",
+      "stateClosed": "Session fermée",
+      "stateUnavailable": "Session indisponible",
+      "noActions": "Aucune action disponible : la session n’est pas active.",
+      "resume": "Reprendre",
+      "pause": "Mettre en pause",
+      "working": "En cours…",
+      "evaluate": "Évaluer",
+      "expression": "Expression",
+      "evaluateHelp": "Exécute du code dans la cible de débogage. Jusqu’à 4096 caractères. Vous seul pouvez l’exécuter ; l’expression n’est pas consignée dans le journal d’audit.",
+      "expressionEmpty": "Saisissez une expression.",
+      "expressionTooLong": "L’expression dépasse 4096 caractères.",
+      "result": "Résultat",
+      "exception": "Exception",
+      "actionFailed": "Échec de l’action de débogage"
     },
     "ptyTerminal": {
       "help": "Terminal interactif humain dans l’espace de travail lié. Il s’agit d’un vrai processus/PTY, pas d’une exécution gouvernée par commandId.",
@@ -2832,6 +2852,10 @@
       "arletos_agent_runs": {
         "name": "Exécutions de l’agent",
         "description": "Exécutions de la boucle d’ingénierie et leur approbation"
+      },
+      "arletos_debugger": {
+        "name": "Débogueur",
+        "description": "Sessions de débogage encadrées : reprendre, mettre en pause et évaluer dans une cible lancée"
       }
     },
     "perm": {
@@ -2882,6 +2906,10 @@
       "agent_runs_approve": {
         "label": "Approuver les exécutions de l’agent",
         "description": "Approuver une exécution qui attend une décision"
+      },
+      "debug_governed": {
+        "label": "Débogage encadré",
+        "description": "Démarrer des sessions de débogage dans des cibles lancées par ArletOS et y exécuter du code"
       }
     },
     "cap": {
@@ -2898,7 +2926,8 @@
       "observer_cycle": "Cycle d’observation",
       "observer_history": "Historique d’observation",
       "runs_list": "Liste des exécutions",
-      "runs_approve": "Approuver une exécution"
+      "runs_approve": "Approuver une exécution",
+      "debug_session": "Session de débogage"
     },
     "health": {
       "HEALTHY": "✓ Opérationnel",

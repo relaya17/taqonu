@@ -459,7 +459,27 @@
       "status": "סטטוס",
       "noSession": "אין session דיבוג לפרויקט זה עדיין.",
       "sessionClosed": "ה-session נסגר.",
-      "error": "בקשת הדיבוג נכשלה"
+      "error": "בקשת הדיבוג נכשלה",
+      "stateNotAttached": "ממתין בנקודת הכניסה (הדיבאגר עדיין לא מחובר)",
+      "statePaused": "מושהה",
+      "stateRunning": "רץ",
+      "stateExpired": "ה-session פג",
+      "stateRevoked": "ההרשאה אבדה, ה-session הסתיים",
+      "stateTerminated": "היעד הסתיים, ה-session הסתיים",
+      "stateClosed": "ה-session נסגר",
+      "stateUnavailable": "ה-session אינו זמין",
+      "noActions": "אין פעולות זמינות: ה-session אינו פעיל.",
+      "resume": "המשך",
+      "pause": "השהה",
+      "working": "מבצע…",
+      "evaluate": "הרץ",
+      "expression": "ביטוי",
+      "evaluateHelp": "מריץ קוד בתוך יעד הדיבוג. עד 4096 תווים. רק אתה יכול להריץ; הביטוי אינו נרשם ביומן הביקורת.",
+      "expressionEmpty": "הזן ביטוי.",
+      "expressionTooLong": "הביטוי ארוך מ-4096 תווים.",
+      "result": "תוצאה",
+      "exception": "חריגה",
+      "actionFailed": "פעולת הדיבוג נכשלה"
     },
     "ptyTerminal": {
       "help": "מסוף אינטראקטיבי אנושי בתיקיית הפרויקט. זה תהליך/PTY אמיתי, לא הרצת commandId ממשלת.",
@@ -2832,6 +2852,10 @@
       "arletos_agent_runs": {
         "name": "ריצות הסוכן",
         "description": "ריצות לולאת ההנדסה ואישורן"
+      },
+      "arletos_debugger": {
+        "name": "דיבאגר",
+        "description": "sessions דיבוג מבוקרים: המשך, השהיה והרצת קוד ביעד שהופעל"
       }
     },
     "perm": {
@@ -2882,6 +2906,10 @@
       "agent_runs_approve": {
         "label": "אישור ריצות הסוכן",
         "description": "אישור ריצה שממתינה להחלטה"
+      },
+      "debug_governed": {
+        "label": "דיבוג מבוקר",
+        "description": "פתיחת sessions דיבוג ביעדים שהופעלו על ידי ArletOS והרצת קוד בתוכם"
       }
     },
     "cap": {
@@ -2898,7 +2926,8 @@
       "observer_cycle": "מחזור תצפית",
       "observer_history": "היסטוריית תצפיות",
       "runs_list": "רשימת ריצות",
-      "runs_approve": "אישור ריצה"
+      "runs_approve": "אישור ריצה",
+      "debug_session": "session דיבוג"
     },
     "health": {
       "HEALTHY": "✓ תקין",

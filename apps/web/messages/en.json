@@ -404,7 +404,27 @@
       "status": "Status",
       "noSession": "No debug session for this project yet.",
       "sessionClosed": "Session closed.",
-      "error": "Debug request failed"
+      "error": "Debug request failed",
+      "stateNotAttached": "Waiting at entry (debugger not attached yet)",
+      "statePaused": "Paused",
+      "stateRunning": "Running",
+      "stateExpired": "Session expired",
+      "stateRevoked": "Authorization lost, session ended",
+      "stateTerminated": "Target ended, session ended",
+      "stateClosed": "Session closed",
+      "stateUnavailable": "Session unavailable",
+      "noActions": "No actions available: the session is not active.",
+      "resume": "Resume",
+      "pause": "Pause",
+      "working": "Working…",
+      "evaluate": "Evaluate",
+      "expression": "Expression",
+      "evaluateHelp": "Runs code inside the debug target. Up to 4096 characters. Only you can run it; the expression is not recorded in the audit log.",
+      "expressionEmpty": "Enter an expression.",
+      "expressionTooLong": "The expression is longer than 4096 characters.",
+      "result": "Result",
+      "exception": "Exception",
+      "actionFailed": "Debug action failed"
     },
     "ptyTerminal": {
       "help": "Interactive human terminal in the linked workspace. This is a real process/PTY, not governed commandId execution.",
@@ -2832,6 +2852,10 @@
       "arletos_agent_runs": {
         "name": "Engineering runs",
         "description": "Engineering loop runs and approvals"
+      },
+      "arletos_debugger": {
+        "name": "Debugger",
+        "description": "Governed debug sessions: resume, pause and evaluate in a launched target"
       }
     },
     "perm": {
@@ -2882,6 +2906,10 @@
       "agent_runs_approve": {
         "label": "Approve agent runs",
         "description": "Approve a run that is waiting for a decision"
+      },
+      "debug_governed": {
+        "label": "Governed debugging",
+        "description": "Start debug sessions in ArletOS-launched targets and run code inside them"
       }
     },
     "cap": {
@@ -2898,7 +2926,8 @@
       "observer_cycle": "Observe cycle",
       "observer_history": "Observer history",
       "runs_list": "Run list",
-      "runs_approve": "Approve a run"
+      "runs_approve": "Approve a run",
+      "debug_session": "Debug session"
     },
     "health": {
       "HEALTHY": "✓ Healthy",

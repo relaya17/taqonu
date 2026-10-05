@@ -1,5 +1,5 @@
 ﻿import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -411,3 +411,355 @@ describe("Studio Debug routes", () => {
     });
   });});
 
+
+describe("missing / unverified ownership (the Debugger never claims; fail-closed)", () => {
+  const storePath = process.env.ATLAS_STORE_PATH as string;
+  const bakPath = `${storePath}.bak`;
+  const OWNERS_KEY = "g5.projectOwners.v1";
+
+  afterEach(() => {
+    rmSync(storePath, { recursive: true, force: true });
+    rmSync(bakPath, { recursive: true, force: true });
+    osStore.unloadForTests();
+  });
+
+  function seedUnownedProject(root: string): string {
+    const now = new Date().toISOString();
+    const projectId = crypto.randomUUID();
+    osStore.upsertProject({
+      id: projectId,
+      slug: `studio-debug-unowned-${Date.now().toString(36)}`,
+      name: "Studio Debug Unowned",
+      description: null,
+      status: "ACTIVE",
+      techStack: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    osStore.setWorkspaceRoot(projectId, root);
+    return projectId;
+  }
+
+  function simulateStoreLoad(projectId: string, kind: "BACKUP" | "MALFORMED" | "UNAVAILABLE"): void {
+    const project = osStore.getProject(projectId);
+    if (!project) throw new Error("setup failed");
+    rmSync(storePath, { recursive: true, force: true });
+    rmSync(bakPath, { recursive: true, force: true });
+    if (kind === "BACKUP") {
+      writeFileSync(
+        bakPath,
+        JSON.stringify({ projects: [project], meta: { [OWNERS_KEY]: JSON.stringify({ [projectId]: owner.id }) } }),
+      );
+      writeFileSync(storePath, "{not-json");
+    } else if (kind === "MALFORMED") {
+      writeFileSync(storePath, "{not-json");
+    } else {
+      mkdirSync(storePath);
+    }
+    osStore.unloadForTests();
+    expect(osStore.getLoadSource()).toBe(kind);
+    if (kind !== "BACKUP") osStore.upsertProject(project);
+  }
+
+  const createRequest = (projectId: string) => ({
+    method: "POST" as const,
+    url: `/api/v1/projects/${projectId}/studio/debug/sessions`,
+    payload: { targetId: "debug.node-script", relativePath: "script.js" },
+  });
+
+  it("an unowned project is denied OWNERSHIP, is NOT claimed, and the denial is audited with the ownership state", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedUnownedProject(workspaceWithScript());
+    setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+
+    const { getProjectOwnerId, isolationAuditSummary } = await import("../services/project-access.js");
+    const claimedBefore = isolationAuditSummary().claimed;
+
+    const res = await app.inject(createRequest(projectId));
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("OWNERSHIP");
+    expect(body.error.message).toMatch(/no recorded owner/i);
+
+    expect(getProjectOwnerId(projectId)).toBeNull();
+    expect(isolationAuditSummary().claimed).toBe(claimedBefore);
+    const denied = osStore
+      .listAudit()
+      .filter((e) => e.type === "debugger.request.denied" && e.projectId === projectId);
+    expect(denied).toHaveLength(1);
+    expect(denied[0]?.ownershipState).toBe("ABSENT");
+  });
+
+  it("GET targets on an unowned project is denied and does not claim it", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedUnownedProject(workspaceWithScript());
+    const res = await app.inject({ method: "GET", url: `/api/v1/projects/${projectId}/studio/debug/targets` });
+    expect(res.statusCode).toBe(403);
+    const { getProjectOwnerId } = await import("../services/project-access.js");
+    expect(getProjectOwnerId(projectId)).toBeNull();
+  });
+
+  it("an unknown project is still a 404, and an anonymous caller still a 401, before ownership is considered", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const missing = await app.inject(createRequest(crypto.randomUUID()));
+    expect(missing.statusCode).toBe(404);
+
+    const projectId = seedUnownedProject(workspaceWithScript());
+    getRequestUser.mockResolvedValue(null);
+    const anonymous = await app.inject(createRequest(projectId));
+    expect(anonymous.statusCode).toBe(401);
+  });
+
+  it("the ownership denial comes after host opt-in, P3 and P2, preserving the approved gate order", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedUnownedProject(workspaceWithScript());
+
+    delete process.env.ATLAS_DEBUGGER_ENABLED;
+    const disabled = await app.inject(createRequest(projectId));
+    expect((disabled.json() as { error: { code: string } }).error.code).toBe("DEBUGGER_DISABLED");
+
+    process.env.ATLAS_DEBUGGER_ENABLED = "1";
+    const unclassified = await app.inject(createRequest(projectId));
+    expect((unclassified.json() as { error: { code: string } }).error.code).toBe("P2_INSUFFICIENT_EVIDENCE");
+  });
+
+  it("backup-recovered ownership denies creation even though the backup names the actor", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspaceWithScript());
+    setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+    simulateStoreLoad(projectId, "BACKUP");
+
+    const res = await app.inject(createRequest(projectId));
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("OWNERSHIP");
+    expect(body.error.message).toMatch(/backup/i);
+    const denied = osStore.listAudit().filter((e) => e.type === "debugger.request.denied");
+    expect(denied.at(-1)?.ownershipState).toBe("RECOVERED_FROM_BACKUP");
+  });
+
+  it.each(["MALFORMED", "UNAVAILABLE"] as const)("%s persisted ownership state denies creation", async (kind) => {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspaceWithScript());
+    setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+    simulateStoreLoad(projectId, kind);
+
+    const res = await app.inject(createRequest(projectId));
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: { code: string } }).error.code).toBe("OWNERSHIP");
+    const denied = osStore.listAudit().filter((e) => e.type === "debugger.request.denied");
+    expect(denied.at(-1)?.ownershipState).toBe(kind);
+  });
+
+  it("UNKNOWN elevation denies creation with 503 P3 even for a verified owner", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspaceWithScript());
+    setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+    setAtlasElevationStateForTests("UNKNOWN");
+
+    const res = await app.inject(createRequest(projectId));
+    expect(res.statusCode).toBe(503);
+    expect((res.json() as { error: { code: string } }).error.code).toBe("P3_CONFIGURATION_ERROR");
+  });
+
+  describe("an active session whose ownership record is lost", () => {
+    async function openThenLoseOwner() {
+      getRequestUser.mockResolvedValue(owner);
+      const projectId = seedOwnedProject(owner, workspaceWithScript());
+      setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+      const { sessionId, pid } = await openSession(projectId);
+      osStore.setMeta(OWNERS_KEY, "{}");
+      return { projectId, sessionId, pid };
+    }
+
+    const actionRequest = (projectId: string, sessionId: string) => ({
+      method: "POST" as const,
+      url: `/api/v1/projects/${projectId}/studio/debug/sessions/${sessionId}/action`,
+      payload: { action: "pause" },
+    });
+
+    it("the opener is denied and revoked, and the shared helper does NOT re-claim the project to restore access", async () => {
+      const { projectId, sessionId, pid } = await openThenLoseOwner();
+
+      const res = await app.inject(actionRequest(projectId, sessionId));
+      expect(res.statusCode).toBe(403);
+      expect(getDebugSession(sessionId)?.status).toBe("AUTHORIZATION_REVOKED");
+      expect(await waitUntilDead(pid)).toBe(true);
+
+      const { getProjectOwnerId } = await import("../services/project-access.js");
+      expect(getProjectOwnerId(projectId)).toBeNull();
+      const revoked = osStore
+        .listAudit()
+        .filter((e) => e.type === "debugger.authorization.revoked" && e.sessionId === sessionId);
+      expect(revoked).toHaveLength(1);
+      expect(String(revoked[0]?.reason)).toContain("ownership=ABSENT");
+    });
+
+    it.each(["status", "close"] as const)("the opener's %s request is also denied and revoked", async (kind) => {
+      const { projectId, sessionId, pid } = await openThenLoseOwner();
+      const res =
+        kind === "status"
+          ? await app.inject({ method: "GET", url: `/api/v1/projects/${projectId}/studio/debug/sessions/${sessionId}` })
+          : await app.inject({
+              method: "POST",
+              url: `/api/v1/projects/${projectId}/studio/debug/sessions/${sessionId}/close`,
+            });
+      expect(res.statusCode).toBe(403);
+      expect(getDebugSession(sessionId)?.status).toBe("AUTHORIZATION_REVOKED");
+      expect(await waitUntilDead(pid)).toBe(true);
+    });
+
+    it("an unrelated authenticated caller is denied and cannot revoke another user's session", async () => {
+      const { projectId, sessionId } = await openThenLoseOwner();
+      getRequestUser.mockResolvedValue(stranger);
+      const res = await app.inject(actionRequest(projectId, sessionId));
+      expect(res.statusCode).toBe(403);
+      expect(getDebugSession(sessionId)?.status).toBe("ACTIVE");
+    });
+
+    it("an anonymous caller is denied (401) and cannot revoke it either", async () => {
+      const { projectId, sessionId } = await openThenLoseOwner();
+      getRequestUser.mockResolvedValue(null);
+      const res = await app.inject(actionRequest(projectId, sessionId));
+      expect(res.statusCode).toBe(401);
+      expect(getDebugSession(sessionId)?.status).toBe("ACTIVE");
+    });
+
+    it("backup-recovered ownership revokes the opener's session on the next request", async () => {
+      getRequestUser.mockResolvedValue(owner);
+      const projectId = seedOwnedProject(owner, workspaceWithScript());
+      setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+      const { sessionId, pid } = await openSession(projectId);
+      simulateStoreLoad(projectId, "BACKUP");
+
+      const res = await app.inject(actionRequest(projectId, sessionId));
+      expect(res.statusCode).toBe(403);
+      expect(getDebugSession(sessionId)?.status).toBe("AUTHORIZATION_REVOKED");
+      expect(await waitUntilDead(pid)).toBe(true);
+      const revoked = osStore
+        .listAudit()
+        .filter((e) => e.type === "debugger.authorization.revoked" && e.sessionId === sessionId);
+      expect(String(revoked[0]?.reason)).toContain("RECOVERED_FROM_BACKUP");
+    });
+  });
+});
+
+describe("failed launch through the route (C5)", () => {
+  it("a spawn that cannot start is a 400 SPAWN_FAILED, audited, and no session is created", async () => {
+    getRequestUser.mockResolvedValue(owner);
+    const dir = workspaceWithScript();
+    const notADirectory = join(dir, "regular-file.txt");
+    writeFileSync(notADirectory, "not a directory");
+    const projectId = seedOwnedProject(owner, notADirectory);
+    setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${projectId}/studio/debug/sessions`,
+      payload: { targetId: "debug.node-script", relativePath: "." },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: { code: string } }).error.code).toBe("SPAWN_FAILED");
+    const denied = osStore
+      .listAudit()
+      .filter((e) => e.type === "debugger.request.denied" && e.projectId === projectId);
+    expect(denied).toHaveLength(1);
+    expect(denied[0]?.denial).toBe("SPAWN_FAILED");
+    const opened = osStore
+      .listAudit()
+      .filter((e) => e.type === "debugger.session.opened" && e.projectId === projectId);
+    expect(opened).toHaveLength(0);
+  });
+});
+describe("CDP vertical slice through the routes", () => {
+  const actionUrl = (projectId: string, sessionId: string) =>
+    `/api/v1/projects/${projectId}/studio/debug/sessions/${sessionId}/action`;
+
+  async function openRealSession() {
+    getRequestUser.mockResolvedValue(owner);
+    const projectId = seedOwnedProject(owner, workspaceWithScript());
+    setProjectEnvironmentTierForTests(projectId, "DEVELOPMENT");
+    const { sessionId, pid } = await openSession(projectId);
+    return { projectId, sessionId, pid };
+  }
+
+  it("an authorized opener resumes, pauses and evaluates inside the target", async () => {
+    const { projectId, sessionId, pid } = await openRealSession();
+
+    const paused = await app.inject({ method: "POST", url: actionUrl(projectId, sessionId), payload: { action: "pause" } });
+    expect(paused.statusCode).toBe(200);
+    expect(paused.json()).toMatchObject({ ok: true, state: "paused" });
+
+    const resumed = await app.inject({ method: "POST", url: actionUrl(projectId, sessionId), payload: { action: "continue" } });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json()).toMatchObject({ ok: true, state: "running" });
+
+    const evaluated = await app.inject({
+      method: "POST",
+      url: actionUrl(projectId, sessionId),
+      payload: { action: "evaluate", expression: "process.pid" },
+    });
+    expect(evaluated.statusCode).toBe(200);
+    expect((evaluated.json() as { evaluation: { type: string; value: number } }).evaluation).toMatchObject({
+      type: "number",
+      value: pid,
+    });
+  }, 30_000);
+
+  it("rejects what is not wired yet and malformed evaluate requests with 400", async () => {
+    const { projectId, sessionId } = await openRealSession();
+    const step = await app.inject({ method: "POST", url: actionUrl(projectId, sessionId), payload: { action: "step" } });
+    expect(step.statusCode).toBe(400);
+    expect((step.json() as { error: { code: string } }).error.code).toBe("ACTION_NOT_SUPPORTED");
+
+    const noExpression = await app.inject({ method: "POST", url: actionUrl(projectId, sessionId), payload: { action: "evaluate" } });
+    expect(noExpression.statusCode).toBe(400);
+    expect((noExpression.json() as { error: { code: string } }).error.code).toBe("EXPRESSION_INVALID");
+
+    const tooLong = await app.inject({
+      method: "POST",
+      url: actionUrl(projectId, sessionId),
+      payload: { action: "evaluate", expression: "x".repeat(4097) },
+    });
+    expect(tooLong.statusCode).toBe(400);
+
+    const unknownField = await app.inject({
+      method: "POST",
+      url: actionUrl(projectId, sessionId),
+      payload: { action: "pause", websocketUrl: "ws://127.0.0.1:1/x" },
+    });
+    expect(unknownField.statusCode).toBeGreaterThanOrEqual(400);
+  }, 30_000);
+
+  it("an unrelated caller cannot reach the Inspector through the route, and the session survives", async () => {
+    const { projectId, sessionId } = await openRealSession();
+    getRequestUser.mockResolvedValue(stranger);
+    const res = await app.inject({
+      method: "POST",
+      url: actionUrl(projectId, sessionId),
+      payload: { action: "evaluate", expression: "1" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(getDebugSession(sessionId)?.status).toBe("ACTIVE");
+    const connected = osStore
+      .listAudit()
+      .filter((e) => e.type === "debugger.inspector.connected" && e.sessionId === sessionId);
+    expect(connected).toHaveLength(0);
+  }, 30_000);
+
+  it("authorization loss after the Inspector is connected revokes the session and kills the target", async () => {
+    const { projectId, sessionId, pid } = await openRealSession();
+    const first = await app.inject({ method: "POST", url: actionUrl(projectId, sessionId), payload: { action: "continue" } });
+    expect(first.statusCode).toBe(200);
+
+    bindProjectOwner(projectId, stranger.id, "claimed");
+    const denied = await app.inject({
+      method: "POST",
+      url: actionUrl(projectId, sessionId),
+      payload: { action: "evaluate", expression: "1" },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(getDebugSession(sessionId)?.status).toBe("AUTHORIZATION_REVOKED");
+    expect(await waitUntilDead(pid)).toBe(true);
+  }, 30_000);
+});

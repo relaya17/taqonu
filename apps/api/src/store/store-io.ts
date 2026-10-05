@@ -120,3 +120,51 @@ export function readJsonFile<T extends object>(path: string): T | null {
 export function loadJsonWithBackup<T extends object>(path: string): T | null {
   return readJsonFile<T>(path) ?? readJsonFile<T>(storeBackupPath(path));
 }
+
+/**
+ * How persisted state was obtained. `BACKUP` is recovered state: evidence, not
+ * authorization-grade (the backup may predate the latest ownership change).
+ */
+export type StoreLoadSource = "PRIMARY" | "BACKUP" | "ABSENT" | "MALFORMED" | "UNAVAILABLE";
+
+export interface StoreLoadResult<T extends object> {
+  readonly value: T | null;
+  readonly source: StoreLoadSource;
+}
+
+type JsonReadOutcome<T extends object> =
+  | { readonly kind: "ok"; readonly value: T }
+  | { readonly kind: "absent" }
+  | { readonly kind: "malformed" }
+  | { readonly kind: "unavailable" };
+
+function readJsonOutcome<T extends object>(path: string): JsonReadOutcome<T> {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "absent" } : { kind: "unavailable" };
+  }
+  try {
+    const parsed = JSON.parse(text) as T;
+    return parsed && typeof parsed === "object" ? { kind: "ok", value: parsed } : { kind: "malformed" };
+  } catch {
+    return { kind: "malformed" };
+  }
+}
+
+/**
+ * Same value as `loadJsonWithBackup`, plus where it came from. A missing file
+ * (`ABSENT`) is distinguished from one that exists but cannot be used
+ * (`MALFORMED` / `UNAVAILABLE`), and recovery from `.bak` is never reported as
+ * `PRIMARY`.
+ */
+export function loadJsonWithBackupProvenance<T extends object>(path: string): StoreLoadResult<T> {
+  const primary = readJsonOutcome<T>(path);
+  if (primary.kind === "ok") return { value: primary.value, source: "PRIMARY" };
+  const backup = readJsonOutcome<T>(storeBackupPath(path));
+  if (backup.kind === "ok") return { value: backup.value, source: "BACKUP" };
+  if (primary.kind === "absent" && backup.kind === "absent") return { value: null, source: "ABSENT" };
+  const unavailable = primary.kind === "unavailable" || backup.kind === "unavailable";
+  return { value: null, source: unavailable ? "UNAVAILABLE" : "MALFORMED" };
+}

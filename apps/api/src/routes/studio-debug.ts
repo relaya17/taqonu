@@ -9,34 +9,60 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AtlasError, uuidSchema, type AuthUser } from "@atlas/shared";
 import { osStore } from "../store/os-store.js";
-import { assertProjectWriteAccess } from "../services/project-access.js";
-import { getProjectOwnerId } from "../services/project-access.js";
+import { assertProjectWriteAccess, lookupProjectOwner, type ProjectOwnerLookup } from "../services/project-access.js";
 import { requireUser } from "../middleware/auth-guards.js";
 import {
   denyAgentDebugRequest,
   evaluateDebugGate,
+  getAtlasElevation,
   isAgentDebugRequest,
-  isAtlasApiElevated,
   isDebuggerEnabledOnHost,
+  ownershipUnverifiedReason,
   readProjectEnvironmentTier,
   type DebugGateDenial,
 } from "../services/studio-debug-gate.js";
 import { listDebugTargets } from "../services/studio-debug-spawn.js";
+import { CDP_MAX_EXPRESSION_CHARS } from "../services/studio-debug-cdp.js";
 import {
   closeDebugSessionVoluntary,
   createDebugSession,
+  dispatchDebugAction,
   forceCloseDebugSession,
   getDebugSession,
   hasActiveDebugSessionForTarget,
-  performDebugAction,
   revokeDebugSessionAuthorization,
+  type DebugDispatchDenial,
 } from "../services/studio-debug-session.js";
 
 const targetIdSchema = z.string().min(1).max(120);
-const actionSchema = z.enum(["continue", "pause", "step", "breakpoint.add", "breakpoint.remove", "inspect"]);
+const actionSchema = z.enum(["continue", "pause", "step", "breakpoint.add", "breakpoint.remove", "inspect", "evaluate"]);
 
 function headerMap(request: FastifyRequest): Record<string, unknown> {
   return request.headers as Record<string, unknown>;
+}
+
+/**
+ * Project access for a Debugger request that does not target an existing
+ * session. The shared `assertProjectWriteAccess` CLAIMS an unowned project,
+ * and the Debugger never claims one, so the shared helper only runs when an
+ * authorization-grade owner record already exists. Otherwise the caller is
+ * still authenticated and the project must exist, but nothing is claimed; the
+ * unverified owner is returned for the gate to deny.
+ */
+async function authorizeDebugProjectAccess(
+  app: FastifyInstance,
+  request: FastifyRequest,
+  projectId: string,
+): Promise<{ readonly user: AuthUser; readonly owner: ProjectOwnerLookup }> {
+  const owner = lookupProjectOwner(projectId);
+  if (owner.state === "VERIFIED") {
+    return { user: await assertProjectWriteAccess(app, request, projectId), owner };
+  }
+  const user = await requireUser(app, request);
+  if (!osStore.getProject(projectId)) {
+    throw new AtlasError("NOT_FOUND", "Project not found", { statusCode: 404 });
+  }
+  return { user, owner };
 }
 
 /**
@@ -47,6 +73,10 @@ function headerMap(request: FastifyRequest): Record<string, unknown> {
  * further action is possible (approved S1 fail-safe). A caller who is not
  * the opener, or who is not signed in (401, so no identity to attribute),
  * can never revoke someone else's session by probing it.
+ *
+ * Ownership that is not authorization-grade (absent, malformed, unavailable
+ * or backup-recovered) counts as lost access and never reaches the shared
+ * helper, which would otherwise re-claim the project and silently restore it.
  */
 async function authorizeSessionRequest(
   app: FastifyInstance,
@@ -55,19 +85,36 @@ async function authorizeSessionRequest(
   sessionId: string,
 ): Promise<AuthUser> {
   const actor = await requireUser(app, request);
+  const revokeIfOpener = (reason: string): void => {
+    const session = getDebugSession(sessionId);
+    if (
+      session &&
+      session.projectId === projectId &&
+      session.openerId === actor.id &&
+      session.status === "ACTIVE"
+    ) {
+      revokeDebugSessionAuthorization(sessionId, reason);
+    }
+  };
+
+  const owner = lookupProjectOwner(projectId);
+  if (owner.state !== "VERIFIED") {
+    const statusCode = osStore.getProject(projectId) ? 403 : 404;
+    revokeIfOpener(
+      statusCode === 404
+        ? "project access lost (404)"
+        : `project ownership not verified (ownership=${owner.state})`,
+    );
+    throw statusCode === 404
+      ? new AtlasError("NOT_FOUND", "Project not found", { statusCode })
+      : new AtlasError("FORBIDDEN", ownershipUnverifiedReason(owner.state), { statusCode });
+  }
+
   try {
     return await assertProjectWriteAccess(app, request, projectId);
   } catch (error) {
     if (error instanceof AtlasError && (error.statusCode === 403 || error.statusCode === 404)) {
-      const session = getDebugSession(sessionId);
-      if (
-        session &&
-        session.projectId === projectId &&
-        session.openerId === actor.id &&
-        session.status === "ACTIVE"
-      ) {
-        revokeDebugSessionAuthorization(sessionId, `project access lost (${error.statusCode})`);
-      }
+      revokeIfOpener(`project access lost (${error.statusCode})`);
     }
     throw error;
   }
@@ -89,18 +136,34 @@ function denialStatusCode(denial: DebugGateDenial | string): number {
   return denial === "P3_CONFIGURATION_ERROR" ? 503 : 403;
 }
 
+function dispatchDenialStatusCode(denial: DebugDispatchDenial): number {
+  switch (denial) {
+    case "ACTION_NOT_SUPPORTED":
+    case "EXPRESSION_INVALID":
+      return 400;
+    case "INSPECTOR_UNAVAILABLE":
+    case "COMMAND_FAILED":
+      return 502;
+    default:
+      return 403;
+  }
+}
+
 export async function registerStudioDebugRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/projects/:id/studio/debug/targets", async (request) => {
     if (isAgentDebugRequest(headerMap(request))) denyAgentDebugRequest();
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    await assertProjectWriteAccess(app, request, projectId);
+    const { owner } = await authorizeDebugProjectAccess(app, request, projectId);
+    if (owner.state !== "VERIFIED") {
+      throw new AtlasError("FORBIDDEN", ownershipUnverifiedReason(owner.state), { statusCode: 403 });
+    }
     return { targets: listDebugTargets() };
   });
 
   app.post("/api/v1/projects/:id/studio/debug/sessions", async (request, reply) => {
     if (isAgentDebugRequest(headerMap(request))) denyAgentDebugRequest();
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
-    const user = await assertProjectWriteAccess(app, request, projectId);
+    const { user, owner } = await authorizeDebugProjectAccess(app, request, projectId);
     const body = z
       .object({ targetId: targetIdSchema, relativePath: z.string().min(1).max(500).optional() })
       .strict()
@@ -108,9 +171,9 @@ export async function registerStudioDebugRoutes(app: FastifyInstance): Promise<v
 
     const decision = evaluateDebugGate({
       hostEnabled: isDebuggerEnabledOnHost(),
-      elevated: isAtlasApiElevated(),
+      elevated: getAtlasElevation(),
       environmentTier: readProjectEnvironmentTier(projectId),
-      ownerId: getProjectOwnerId(projectId),
+      owner,
       actorId: user.id,
       hasActiveSessionForTarget: hasActiveDebugSessionForTarget(projectId, body.targetId),
     });
@@ -121,6 +184,7 @@ export async function registerStudioDebugRoutes(app: FastifyInstance): Promise<v
         actorId: user.id,
         targetId: body.targetId,
         denial: decision.denial,
+        ownershipState: owner.state,
         at: new Date().toISOString(),
       });
       return reply
@@ -166,12 +230,24 @@ export async function registerStudioDebugRoutes(app: FastifyInstance): Promise<v
     const projectId = uuidSchema.parse((request.params as { id: string }).id);
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     const user = await authorizeSessionRequest(app, request, projectId, sessionId);
-    const body = z.object({ action: actionSchema }).strict().parse(request.body ?? {});
-    const result = performDebugAction({ sessionId, actorId: user.id, action: body.action });
+    const body = z
+      .object({ action: actionSchema, expression: z.string().max(CDP_MAX_EXPRESSION_CHARS).optional() })
+      .strict()
+      .parse(request.body ?? {});
+    const result = await dispatchDebugAction({
+      sessionId,
+      actorId: user.id,
+      action: body.action,
+      ...(body.expression !== undefined ? { expression: body.expression } : {}),
+    });
     if (!result.ok) {
-      return reply.status(403).send({ error: { code: result.denial, message: result.reason } });
+      return reply.status(dispatchDenialStatusCode(result.denial)).send({ error: { code: result.denial, message: result.reason } });
     }
-    return reply.send({ ok: true });
+    return reply.send({
+      ok: true,
+      state: result.state,
+      ...(result.evaluation ? { evaluation: result.evaluation } : {}),
+    });
   });
 
   app.post("/api/v1/projects/:id/studio/debug/sessions/:sessionId/close", async (request, reply) => {

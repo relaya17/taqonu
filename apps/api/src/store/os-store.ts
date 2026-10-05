@@ -31,7 +31,7 @@ import {
   AUDIT_MEMORY_RING,
   resolveAuditLogPath,
 } from "../services/audit-log.js";
-import { atomicWriteStoreFile, loadJsonWithBackup } from "./store-io.js";
+import { atomicWriteStoreFile, loadJsonWithBackupProvenance, type StoreLoadSource } from "./store-io.js";
 
 export interface DbFeedObservation {
   readonly provider: "supabase" | "mongodb";
@@ -385,8 +385,9 @@ function storePath(): string {
 }
 
 /** Load primary store, then `.bak`, so a torn write does not wipe state. */
-function loadPersistedShape(): PersistedShape | null {
-  return loadJsonWithBackup<PersistedShape>(storePath());
+function loadPersistedShape(): { readonly shape: PersistedShape | null; readonly source: StoreLoadSource } {
+  const { value, source } = loadJsonWithBackupProvenance<PersistedShape>(storePath());
+  return { shape: value, source };
 }
 
 function emptyShape(): PersistedShape {
@@ -491,6 +492,12 @@ class OsStore {
   private personalSupervisingAgents = new Map<string, PersonalSupervisingAgentRecord>();
   private loaded = false;
   /**
+   * How the current in-memory state was first obtained (file load, or a cloud
+   * snapshot via `replaceWithShape`). Retained for the process lifetime and
+   * not itself persisted.
+   */
+  private loadSource: StoreLoadSource | null = null;
+  /**
    * "file": persist() writes `.atlas/store.json` (local/dev default).
    * "cloud": persist() only marks the store dirty; `cloud-store-sync.ts`
    * flushes the snapshot to Supabase before the response is sent. Used on
@@ -531,6 +538,8 @@ class OsStore {
     this.backend = backend;
     this.loaded = true;
     this.dirty = false;
+    // The cloud snapshot is the single durable source (no backup fallback).
+    this.loadSource = raw ? "PRIMARY" : "ABSENT";
     if (raw) this.applyShape(raw);
   }
 
@@ -539,11 +548,22 @@ class OsStore {
       return;
     }
     this.loaded = true;
-    const raw = loadPersistedShape();
-    if (!raw) {
+    const { shape, source } = loadPersistedShape();
+    this.loadSource = source;
+    if (!shape) {
       return;
     }
-    this.applyShape(raw);
+    this.applyShape(shape);
+  }
+
+  /**
+   * How the in-memory state was obtained. Additive and read-only: `BACKUP`
+   * means recovered (not authorization-grade); `MALFORMED` / `UNAVAILABLE`
+   * mean a persisted file existed but could not be used.
+   */
+  getLoadSource(): StoreLoadSource | null {
+    this.ensureLoaded();
+    return this.loadSource;
   }
 
   /** True when local disk has no critical domain rows (safe to hydrate from cloud). */
@@ -947,6 +967,7 @@ class OsStore {
     this.conversationThreadMeta.clear();
     this.personalSupervisingAgents.clear();
     this.loaded = false;
+    this.loadSource = null;
   }
 
   /**
@@ -956,6 +977,7 @@ class OsStore {
   resetInMemoryForTests(): void {
     this.unloadForTests();
     this.loaded = true;
+    this.loadSource = "ABSENT";
   }
 
   getCloudLink(projectId: string): CloudProjectLink | undefined {
