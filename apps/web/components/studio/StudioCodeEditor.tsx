@@ -1,303 +1,84 @@
 "use client";
 
-import { Box } from "@mui/material";
-import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
+import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
-  findNextStudioMatch,
-  studioEditorScrollTop,
-  type StudioEditorHandle,
-} from "@/lib/studio-editor-handle";
-import {
-  highlightStudioLine,
-  lineColumnForStudioOffset,
-  offsetForStudioLine,
-  studioLineCount,
-  studioSyntaxLanguage,
-} from "@/lib/studio-syntax";
+  STUDIO_EDITOR_BACKEND_KEY,
+  STUDIO_EDITOR_NARROW_QUERY,
+  resolveStudioEditorBackend,
+  type StudioEditorBackend,
+} from "@/lib/studio-editor-backend";
+import { delegateStudioEditorHandle, type StudioEditorHandle } from "@/lib/studio-editor-handle";
+import { StudioMonacoEditor } from "./StudioMonacoEditor";
+import { StudioTextareaEditor } from "./StudioTextareaEditor";
+import type { StudioCodeEditorProps } from "./studio-code-editor-types";
 
-const TOKEN_COLOR: Record<string, string> = {
-  keyword: "#7EB8FF",
-  string: "#C3E88D",
-  comment: "#6B7280",
-  number: "#F78C6C",
-  plain: "#DCDDE1",
-};
+declare global {
+  interface Window {
+    /** Verification-only: present when NEXT_PUBLIC_STUDIO_EDITOR_TEST_SEAM=1 at build time. */
+    __atlasStudioEditorTest?: {
+      backend: () => StudioEditorBackend;
+      getValue: () => string;
+      getSelection: () => { start: number; end: number };
+      getCursor: () => { line: number; column: number };
+    };
+  }
+}
 
 /**
- * Accessible code surface: a real textarea remains the editor.
- * Highlighting is a visual overlay driven by API `languageHint`.
- * This is not a language service.
+ * The Studio code editor. Picks a backend and exposes one StudioEditorHandle
+ * for whichever backend is mounted.
+ *
+ * The textarea is the default. Monaco is opt-in (localStorage, no UI) and only
+ * on wide viewports. If Monaco cannot load, the textarea takes over.
  */
-export function StudioCodeEditor({
-  value,
-  onChange,
-  languageHint,
-  readOnly,
-  ariaLabel,
-  revealLine,
-  changedLines,
-  onCursorChange,
-  breakpointLines,
-  stoppedLine,
-  onBreakpointToggle,
-  editorRef,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  languageHint: string | null;
-  readOnly: boolean;
-  ariaLabel: string;
-  revealLine?: number | null;
-  /** Working-tree line numbers with an uncommitted change (git.diff), for a gutter marker. */
-  changedLines?: readonly number[];
-  /** Current cursor position (1-based), for tools that act at the cursor (Code tools: hover/definition/references/rename). */
-  onCursorChange?: (line: number, column: number) => void;
-  /** Debugger: lines with a breakpoint set (1-based). Independent of changedLines. */
-  breakpointLines?: readonly number[];
-  /** Debugger: the line currently paused at, if any (1-based). */
-  stoppedLine?: number | null;
-  /** Debugger: gutter click toggles a breakpoint on that line. Gutter stays read-only without this. */
-  onBreakpointToggle?: (line: number) => void;
-  /** Editor-neutral control surface; callers must use this instead of reaching into the DOM. */
-  editorRef?: Ref<StudioEditorHandle>;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const highlightRef = useRef<HTMLPreElement | null>(null);
-  const gutterRef = useRef<HTMLDivElement | null>(null);
-  const lines = value.split("\n");
-  const lineCount = studioLineCount(value);
-  const language = studioSyntaxLanguage(languageHint);
-  const changedLineSet = new Set(changedLines ?? []);
-  const breakpointLineSet = new Set(breakpointLines ?? []);
+export function StudioCodeEditor(props: StudioCodeEditorProps) {
+  const { editorRef, ...rest } = props;
+  const [backend, setBackend] = useState<StudioEditorBackend>("textarea");
+  const [monacoFailed, setMonacoFailed] = useState(false);
+  const inner = useRef<StudioEditorHandle | null>(null);
+  const backendRef = useRef(backend);
 
-  const syncScroll = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    if (highlightRef.current) {
-      highlightRef.current.scrollTop = textarea.scrollTop;
-      highlightRef.current.scrollLeft = textarea.scrollLeft;
-    }
-    if (gutterRef.current) gutterRef.current.scrollTop = textarea.scrollTop;
-  };
-
-  const reportCursor = () => {
-    const textarea = textareaRef.current;
-    if (!textarea || !onCursorChange) return;
-    const { line, column } = lineColumnForStudioOffset(value, textarea.selectionStart);
-    onCursorChange(line, column);
-  };
-
-  const revealLineIn = (textarea: HTMLTextAreaElement, text: string, line: number) => {
-    const offset = offsetForStudioLine(text, line);
-    textarea.focus();
-    textarea.setSelectionRange(offset, offset);
-    textarea.scrollTop = studioEditorScrollTop(line, 40);
-    syncScroll();
-  };
-
-  useImperativeHandle(editorRef, () => {
-    const area = () => textareaRef.current;
-    return {
-      focus: () => area()?.focus(),
-      undo: () => {
-        const textarea = area();
-        if (!textarea) return;
-        textarea.focus();
-        document.execCommand("undo");
-      },
-      redo: () => {
-        const textarea = area();
-        if (!textarea) return;
-        textarea.focus();
-        document.execCommand("redo");
-      },
-      getValue: () => area()?.value ?? "",
-      setValue: (next) => onChange(next),
-      getCursor: () => {
-        const textarea = area();
-        return textarea
-          ? lineColumnForStudioOffset(textarea.value, textarea.selectionStart)
-          : { line: 1, column: 1 };
-      },
-      getSelection: () => {
-        const textarea = area();
-        return { start: textarea?.selectionStart ?? 0, end: textarea?.selectionEnd ?? 0 };
-      },
-      setSelection: (start, end) => area()?.setSelectionRange(start, end),
-      revealLine: (line) => {
-        const textarea = area();
-        if (!textarea || line < 1) return;
-        revealLineIn(textarea, textarea.value, line);
-      },
-      findNext: (needle) => {
-        const textarea = area();
-        if (!textarea || !needle) return false;
-        const text = textarea.value;
-        const at = findNextStudioMatch(text, needle, textarea.selectionEnd ?? 0);
-        if (at < 0) return false;
-        textarea.focus();
-        textarea.setSelectionRange(at, at + needle.length);
-        const line = text.slice(0, at).split("\n").length;
-        textarea.scrollTop = studioEditorScrollTop(line, 60);
-        return true;
-      },
-    } satisfies StudioEditorHandle;
-  });
+  useImperativeHandle(editorRef, () => delegateStudioEditorHandle(() => inner.current), []);
 
   useEffect(() => {
-    if (!revealLine || revealLine < 1) return;
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    revealLineIn(textarea, value, revealLine);
-  }, [revealLine, value]);
+    const query = window.matchMedia(STUDIO_EDITOR_NARROW_QUERY);
+    const apply = () => {
+      let stored: string | null = null;
+      try {
+        stored = window.localStorage.getItem(STUDIO_EDITOR_BACKEND_KEY);
+      } catch {
+        // Storage can be blocked; the default backend applies.
+      }
+      setBackend(resolveStudioEditorBackend({ stored, narrow: query.matches }));
+    };
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, []);
 
-  // Mobile single-pane layout hides this editor (display:none) behind the
-  // Problems/Terminal view; a scrollTop set while hidden does not stick
-  // (zero layout height), though the cursor/selection above already does.
-  // Reapply the same reveal target once the pane is actually laid out again.
+  // The breakpoint gutter exists only in the textarea backend for now.
+  const needsGutterControls = Boolean(props.onBreakpointToggle || props.breakpointLines?.length);
+  const active: StudioEditorBackend =
+    backend === "monaco" && !monacoFailed && !needsGutterControls ? "monaco" : "textarea";
+  backendRef.current = active;
+
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea || !revealLine || revealLine < 1) return;
-    const observer = new ResizeObserver(() => {
-      if (textarea.clientHeight === 0) return;
-      textarea.scrollTop = studioEditorScrollTop(revealLine, 40);
-      syncScroll();
-    });
-    observer.observe(textarea);
-    return () => observer.disconnect();
-  }, [revealLine]);
+    if (process.env.NEXT_PUBLIC_STUDIO_EDITOR_TEST_SEAM !== "1") return;
+    const handle = delegateStudioEditorHandle(() => inner.current);
+    window.__atlasStudioEditorTest = {
+      backend: () => backendRef.current,
+      getValue: () => handle.getValue(),
+      getSelection: () => handle.getSelection(),
+      getCursor: () => handle.getCursor(),
+    };
+    return () => {
+      delete window.__atlasStudioEditorTest;
+    };
+  }, []);
 
-  return (
-    <Box
-      dir="ltr"
-      sx={{
-        position: "relative",
-        display: "grid",
-        gridTemplateColumns: "minmax(2.5rem, auto) 1fr",
-        flex: 1,
-        height: "100%",
-        minHeight: 240,
-        overflow: "hidden",
-        bgcolor: "rgba(14,17,22,0.9)",
-        unicodeBidi: "isolate",
-      }}
-    >
-      <Box
-        ref={gutterRef}
-        aria-hidden={!onBreakpointToggle}
-        sx={{
-          overflow: "hidden",
-          px: 1,
-          py: 2,
-          textAlign: "right",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-          fontSize: 12.5,
-          lineHeight: 1.55,
-          color: "#6B7280",
-          userSelect: "none",
-          borderRight: "1px solid rgba(232,234,238,0.12)",
-        }}
-      >
-        {Array.from({ length: lineCount }, (_, i) => {
-          const line = i + 1;
-          const isBreakpoint = breakpointLineSet.has(line);
-          const isStopped = stoppedLine === line;
-          return (
-            <Box
-              key={line}
-              component={onBreakpointToggle ? "button" : "div"}
-              type={onBreakpointToggle ? "button" : undefined}
-              aria-label={onBreakpointToggle ? `Toggle breakpoint on line ${line}` : undefined}
-              onClick={onBreakpointToggle ? () => onBreakpointToggle(line) : undefined}
-              sx={{
-                display: "block",
-                width: "100%",
-                background: isStopped ? "rgba(255, 196, 0, 0.18)" : "none",
-                border: 0,
-                p: 0,
-                m: 0,
-                font: "inherit",
-                color: isBreakpoint ? "#F07178" : "inherit",
-                cursor: onBreakpointToggle ? "pointer" : "inherit",
-                ...(changedLineSet.has(line)
-                  ? { borderInlineStart: "2px solid #6FBF73", ps: "6px", ms: "-7px" }
-                  : {}),
-              }}
-            >
-              {isBreakpoint ? "● " : ""}
-              {line}
-            </Box>
-          );
-        })}
-      </Box>
-      <Box sx={{ position: "relative", minWidth: 0 }}>
-        <Box
-          ref={highlightRef}
-          component="pre"
-          aria-hidden
-          sx={{
-            m: 0,
-            p: 2,
-            position: "absolute",
-            inset: 0,
-            overflow: "hidden",
-            pointerEvents: "none",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-            fontSize: 12.5,
-            lineHeight: 1.55,
-            whiteSpace: "pre",
-            color: "#DCDDE1",
-          }}
-        >
-          {lines.map((line, index) => (
-            <Box key={index} component="div">
-              {highlightStudioLine(line, language).map((token, tokenIndex) => (
-                <Box
-                  key={tokenIndex}
-                  component="span"
-                  sx={{ color: TOKEN_COLOR[token.kind] ?? TOKEN_COLOR.plain }}
-                >
-                  {token.text || " "}
-                </Box>
-              ))}
-            </Box>
-          ))}
-        </Box>
-        <Box
-          ref={textareaRef}
-          component="textarea"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onScroll={syncScroll}
-          onSelect={reportCursor}
-          onClick={reportCursor}
-          onKeyUp={reportCursor}
-          readOnly={readOnly}
-          data-studio-editor
-          spellCheck={false}
-          aria-label={ariaLabel}
-          aria-readonly={readOnly}
-          sx={{
-            position: "relative",
-            zIndex: 1,
-            m: 0,
-            p: 2,
-            width: "100%",
-            height: "100%",
-            overflow: "auto",
-            fontSize: 12.5,
-            lineHeight: 1.55,
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-            bgcolor: "transparent",
-            color: "transparent",
-            caretColor: "#DCDDE1",
-            border: 0,
-            resize: "none",
-            outline: "none",
-            whiteSpace: "pre",
-          }}
-        />
-      </Box>
-    </Box>
+  return active === "monaco" ? (
+    <StudioMonacoEditor {...rest} editorRef={inner} onLoadFailed={() => setMonacoFailed(true)} />
+  ) : (
+    <StudioTextareaEditor {...rest} editorRef={inner} />
   );
 }

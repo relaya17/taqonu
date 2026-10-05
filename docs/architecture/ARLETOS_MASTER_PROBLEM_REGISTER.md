@@ -8,6 +8,8 @@
 
 **Reconciled 2026-10-05 (§7.20):** the Debugger P0 security/lifecycle foundation and the CDP Studio UI vertical slice are recorded there against HEAD `9eb18285ae46f1db81eebb77acbae064a02cf366`; the Stage 8 / Stage 9 status conflict between §3, §J, §O and §P is recorded as K-13. Earlier text in this document is preserved. Statuses of Stages 10–15 were not re-audited in that pass.
 
+**Reconciled 2026-10-05, later (§7.21):** the editor decision and Phase 0 (editor facade plus an opt-in Monaco backend) are recorded there against HEAD `272237a488958cae73b8c03b51facf916f62e24c`. The earlier TEXTAREA recommendation is **SUPERSEDED** (K-16); Monaco is the approved editor direction, subject to completing verification, and is **not** the default. Phase 0 is **VERIFIED WITH LIMITATIONS** and **not committed**. A Stage 9 A/B run found no regression, and recorded a current-state conflict with the Stage 9 closure figures (K-17).
+
 ---
 
 ## 0. At a glance
@@ -18,6 +20,8 @@
 | **Next authorized action** | See §15 |
 | **Debugger / CDP (2026-10-05, §7.20)** | No numbered stage in §3; closest is Stage 15 (§J), built out of sequence. **P0 security/lifecycle foundation: CLOSED** for the authorized scope. **CDP Studio UI vertical slice (Resume / Pause / Evaluate): IMPLEMENTED + VERIFIED** (local, Windows; real-browser E2E 3 passes). **D1 Inspector isolation: DESIGN OPEN / production INFRASTRUCTURE BLOCKED.** Breakpoints / Step: NOT STARTED. Production readiness: NOT DECLARED. Commit `9eb1828`, on origin/main |
 | **Register reconciliation (2026-10-05)** | §7.20 added; dated notes added beside stale text (§11 capability row, §11.22 Part 3, §J, §O, §P); K-13 to K-15 added to §14; §15 updated. No earlier text removed |
+| **Editor (Monaco), Phase 0 (2026-10-05, §7.21)** | **Textarea recommendation: SUPERSEDED.** **Monaco: approved editor direction, subject to completing verification; NOT the default.** Phase 0 (editor facade `272237a`, pushed; opt-in Monaco backend, uncommitted): **VERIFIED WITH LIMITATIONS**. Stage 9 A/B: **no regression** (61 passed / 4 failed on both Phase 0 and clean HEAD, the same four tests). Two Monaco-variant specs passed with a Monaco-active guard and a test-only value seam. Worker: **BUILT / BUNDLED / NOT RUNTIME-EXERCISED.** Screen reader: **NOT VERIFIED.** Default backend: textarea. Production behaviour: unchanged. Phase 0 commit: **not done**; push: **not done** |
+| **Register reconciliation (2026-10-05, later)** | §7.21 added; dated notes beside the textarea recommendation (§11.15 Q11-4, §11.19, §11.22 Part 1, §L AD-4); K-16 and K-17 added to §14; §15 updated. No earlier text removed |
 | ✅ Closed | Stage 1 / 1A, Stage 2 (local), ARL-HYDRATION-001 (§5) |
 | 🕘 Historical proof | STAGE_9 program, 19 passed at `2587d1b`. Valid history; **requires regression** on current HEAD (§5) |
 | Current Stage 9 E2E run | Earlier run (before Stage 4): **NOT GREEN**, 16 passed, 1 failed, 2 flaky, exit 1. After Stage 4 (2026-09-26): **19 passed, exit 0**. Earlier findings A–C not reproduced, cause unexplained (§11.1, §7.8). 2026-09-27 (Stage 7 tree): full runs 1–2 failed on `auth-studio.spec.ts:14`, full run 3 **20 passed, exit 0**; current 22-test suite **22 passed, exit 0** (Arlet); intermittent failure tracked as **ARL-E2E-001** (✅ CLOSED §7.17 — 106/0/1, `softenLoopbackSessionCookies` fix). §7.14 tree (French, header, glass; uncommitted): full runs A/B/C **NOT GREEN** (24/25, 23/25, 26/28); run C failures are `auth-studio.spec.ts:14` (ARL-E2E-001 — now CLOSED) and `isolation.spec.ts:68` (**ARL-E2E-002**, OPEN); all locale and header tests passed |
@@ -1362,7 +1366,7 @@ not delete"); short pointer notes were added after each affected table
 | **Split editor / multiple editor groups** | `MISSING` | `studio/page.tsx` renders exactly one `editor` grid area; no split-pane logic found. |
 | **True multi-cursor / column (box) selection** | `BLOCKED` → **2026-10-04: the blocking decision is now `DECIDED` (Monaco), but the capability itself remains `FUTURE / NOT IMPLEMENTED`** — Monaco being chosen as foundation does not itself grant multi-cursor; no migration has occurred | `StudioCodeEditor.tsx` is unchanged — still a single native `<textarea>` (confirmed by source read, §11.17 re-confirmation, re-confirmed 2026-10-04). HTML textareas support exactly one caret/selection range — a browser platform limit. See §11.20 — do not read Q11-4's decision as this capability being complete. |
 | **Status bar (persistent branch + errors + language + line:col)** | `IMPLEMENTED BUT NOT VERIFIED` — left as such per instruction, not escalated to MISSING or VERIFIED without full evidence | A bottom bar element exists in the live DOM (project name, "Run", "Checks" controls observed during this session's live testing) and `StudioLanguageBar.tsx` shows language mode while editing, but no single persistent component combining branch + error count + language + cursor position across all views was found or screenshotted. Needs a dedicated, targeted verification pass before any status change — not performed here, per instruction to leave this unverified. |
-| **Q11-4 (editor upgrade: Monaco vs. extended textarea vs. CodeMirror)** | `ARCHITECTURAL DECISION — left open, not decided here` | Per explicit instruction: no editor replacement is chosen, implemented, or recommended in this pass. `StudioCodeEditor.tsx` remains the existing `<textarea>` implementation, untouched. This decision continues to gate Debugger, Split editor, and true multi-cursor above. |
+| **Q11-4 (editor upgrade: Monaco vs. extended textarea vs. CodeMirror)** | `ARCHITECTURAL DECISION — left open, not decided here` | Per explicit instruction: no editor replacement is chosen, implemented, or recommended in this pass. `StudioCodeEditor.tsx` remains the existing `<textarea>` implementation, untouched. This decision continues to gate Debugger, Split editor, and true multi-cursor above. *(Superseded 2026-10-05, original kept: "left open" no longer applies. Monaco is the approved editor direction subject to completing verification, not the default; the textarea recommendation is superseded. See §7.21 and K-16.)* |
 
 **Update (2026-10-04, later the same day — Arlet's Master Decision &
 Capability Direction Report):** Q11-4 is no longer open. **Arlet decided:
@@ -1687,6 +1691,8 @@ Pass; decision stays open per Arlet's instruction in this message):**
 
 > **`RECOMMENDATION: KEEP TEXTAREA`** (for now; not a final ruling)
 
+> **Note 2026-10-05 (original kept; see §7.21, K-16):** this recommendation and the `ARLET DECISION REQUIRED` status below are **SUPERSEDED**. Arlet confirmed on 2026-10-05 that the Monaco decision of 2026-10-04 is the approved editor direction and is not reopened. Monaco is approved **subject to completing verification** (§7.21); it is **not** the default, and the textarea remains the default and the fallback. The facade this section and §11.21 proposed was built and verified (`272237a`).
+
 Reasoning: most of the "IDE feel" gap this benchmark originally found
 (tabs, breadcrumbs, persistent file tree, bottom panel, Quick Open,
 manually-triggered Code tools) is already closed without Monaco, per
@@ -1926,6 +1932,8 @@ Recorded, not fixed. Source documents are not edited by this master, with one ex
 | K-13 | §J (Stage 8 "PARTIAL", Stage 9 "OPEN"), §O (Stage 8 PARTIAL, Stage 9 OPEN, "Action required: Arlet commits register") and §P (single next action: AD-1/AD-2/AD-3 and the Stage 9 verification run) | §3 rows 8–9, §Q-T.9 and §7.17: Stage 8 governance closure scope **CLOSED** (remaining EAG-SEC-01 security/reliability scope NOT STARTED); Stage 9 **CLOSED** (106/0/1) | **SUPERSEDED** (2026-10-05): dated notes added beside the original text in §J, §O and §P; original text kept. Statuses of Stages 10–15 not re-audited |
 | K-14 | §11 capability row "Debugger / DAP integration … No debug component, no launch config, no DAP client found anywhere in `apps/web`/`apps/api`", and §11.22 Part 3 "architecture only, nothing implemented" | `455d935` (governed Debugger backend), `35e6d7c` (Studio Debugger panel), `9eb1828` (verified CDP vertical slice). Breakpoints, step, call stack, variables, source maps: still NOT STARTED. **No DAP client exists**; the transport is the Node Inspector Protocol (CDP) | **SUPERSEDED in part** (2026-10-05): dated notes added; original text kept. Not a claim of VS Code debugger parity |
 | K-15 | §J Stage 15 "No debugger component exists … debugger remains a separate, unapproved capability" and its dependency on Stage 14 | The Debugger was built and verified out of sequence, ahead of Stages 12–14, under explicit Arlet authorizations (P0 policy decisions 2026-10-05) | **CONFLICTED** (sequence): recorded, not resolved here. Stage 15's formal status is unchanged; ordering is an Arlet decision (§7.20, open decisions) |
+| K-16 | §11.22 Part 1 "`RECOMMENDATION: KEEP TEXTAREA`" and "`ARLET DECISION REQUIRED`"; §11.15 Q11-4 and §L AD-4 "REOPENED"; §11.19 Q11-4 row "left open"; against §11.20 "Monaco selected" | Arlet, 2026-10-05: the 2026-10-04 Monaco decision is the approved editor direction and is not reopened. Phase 0 (facade pushed as `272237a`; opt-in Monaco backend, uncommitted) is **VERIFIED WITH LIMITATIONS** (§7.21). Textarea is still the default | **SUPERSEDED** (2026-10-05): dated notes added beside the original text; original kept. Monaco is **not** the default and is not claimed complete |
+| K-17 | §3 rows and §7.17: Stage 9 **CLOSED**, full E2E 106 / 0 / 1 on 2026-09-27 | 2026-10-05, local, `next dev`: `pnpm exec playwright test --project=stage9` gives **61 passed / 4 failed** on clean HEAD `272237a` code **and** on the Phase 0 tree, the same four tests (§7.21). The two figures are different suites and environments | **CONFLICTED** (current state): recorded, not resolved. Stage 9's formal status is **not changed** here and is **not reopened**. The four failures are classified in §7.21 (none is caused by Phase 0) |
 
 ## 15. Next authorized action
 
@@ -1938,6 +1946,8 @@ Recorded, not fixed. Source documents are not edited by this master, with one ex
 **Now:** Stage 6 is ✅ **COMMITTED / PUSHED** (`aa9c8bf`, origin/main). Documentation reconciled 2026-09-28: the "COMMITTED: no / PUSHED: no" status was a record-keeping gap, not a missing commit. Stage 6 is not CLOSED (Production not verified). Stage 7 is ✅ **CLOSED (local verification)**: S7-A to S7-E VERIFIED, S7-F DEFERRED, §7.13. ARL-E2E-001 stays OPEN outside Stage 7. Stage 5 stays CLOSED. Stage 9 and Production stay separate.
 
 **Now (2026-10-05):** the Debugger P0 foundation is CLOSED and the CDP Studio UI vertical slice is IMPLEMENTED + VERIFIED, committed and pushed as `9eb1828` (§7.20). **No capability is currently authorized.** The next capability is chosen by Arlet after this reconciliation, through a Studio capability-gap map; breakpoints and step are candidates, not authorized (they also depend on the D1 isolation decision before anything may be declared production-safe). This paragraph does not reopen Stages 5–9 and does not change Stage 15's formal status.
+
+**Now (2026-10-05, later):** the editor facade is committed and pushed (`272237a`). **Phase 0** (an opt-in Monaco backend behind the facade, textarea default) is **VERIFIED WITH LIMITATIONS** and is **not committed** (14 paths in the working tree). Monaco is the approved editor direction, **subject to completing verification**; it is **not** the default. **No capability is authorized.** The single next step is Arlet's decision on whether Phase 0 is committed as opt-in only (§7.21, open decisions). Nothing here changes the default backend, any production behaviour, or Stage 9's formal status.
 
 ---
 
@@ -3758,7 +3768,7 @@ Sequence is ordered by: (1) unblocks other work, (2) uses existing APIs, (3) use
 | Q11-1 | What context does `StudioAgentBriefing` actually send? (current file? selection? diagnostics? Git state?) | **ANSWERED 2026-10-04 — see §11.18** | Determines if Chat already has IDE context or not |
 | Q11-2 | Does `StudioGitStatus` show branch only, or also staged/unstaged counts? | **ANSWERED 2026-10-04 — see §11.18** | Determines Git UX gap severity |
 | Q11-3 | Is there a keyboard shortcut mapping for Studio? | **ANSWERED 2026-10-04 — see §11.18** | Determines if keyboard-first gap is real or undocumented |
-| Q11-4 | Should the editor be upgraded to Monaco, or extended textarea first? | **RECORDED 2026-10-04 → Monaco named as long-term foundation direction, then explicitly REOPENED by Arlet the same day: "החלטה על בחירת עורך הקוד צריכה להישאר פתוחה עד לקבלת המלצה מנומקת מהסוכן והכרעה שלך". Status: `ARLET DECISION REQUIRED` (not `DECIDED`) — see §11.21 for the formal reasoned recommendation.** | Determines path for go-to-def, breakpoints, folding |
+| Q11-4 | Should the editor be upgraded to Monaco, or extended textarea first? | **RECORDED 2026-10-04 → Monaco named as long-term foundation direction, then explicitly REOPENED by Arlet the same day: "החלטה על בחירת עורך הקוד צריכה להישאר פתוחה עד לקבלת המלצה מנומקת מהסוכן והכרעה שלך". Status: `ARLET DECISION REQUIRED` (not `DECIDED`) — see §11.21 for the formal reasoned recommendation.** | Determines path for go-to-def, breakpoints, folding. *(Superseded 2026-10-05, original kept: `ARLET DECISION REQUIRED` and the textarea recommendation no longer apply. Monaco is the approved direction subject to completing verification; textarea stays the default. See §7.21, K-16.)* |
 | Q11-5 | Should `git.commit` and `git.push` ever be added to the governed catalog? | **DECIDED by Arlet (Stage 8 closure, 2026-09-27) → AD-3: YES, HUMAN-ONLY, not agent-invokable, no UI in Stage 8. Runtime-VERIFIED 2026-10-04 — see §11.18.** | Determines whether Studio can close the Git write workflow |
 | Q11-6 | Should Atlas Studio have an extension system, or remain a closed workbench? | **DECIDED by Arlet 2026-10-03 → ADR-026** | Native ArletOS extensions: built-in (Git, Tests) + official catalog; user-scope install/permissions, project-scope enablement/order; no third-party code until a separate ADR |
 | Q11-7 | Does the current `StudioPatchDiff` support arbitrary file diff, or only patch workflow diffs? | **ANSWERED 2026-10-04 — see §11.18** | Determines if standalone diff viewer needs building |
@@ -5094,7 +5104,7 @@ The following evidence classes are required to close a stage. They must not be c
 | **AD-1** | REQ-8-5: Is explicit agent registration enforcement required, or is identity boundary sufficient? | Stage 8 | Stage 8 cannot close | Stage 8 closure |
 | **AD-2** | REQ-8-7: What is the scope of the application-agent boundary? Is a dedicated enforcer component needed? | Stage 8 | Stage 8 cannot close | Stage 8 closure |
 | **AD-3** | Q11-5: Should `git.commit` and `git.push` be added to the governed command catalog? | Stage 8 / Stage 13 | **DECIDED + IMPLEMENTED (Stage 8, 2026-09-27) + runtime-VERIFIED (2026-10-04, see §11.18)** — HUMAN-ONLY, not agent-invokable. | — |
-| **AD-4** | Q11-4: Editor upgrade — Monaco vs extended textarea vs CodeMirror? | Stage 12 pre-decision | **REOPENED by Arlet 2026-10-04** (same day as the earlier `DECIDED` note): the earlier "Monaco selected" record stands as history, not deleted, but Arlet explicitly instructed that the final choice "צריכה להישאר פתוחה" (must remain open) until a reasoned agent recommendation is delivered and Arlet rules on it. Current status: `ARLET DECISION REQUIRED`. Formal recommendation delivered in §11.21 (`RECOMMENDATION: KEEP TEXTAREA`, for now). No code changed, no dependency installed. | Stage 13+ advanced editor features (still pending the decision) |
+| **AD-4** | Q11-4: Editor upgrade — Monaco vs extended textarea vs CodeMirror? | Stage 12 pre-decision | **REOPENED by Arlet 2026-10-04** (same day as the earlier `DECIDED` note): the earlier "Monaco selected" record stands as history, not deleted, but Arlet explicitly instructed that the final choice "צריכה להישאר פתוחה" (must remain open) until a reasoned agent recommendation is delivered and Arlet rules on it. Current status: `ARLET DECISION REQUIRED`. Formal recommendation delivered in §11.21 (`RECOMMENDATION: KEEP TEXTAREA`, for now). No code changed, no dependency installed. | Stage 13+ advanced editor features (still pending the decision). *(Superseded 2026-10-05, original kept: the decision is no longer pending. Monaco is the approved direction subject to completing verification; `RECOMMENDATION: KEEP TEXTAREA` is superseded. Textarea is still the default. See §7.21, K-16.)* |
 | **AD-5** | Q11-6: Should Atlas Studio have an extension system, or remain a closed workbench? | Stage 15 | **DECIDED 2026-10-03 → ADR-026** | — |
 | **AD-6** | Bottom panel layout: full-tab model → persistent panel model — architectural approval required | Stage 14 | **SUPERSEDED BY EVIDENCE (2026-10-04, see §11.19):** current source already implements the persistent-panel model (`apps/web/app/[locale]/studio/page.tsx`, CSS Grid `gridArea: "bottom"`, independent of file/editor tabs). No architectural approval is pending on this point; the decision this row anticipated already happened in code. | — |
 | **AD-7** | Stage 8 §3 table label: authorize update from "NOT STARTED" to "PARTIAL" | Documentation | Register is factually incorrect | Ongoing accuracy |
@@ -8496,3 +8506,103 @@ The CDP-specific 10 s announce timeout and 10 s command timeout, and the 4,096-c
 Edited: header note, §0 rows, one §11 capability row, §11.22 Part 3, §J (Stage 8, Stage 9, Stage 15 notes), §O and §P notes, §14 rows K-13 to K-15, §15, and this section. **No earlier text was removed or rewritten**; every correction is a dated note beside the original. Stages 10–15 were not re-audited. No other file was changed. This edit has not been staged, committed or pushed.
 
 *§7.20 recorded 2026-10-05 by the AI assistant (Copilot SDK in VS Code) from the evidence cited above. No commit or push of this document was performed.*
+
+---
+
+## §7.21 — Monaco editor direction and Phase 0 (editor facade + opt-in Monaco backend): record (2026-10-05)
+
+**Purpose.** Record, from evidence collected on 2026-10-05, the status of the editor decision and the result of Phase 0. This is a **record, not an authorization**: nothing here authorizes a default change, removal of the textarea, a commit, or any new capability.
+
+**Baseline.** HEAD `272237a488958cae73b8c03b51facf916f62e24c` (`refactor(studio): add editor facade`), parent `d668be8dc4797d20404d685afea759aa299e73ea`; pushed, equal to `origin/main` at the time of writing. **Phase 0 itself (below) is NOT committed**: 14 paths are uncommitted in the working tree. Environment: local Windows development host, Node v22.23.3, pnpm 10.28.2, Chromium (Playwright) only. **Nothing here is Production-verified.**
+
+### Status vocabulary used in this section
+
+| Term | Meaning here |
+|---|---|
+| **VERIFIED** | Evidence collected in this environment for exactly the stated claim, with no known limitation that weakens it. |
+| **VERIFIED WITH LIMITATIONS** | Evidence collected, but the claim is bounded by named limitations. It holds only within them, and the limitations are listed next to it. |
+| **PRE-EXISTING** | Reproduces identically on clean HEAD code without the change under review. It says nothing about root cause. |
+| **ENVIRONMENT/TIMING FLAKE** | Non-deterministic: seen in at least one run and not reproduced in later reruns, attributed to environment or timing. It is **not** proven impossible for the change under review. |
+| **NOT RUNTIME-EXERCISED** | Built, bundled or statically checked, but no run created or used it. Existence is not behaviour. |
+| **NOT VERIFIED** | No evidence has been collected. Not a failure and not a pass. |
+
+These terms are not interchangeable: `VERIFIED WITH LIMITATIONS` is not `VERIFIED`; `PRE-EXISTING` is not a pass; a flake is not a proof of safety; and `NOT RUNTIME-EXERCISED` or `NOT VERIFIED` must never be read as working.
+
+### Editor decision
+
+- **2026-10-04 (history, kept):** Monaco was recorded as the long-term foundation (§11.20), explicitly reopened the same day (§11.15 Q11-4, §L AD-4), and §11.22 Part 1 recorded `RECOMMENDATION: KEEP TEXTAREA`.
+- **2026-10-05:** Arlet confirmed that the 2026-10-04 Monaco decision is the approved editor direction and is not reopened. Therefore the textarea recommendation and the `ARLET DECISION REQUIRED` status are **SUPERSEDED** (K-16), with the original text kept.
+- **Monaco is approved subject to completing verification.** It is **not** the default, **not** claimed complete, and the textarea is **not** removed. The textarea remains the default and the fallback.
+
+### What Phase 0 contains
+
+- **Pushed, `272237a`:** the `StudioEditorHandle` facade (focus, undo, redo, get/set value, cursor, selection, reveal line, find next). Verified in a real browser against the original code, with the same spec passing on both.
+- **Uncommitted Phase 0, 14 paths:** `apps/web/package.json`, `package.json` (script `test:e2e:editor`), `pnpm-lock.yaml`, `StudioCodeEditor.tsx` (now a thin dispatcher), `StudioTextareaEditor.tsx` (the previous implementation, moved), `StudioMonacoEditor.tsx`, `studio-code-editor-types.ts`, `studio-editor-handle.ts`, `studio-editor-backend.ts` and its test, `studio-monaco.ts`, `monaco-modules.d.ts`, `e2e/editor/studio-editor-backends.spec.ts`, `playwright.editor.config.ts`.
+- **Behaviour:** the textarea is the default. Monaco is opt-in only, through `localStorage` key `atlas.studio.editorBackend` = `monaco`, with no UI. A viewport below the MUI `md` breakpoint (900 px) always uses the textarea. The textarea takes over if Monaco fails to load, or when the breakpoint-gutter props are used (that gutter exists only in the textarea backend). Monaco's own find widget, suggestions, hover and context menu are off; JSON has no bundled tokenizer and is shown as plain text.
+- **Dependency:** `monaco-editor@0.57.0`, exact pin, `apps/web` only. Two new transitive packages (`marked@14.0.0`, `dompurify@3.4.15`) have **not** been audited. The lockfile also reshuffled one unrelated `@vitest/mocker` peer variant (a pnpm side effect, not hand-edited).
+- **Production behaviour:** unchanged by default.
+
+### Evidence
+
+| Item | Status | Evidence and limits |
+|---|---|---|
+| Phase 0 implementation | **VERIFIED WITH LIMITATIONS** | The rows below; limits are the "Not verified / not done" list. |
+| Web unit tests | **VERIFIED** | `pnpm exec vitest run apps/web/lib apps/api/src/__tests__/web-studio-surfaces.test.ts`: 31 files, 198 tests passed. |
+| Web `tsc` | **VERIFIED** | `pnpm exec tsc -p tsconfig.json --noEmit` in `apps/web`, run with no dev server: exit 0, no output. An earlier run failed with TS6053 (`.next/types` missing) while `next dev` was rewriting `.next`; that was a **verification artifact**, not a type error. |
+| ESLint; whitespace | **VERIFIED** | Exit 0 on the 11 changed or new code files; `git -c core.whitespace=cr-at-eol diff --check` exit 0. |
+| e2e `tsc` | **PRE-EXISTING** errors only | 2 errors in `e2e/a11y.spec.ts`; none in new files. |
+| Editor regression gate (same behaviours, textarea and Monaco) | **VERIFIED WITH LIMITATIONS** | `e2e/editor/studio-editor-backends.spec.ts` via `playwright.editor.config.ts` (`pnpm test:e2e:editor`): 3 consecutive full passes on the dev server after the last gate change, plus 1 pass on a production build (`next build` exit 0, then `next start`). It covers: opens clean; find (next, wrap, no match, focus returns); cursor tracking into Code tools; undo/redo; edit-position tracking; go to line; Tab leaves the editor; CRLF file stays LF; Hebrew text; read-only file rejects typing; axe; local-only requests; narrow viewport keeps the textarea. **Negative control:** with Monaco's undo disabled, the gate failed at the undo step. Earlier gate failures were mistakes in the test itself and were fixed in the test (no timeout was changed). Limits: Chromium on Windows only. |
+| Local bundling | **VERIFIED WITH LIMITATIONS** | The production output contains Monaco chunks and the base editor worker asset; no CDN, unpkg or jsdelivr string appears in the Monaco chunks. In the gate, all requests are same-origin except Google Fonts (see below). |
+| Worker | **BUILT / BUNDLED / NOT RUNTIME-EXERCISED** | A base editor worker is built and referenced, but **0 workers were created in every gate run**. Nothing proves it is required, and no run exercised it. |
+| Screen reader | **NOT VERIFIED** | No screen reader was used. A passing axe scan is **not** screen-reader verification (see the `editContext` finding). |
+| axe colour-contrast | **PRE-EXISTING** baseline | Reported on both backends (textarea 21 nodes, Monaco 22). Tolerated by the gate and recorded; not fixed. |
+| External requests | **PRE-EXISTING** baseline | 21 Google Fonts requests from `apps/web/app/[locale]/layout.tsx`, on every page and unrelated to the editor. The gate tolerates exactly those hosts. "Zero external requests" does **not** hold app-wide. |
+
+### Stage 9 A/B (no regression)
+
+- **Command (both runs):** `pnpm exec playwright test --project=stage9 '--reporter=list,json'`, against `next dev` on port 3000 and the API on 4000, local Supabase in Docker.
+- **Phase 0 tree:** 61 passed, 4 failed (65 tests, 10.4 min). **Clean HEAD code** (the two tracked editor files reverted, the new files unimported): 61 passed, 4 failed (12.4 min). **The same four tests failed in both.** No test passed on clean HEAD and failed on Phase 0.
+- The two Stage 9 specs that read the editor through `getByRole("textbox")` (`a11y-studio` tabs, `isolation`) **passed** with the textarea default.
+
+| Failing test | Both runs | Classification |
+|---|---|---|
+| `auth-studio` logout | `<nextjs-portal>` dev overlay intercepts pointer events; 120 s timeout | **PRE-EXISTING** (dev-mode overlay) |
+| `avr` Apply, Verify, Rollback | `APPLIED` chip hidden after 20 s | **PRE-EXISTING** |
+| `product-surfaces` `/en?view=activity` | axe `aria-prohibited-attr` on `aria-busy="true" aria-label="Loading activity"` | **PRE-EXISTING** |
+| `extensions` Git, Grant step | "Grant permissions" button disabled; 150 s timeout. Identical in 5 of 5 runs that reached the step (HEAD full, HEAD ×2, Phase 0 ×2) | **PRE-EXISTING** (environment-state suspected, **root cause not diagnosed**: the buttons are disabled by an in-flight mutation) |
+| `extensions` Git, axe step | Contrast 1.03 on a MUI tooltip at opacity 0, seen **once**, in the first Phase 0 run; the axe step passed in all 5 later runs | **ENVIRONMENT/TIMING FLAKE** (one observation; not proven impossible for Phase 0, but not reproduced and the node is unrelated to the editor) |
+
+The `extensions` test therefore failed at different steps in different runs, and every run that reached the Grant step failed there. None of the four failures was fixed, and no test was changed. The first Phase 0 run happened to stop earlier, at the axe step.
+
+### Monaco variants of the two textbox-reading specs
+
+- **What ran:** temporary copies of `a11y-studio.spec.ts` (tabs test) and `isolation.spec.ts` that opt the browser into Monaco through `addInitScript`. The copies were **deleted**; the original Stage 9 specs were **not modified** (`git diff` on `e2e/stage9` is empty).
+- **Without the seam: both FAILED**, on the first value assertion: `getByRole('textbox', { name }) … Error: Not an input element`. The page snapshot showed Monaco loaded and the correct text rendered. **Root cause:** Monaco 0.57 defaults to `editContext: true` in Chromium, and in that mode (`screenReaderSupport.js`) it renders `<div role="textbox" aria-label=…>` plus a separate unnamed IME `<textarea>`. The role-`textbox` match is a `div` with no `.value`, so `toHaveValue` can never apply. The cause is **not** a content-editing failure.
+- **With the seam: both PASSED** (3 of 3 including setup, 1.6 min), including the full-page axe scan in the tabs test. Each value read first asserts that exactly one `[data-studio-editor-backend="monaco"]` element exists and that the seam reports `backend() === "monaco"`, to rule out a silent fallback to the textarea. The six `toHaveValue` calls became two checks each: a `role=textbox` element with that name is attached (kept), and the seam value equals the expected string, with the same 20 s timeout. The two `toHaveCount(0)` textbox assertions were unchanged.
+- **The seam is test-only.** `window.__atlasStudioEditorTest` exposes `backend()`, `getValue()`, `getSelection()` and `getCursor()`, each delegating to `StudioEditorHandle`. It exists only when `NEXT_PUBLIC_STUDIO_EDITOR_TEST_SEAM=1` is set at dev or build time, and no product path uses it. `playwright.editor.config.ts` sets it; the root Stage 9 config does **not**, so any future spec that reads editor content under Monaco needs it set when the web server starts.
+
+### Not verified / not done
+
+- **Screen reader:** NOT VERIFIED. This blocks any default flip. Under `editContext` the accessible textbox is a `div`, so assistive technology and tooling that expect a `textarea` value will see something different from today.
+- **Worker:** NOT RUNTIME-EXERCISED (see above).
+- **Stage 9 under Monaco:** only the two textbox-reading specs were run; the rest of Stage 9 ran with the textarea.
+- **Not run or not verified:** the changed-line gutter visual in Monaco; a real touch device (the narrow-viewport fallback was tested only in an emulated 390 × 844 viewport); any browser other than Chromium; any OS other than Windows; the new transitive dependencies (no audit); Production.
+- **Not done:** no default change, no textarea removal, no breakpoint gutter, multi-cursor, split editor or inline diagnostics in Monaco, no Phase 0 commit or push.
+
+### Open decisions (Arlet)
+
+1. **Commit Phase 0** (the 14 paths) as **opt-in only**, with the textarea staying the default?
+2. The criteria for ever making Monaco the default. The stated policy so far: desktop targets Monaco, narrow and mobile viewports keep the textarea, and accessibility falls back to the textarea if Monaco does not pass the required checks. Open: what counts as "passing" (at least screen-reader verification and a runtime-exercised worker).
+3. Whether "zero external requests" applies app-wide (the Google Fonts baseline) or only to the editor.
+4. The policy for the test seam in future specs that read editor content under Monaco.
+5. An audit of the new transitive dependencies before any commit.
+
+### Single next step
+
+**Arlet decides whether Phase 0 is committed as opt-in only** (decision 1). Until then, no capability, no default flip and no commit is authorized.
+
+### Reconciliation scope
+
+Edited: the header note, §0 rows, dated notes beside the textarea recommendation (§11.15 Q11-4, §11.19 Q11-4 row, §11.22 Part 1, §L AD-4), §14 rows K-16 and K-17, §15, and this section. **No earlier text was removed or rewritten.** No product code, existing test, or default backend was changed by this edit, and it has not been staged, committed or pushed.
+
+*§7.21 recorded 2026-10-05 by the AI assistant (Copilot SDK in VS Code) from the evidence cited above. No commit or push of this document was performed.*

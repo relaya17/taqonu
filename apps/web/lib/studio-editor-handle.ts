@@ -39,6 +39,27 @@ export interface StudioEditorHandle {
 /** Line height of the current editor surface, used for scroll maths. */
 export const STUDIO_EDITOR_LINE_HEIGHT = 19.375;
 
+/**
+ * A stable handle that forwards to whichever backend is mounted right now, so
+ * callers keep one reference while the backend underneath is swapped.
+ */
+export function delegateStudioEditorHandle(
+  current: () => StudioEditorHandle | null,
+): StudioEditorHandle {
+  return {
+    focus: () => current()?.focus(),
+    undo: () => current()?.undo(),
+    redo: () => current()?.redo(),
+    getValue: () => current()?.getValue() ?? "",
+    setValue: (next) => current()?.setValue(next),
+    getCursor: () => current()?.getCursor() ?? { line: 1, column: 1 },
+    getSelection: () => current()?.getSelection() ?? { start: 0, end: 0 },
+    setSelection: (start, end) => current()?.setSelection(start, end),
+    revealLine: (line) => current()?.revealLine(line),
+    findNext: (needle) => current()?.findNext(needle) ?? false,
+  };
+}
+
 /** Scroll offset that brings `line` (1-based) near the top, leaving `margin` px above it. */
 export function studioEditorScrollTop(line: number, margin: number): number {
   return Math.max(0, (line - 1) * STUDIO_EDITOR_LINE_HEIGHT - margin);
