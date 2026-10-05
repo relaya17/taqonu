@@ -87,7 +87,6 @@ export function StudioGitStatus({
     setScopedDiffPath(null);
     onFileHunksChange?.([]);
     // onFileHunksChange is a per-render callback from the page, not state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, projectId]);
 
   const last = useQuery({

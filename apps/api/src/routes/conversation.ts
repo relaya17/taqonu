@@ -205,6 +205,9 @@ export async function registerConversationRoutes(
       }
     }
 
+    // PSA experiment: baseline arm suppresses all retained knowledge injection.
+    const isBaseline = body.experimentArm === "baseline";
+
     const projects = osStore
       .listProjects()
       .filter((project) => canReadProjectScoped(user, project.id));
@@ -212,28 +215,34 @@ export async function registerConversationRoutes(
     // (server-derived); a snapshot enters the LLM context only after memory
     // authorization.
     const runIdentity = assistantRunIdentity(user.id);
-    const snapshot = authorizeSnapshotForAgentContext(
-      authorizedProjectId ? osStore.getSnapshot(authorizedProjectId) ?? null : null,
-      runIdentity.agentId,
-    );
+    const snapshot = isBaseline
+      ? null
+      : authorizeSnapshotForAgentContext(
+          authorizedProjectId ? osStore.getSnapshot(authorizedProjectId) ?? null : null,
+          runIdentity.agentId,
+        );
     const globalDecisions = osStore
       .getDecisions("global")
       .filter((decision) => canReadDecision(user, decision));
-    const decisions = authorizedProjectId
-      ? [...osStore.getDecisions(authorizedProjectId), ...globalDecisions]
-      : globalDecisions;
+    const decisions = isBaseline
+      ? []
+      : authorizedProjectId
+        ? [...osStore.getDecisions(authorizedProjectId), ...globalDecisions]
+        : globalDecisions;
     // Tenant boundary: memory uses the same authorized project as snapshot/
     // decisions/evidence. A client-supplied projectId the caller cannot read
     // degrades to no-project retrieval (owner-scoped), never a foreign key.
     // Stage 4: tenant-admin role never widens LLM memory to other owners.
-    const memoryContextResult = await buildMemoryContext({
-      projectId: authorizedProjectId,
-      query: body.message,
-      budget: AGENT_MEMORY_BUDGET,
-      embeddingEnv: app.atlasEnv,
-      ownerId: runIdentity.ownerId,
-      requestingAgentId: runIdentity.agentId,
-    });
+    const memoryContextResult = isBaseline
+      ? { memories: [], items: [], budget: AGENT_MEMORY_BUDGET, truncated: false, epistemicState: "OBSERVED" as const, note: "baseline-arm" }
+      : await buildMemoryContext({
+          projectId: authorizedProjectId,
+          query: body.message,
+          budget: AGENT_MEMORY_BUDGET,
+          embeddingEnv: app.atlasEnv,
+          ownerId: runIdentity.ownerId,
+          requestingAgentId: runIdentity.agentId,
+        });
     const { memories, ...memoryContext } = memoryContextResult;
     const evidenceRecords = authorizedProjectId ? osStore.getEvidence(authorizedProjectId) : [];
 

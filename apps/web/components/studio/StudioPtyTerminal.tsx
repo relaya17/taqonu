@@ -301,7 +301,6 @@ export function StudioPtyTerminal({
     void newSession();
     // newSession is a hoisted function declaration; re-running this effect
     // only on signal/ready changes is deliberate.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newSessionSignal, ready]);
 
   useEffect(() => {
