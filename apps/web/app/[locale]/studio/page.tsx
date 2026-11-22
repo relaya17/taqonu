@@ -1109,6 +1109,7 @@ export default function StudioPage() {
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const [dialog, setDialog] = useState<
     | null
+    | "commandPalette"
     | "quickOpen"
     | "goToLine"
     | "goToSymbol"
@@ -1442,6 +1443,11 @@ export default function StudioPage() {
       const mod = event.ctrlKey || event.metaKey;
       if (!mod) return;
       const key = event.key.toLowerCase();
+      if (key === "p" && event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        openDialog("commandPalette");
+        return;
+      }
       const inStudio = Boolean(
         (event.target as HTMLElement | null)?.closest?.("[data-studio-root]"),
       );
@@ -3293,6 +3299,67 @@ export default function StudioPage() {
         maxWidth={dialog === "linkFolder" || dialog === "clone" || dialog === "about" ? "sm" : "xs"}
         PaperProps={{ sx: { bgcolor: "#1F2228", color: ink, border: "1px solid #30343C" } }}
       >
+        {dialog === "commandPalette" ? (
+          (() => {
+            const commandItems = studioMenus
+              .flatMap((menu) => menu.items.map((item) => ({ menu, item })))
+              .filter(({ item }) => !item.disabled && item.onSelect)
+              .filter(({ item }) => {
+                const needle = dialogText.trim().toLowerCase();
+                return !needle || `${item.label} ${item.shortcut ?? ""}`.toLowerCase().includes(needle);
+              })
+              .slice(0, 50);
+            return (
+              <>
+                <DialogTitle sx={{ fontSize: 15 }}>{t("menu.commandPalette")}</DialogTitle>
+                <DialogContent>
+                  <TextField
+                    autoFocus
+                    fullWidth
+                    size="small"
+                    label={t("menu.commandPalette")}
+                    value={dialogText}
+                    onChange={(event) => setDialogText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      const first = commandItems[0];
+                      if (!first) return;
+                      event.preventDefault();
+                      setDialog(null);
+                      first.item.onSelect?.();
+                    }}
+                    sx={{ mt: 1, ...fieldSx }}
+                  />
+                  <List dense sx={{ maxHeight: 360, overflow: "auto", mt: 1 }}>
+                    {commandItems.map(({ menu, item }) => (
+                      <ListItem key={`${menu.id}:${item.id}`} disablePadding>
+                        <ListItemButton
+                          onClick={() => {
+                            setDialog(null);
+                            item.onSelect?.();
+                          }}
+                        >
+                          <ListItemText
+                            primary={item.label}
+                            secondary={`${menu.label}${item.shortcut ? ` · ${item.shortcut}` : ""}`}
+                            primaryTypographyProps={{ fontSize: 13 }}
+                            secondaryTypographyProps={{ fontSize: 11.5, color: muted }}
+                          />
+                        </ListItemButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                  {commandItems.length === 0 ? (
+                    <Typography variant="body2" sx={{ color: muted }}>
+                      {t("menu.noMatches")}
+                    </Typography>
+                  ) : null}
+                </DialogContent>
+              </>
+            );
+          })()
+        ) : null}
+
         {dialog === "quickOpen" ? (
           <>
             <DialogTitle sx={{ fontSize: 15 }}>{t("menu.quickOpen")}</DialogTitle>

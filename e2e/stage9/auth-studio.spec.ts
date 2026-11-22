@@ -100,7 +100,8 @@ test.describe("Stage 9.3 auth + Studio entry + project context", () => {
     // activity bar (like VS Code's Accounts button).
     const account = page.getByRole("button", { name: /^account$/i });
     await expect(account).toBeVisible({ timeout: 20_000 });
-    await account.click();
+    await account.focus();
+    await account.press("Enter");
     const signOut = page.getByRole("menuitem", { name: /^sign out$/i });
     await expect(signOut).toBeVisible({ timeout: 20_000 });
     await signOut.click();

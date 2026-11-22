@@ -304,7 +304,7 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     ).toBeVisible({ timeout: 45_000 });
 
     const patchesTab = page.getByRole("tab", {
-      name: "Patches",
+      name: /Proposed changes|Patches|שינויים מוצעים|التغييرات المقترحة|Changements proposés/i,
     });
 
     await expect(patchesTab).toBeVisible({
@@ -312,6 +312,12 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     });
 
     await patchesTab.click();
+
+    await page.keyboard.press("Control+Shift+P");
+    await expect(
+      page.getByRole("dialog", { name: /Command palette|לוח פקודות|لوحة الأوامر|Palette de commandes/i }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press("Escape");
 
     await expect(patchesTab).toHaveAttribute(
       "aria-selected",
@@ -330,7 +336,7 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     ).toBeVisible({ timeout: 45_000 });
 
     const patchesTabAfterReload = page.getByRole("tab", {
-      name: "Patches",
+      name: /Proposed changes|Patches|שינויים מוצעים|التغييرات المقترحة|Changements proposés/i,
     });
 
     await expect(

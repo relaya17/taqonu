@@ -580,6 +580,7 @@
       "checks": "Checks",
       "dashboard": "Dashboard",
       "help": "Help",
+      "commandPalette": "Command palette",
       "newFile": "New file…",
       "newFolder": "New folder…",
       "quickOpen": "Go to file…",
