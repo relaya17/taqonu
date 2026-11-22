@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+﻿import { mkdir } from "node:fs/promises";
 import { test as setup, expect } from "@playwright/test";
 import { ensureStage9Account, sessionFromPage, writeStage9IdentityFile } from "./accounts";
 import {
@@ -29,7 +29,37 @@ setup("local two-identity Stage 9 sessions", async ({ browser }) => {
     expect(requesterAccount.id).not.toBe(deciderAccount.id);
 
     const requesterPage = await requesterContext.newPage();
+
+    requesterPage.on("request", (request) => {
+      if (request.url().includes("/api/v1/auth/session")) {
+        console.log(`[stage9-diagnostic] session request START ${request.method()} ${request.url()}`);
+      }
+    });
+    requesterPage.on("response", (response) => {
+      if (response.url().includes("/api/v1/auth/session")) {
+        console.log(`[stage9-diagnostic] session response ${response.status()} ${response.url()}`);
+      }
+    });
+    requesterPage.on("requestfailed", (request) => {
+      if (request.url().includes("/api/v1/auth/session")) {
+        console.log(`[stage9-diagnostic] session request FAILED ${request.failure()?.errorText ?? "unknown"} ${request.url()}`);
+      }
+    });
+
     await requesterPage.goto("/en/studio", { waitUntil: "domcontentloaded" });
+
+    const manualSessionProbe = await requesterPage.evaluate(async () => {
+      const response = await fetch("/api/v1/auth/session", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      return {
+        status: response.status,
+        ok: response.ok,
+        body: await response.text(),
+      };
+    });
+    console.log(`[stage9-diagnostic] manual session probe ${JSON.stringify(manualSessionProbe)}`);
     await expect(
       requesterPage.getByRole("heading", { level: 1, name: "Project Studio" }),
     ).toBeVisible({ timeout: 60_000 });

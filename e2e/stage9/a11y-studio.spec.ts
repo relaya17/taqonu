@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+﻿import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect } from "@playwright/test";
 import { expectNoA11yViolations } from "../axe";
@@ -281,6 +281,71 @@ test.describe("Stage 9.9 authenticated a11y + /en/projects", () => {
     await expectNoA11yViolations(page, testInfo);
   });
 
+  test("Studio preserves the selected side panel across reload", async ({
+    page,
+    request,
+  }) => {
+    const stamp = Date.now();
+
+    const project = await createStage9Project(
+      request,
+      `Stage9 Side Panel ${stamp}`,
+    );
+
+    await page.goto(studioProjectUrl(project.id), {
+      waitUntil: "domcontentloaded",
+    });
+
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "Project Studio",
+      }),
+    ).toBeVisible({ timeout: 45_000 });
+
+    const patchesTab = page.getByRole("tab", {
+      name: "Patches",
+    });
+
+    await expect(patchesTab).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await patchesTab.click();
+
+    await expect(patchesTab).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await page.reload({
+      waitUntil: "domcontentloaded",
+    });
+
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "Project Studio",
+      }),
+    ).toBeVisible({ timeout: 45_000 });
+
+    const patchesTabAfterReload = page.getByRole("tab", {
+      name: "Patches",
+    });
+
+    await expect(
+      patchesTabAfterReload,
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await expect(
+      patchesTabAfterReload,
+    ).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
   test("authenticated /en/projects document navigation is not ERR_ABORTED", async ({
     page,
   }) => {

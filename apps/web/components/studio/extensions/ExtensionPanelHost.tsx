@@ -32,7 +32,12 @@ export function ExtensionPanelHost({
   children: (scope: StudioExtensionScope) => ReactNode;
 }) {
   const t = useTranslations("studioExtensions");
+  // The automatic health check has its own mutation. Sharing one with the
+  // Grant action let a check that had finished (but whose result the observer
+  // never received, as happens when the component is re-subscribed under
+  // React StrictMode) keep the Grant button disabled for good.
   const action = useStudioExtensionAction(projectId);
+  const healthCheck = useStudioExtensionAction(projectId);
   const { manifest } = entry;
   const key = extensionMessageKey(manifest.id);
   const permLabel = (p: string) => t(`perm.${extensionMessageKey(p)}.label`);
@@ -46,10 +51,11 @@ export function ExtensionPanelHost({
     const fresh = healthAt !== null && Date.now() - new Date(healthAt).getTime() < HEALTH_CACHE_MS;
     if (fresh || checkedRef.current === marker) return;
     checkedRef.current = marker;
-    action.mutate({ kind: "verify", id: manifest.id });
+    healthCheck.mutate({ kind: "verify", id: manifest.id });
   }, [projectId, manifest.id, healthAt]);
 
   const grantedAny = entry.granted.length > 0;
+  const failure = action.isError ? action.error : healthCheck.isError ? healthCheck.error : null;
   const health = entry.health ?? null;
   const impaired =
     health && (health.status === "DEGRADED" || health.status === "UNAVAILABLE") ? health : null;
@@ -94,7 +100,7 @@ export function ExtensionPanelHost({
             {t("actions.details")}
           </Button>
         </Stack>
-        {action.isError ? <Alert severity="error">{(action.error as Error).message}</Alert> : null}
+        {failure ? <Alert severity="error">{failure.message}</Alert> : null}
       </Stack>
     );
   }

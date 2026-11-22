@@ -152,6 +152,13 @@ test.describe("Signed-in surfaces for every user-facing capability (EN)", () => 
     test(`${path} renders its view without axe violations`, async ({ page }, testInfo) => {
       await page.goto(path);
       await expectPageHeading(page, heading);
+      if (path.endsWith("view=intelligence")) {
+        // The compare control is aria-disabled until the marketplace data has
+        // loaded; scan the loaded view, not the loading one.
+        await expect(page.getByRole("combobox", { name: "Agents to compare" })).toBeEnabled({
+          timeout: 20_000,
+        });
+      }
       await expectNoA11yViolations(page, testInfo);
     });
   }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
@@ -40,7 +41,34 @@ const chromiumLaunch = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
 
 const stage9AuthDir = join(tmpdir(), `atlas-stage9-${Date.now()}`);
 
+// ArletOS <-> Control runs (project "control") need the real Control Plane
+// process. STAGE9_CONTROL=1 starts it first (e2e/control/control-supervisor.mjs,
+// throwaway database and a per-run token) and points the API at it, so the API
+// registers its specialists with Control at start-up. Without the switch the
+// API has no Control configured, exactly as before.
+const controlRun = process.env.STAGE9_CONTROL === "1";
+const controlToken = process.env.STAGE9_CONTROL_TOKEN ?? randomUUID();
+if (controlRun) process.env.STAGE9_CONTROL_TOKEN = controlToken;
+const controlApiEnv: Record<string, string> = controlRun
+  ? {
+      ATLAS_CONTROL_PLANE_URL: "http://127.0.0.1:3100",
+      ATLAS_CONTROL_PLANE_TOKEN: controlToken,
+    }
+  : {};
+const controlServers = controlRun
+  ? [
+      {
+        command: "node e2e/control/control-supervisor.mjs",
+        url: "http://127.0.0.1:3199/health",
+        reuseExistingServer: false,
+        timeout: 120_000,
+        env: envWith({ STAGE9_CONTROL_TOKEN: controlToken }),
+      },
+    ]
+  : [];
+
 const localWebServers = [
+  ...controlServers,
   {
     command: "node e2e/stage9/reset-local-identities.mjs && pnpm --filter @atlas/api dev",
     url: "http://127.0.0.1:4000/api/v1/health",
@@ -56,6 +84,7 @@ const localWebServers = [
       ATLAS_AUTH_PATH: join(stage9AuthDir, "users.json"),
       ATLAS_SESSIONS_PATH: join(stage9AuthDir, "sessions.json"),
       ATLAS_SKIP_STORE_PERSIST: "1",
+      ...controlApiEnv,
     }),
   },
   {
@@ -85,7 +114,10 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: /[/\\]stage9[/\\]/,
+      // Stage 9 and control have their own projects; the debugger and editor suites need their
+      // own servers, ports and build flags (playwright.debugger.config.ts,
+      // playwright.editor.config.ts) and fail here by construction.
+      testIgnore: /[/\\](stage9|control|debugger|editor)[/\\]/,
       use: {
         ...devices["Desktop Chrome"],
         ...chromiumLaunch,
@@ -95,6 +127,16 @@ export default defineConfig({
       name: "stage9-setup",
       testMatch: /[/\\]stage9[/\\]auth\.setup\.ts/,
       use: { ...devices["Desktop Chrome"], ...chromiumLaunch },
+    },
+    {
+      name: "control",
+      testMatch: /[/\\]control[/\\].*\.spec\.ts/,
+      dependencies: ["stage9-setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        ...chromiumLaunch,
+        storageState: STAGE9_REQUESTER_STATE,
+      },
     },
     {
       name: "stage9",

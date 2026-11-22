@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -61,6 +62,12 @@ import { useSearchParams } from "next/navigation";
 import { Link, usePathname, useRouter } from "@/i18n/routing";
 import { apiDelete, apiGet, apiPost, apiPut, resolveApiUrl } from "@/lib/api";
 import { createStudioRunAbort } from "@/lib/studio-run-abort";
+import {
+  browserSidePanelStorage,
+  readStoredSidePanel,
+  storeSidePanel,
+  type StudioSidePanel,
+} from "@/lib/studio-side-panel";
 import type { EngineeringLoopRun } from "@atlas/shared";
 import { LinkWorkspaceRoot } from "@/components/workspace/LinkWorkspaceRoot";
 import {
@@ -1016,7 +1023,7 @@ export default function StudioPage() {
   // so the legacy `?tab=chat` / `?tab=pty` deep links still land there.
   const workspaceTab: "files" | "run" | "cloud" | "checks" =
     tab === "chat" || tab === "pty" ? "files" : tab;
-  const [sidePanel, setSidePanel] = useState<"agent" | "chat" | "patches" | "psa">(
+  const [sidePanel, setSidePanel] = useState<StudioSidePanel>(
     tab === "chat" ? "chat" : "agent",
   );
   const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">(
@@ -1037,36 +1044,25 @@ export default function StudioPage() {
     }
   }, [tab]);
   // Remember the side panel across reloads (like VS Code), so a patch that is
-  // mid-review stays on screen after a refresh. `?tab=chat` still wins.
+  // mid-review stays on screen after a refresh. `?tab=chat` still wins. The
+  // panel is saved when it is changed (selectSidePanel), never on mount.
   useEffect(() => {
     if (tab === "chat") return;
-    try {
-      const saved = window.localStorage.getItem("atlas.studio.sidePanel");
-      // "more" was a tab before the menus took its tools; it opens as Agent.
-      if (saved === "agent" || saved === "patches" || saved === "psa") {
-        setSidePanel(saved);
-      }
-    } catch {
-      // Storage unavailable (private mode): keep the default panel.
-    }
+    const saved = readStoredSidePanel(browserSidePanelStorage());
+    if (saved) setSidePanel(saved);
     // Read once on mount only.
   }, []);
-  useEffect(() => {
-    try {
-      if (sidePanel !== "chat") {
-        window.localStorage.setItem("atlas.studio.sidePanel", sidePanel);
-      }
-    } catch {
-      // Storage unavailable: nothing to remember.
-    }
-  }, [sidePanel]);
+  const selectSidePanel = useCallback((next: StudioSidePanel) => {
+    setSidePanel(next);
+    storeSidePanel(browserSidePanelStorage(), next);
+  }, []);
   const proposedPatchId = propose.data?.patch?.id ?? null;
   useEffect(() => {
     if (!proposedPatchId) return;
-    setSidePanel("patches");
+    selectSidePanel("patches");
     setShowSideChoice(true);
     setMobileView("agent");
-  }, [proposedPatchId]);
+  }, [proposedPatchId, selectSidePanel]);
   /** Side-bar view: Explorer, Search, Extensions, or an extension panel (`ext:<id>`, ADR-026). */
   const [activity, setActivity] = useState<string>("explorer");
   const [extensionDetailId, setExtensionDetailId] = useState<string | null>(null);
@@ -1129,7 +1125,7 @@ export default function StudioPage() {
   const shell = useShellChrome();
 
   const openSidePanel = (next: typeof sidePanel) => {
-    setSidePanel(next);
+    selectSidePanel(next);
     setShowSideChoice(true);
     setMobileView("agent");
     if (next === "chat") selectTab("chat");
@@ -2509,7 +2505,7 @@ export default function StudioPage() {
                     if (problem.file) selectStudioFile(problem.file, problem.line);
                     if (problem.source === "sentinel") setModeAsk("secure");
                     setIntent("propose");
-                    setSidePanel("agent");
+                    selectSidePanel("agent");
                   }}
                 />
               ) : null}
@@ -3163,7 +3159,7 @@ export default function StudioPage() {
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => setSidePanel("patches")}
+                        onClick={() => selectSidePanel("patches")}
                       >
                         {t("side.patches")}
                       </Button>
@@ -3225,7 +3221,7 @@ export default function StudioPage() {
                     // propose call will include supersedesPatchId.
                     setCorrectionForPatchId(rejectedPatchId);
                     setIntent("propose");
-                    setSidePanel("agent");
+                    selectSidePanel("agent");
                   }}
                 />
               </Stack>

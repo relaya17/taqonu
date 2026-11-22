@@ -118,7 +118,7 @@ export function ActivityView() {
       />
 
       {activity.isLoading ? (
-        <Stack spacing={1} aria-busy="true" aria-label={t("loading")}>
+        <Stack spacing={1} role="status" aria-busy="true" aria-label={t("loading")}>
           <Skeleton variant="rounded" height={56} />
           <Skeleton variant="rounded" height={56} />
           <Skeleton variant="rounded" height={56} />
