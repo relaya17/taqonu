@@ -39,3 +39,4 @@ docs/confidential/
 
 # Control Plane local registration database — never commit the live registry
 apps/control-plane/control-plane-registrations.db
+control-plane-registrations.db
