@@ -264,7 +264,6 @@ export async function registerStudioDebugRoutes(app: FastifyInstance): Promise<v
 
   app.post("/api/v1/projects/:id/studio/debug/sessions/:sessionId/force-close", async (request, reply) => {
     if (isAgentDebugRequest(headerMap(request))) denyAgentDebugRequest();
-    const projectId = uuidSchema.parse((request.params as { id: string }).id);
     const sessionId = uuidSchema.parse((request.params as { sessionId: string }).sessionId);
     const user = await requireUser(app, request);
     const body = z.object({ reason: z.string().min(1).max(2000) }).strict().parse(request.body ?? {});

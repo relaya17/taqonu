@@ -1149,10 +1149,10 @@ describe("GAP-GATE: Control Registration Authorization Gate", () => {
     expect(res.statusCode).toBe(201);
     const run = res.json().runs.find((r: { agentId: string }) => r.agentId === "SECURITY");
     expect(run.status).toBe("COMPLETED");
-    // Verify ownerId (OWNER_A.id) was passed to the registration check
+    // Fabric specialists are platform registrations and use the ownerless key.
     expect(checkControlPlaneAgentRegistration).toHaveBeenCalledWith(
       "SECURITY",
-      OWNER_A.id,
+      null,
     );
   });
 

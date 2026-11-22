@@ -337,7 +337,8 @@ export async function registerAgentFabricRoutes(
           // Only CONTROL_REGISTERED status allows the run to proceed.
           let regLookup: Awaited<ReturnType<typeof checkControlPlaneAgentRegistration>>;
           try {
-            regLookup = await checkControlPlaneAgentRegistration(agentId, user.id);
+            const registrationOwnerId = agentId.startsWith("psa:") ? user.id : null;
+            regLookup = await checkControlPlaneAgentRegistration(agentId, registrationOwnerId);
           } catch {
             const reason = "CONTROL_UNREACHABLE: Control check failed";
             return {
